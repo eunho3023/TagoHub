@@ -1,1 +1,51 @@
+name: 정류장·노선 데이터 갱신
 
+on:
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 받아 둔 응답 불러오기
+        uses: actions/cache@v4
+        with:
+          path: pipeline/cache
+          key: api-cache-${{ github.run_id }}
+          restore-keys: api-cache-
+
+      - run: pip install -r pipeline/requirements.txt
+
+      - name: 공공데이터포털 접속 확인
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteNoList?serviceKey=test&cityCode=25&routeNo=1&_type=json" || echo 000)
+          echo "apis.data.go.kr 응답 코드: $code"
+          if [ "$code" = "000" ]; then echo "::error::공공데이터포털에 접속하지 못했습니다."; exit 1; fi
+
+      - name: 수집 프로그램 시험
+        run: python pipeline/test_build_data.py
+
+      - name: 데이터 만들기
+        env:
+          TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
+        run: python pipeline/build_data.py
+
+      - name: Release(data-latest)에 올리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "정류장·노선 데이터" --notes "매주 자동 갱신" --latest=false
+          gh release upload data-latest pipeline/out/bus_stops.db.gz pipeline/out/manifest.json --clobber
+          cat pipeline/out/manifest.json
