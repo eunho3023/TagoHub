@@ -20,7 +20,6 @@ jobs:
     env:
       PYTHONUTF8: "1"                 # 윈도우에서 한글 로그·파일이 깨지지 않게
       PYTHONIOENCODING: "utf-8"
-      TAGO_CACHE_DIR: ${{ runner.workspace }}\..\tagohub-cache   # 받은 응답: 작업 폴더 바깥에 두고 계속 씀 (이어 받기)
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +59,12 @@ jobs:
       - name: 데이터 만들기
         env:
           TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
-        run: python pipeline/build_data.py
+        run: |
+          # 받은 응답: 작업 폴더(실행마다 정리됨) 바깥 _work\tagohub-cache 에 두고 계속 씀 (이어 받기)
+          $env:TAGO_CACHE_DIR = Join-Path (Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent) "tagohub-cache"
+          Write-Host "받은 응답 저장 폴더: $env:TAGO_CACHE_DIR"
+          python pipeline/build_data.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Release(data-latest)에 올리기
         env:
