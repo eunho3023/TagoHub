@@ -182,7 +182,12 @@ class KakaoCanvas(
         km.setOnTerrainLongClickListener { _, position, _ ->
             main.post { vm.onMapLongPress(position.latitude, position.longitude) }
         }
-        km.compass?.let { it.setBackToNorthOnClick(true); it.show() }
+        // 나침반: 기본 자리가 검색창에 가려져서 검색창 아래 왼쪽으로 (지도를 돌리면 방위가 보임, 누르면 북쪽으로)
+        km.compass?.let {
+            it.setBackToNorthOnClick(true)
+            it.setPosition(com.kakao.vectormap.MapGravity.TOP or com.kakao.vectormap.MapGravity.LEFT, 16 * density, 104 * density)
+            it.show()
+        }
         km.scaleBar?.let { it.setAutoHide(true); it.show() }
         applyBase()
         applyOverlays()

@@ -164,6 +164,15 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         )
     }
 
+    /** 이 정류장의 다음 정류장 이름 (가장 많은 노선이 가는 쪽) — 검색 결과의 '○○ 방면' */
+    fun nextStopName(stopId: String): String? = runCatching {
+        query("""SELECT COALESCE(NULLIF(n.name, ''), s.name) nm FROM route_stops a
+                 JOIN route_stops n ON n.route_id = a.route_id AND n.seq = a.seq + 1
+                 LEFT JOIN stops s ON s.id = n.stop_id
+                 WHERE a.stop_id = ? GROUP BY nm ORDER BY COUNT(*) DESC LIMIT 1""", arrayOf(stopId)) { if (it.isNull(0)) null else it.getString(0) }
+            .firstOrNull()
+    }.getOrNull()
+
     /** 경기 노선 모양 (경로이력 2025-10, 6m 단순화, polyline 정밀도 5) */
     fun gyeonggiShape(routeId: String): List<LatLng>? =
         query("SELECT poly FROM gbis_shapes WHERE id = ?", arrayOf(routeId)) { it.getString(0) }.firstOrNull()

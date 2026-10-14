@@ -341,6 +341,18 @@ internal fun lastKnownLocation(ctx: Context): Location? {
         .maxByOrNull { it.time }
 }
 
+/** 내 위치 계속 받기 (GPS·네트워크, 2초 또는 3m 마다). 돌려주는 함수를 부르면 멈춤 */
+@SuppressLint("MissingPermission")
+internal fun startLocationUpdates(ctx: Context, onLocation: (Location) -> Unit): () -> Unit {
+    if (!hasLocationPermission(ctx)) return {}
+    val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    val listener = android.location.LocationListener { onLocation(it) }
+    listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+        .forEach { p -> runCatching { lm.requestLocationUpdates(p, 2000L, 3f, listener, android.os.Looper.getMainLooper()) } }
+    return { runCatching { lm.removeUpdates(listener) } }
+}
+
 /** Play 서비스 없이 LocationManager 만 사용. 2분 이내 캐시 → 없으면 1회 측위(최대 10초) */
 @SuppressLint("MissingPermission")
 internal suspend fun currentLocation(ctx: Context): Location? {

@@ -234,6 +234,22 @@ def test_kotsa_timetable_real():
     assert r["sameRoutes"] == 2 and r["firstMatch"] == 100.0 and r["lastMatch"] == 50.0 and r["tagoOnly"] == 1 and r["kotsaOnly"] == 2
 
 
+def test_tsb_stops_written():
+    """교통안전공단 노선 정류장 순서를 받아 넣으면 그 노선 행은 그대로, 정류장 순서만 생김"""
+    db0 = sqlite3.connect(BASE)
+    rid, city = db0.execute("SELECT id, city FROM routes WHERE id LIKE 'TSB%' AND city NOT LIKE 'TS%' LIMIT 1").fetchone()
+    sid = db0.execute("SELECT id FROM stops WHERE city = ? LIMIT 1", (city,)).fetchone()[0]
+    db0.close()
+    stops = [{"nodeid": sid, "nodenm": "가", "nodeord": 1, "updowncd": 0}, {"nodeid": "NEW1", "nodenm": "새 정류장", "nodeord": 2, "gpslati": 37.1, "gpslong": 128.9}]
+    with tempfile.TemporaryDirectory() as d:
+        out = pathlib.Path(d) / "bus_stops.db"
+        bd.write_db(BASE, out, {}, [], "202610140300", (), {rid: stops})
+        db = sqlite3.connect(out)
+        assert db.execute("SELECT seq, stop_id, name FROM route_stops WHERE route_id = ? ORDER BY seq", (rid,)).fetchall() == [(1, sid, ""), (2, "NEW1", "새 정류장")]
+        assert db.execute("SELECT COUNT(*) FROM routes WHERE id = ?", (rid,)).fetchone()[0] == 1
+        db.close()
+
+
 def test_helpers():
     assert bd.clock("0530") == "05:30" and bd.clock(530) == "05:30" and bd.clock(2310) == "23:10" and bd.clock(None) is None
     assert bd.region_name("경상남도 김해시") == "김해" and bd.region_name("부산광역시") == "부산" and bd.region_name("충청북도 청주시") == "청주"
@@ -246,6 +262,6 @@ def test_helpers():
 
 
 if __name__ == "__main__":
-    for t in (test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

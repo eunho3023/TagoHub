@@ -207,8 +207,22 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
         }
     }
 
+    var locationKey by remember { mutableStateOf(0) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if (granted.values.any { it }) locate() else vm.banner.value = "위치 권한이 없어 현재 위치를 표시할 수 없습니다."
+        if (granted.values.any { it }) { locate(); locationKey++ } else vm.banner.value = "위치 권한이 없어 현재 위치를 표시할 수 없습니다."
+    }
+    // 내 위치: 화면이 보이는 동안 GPS 를 따라 계속 움직임 (앱이 뒤로 가면 멈춰 배터리 아낌)
+    DisposableEffect(lifecycle, locationKey) {
+        var stop: () -> Unit = {}
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> { stop(); stop = startLocationUpdates(context) { vm.setMe(it.latitude, it.longitude, center = false) } }
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> { stop(); stop = {} }
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs); stop() }
     }
 
     // 시작: 저장된 자리가 있으면 그대로 두고 내 위치 점만, 없으면 내 위치로 이동.
@@ -285,20 +299,16 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                 .padding(top = 12.dp, end = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SmallFloatingActionButton(onClick = { if (mapFailed) mapAttempt++ else vm.refreshNow() }) {
-                Icon(Icons.Filled.Refresh, contentDescription = "새로고침")
+            if (mapFailed) {
+                SmallFloatingActionButton(onClick = { mapAttempt++ }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "지도 다시 시도")
+                }
             }
             SmallFloatingActionButton(onClick = {
                 if (hasLocationPermission(context)) locate()
                 else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             }) { Icon(Icons.Filled.MyLocation, contentDescription = "내 위치") }
-            if (mapMode != MapMode.Bus) {
-                SmallFloatingActionButton(
-                    onClick = vm::toggleTrains,
-                    containerColor = if (trainsOn) ModeColor.Subway else MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = if (trainsOn) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
-                ) { Icon(Icons.Filled.Train, contentDescription = if (trainsOn) "실시간 열차 끄기" else "실시간 열차 켜기") }
-            }
+            // 지하철 실시간 열차는 늘 표시 (버튼 없앰)
             // 지도 종류: 카카오맵 기본·위성
             if (mode == "kakao") {
                 Box {
@@ -485,6 +495,8 @@ private fun PanelHeader(
     /** null 이면 별 버튼 없음 */
     favorite: Boolean? = null,
     onFavorite: () -> Unit = {},
+    /** null 이면 새로고침 버튼 없음 */
+    onRefresh: (() -> Unit)? = null,
 ) {
     Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -503,6 +515,7 @@ private fun PanelHeader(
             }
         }
         if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel) }
+        onRefresh?.let { r -> IconButton(onClick = r) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") } }
         if (favorite != null) {
             IconButton(onClick = onFavorite) {
                 Icon(
@@ -542,7 +555,15 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             onSwitch = { vm.openPanel(MapPanel.Route) },
             favorite = favs.any { it.kind == Favorite.Kind.Stop && it.id == d.stop.nodeId },
             onFavorite = { vm.toggleFavorite(Favorite.of(d.stop)) },
+            onRefresh = vm::refreshNow,
         )
+        // 이 정류장을 출발지·도착지로 길찾기
+        if (d.stop.lat != null) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("출발지로") }
+                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("도착지로") }
+            }
+        }
         val timetable by vm.stopTimetable.collectAsStateWithLifecycle()
         // 실시간 도착 ↔ 예상 시간표
         Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -641,7 +662,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                 }
                 if (cur.minutes.isEmpty()) {
                     Text(
-                        "이 노선은 첫차·막차 정보가 없어 시간표를 만들 수 없습니다.",
+                        "이 노선은 시간 정보가 없습니다.",
                         Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -718,6 +739,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             onSwitch = { vm.openPanel(MapPanel.Stop) },
             favorite = favs.any { it.kind == Favorite.Kind.Route && it.id == d.routeId },
             onFavorite = { vm.toggleFavorite(vm.routeFavorite(d)) },
+            onRefresh = vm::refreshNow,
         )
         r?.let { RouteInfoCard(it) }
         val dir by d.dir.collectAsStateWithLifecycle()
@@ -928,7 +950,8 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                             if (r.stops.isNotEmpty()) {
                                 item { SectionHeader("정류소 ${r.stops.size}") }
                                 items(r.stops) { st ->
-                                    StopListRow(st, null, names[st.cityCode], vm.stopNumbers(st)) {
+                                    val dir by produceState<String?>(null, st.nodeId) { value = vm.stopDirection(st.nodeId)?.let { "$it 방면" } }
+                                    StopListRow(st, dir, names[st.cityCode], vm.stopNumbers(st)) {
                                         vm.pickStop(st)
                                         query = ""
                                         focus.clearFocus()
@@ -1201,11 +1224,26 @@ private fun PlanList(t: TripController) {
         emptyText = "경로가 없습니다.",
         idle = { MessageText("도착지를 입력하면 지금 위치에서 탈 수 있는 버스(직통·1회 환승)를 보여줍니다. 다른 지역으로 가는 길도 찾습니다.") },
     ) { list ->
+        val sort by t.sort.collectAsStateWithLifecycle()
+        val shown = remember(list, sort) {
+            when (sort) {
+                PlanSort.Fast -> list.sortedBy { it.minutes }
+                PlanSort.LessWalk -> list.sortedWith(compareBy({ it.walkStartM + it.walkEndM + it.transferWalkM }, { it.minutes }))
+                PlanSort.LessTransfer -> list.sortedWith(compareBy({ it.legs.size }, { it.minutes }))
+            }
+        }
+        Column(Modifier.fillMaxSize()) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PlanSort.entries.forEach { o ->
+                FilterChip(selected = sort == o, onClick = { t.sort.value = o }, label = { Text(o.label) })
+            }
+        }
         LazyColumn(Modifier.fillMaxSize()) {
-            items(list) { p ->
+            items(shown) { p ->
                 PlanCard(p) { t.select(p) }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
+        }
         }
     }
 }

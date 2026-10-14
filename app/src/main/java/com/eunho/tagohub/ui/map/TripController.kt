@@ -54,6 +54,8 @@ class TripController(
     val dest = MutableStateFlow<PlanPoint?>(null)
     val editing = MutableStateFlow<PlanField?>(PlanField.Dest)
     val results = MutableStateFlow<Load<List<PlanPoint>>>(Load.Idle)
+    /** 길찾기 결과 정렬 (최단시간·최소도보·최소환승) */
+    val sort = MutableStateFlow(PlanSort.Fast)
     val plans = MutableStateFlow<Load<List<TripPlan>>>(Load.Idle)
     val selected = MutableStateFlow<TripPlan?>(null)
     val live = MutableStateFlow<TripLive?>(null)
@@ -90,7 +92,10 @@ class TripController(
         results.value = Load.Idle
     }
 
-    /** 목적지·출발지 검색: 장소(카카오 로컬) + 정류장(내장 DB, 전주 정류장 먼저) */
+    /** 길찾기 결과 정렬 */
+enum class PlanSort(val label: String) { Fast("최단시간"), LessWalk("최소도보"), LessTransfer("최소환승") }
+
+/** 목적지·출발지 검색: 장소(카카오 로컬) + 정류장(내장 DB, 전주 정류장 먼저) */
     fun search(q: String) {
         searchJob?.cancel()
         val k = q.trim()

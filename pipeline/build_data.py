@@ -371,6 +371,25 @@ def fetch_tago_lists(fx, cities):
     return out
 
 
+def fetch_tsb_stops(fx, base_db):
+    """교통안전공단 노선(TSB)의 정류장 순서 — 앱이 TAGO 에 매번 묻지 않게 (TAGO 도시코드로). {routeid: [stop items]}"""
+    db = sqlite3.connect(base_db)
+    jobs = [(city, rid, {"stops": []}) for rid, city in db.execute(
+        "SELECT r.id, r.city FROM routes r WHERE r.id LIKE 'TSB%' AND r.city NOT LIKE 'TS%' "
+        "AND NOT EXISTS (SELECT 1 FROM route_stops s WHERE s.route_id = r.id)")]
+    db.close()
+
+    def one(job):
+        code, rid, r = job
+        r["stops"] = list_all(fx, f"{TAGO}/getRouteAcctoThrghSttnList", {"_type": "json", "cityCode": code, "routeId": rid},
+                              f"tago/{code}/stops_{rid}", 7 * DAY, 500)
+    try:
+        run_parallel(fx, jobs, one, "교통안전공단 노선 정류장 순서")
+    except (Limit, KeyError_):
+        print("교통안전공단 노선 정류장 순서: 한도 — 받은 데까지만", flush=True)
+    return {rid: r["stops"] for _, rid, r in jobs if r["stops"]}
+
+
 def compare(kotsa, tago_items):
     """같은 노선(TSB+번호 = TAGO routeid)의 평일 기점 첫차·막차가 일치하는 비율"""
     week = {"TSB" + str(r.get("노선 아이디")): r for r in kotsa if r.get("요일") == "평일"}
@@ -390,7 +409,7 @@ def compare(kotsa, tago_items):
     }
 
 
-def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=()):
+def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -431,6 +450,18 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=()):
                            (rid, t_first, t_last, to_int(info.get("intervaltime")), to_int(info.get("intervalsattime")), to_int(info.get("intervalsuntime"))))
             added_routes += 1
             added_stops += len(rows)
+    # 교통안전공단 노선 정류장 순서 (노선 행은 그대로, 정류장 순서만 채움)
+    for rid, items_ in (tsb_stops or {}).items():
+        rows = []
+        for s_ in sorted(items_, key=lambda x: to_int(x.get("nodeord")) or 0):
+            sid = str(s_.get("nodeid", "")).strip() or None
+            ud = s_.get("updowncd") and str(s_.get("updowncd"))
+            if sid in known:
+                rows.append((rid, to_int(s_.get("nodeord")) or 0, sid, "", None, None, ud))
+            else:
+                rows.append((rid, to_int(s_.get("nodeord")) or 0, sid, str(s_.get("nodenm", "")).strip() or "정류장",
+                             to_float(s_.get("gpslati")), to_float(s_.get("gpslong")), ud))
+        db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
     # 교통안전공단 요일별 시간표 + 배차간격 (TAGO 노선 정보에 배차간격이 비어 있어서)
     db.execute("""CREATE TABLE IF NOT EXISTS route_schedule(id TEXT, day TEXT, trips INTEGER, first TEXT, last TEXT,
                   end_first TEXT, end_last TEXT, min_int INTEGER, max_int INTEGER, PRIMARY KEY(id, day)) WITHOUT ROWID""")
@@ -526,7 +557,9 @@ def main():
     version = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")  # utcnow() 는 3.12 부터 없어질 기능
     if sum(len(c["routes"]) for c in tago.values()) == 0:
         sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
-    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa)
+    tsb = fetch_tsb_stops(fx, BASE_DB)
+    print(f"교통안전공단 노선 정류장 순서: {len(tsb)}개 노선", flush=True)
+    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))

@@ -188,6 +188,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         canvas?.setPin(null, null)
     }
 
+    /** 정류장 패널의 출발지·도착지 버튼 → 길찾기 */
+    fun useStopAs(stop: BusStop, asOrigin: Boolean) {
+        val lat = stop.lat ?: return
+        val lng = stop.lng ?: return
+        picked.value = PickedPlace(stop.name, stop.nodeNo?.let { "정류장 $it" }, lat, lng)
+        usePicked(asOrigin)
+    }
+
+    /** 정류장 검색 결과에 '○○ 방면' (앱 안 노선 정류장 순서에서 다음 정류장, 한 번 구하면 기억) */
+    private val directionCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    suspend fun stopDirection(stopId: String): String? {
+        directionCache[stopId]?.let { return it.ifEmpty { null } }
+        val d = stopDb?.let { db -> withContext(Dispatchers.IO) { db.nextStopName(stopId) } }
+        directionCache[stopId] = d.orEmpty()
+        return d
+    }
+
     /** 노선 패널의 즐겨찾기: 기점·종점은 노선 정보에서 */
     fun routeFavorite(d: BusDest.Route): com.eunho.tagohub.data.Favorite {
         val r = d.info.value.valueOrNull()
@@ -770,7 +787,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         timetableDay.value = day
         timetableJob?.cancel()
         stopTimetable.value = Load.Loading
-        timetableJob = viewModelScope.launch { stopTimetable.value = tracked { loadStopTimes(d, day) } }
+        timetableJob = viewModelScope.launch { stopTimetable.value = tracked { loadStopTimes(d, day) }
+            // 노선을 고를 때마다 계산하지 않고 열 때 모든 노선을 한꺼번에 (고르면 바로 보이게)
+            (stopTimetable.value as? Load.Ok)?.value?.filter { !it.loaded }?.forEach { ensureTimes(it.routeId) }
+        }
     }
 
     fun closeStopTimetable() {
@@ -863,7 +883,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val real = if (day == DayKind.Weekday) stopDb?.let { db -> withContext(Dispatchers.IO) { db.timetable(city, item.routeNo) } }.orEmpty() else emptyMap()
         val endName = info?.endName ?: stops.lastOrNull()?.name
         val realDir = real.entries.firstOrNull { (dir, _) -> val end = endName?.take(2); end != null && dir.contains(end) }?.value
-            ?: real.values.firstOrNull()
+            // 맞는 방향이 없으면 방향이 하나뿐일 때만 그걸 씀 (여러 방향·노선이 같은 번호를 쓰면 다른 노선 시각을 빌려오지 않음)
+            ?: real.values.singleOrNull()
         if (realDir != null && realDir.isNotEmpty()) {
             val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
             val starts = realDir.map { com.eunho.tagohub.data.CourseStart(it, stops.first().ord) }

@@ -310,6 +310,13 @@ private suspend fun tsbTargets(repo: TagoRepository, s: BusStop, db: StopDb?): L
 }
 
 internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
+    // 처음 열 때: 노선 목록(대부분 앱 안 데이터)을 먼저 보여주고, 실시간 도착은 받아지는 대로 채움 (전에는 다 받을 때까지 빈 화면 2초)
+    if (d.rows.value is Load.Loading && d.lastRoutes == null) {
+        (stopRoutesFor(repo, d.stop) as? TagoResult.Success)?.data?.takeIf { it.isNotEmpty() }?.let { quick ->
+            d.lastRoutes = quick
+            if (d.rows.value is Load.Loading) d.rows.value = Load.Ok(mergeStopRows(emptyList(), quick).map { it.copy(cityCode = d.stop.cityCode) })
+        }
+    }
     val (arr, routes) = coroutineScope {
         val a = async { arrivalsFor(repo, d.stop) }
         val r = if (d.lastRoutes == null) async { stopRoutesFor(repo, d.stop) } else null
