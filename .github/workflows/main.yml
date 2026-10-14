@@ -1,39 +1,58 @@
-# 정류장·노선 데이터를 매주 새로 만들어 GitHub Release(data-latest)에 올린다 → 앱이 와이파이에서 받아 바꿈
+# 정류장·노선 데이터를 새로 만들어 GitHub Release(data-latest)에 올린다 → 앱이 와이파이에서 받아 바꿈
+# 실행 위치: 집 PC(윈도우)에 설치한 깃허브 러너(서비스 계정: 로컬 시스템) — 공공데이터포털이 해외(깃허브 서버) 접속을 막을 때가 있어서
 name: 정류장·노선 데이터 갱신
 
 on:
   schedule:
-    - cron: "0 18 * * 0"   # 매주 월요일 03:00 (한국 시간) = 일요일 18:00 UTC
-  workflow_dispatch:        # Actions 탭에서 'Run workflow' 로 바로 실행
+    - cron: "0 11 * * 0"   # 매주 일요일 20:00 (한국 시간) = 11:00 UTC. PC 가 꺼져 있으면 켜질 때까지 기다림(최대 24시간)
+  workflow_dispatch:        # Actions 탭에서 'Run workflow' 로 바로 실행 (휴대폰으로 눌러도 됨, PC 만 켜져 있으면)
 
 permissions:
   contents: write           # Release 에 파일 올리기
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows]
     timeout-minutes: 340
+    defaults:
+      run:
+        shell: powershell
+    env:
+      PYTHONUTF8: "1"                 # 윈도우에서 한글 로그·파일이 깨지지 않게
+      PYTHONIOENCODING: "utf-8"
+      TAGO_CACHE_DIR: ${{ runner.workspace }}\..\tagohub-cache   # 받은 응답: 작업 폴더 바깥에 두고 계속 씀 (이어 받기)
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Python 찾기
+        # 러너가 윈도우 서비스(로컬 시스템 계정)로 돌아서 사용자 계정 PATH 를 모름 → 설치된 Python 을 직접 찾아 다음 단계 PATH 에 넣음
+        # (Microsoft Store 를 여는 가짜 python(WindowsApps) 은 뺌)
+        run: |
+          $py = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch "WindowsApps" } | Select-Object -First 1 -ExpandProperty Source
+          if (-not $py) {
+            # 여러 버전이면 가장 최신 (이름순이면 Python39 가 Python315 보다 앞이라 버전 숫자로)
+            $py = Get-ChildItem -Path "C:\Program Files\Python3*\python.exe", "C:\Users\*\AppData\Local\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
+              Sort-Object { [int]($_.Directory.Name -replace "\D", "") } -Descending | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $py) { Write-Error "설치된 Python 을 찾지 못했습니다 (python.org 에서 설치)"; exit 1 }
+          $dir = Split-Path $py
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $dir "Scripts")
+          & $py --version
+          Write-Host "사용할 Python: $py"
 
-      - name: 받아 둔 응답 불러오기 (하루 한도에 걸렸으면 다음 실행에서 이어 받기)
-        uses: actions/cache/restore@v4
-        with:
-          path: pipeline/cache
-          key: api-cache-${{ github.run_id }}
-          restore-keys: api-cache-
-
-      - run: pip install -r pipeline/requirements.txt
+      - run: python -m pip install -r pipeline/requirements.txt
 
       - name: 공공데이터포털 접속 확인
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteNoList?serviceKey=test&cityCode=25&routeNo=1&_type=json" || echo 000)
-          echo "apis.data.go.kr 응답 코드: $code"
-          if [ "$code" = "000" ]; then echo "::error::공공데이터포털에 접속하지 못했습니다. 해외 접속 제한일 수 있으니 pipeline/README.md 를 보세요."; exit 1; fi
+          $code = 0
+          try {
+            $code = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 "https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteNoList?serviceKey=test&cityCode=25&routeNo=1&_type=json").StatusCode
+          } catch {
+            if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+          }
+          Write-Host "apis.data.go.kr 응답 코드: $code"
+          if ($code -eq 0) { Write-Error "공공데이터포털에 접속하지 못했습니다. PC 의 인터넷 연결을 확인하세요."; exit 1 }
 
       - name: 수집 프로그램 시험 (인터넷 없이)
         run: python pipeline/test_build_data.py
@@ -43,17 +62,14 @@ jobs:
           TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
         run: python pipeline/build_data.py
 
-      - name: 받은 응답 저장 (실패·한도·취소여도 저장 → 다음 실행이 이어 받음)
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: pipeline/cache
-          key: api-cache-${{ github.run_id }}
-
       - name: Release(data-latest)에 올리기
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "정류장·노선 데이터" --notes "매주 자동 갱신 (pipeline/build_data.py)" --latest=false
+          gh release view data-latest *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create data-latest --title "정류장·노선 데이터" --notes "자동 갱신 (pipeline/build_data.py)" --latest=false
+          }
           gh release upload data-latest pipeline/out/bus_stops.db.gz pipeline/out/manifest.json --clobber
-          cat pipeline/out/manifest.json
+          if ($LASTEXITCODE -ne 0) { Write-Error "Release 올리기 실패 (GitHub CLI 설치를 확인하세요)"; exit 1 }
+          Get-Content pipeline/out/manifest.json

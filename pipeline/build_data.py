@@ -19,7 +19,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BASE_DB = ROOT / "app/src/main/assets/bus_stops.db"
 HERE = pathlib.Path(__file__).resolve().parent
-CACHE = HERE / "cache"
+# 받은 응답 저장 폴더: 집 PC 러너는 작업 폴더가 실행마다 정리돼서 바깥 고정 폴더(TAGO_CACHE_DIR)를 씀
+CACHE = pathlib.Path(os.environ["TAGO_CACHE_DIR"]) if os.environ.get("TAGO_CACHE_DIR") else HERE / "cache"
 OUT = HERE / "out"                        # 만드는 중인 DB (올리지 않음)
 TAGO = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService"
 GBIS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteListv2"
@@ -168,7 +169,7 @@ class Fetcher:
             try:
                 with self.lock:
                     self.calls += 1
-                r = self.s.get(url, params={"serviceKey": self.key, **params}, timeout=60)
+                r = self.s.get(url, params={"serviceKey": self.key, **params}, timeout=(15, 60))  # 연결 15초, 응답 60초
                 text = r.content.decode("utf-8", errors="replace")
                 if is_limit(text):
                     raise Limit()
@@ -522,7 +523,7 @@ def main():
     if report:
         print(f"TAGO ↔ 교통안전공단 비교: 같은 노선 {report['sameRoutes']}개, 평일 첫차 일치 {report['firstMatch']}%, 막차 일치 {report['lastMatch']}%, "
               f"TAGO 에 첫차 있음 {report['tagoHasFirst']}%, 교통안전공단에만 {report['kotsaOnly']}개, TAGO 에만 {report['tagoOnly']}개", flush=True)
-    version = datetime.datetime.utcnow().strftime("%Y%m%d%H%M")
+    version = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")  # utcnow() 는 3.12 부터 없어질 기능
     if sum(len(c["routes"]) for c in tago.values()) == 0:
         sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa)
