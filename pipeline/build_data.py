@@ -25,8 +25,10 @@ TAGO = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService"
 GBIS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteListv2"
 KEYWORDS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "마을", "급행", "순환", "좌석", "직행"]
 DAY = 86400
-# 동시에 받는 개수: 활용가이드 '초당 최대 30건' 안에서 (4개 × 호출 사이 0.12초 ≈ 초당 20건)
-WORKERS = 4
+# 동시에 받는 개수: TAGO 서버가 '가용한 세션이 존재하지 않습니다 (30/30)' 로 자주 바빠서 2개만
+WORKERS = 2
+# 서버가 바쁠 때(세션 30/30, HTTP_ERROR 04) 기다리는 시간(초) — 그동안 모든 요청이 같이 쉼
+BACKOFF = [5, 15, 40, 90]
 
 
 class Limit(Exception):
@@ -39,6 +41,14 @@ class KeyError_(Exception):
 
 # 공공데이터포털 인증 오류 (returnReasonCode): 20 접근 거부, 30 등록되지 않은 서비스키, 31 기한 만료, 32 등록되지 않은 IP
 KEY_ERRORS = ("SERVICE_KEY_IS_NOT_REGISTERED", "SERVICE_ACCESS_DENIED", "DEADLINE_HAS_EXPIRED", "UNREGISTERED_IP")
+
+
+def busy(text):
+    """TAGO·공공데이터포털이 잠깐 바쁜 응답 (실제로 받은 것: resultCode 99 '가용한 세션이 존재하지 않습니다. (30/30)',
+    OpenAPI_ServiceResponse 'HTTP_ERROR' returnReasonCode 04) — 기다렸다 다시 시도하면 됨"""
+    t = text or ""
+    return "가용한 세션" in t or "HTTP_ERROR" in t or "SERVICE_TIME_OUT" in t or '"resultCode":99' in t.replace(" ", "") \
+        or '"resultCode":"99"' in t.replace(" ", "")
 
 
 def key_error(text):
@@ -126,19 +136,32 @@ def region_name(name):
 # ───────────── 받기 ─────────────
 
 class Fetcher:
+    # 기본값 (시험에서 Fetcher.__new__ 로 만들어도 쓰이게)
+    pause_until = 0.0
+    busy_hits = 0
+    last = ""
+    sleep = staticmethod(time.sleep)
+
     def __init__(self, key, session=None):
         import requests  # 테스트에서는 Fetcher 를 안 써서 requests 없이도 import 가능
         self.key = urllib.parse.unquote(key.strip())  # 인코딩된 키면 풀어서 requests 가 다시 인코딩
         self.s = session or requests.Session()
         self.calls = 0
         self.lock = threading.Lock()
+        self.pause_until = 0.0     # 서버가 바쁘면 이 시각까지 모든 요청이 쉼
+        self.busy_hits = 0
+        self.sleep = time.sleep    # 시험에서 바꿔 끼움
         self.last = ""
 
     def get(self, url, params, cache_file, max_age):
         f = CACHE / cache_file
         if f.exists() and time.time() - f.stat().st_mtime < max_age:
             return f.read_text(encoding="utf-8")
-        for attempt in range(3):
+        tries = len(BACKOFF) + 1
+        for attempt in range(tries):
+            wait = self.pause_until - time.time()
+            if wait > 0:
+                self.sleep(wait)
             try:
                 with self.lock:
                     self.calls += 1
@@ -148,6 +171,17 @@ class Fetcher:
                     raise Limit()
                 if key_error(text):
                     raise KeyError_(key_error(text))
+                if busy(text):
+                    # 서버가 바쁨 → 모두 같이 잠깐 쉬고 다시 (저장하지 않음)
+                    with self.lock:
+                        self.busy_hits += 1
+                        pause = BACKOFF[min(attempt, len(BACKOFF) - 1)]
+                        self.pause_until = max(self.pause_until, time.time() + pause)
+                    if attempt + 1 < tries:
+                        print(f"  서버 바쁨({'세션 30/30' if '가용한 세션' in text else 'HTTP 오류'}) → {pause}초 쉬고 다시 ({attempt + 1}/{tries - 1})", flush=True)
+                        continue
+                    self.last = text
+                    return None
                 if r.status_code != 200:
                     raise RuntimeError(f"HTTP {r.status_code}: {text[:200]}")
                 self.last = text
@@ -158,13 +192,13 @@ class Fetcher:
                     f.write_text(text, encoding="utf-8")
                 elif code not in (None, "00"):
                     print(f"  비정상 응답 (resultCode {code}, 저장 안 함): {text[:200]}", flush=True)
-                time.sleep(0.12)
+                self.sleep(0.12)
                 return text
             except (Limit, KeyError_):
                 raise
-            except Exception as e:  # 연결 오류는 세 번까지
+            except Exception as e:  # 연결 오류도 같은 간격으로
                 print(f"  재시도 {attempt + 1}: {e}", flush=True)
-                time.sleep(2)
+                self.sleep(BACKOFF[min(attempt, len(BACKOFF) - 1)])
         return None
 
 
@@ -387,7 +421,7 @@ def main():
         sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version)
     m = package(OUT / "bus_stops.db", version, complete, added)
-    print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 완료 여부 {complete}")
+    print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
 
 

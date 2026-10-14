@@ -176,6 +176,40 @@ def test_only_normal_responses_cached():
             bd.CACHE = old
 
 
+def test_busy_server_waits_and_retries():
+    """실제로 받은 바쁨 응답 두 가지 뒤에 정상 응답 → 기다렸다 다시 받아 정상 응답을 돌려주고 저장"""
+    import threading
+    session_full = '{"response":{"header":{"resultCode":99,"resultMsg":"가용한 세션이 존재하지 않습니다. (30\\/30)"},"body":""}}'
+    http_err = '{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"HTTP_ERROR","returnAuthMsg":"HTTP 에러","returnReasonCode":"04"}}}'
+    ok = resp({"routeid": "X1", "routeno": "1"})
+    assert bd.busy(session_full) and bd.busy(http_err) and not bd.busy(ok)
+    seq = [session_full, http_err, ok]
+
+    class R:
+        def __init__(self, t): self.status_code, self.content = 200, t.encode()
+
+    class S:
+        n = 0
+        def get(self, *a, **k):
+            S.n += 1
+            return R(seq[S.n - 1])
+
+    waits = []
+    fx = bd.Fetcher.__new__(bd.Fetcher)
+    fx.key, fx.s, fx.calls, fx.lock, fx.pause_until, fx.busy_hits = "k", S(), 0, threading.Lock(), 0.0, 0
+    fx.sleep = lambda sec: waits.append(round(sec))
+    with tempfile.TemporaryDirectory() as d:
+        old = bd.CACHE
+        bd.CACHE = pathlib.Path(d)
+        try:
+            t = fx.get(bd.TAGO + "/getRouteNoList", {}, "tago/x.json", 0)
+            assert t == ok and S.n == 3 and fx.busy_hits == 2
+            assert (pathlib.Path(d) / "tago/x.json").read_text(encoding="utf-8") == ok      # 정상 응답만 저장
+            assert any(w >= 4 for w in waits) and any(w >= 14 for w in waits)           # 5초, 15초 쉬고
+        finally:
+            bd.CACHE = old
+
+
 def test_helpers():
     assert bd.clock("0530") == "05:30" and bd.clock(530) == "05:30" and bd.clock(2310) == "23:10" and bd.clock(None) is None
     assert bd.region_name("경상남도 김해시") == "김해" and bd.region_name("부산광역시") == "부산" and bd.region_name("충청북도 청주시") == "청주"
@@ -188,6 +222,6 @@ def test_helpers():
 
 
 if __name__ == "__main__":
-    for t in (test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
