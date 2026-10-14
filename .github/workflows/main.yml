@@ -16,8 +16,9 @@ jobs:
     timeout-minutes: 340
     defaults:
       run:
-        # 윈도우 기본값은 PowerShell 스크립트 실행이 꺼져 있어서(Execution Policy) 이번 실행만 허용해 띄움 — PC 설정은 그대로
-        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; & '{0}'; if ($LASTEXITCODE) { exit $LASTEXITCODE }"
+        # 윈도우 기본값은 PowerShell 스크립트 실행이 꺼져 있어서(Execution Policy) 이번 실행만 허용 — PC 설정은 그대로.
+        # 러너가 {0} 자리에 스크립트 경로를 넣는데 다른 중괄호도 자리 표시로 읽어서, 셸 명령에는 중괄호를 쓰지 않음
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
     env:
       PYTHONUTF8: "1"                 # 윈도우에서 한글 로그·파일이 깨지지 않게
       PYTHONIOENCODING: "utf-8"
