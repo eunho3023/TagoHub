@@ -16,7 +16,8 @@ jobs:
     timeout-minutes: 340
     defaults:
       run:
-        shell: powershell
+        # 윈도우 기본값은 PowerShell 스크립트 실행이 꺼져 있어서(Execution Policy) 이번 실행만 허용해 띄움 — PC 설정은 그대로
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; & '{0}'; if ($LASTEXITCODE) { exit $LASTEXITCODE }"
     env:
       PYTHONUTF8: "1"                 # 윈도우에서 한글 로그·파일이 깨지지 않게
       PYTHONIOENCODING: "utf-8"
@@ -40,7 +41,10 @@ jobs:
           & $py --version
           Write-Host "사용할 Python: $py"
 
-      - run: python -m pip install -r pipeline/requirements.txt
+      - name: 라이브러리 설치
+        run: |
+          python -m pip install -r pipeline/requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: 공공데이터포털 접속 확인
         run: |
@@ -54,7 +58,9 @@ jobs:
           if ($code -eq 0) { Write-Error "공공데이터포털에 접속하지 못했습니다. PC 의 인터넷 연결을 확인하세요."; exit 1 }
 
       - name: 수집 프로그램 시험 (인터넷 없이)
-        run: python pipeline/test_build_data.py
+        run: |
+          python pipeline/test_build_data.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: 데이터 만들기
         env:
@@ -70,7 +76,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view data-latest *> $null
+          # 오류 출력을 버리면(*> $null) PowerShell 5.1 이 그걸 오류로 바꿔 멈추므로, 결과만 버리고 종료 코드로 판단
+          gh release view data-latest | Out-Null
           if ($LASTEXITCODE -ne 0) {
             gh release create data-latest --title "정류장·노선 데이터" --notes "자동 갱신 (pipeline/build_data.py)" --latest=false
           }
