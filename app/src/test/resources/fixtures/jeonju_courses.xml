@@ -1,0 +1,483 @@
+<RFC30>
+<code type="string">000</code>
+<msg type="string">OK</msg>
+<routeList class="array">
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">600 </courseStime>
+<startSeq type="string">1</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">645 </courseStime>
+<startSeq type="string">1</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">615 </courseStime>
+<startSeq type="string">1</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">702 </courseStime>
+<startSeq type="string">1</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">630 </courseStime>
+<startSeq type="string">1</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">719 </courseStime>
+<startSeq type="string">1</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">919 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">827 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">736 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">810 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">845 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">902 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">753 </courseStime>
+<startSeq type="string">2</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">1045</courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">1119</courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">1027</courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">936 </courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">953 </courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">1010</courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">1102</courseStime>
+<startSeq type="string">3</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">1216</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">1156</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">1136</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">1236</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">1333</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">1316</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">1256</courseStime>
+<startSeq type="string">4</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">1453</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">1353</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">1533</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">1553</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">1433</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">1413</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">1513</courseStime>
+<startSeq type="string">5</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">1810</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">1710</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">1650</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">1610</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">1750</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">1630</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">1730</courseStime>
+<startSeq type="string">6</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">1830</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">1907</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">1942</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">1850</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1059 </courseId>
+<courseStime type="string">1959</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">1925</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1060 </courseId>
+<courseStime type="string">2016</courseStime>
+<startSeq type="string">7</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1056 </courseId>
+<courseStime type="string">2107</courseStime>
+<startSeq type="string">8</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1055 </courseId>
+<courseStime type="string">2050</courseStime>
+<startSeq type="string">8</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1058 </courseId>
+<courseStime type="string">2145</courseStime>
+<startSeq type="string">8</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1057 </courseId>
+<courseStime type="string">2125</courseStime>
+<startSeq type="string">8</startSeq>
+<stdId type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtStdId type="string">305001271</brtStdId>
+<brtText type="string"/>
+<courseId type="string">1054 </courseId>
+<courseStime type="string">2033</courseStime>
+<startSeq type="string">8</startSeq>
+<stdId type="string"/>
+</list>
+</routeList>
+</RFC30>

@@ -1,0 +1,3 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><endnodenm>목련아파트</endnodenm><endvehicletime>2235</endvehicletime><intervalsattime>25</intervalsattime><intervalsuntime>40</intervalsuntime><intervaltime>25</intervaltime><routeid>DJB30300004</routeid><routeno>5</routeno><routetp>마을버스</routetp><startnodenm>봉산동기점</startnodenm><startvehicletime>0600</startvehicletime></item>
+</items></body></response>

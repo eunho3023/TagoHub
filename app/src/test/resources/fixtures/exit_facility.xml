@@ -1,0 +1,4 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><exitNo>2</exitNo><dirDesc>ZIP호텔</dirDesc></item>
+<item><exitNo>1</exitNo><dirDesc>낙성대지구대</dirDesc></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>49</totalCount></body></response>

@@ -1,12 +1,13 @@
+# 정류장·노선 데이터를 매주 새로 만들어 GitHub Release(data-latest)에 올린다 → 앱이 와이파이에서 받아 바꿈
 name: 정류장·노선 데이터 갱신
 
 on:
   schedule:
-    - cron: "0 18 * * 0"
-  workflow_dispatch:
+    - cron: "0 18 * * 0"   # 매주 월요일 03:00 (한국 시간) = 일요일 18:00 UTC
+  workflow_dispatch:        # Actions 탭에서 'Run workflow' 로 바로 실행
 
 permissions:
-  contents: write
+  contents: write           # Release 에 파일 올리기
 
 jobs:
   build:
@@ -19,7 +20,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 받아 둔 응답 불러오기
+      - name: 받아 둔 응답 불러오기 (하루 한도에 걸렸으면 다음 실행에서 이어 받기)
         uses: actions/cache@v4
         with:
           path: pipeline/cache
@@ -32,9 +33,9 @@ jobs:
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteNoList?serviceKey=test&cityCode=25&routeNo=1&_type=json" || echo 000)
           echo "apis.data.go.kr 응답 코드: $code"
-          if [ "$code" = "000" ]; then echo "::error::공공데이터포털에 접속하지 못했습니다."; exit 1; fi
+          if [ "$code" = "000" ]; then echo "::error::공공데이터포털에 접속하지 못했습니다. 해외 접속 제한일 수 있으니 pipeline/README.md 를 보세요."; exit 1; fi
 
-      - name: 수집 프로그램 시험
+      - name: 수집 프로그램 시험 (인터넷 없이)
         run: python pipeline/test_build_data.py
 
       - name: 데이터 만들기
@@ -46,6 +47,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "정류장·노선 데이터" --notes "매주 자동 갱신" --latest=false
+          gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "정류장·노선 데이터" --notes "매주 자동 갱신 (pipeline/build_data.py)" --latest=false
           gh release upload data-latest pipeline/out/bus_stops.db.gz pipeline/out/manifest.json --clobber
           cat pipeline/out/manifest.json

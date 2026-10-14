@@ -1,0 +1,96 @@
+<RFC30>
+<code type="string">000</code>
+<msg type="string">OK</msg>
+<routeList class="array">
+<list class="object">
+<LKey type="string"/>
+<brtBusNum type="string"/>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">2</brtDirection>
+<brtEname type="string">신일해피트리</brtEname>
+<brtFirstTime type="string">2210</brtFirstTime>
+<brtId type="string">21</brtId>
+<brtIlreginTerValYn type="string"/>
+<brtLastTime type="string">2210</brtLastTime>
+<brtMaxinTerVal type="string"/>
+<brtMininTerVal type="string"/>
+<brtNeedTime type="string"/>
+<brtSname type="string">이서회차지</brtSname>
+<brtStdId type="string">305001349</brtStdId>
+<brtSubId type="string">A</brtSubId>
+<stopStandardid type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtBusNum type="string"/>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">2</brtDirection>
+<brtEname type="string">원마다리</brtEname>
+<brtFirstTime type="string">700</brtFirstTime>
+<brtId type="string">20</brtId>
+<brtIlreginTerValYn type="string"/>
+<brtLastTime type="string">1240</brtLastTime>
+<brtMaxinTerVal type="string"/>
+<brtMininTerVal type="string"/>
+<brtNeedTime type="string"/>
+<brtSname type="string">이서회차지</brtSname>
+<brtStdId type="string">305001528</brtStdId>
+<brtSubId type="string">0</brtSubId>
+<stopStandardid type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtBusNum type="string"/>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">2</brtDirection>
+<brtEname type="string">산정리종점</brtEname>
+<brtFirstTime type="string">1415</brtFirstTime>
+<brtId type="string">20</brtId>
+<brtIlreginTerValYn type="string"/>
+<brtLastTime type="string">2020</brtLastTime>
+<brtMaxinTerVal type="string"/>
+<brtMininTerVal type="string"/>
+<brtNeedTime type="string"/>
+<brtSname type="string">이서회차지</brtSname>
+<brtStdId type="string">305001531</brtStdId>
+<brtSubId type="string">B</brtSubId>
+<stopStandardid type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtBusNum type="string"/>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">2</brtDirection>
+<brtEname type="string">모산종점</brtEname>
+<brtFirstTime type="string">640</brtFirstTime>
+<brtId type="string">21</brtId>
+<brtIlreginTerValYn type="string"/>
+<brtLastTime type="string">2110</brtLastTime>
+<brtMaxinTerVal type="string"/>
+<brtMininTerVal type="string"/>
+<brtNeedTime type="string"/>
+<brtSname type="string">이서회차지</brtSname>
+<brtStdId type="string">305001534</brtStdId>
+<brtSubId type="string">0</brtSubId>
+<stopStandardid type="string"/>
+</list>
+<list class="object">
+<LKey type="string"/>
+<brtBusNum type="string"/>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">2</brtDirection>
+<brtEname type="string">구암</brtEname>
+<brtFirstTime type="string">625</brtFirstTime>
+<brtId type="string">24</brtId>
+<brtIlreginTerValYn type="string"/>
+<brtLastTime type="string">2135</brtLastTime>
+<brtMaxinTerVal type="string"/>
+<brtMininTerVal type="string"/>
+<brtNeedTime type="string"/>
+<brtSname type="string">이서회차지</brtSname>
+<brtStdId type="string">305001543</brtStdId>
+<brtSubId type="string">0</brtSubId>
+<stopStandardid type="string"/>
+</list>
+</routeList>
+</RFC30>

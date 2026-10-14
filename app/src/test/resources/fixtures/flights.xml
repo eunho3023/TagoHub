@@ -1,0 +1,3 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><airlineNm>아시아나 항공</airlineNm><arrAirportNm>제주국제공항</arrAirportNm><arrPlandTime>202610091055</arrPlandTime><depAirportNm>광주공항</depAirportNm><depPlandTime>202610091000</depPlandTime><economyCharge>49800</economyCharge><prestigeCharge>0</prestigeCharge><vihicleId>OZ8141</vihicleId></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>4</totalCount></body></response>

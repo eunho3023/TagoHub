@@ -1,0 +1,6 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><exitNo>1</exitNo><busRouteNo>5413</busRouteNo></item>
+<item><exitNo>1</exitNo><busRouteNo>461</busRouteNo></item>
+<item><exitNo>1</exitNo><busRouteNo>8541(맞춤버스)</busRouteNo></item>
+<item><exitNo>10</exitNo><busRouteNo>650</busRouteNo></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>62</totalCount></body></response>

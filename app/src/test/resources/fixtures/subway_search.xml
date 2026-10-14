@@ -1,0 +1,3 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><subwayStationId>MTRGXAX106</subwayStationId><subwayStationName>서울역</subwayStationName><subwayRouteName>GTX-A</subwayRouteName></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>5</totalCount></body></response>

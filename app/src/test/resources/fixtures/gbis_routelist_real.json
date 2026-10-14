@@ -1,0 +1,666 @@
+{
+"response": {
+"comMsgHeader": "",
+"msgHeader": {
+"queryTime": "2026-10-12 17:27:22.718",
+"resultCode": 0,
+"resultMessage": "정상적으로 처리되었습니다."
+},
+"msgBody": {
+"busRouteList": [
+{
+"adminName": "경기도 안산시",
+"districtCd": 2,
+"endStationId": 202000225,
+"endStationName": "수원역10번출구.역전시장",
+"regionName": "수원,안산,화성",
+"routeId": 216000070,
+"routeName": 1200,
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 217000292,
+"startStationName": "원시역1번출구"
+},
+{
+"adminName": "경기도 고양시",
+"districtCd": 2,
+"endStationId": 101000022,
+"endStationName": "숭례문",
+"regionName": "고양,서울",
+"routeId": 219000016,
+"routeName": 1200,
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 219000644,
+"startStationName": "고양공영차고지"
+},
+{
+"adminName": "경기도 남양주시",
+"districtCd": 2,
+"endStationId": 123000611,
+"endStationName": "잠실광역환승센터",
+"regionName": "구리,남양주,서울",
+"routeId": 222000078,
+"routeName": 1200,
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 222000796,
+"startStationName": "차산리"
+},
+{
+"adminName": "경기도 남양주시",
+"districtCd": 2,
+"endStationId": 123000611,
+"endStationName": "잠실광역환승센터",
+"regionName": "구리,남양주,서울",
+"routeId": 222000137,
+"routeName": "1200-1",
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 222000796,
+"startStationName": "차산리"
+},
+{
+"adminName": "경기도 의정부시",
+"districtCd": 2,
+"endStationId": 106000073,
+"endStationName": "상봉역4번출구",
+
+
+
+
+
+
+"regionName":
+"서울,의정부",
+"routeId": 207000109,
+"routeName": 1205,
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 207000395,
+"startStationName": "낙양동공영차고지"
+},
+{
+"adminName": "경기도 용인시",
+"districtCd": 2,
+"endStationId": 121000973,
+"endStationName": "강남역티월드",
+"regionName": "서울,성남,용인",
+"routeId": 228000181,
+"routeName": 1241,
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 228001765,
+"startStationName": "청덕중고.지식산업센터.청덕도서관"
+},
+{
+"adminName": "경기도 용인시",
+"districtCd": 2,
+"endStationId": 121000973,
+"endStationName": "강남역티월드",
+"regionName": "서울,성남,용인",
+"routeId": 228000451,
+"routeName": "1241(예약)",
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 228001765,
+"startStationName": "청덕중고.지식산업센터.청덕도서관"
+},
+{
+"adminName": "경기도 양주시",
+"districtCd": 2,
+"endStationId": 106000060,
+"endStationName": "면목6거리",
+"regionName": "서울,양주,의정부",
+"routeId": 235000104,
+"routeName": "G1200",
+"routeTypeCd": 11,
+"routeTypeName": "직행좌석형시내버스",
+"startStationId": 235000117,
+"startStationName": "덕정역"
+},
+{
+"adminName": "경기도 의정부시",
+"districtCd": 2,
+"endStationId": 207000275,
+"endStationName": "경민대학",
+"regionName": "의정부",
+"routeId": 207000097,
+"routeName": 12,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 207000395,
+"startStationName": "낙양동공영차고지"
+},
+{
+"adminName": "경기도 시흥시",
+"districtCd": 2,
+"endStationId": 115000601,
+"endStationName": "김포공항국내선(9번홈)",
+"regionName": "부천,서울,시흥",
+"routeId": 210000027,
+"routeName": 12,
+"routeTypeCd": 13,
+
+
+
+
+
+
+"routeTypeName":
+"일반형시내버스",
+"startStationId": 224000545,
+"startStationName": "삼미시장"
+},
+{
+"adminName": "경기도 광명시",
+"districtCd": 2,
+"endStationId": 208000010,
+"endStationName": "안양역",
+"regionName": "광명,안양",
+"routeId": 213000004,
+"routeName": 12,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 213000053,
+"startStationName": "중앙하이츠아파트"
+},
+{
+"adminName": "경기도 용인시",
+"districtCd": 2,
+"endStationId": 228000384,
+"endStationName": "마성리",
+"regionName": "용인",
+"routeId": 228000081,
+"routeName": 12,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 228001897,
+"startStationName": "금어2리"
+},
+{
+"adminName": "경기도 파주시",
+"districtCd": 2,
+"endStationId": 229001027,
+"endStationName": "문산타워.구문산터미널",
+"regionName": "파주",
+"routeId": 229000003,
+"routeName": 12,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 229001019,
+"startStationName": "갈곡리종점"
+},
+{
+"adminName": "경기도 광주시",
+"districtCd": 2,
+"endStationId": 230000224,
+"endStationName": "청강문화산업대",
+"regionName": "이천",
+"routeId": 234000083,
+"routeName": 12,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 230000205,
+"startStationName": "이천터미널"
+},
+{
+"adminName": "경기도 포천시",
+"districtCd": 2,
+"endStationId": 236001043,
+"endStationName": "포천금호어울림",
+"regionName": "포천",
+"routeId": 236000224,
+"routeName": 12,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 236000784,
+"startStationName": "도평리"
+},
+
+
+
+
+
+
+{
+"adminName": "경기도 부천시",
+"districtCd": 2,
+"endStationId": 211000065,
+"endStationName": "괴안사거리.삼오유치원",
+"regionName": "부천,서울",
+"routeId": 210000002,
+"routeName": "12-1",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 212000011,
+"startStationName": "대장동종점"
+},
+{
+"adminName": "경기도 여주시",
+"districtCd": 2,
+"endStationId": 237001153,
+"endStationName": "장안4리",
+"regionName": "여주",
+"routeId": 237000109,
+"routeName": 120,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 237001007,
+"startStationName": "여주역"
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214000362,
+"endStationName": "노양리낚시터",
+"regionName": "안성,평택",
+"routeId": 214000005,
+"routeName": 1215,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001320,
+"startStationName": "기남방송"
+},
+{
+"adminName": "경기도 안산시",
+"districtCd": 2,
+"endStationId": 217000678,
+"endStationName": "갈마지",
+"regionName": "시흥,안산",
+"routeId": 216000110,
+"routeName": 122,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 217000725,
+"startStationName": "엘씨파워코리아"
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214000388,
+"endStationName": "K-6구정문",
+"regionName": "평택",
+"routeId": 214000018,
+"routeName": 1220,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001602,
+"startStationName": "e편한세상평택용이.평택남산교회앞"
+},
+{
+"adminName": "경기도 안산시",
+"districtCd": 2,
+"endStationId": 217000576,
+
+
+
+
+
+
+"endStationName":
+"탄도",
+"regionName": "시흥,안산,화성",
+"routeId": 216000007,
+"routeName": 123,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 233002708,
+"startStationName": "화성의과학대학교"
+},
+{
+"adminName": "경기도 안산시",
+"districtCd": 2,
+"endStationId": 216000097,
+"endStationName": "본오1동행정복지센터",
+"regionName": "시흥,안산",
+"routeId": 216000006,
+"routeName": 125,
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 224000678,
+"startStationName": "정왕동버스차고지"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233002275,
+"endStationName": "현대자동차출고센터",
+"regionName": "수원,화성",
+"routeId": 233000347,
+"routeName": "H120A",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 201000590,
+"startStationName": "수원역환승센터(4승강장)"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233002013,
+"endStationName": "향남부영11단지정문",
+"regionName": "화성",
+"routeId": 233000348,
+"routeName": "H120B",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 233002708,
+"startStationName": "화성의과학대학교"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233001495,
+"endStationName": "계향2리",
+"regionName": "화성",
+"routeId": 233000345,
+"routeName": "H121",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 233003052,
+"startStationName": "향남시외터미널"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233001495,
+"endStationName": "계향2리",
+"regionName": "화성",
+"routeId": 233000346,
+"routeName": "H122",
+
+
+
+
+
+
+"routeTypeCd":
+13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 233003052,
+"startStationName": "향남시외터미널"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 214000804,
+"endStationName": "평택지제역",
+"regionName": "평택,화성",
+"routeId": 233000387,
+"routeName": "H123",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 233003052,
+"startStationName": "향남시외터미널"
+},
+{
+"adminName": "경기도 용인시",
+"districtCd": 2,
+"endStationId": 228003219,
+"endStationName": "기흥역4번출구.기흥역시외버스정류소",
+"regionName": "용인",
+"routeId": 228000407,
+"routeName": "Y1201",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 228001358,
+"startStationName": "남사"
+},
+{
+"adminName": "경기도 용인시",
+"districtCd": 2,
+"endStationId": 228003219,
+"endStationName": "기흥역4번출구.기흥역시외버스정류소",
+"regionName": "용인",
+"routeId": 228000408,
+"routeName": "Y1202",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 228001584,
+"startStationName": "백암터미널"
+},
+{
+"adminName": "경기도 남양주시",
+"districtCd": 2,
+"endStationId": 222001922,
+"endStationName": "반도유보라정문.다산포레스트2단지",
+"regionName": "구리,남양주",
+"routeId": 222000180,
+"routeName": "땡큐12",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 221000310,
+"startStationName": "수택고등학교정문"
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214000422,
+"endStationName": "내리회관",
+"regionName": "평택",
+"routeId": 214000043,
+"routeName": "순환121",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001302,
+"startStationName": "용이동차고지"
+
+
+
+
+
+
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214001467,
+"endStationName": "대추리평화마을",
+"regionName": "평택",
+"routeId": 214000267,
+"routeName": "순환122A",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001320,
+"startStationName": "기남방송"
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214001467,
+"endStationName": "대추리평화마을",
+"regionName": "평택",
+"routeId": 214000269,
+"routeName": "순환122B",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001320,
+"startStationName": "기남방송"
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214000358,
+"endStationName": "대사1리",
+"regionName": "평택",
+"routeId": 214000263,
+"routeName": "순환123A",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001320,
+"startStationName": "기남방송"
+},
+{
+"adminName": "경기도 평택시",
+"districtCd": 2,
+"endStationId": 214000358,
+"endStationName": "대사1리",
+"regionName": "평택",
+"routeId": 214000270,
+"routeName": "순환123B",
+"routeTypeCd": 13,
+"routeTypeName": "일반형시내버스",
+"startStationId": 214001320,
+"startStationName": "기남방송"
+},
+{
+"adminName": "경기도 가평군",
+"districtCd": 2,
+"endStationId": 239000621,
+"endStationName": "설악터미널",
+"regionName": "가평",
+"routeId": 239000033,
+"routeName": 12,
+"routeTypeCd": 23,
+"routeTypeName": "일반형농어촌버스",
+"startStationId": 239000282,
+"startStationName": "가평터미널"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+
+
+
+
+
+
+"endStationId":
+233001965,
+"endStationName": "반월e편한세상",
+"regionName": "화성",
+"routeId": 241323004,
+"routeName": 12,
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 233000695,
+"startStationName": "병점역후문"
+},
+{
+"adminName": "경기도 군포시",
+"districtCd": 2,
+"endStationId": 225000161,
+"endStationName": "당정역종점",
+"regionName": "군포",
+"routeId": 241384002,
+"routeName": 12,
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 225000419,
+"startStationName": "삼성마을5단지아파트입구"
+},
+{
+"adminName": "경기도 의왕시",
+"districtCd": 2,
+"endStationId": 209000058,
+"endStationName": "현대아파트",
+"regionName": "안양,의왕",
+"routeId": 241401002,
+"routeName": 12,
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 226000206,
+"startStationName": "숲속마을3.5단지"
+},
+{
+"adminName": "경기도 양주시",
+"districtCd": 2,
+"endStationId": 207000588,
+"endStationName": "시장앞(마을)",
+"regionName": "양주,의정부",
+"routeId": 241451009,
+"routeName": 12,
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 235001499,
+"startStationName": "마전리"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233000841,
+"endStationName": "남양성지",
+"regionName": "화성",
+"routeId": 241485006,
+"routeName": 12,
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 233001558,
+"startStationName": "장짐교차로"
+},
+{
+"adminName": "경기도 오산시",
+"districtCd": 2,
+"endStationId": 223000242,
+"endStationName": "성호중고등학교",
+"regionName": "오산",
+"routeId": 241489014,
+
+
+
+
+
+
+"routeName":
+"12(학통등교)",
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 223000524,
+"startStationName": "원동.동부삼환아파트"
+},
+{
+"adminName": "경기도 양주시",
+"districtCd": 2,
+"endStationId": 235001329,
+"endStationName": "마전리",
+"regionName": "양주,의정부",
+"routeId": 241451011,
+"routeName": "12-1",
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 235001499,
+"startStationName": "마전리"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233000841,
+"endStationName": "남양성지",
+"regionName": "화성",
+"routeId": 241485048,
+"routeName": "12-1",
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 233001558,
+"startStationName": "장짐교차로"
+},
+{
+"adminName": "경기도 오산시",
+"districtCd": 2,
+"endStationId": 223000132,
+"endStationName": "오산대학",
+"regionName": "오산",
+"routeId": 241363011,
+"routeName": 123,
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 223000517,
+"startStationName": "금암마을3단지"
+},
+{
+"adminName": "경기도 화성시",
+"districtCd": 2,
+"endStationId": 233000403,
+"endStationName": "신동탄포레자이.율목초후문",
+"regionName": "용인,화성",
+"routeId": 241317017,
+"routeName": "H12",
+"routeTypeCd": 30,
+"routeTypeName": "마을버스",
+"startStationId": 233003085,
+"startStationName": "동탄역(동측)"
+}
+]
+}
+}
+}

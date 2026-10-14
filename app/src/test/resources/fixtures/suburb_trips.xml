@@ -1,0 +1,3 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><routeId>NAIRT201602010040329</routeId><depPlaceNm>서울남부</depPlaceNm><arrPlaceNm>태안</arrPlaceNm><depPlandTime>20261009115000</depPlandTime><arrPlandTime>20261009143100</arrPlandTime><charge>15200</charge><gradeNm>우등</gradeNm></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></body></response>

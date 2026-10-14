@@ -1,0 +1,47 @@
+package com.eunho.tagohub.data
+
+import com.eunho.tagohub.core.MiniJson
+
+/**
+ * 카카오 로컬 API — 키워드로 장소 검색 (GET https://dapi.kakao.com/v2/local/search/keyword.json).
+ * 요청: query, x(경도)·y(위도) = 중심 좌표, size(최대 15). 헤더 Authorization: KakaoAK {REST API 키}.
+ * 응답: documents[] 의 place_name, road_address_name / address_name, x(경도)·y(위도) — 좌표는 문자열.
+ */
+object KakaoLocal {
+    const val KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
+
+    fun parse(body: String): List<Place2> {
+        val root = runCatching { MiniJson.parse(body) }.getOrNull() ?: return emptyList()
+        return MiniJson.findRows(root, "place_name").mapNotNull { r ->
+            val lat = r.text("y")?.toDoubleOrNull() ?: return@mapNotNull null
+            val lng = r.text("x")?.toDoubleOrNull() ?: return@mapNotNull null
+            Place2(
+                name = r.text("place_name")?.trim().orEmpty().ifEmpty { return@mapNotNull null },
+                address = r.text("road_address_name")?.ifBlank { null } ?: r.text("address_name")?.ifBlank { null },
+                lat = lat,
+                lng = lng,
+            )
+        }
+    }
+
+    const val COORD2ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
+
+    /**
+     * 좌표 → 이름 (지도에서 꾹 누른 곳): 건물 이름 → 도로명 주소 → 지번 주소.
+     * 응답: documents[].road_address(address_name, building_name) / address(address_name)
+     */
+    fun addressName(body: String): String? {
+        val root = runCatching { MiniJson.parse(body) }.getOrNull() as? Map<*, *> ?: return null
+        val doc = (root["documents"] as? List<*>)?.firstOrNull() as? Map<*, *> ?: return null
+        val road = doc["road_address"] as? Map<*, *>
+        val addr = doc["address"] as? Map<*, *>
+        fun Map<*, *>?.s(k: String) = this?.get(k)?.toString()?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+        return road.s("building_name") ?: road.s("address_name") ?: addr.s("address_name")
+    }
+
+    /** 오류 응답: {"errorType":"...","message":"App(...) disabled OPEN_MAP_AND_LOCAL service."} */
+    fun error(body: String): String? {
+        val root = runCatching { MiniJson.parse(body) }.getOrNull() ?: return null
+        return MiniJson.findRows(root, "errorType").firstOrNull()?.let { "${it.text("errorType")}: ${it.text("message").orEmpty()}" }
+    }
+}

@@ -1,0 +1,35 @@
+<RFC30>
+<code type="string">000</code>
+<msg type="string">OK</msg>
+<routeList class="array">
+<list class="object">
+<BCount type="string">0</BCount>
+<LKey type="string"/>
+<TCount type="string">53</TCount>
+<brtBusNum type="string">4</brtBusNum>
+<brtClass type="string">1</brtClass>
+<brtDirection type="string">1</brtDirection>
+<brtDnum type="string">53</brtDnum>
+<brtEname type="string">전주대학교->전주대학교</brtEname>
+<brtFirstTime type="string">600</brtFirstTime>
+<brtId type="string">3</brtId>
+<brtIlregintervalYn type="string">N</brtIlregintervalYn>
+<brtLastTime type="string">2145</brtLastTime>
+<brtLength type="string"/>
+<brtMaxinTerval type="string"/>
+<brtMininTerval type="string"/>
+<brtNeedTime type="string">0</brtNeedTime>
+<brtNum type="string">0</brtNum>
+<brtSname type="string">전주대학교->전주대학교</brtSname>
+<brtStdid type="string">305001271</brtStdid>
+<brtSubid type="string">0</brtSubid>
+<brtText type="string">06:00 전북대.농협앞 출발 / 22:00, 22:20 전동성당.한옥마을까지 운행
+</brtText>
+<holiNlist type="string"> 06:15 07:02 08:10 09:02 10:10 11:02 12:16 13:16 14:33 15:33 16:50
+17:50 19:07 19:59 21:07</holiNlist>
+<satNlist type="string"> 06:15 07:02 08:10 09:02 10:10 11:02 12:16 13:16 14:33 15:33 16:50
+17:50 19:07 19:59 21:07</satNlist>
+<stdId type="string"/>
+</list>
+</routeList>
+</RFC30>

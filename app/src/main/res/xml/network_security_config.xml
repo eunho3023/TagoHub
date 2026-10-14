@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 서울 실시간 지하철 API 는 http 만 제공 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">swopenapi.seoul.go.kr</domain>
+        <!-- 제주 버스정보 OPEN API 는 http 만 제공 -->
+        <domain includeSubdomains="false">bus.jeju.go.kr</domain>
+        <!-- 서울시 버스 API 는 http -->
+        <domain includeSubdomains="false">ws.bus.go.kr</domain>
+        <domain includeSubdomains="false">busopen.jeju.go.kr</domain>
+    </domain-config>
+</network-security-config>

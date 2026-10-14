@@ -1,0 +1,5 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><depTmnNm>서울경부</depTmnNm><arrTmnNm>부산</arrTmnNm><depTm>12:10</depTm><arrPrdtTm>2026-10-09 16:59</arrPrdtTm><rmnTm>도착완료</rmnTm><busGrdNm>우등</busGrdNm><corpNm>중앙고속</corpNm><curLocNm>도착</curLocNm></item>
+<item><depTmnNm>서울경부</depTmnNm><arrTmnNm>부산</arrTmnNm><depTm>13:50</depTm><arrPrdtTm>2026-10-09 18:10</arrPrdtTm><rmnTm>01시간 10분</rmnTm><busGrdNm>프리미엄</busGrdNm><corpNm>중앙고속</corpNm><curLocNm>신녕IC</curLocNm></item>
+<item><depTmnNm>서울경부</depTmnNm><arrTmnNm>부산</arrTmnNm><depTm>12:50</depTm><arrPrdtTm>2026-10-09 17:15</arrPrdtTm><rmnTm>00시간 16분</rmnTm><busGrdNm>우등</busGrdNm><corpNm>중앙고속</corpNm><curLocNm>양산IC</curLocNm></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>9</totalCount></body></response>

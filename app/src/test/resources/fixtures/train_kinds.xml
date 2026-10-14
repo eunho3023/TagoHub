@@ -1,0 +1,5 @@
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><vehiclekndid>00</vehiclekndid><vehiclekndnm>KTX</vehiclekndnm></item>
+<item><vehiclekndid>0A</vehiclekndid><vehiclekndnm>KTX-산천</vehiclekndnm></item>
+<item><vehiclekndid>19</vehiclekndid><vehiclekndnm>KTX-청룡</vehiclekndnm></item>
+</items></body></response>

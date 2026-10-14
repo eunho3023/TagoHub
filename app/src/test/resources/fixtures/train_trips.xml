@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><trainno>01151</trainno><traingradename>무궁화호</traingradename><depplacename>서울</depplacename><arrplacename>천안</arrplacename><depplandtime>20261009063700</depplandtime><arrplandtime>20261009075100</arrplandtime><adultcharge>9300</adultcharge></item>
+<item><trainno>04753</trainno><traingradename>무궁화호</traingradename><depplacename>서울</depplacename><arrplacename>천안</arrplacename><depplandtime>20261009071200</depplandtime><arrplandtime>20261009082200</arrplandtime><adultcharge>0</adultcharge></item>
+</items><numOfRows>10</numOfRows><pageNo>1</pageNo><totalCount>13</totalCount></body></response>

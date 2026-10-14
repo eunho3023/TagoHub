@@ -1,0 +1,96 @@
+<RFC30>
+<code type="string">000</code>
+<msg type="string">OK</msg>
+<routeList class="array">
+<list class="object">
+<LKey type="string"/>
+<RStop type="string">19</RStop>
+<RTime type="string">1410</RTime>
+<bidNo type="string">305041342</bidNo>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">1</brtDirection>
+<brtId type="string">6001</brtId>
+<brtStdid type="string">305001764</brtStdid>
+<brtVianame type="string">비전대->비전대</brtVianame>
+<busLow type="string">1</busLow>
+<initBrtClass type="string"/>
+<initBrtid type="string"/>
+<orderBy type="string">brtId</orderBy>
+<range type="string">DESC</range>
+<stopStdid type="string"/>
+<viaStopname type="string">비전대학교입구.데시앙아이린</viaStopname>
+</list>
+<list class="object">
+<LKey type="string"/>
+<RStop type="string">51</RStop>
+<RTime type="string">2894</RTime>
+<bidNo type="string">305042083</bidNo>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">1</brtDirection>
+<brtId type="string">75</brtId>
+<brtStdid type="string">305001492</brtStdid>
+<brtVianame type="string">평화동종점->전북대종점</brtVianame>
+<busLow type="string">1</busLow>
+<initBrtClass type="string"/>
+<initBrtid type="string"/>
+<orderBy type="string">brtId</orderBy>
+<range type="string">DESC</range>
+<stopStdid type="string"/>
+<viaStopname type="string">평화그린1차아파트</viaStopname>
+</list>
+<list class="object">
+<LKey type="string"/>
+<RStop type="string">7</RStop>
+<RTime type="string">464</RTime>
+<bidNo type="string">305042082</bidNo>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">1</brtDirection>
+<brtId type="string">75</brtId>
+<brtStdid type="string">305001492</brtStdid>
+<brtVianame type="string">평화동종점->전북대종점</brtVianame>
+<busLow type="string">1</busLow>
+<initBrtClass type="string"/>
+<initBrtid type="string"/>
+<orderBy type="string">brtId</orderBy>
+<range type="string">DESC</range>
+<stopStdid type="string"/>
+<viaStopname type="string">덕진경찰서</viaStopname>
+</list>
+<list class="object">
+<LKey type="string"/>
+<RStop type="string">35</RStop>
+<RTime type="string">1984</RTime>
+<bidNo type="string">305041595</bidNo>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">1</brtDirection>
+<brtId type="string">74</brtId>
+<brtStdid type="string">305001608</brtStdid>
+<brtVianame type="string">평화동종점->전북대종점</brtVianame>
+<busLow type="string">1</busLow>
+<initBrtClass type="string"/>
+<initBrtid type="string"/>
+<orderBy type="string">brtId</orderBy>
+<range type="string">DESC</range>
+<stopStdid type="string"/>
+<viaStopname type="string">거마평로이동교</viaStopname>
+</list>
+<list class="object">
+<LKey type="string"/>
+<RStop type="string">3</RStop>
+<RTime type="string">166</RTime>
+<bidNo type="string">305041581</bidNo>
+<brtClass type="string">0</brtClass>
+<brtDirection type="string">1</brtDirection>
+<brtId type="string">74</brtId>
+<brtStdid type="string">305001608</brtStdid>
+<brtVianame type="string">평화동종점->전북대종점</brtVianame>
+<busLow type="string">0</busLow>
+<initBrtClass type="string"/>
+<initBrtid type="string"/>
+<orderBy type="string">brtId</orderBy>
+<range type="string">DESC</range>
+<stopStdid type="string"/>
+<viaStopname type="string">서신남양아파트</viaStopname>
+</list>
+</routeList>
+</RFC30>
