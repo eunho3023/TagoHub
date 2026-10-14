@@ -26,21 +26,37 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Python 찾기
-        # 러너가 윈도우 서비스(로컬 시스템 계정)로 돌아서 사용자 계정 PATH 를 모름 → 설치된 Python 을 직접 찾아 다음 단계 PATH 에 넣음
-        # (Microsoft Store 를 여는 가짜 python(WindowsApps) 은 뺌)
+        # 러너(로컬 시스템 계정)는 사용자 PATH 를 모름 → 설치된 Python 을 직접 찾아 다음 단계 PATH 에 넣음.
+        # 새 Python 설치 관리자(3.14~)는 AppData\Local\Python\pythoncore-3.xx-64 에 깔림. 여러 개면 가장 높은 버전.
+        # 윈도우 PowerShell 5.1 은 러너가 만든 스크립트를 한국어 인코딩으로 읽어 한글이 깨지므로 스크립트 안은 영어만.
         run: |
-          $py = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch "WindowsApps" } | Select-Object -First 1 -ExpandProperty Source
-          if (-not $py) {
-            # 여러 버전이면 가장 최신 (이름순이면 Python39 가 Python315 보다 앞이라 버전 숫자로)
-            $py = Get-ChildItem -Path "C:\Program Files\Python3*\python.exe", "C:\Users\*\AppData\Local\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue |
-              Sort-Object { [int]($_.Directory.Name -replace "\D", "") } -Descending | Select-Object -First 1 -ExpandProperty FullName
+          $patterns = @(
+            "C:\Users\*\AppData\Local\Python\pythoncore-*\python.exe",
+            "C:\Users\*\AppData\Local\Programs\Python\Python3*\python.exe",
+            "C:\Program Files\Python3*\python.exe",
+            "C:\Program Files\Python\pythoncore-*\python.exe",
+            "C:\Python3*\python.exe"
+          )
+          $found = @()
+          $cmd = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch "WindowsApps" }
+          if ($cmd) { $found += $cmd.Source }
+          foreach ($p in $patterns) {
+            $found += (Get-ChildItem -Path $p -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
           }
-          if (-not $py) { Write-Error "설치된 Python 을 찾지 못했습니다 (python.org 에서 설치)"; exit 1 }
+          $found = $found | Where-Object { $_ } | Select-Object -Unique
+          if (-not $found) {
+            Write-Host "Python not found. Searched:"
+            $patterns | ForEach-Object { Write-Host "  $_" }
+            Write-Host "Run 'where.exe python' or 'py -0p' on the PC and send the result."
+            exit 1
+          }
+          $py = $found | Sort-Object { if ($_ -match "3[._]?(\d{1,2})") { [int]$Matches[1] } else { 0 } } -Descending | Select-Object -First 1
+          Write-Host "Found: $($found -join ', ')"
           $dir = Split-Path $py
           Add-Content -Path $env:GITHUB_PATH -Value $dir
           Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $dir "Scripts")
           & $py --version
-          Write-Host "사용할 Python: $py"
+          Write-Host "Using Python: $py"
 
       - name: 라이브러리 설치
         run: |
@@ -55,8 +71,8 @@ jobs:
           } catch {
             if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
           }
-          Write-Host "apis.data.go.kr 응답 코드: $code"
-          if ($code -eq 0) { Write-Error "공공데이터포털에 접속하지 못했습니다. PC 의 인터넷 연결을 확인하세요."; exit 1 }
+          Write-Host "apis.data.go.kr response code: $code"
+          if ($code -eq 0) { Write-Host "Cannot reach apis.data.go.kr. Check the PC internet connection."; exit 1 }
 
       - name: 수집 프로그램 시험 (인터넷 없이)
         run: |
@@ -66,22 +82,22 @@ jobs:
       - name: 데이터 만들기
         env:
           TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
+        # 받은 응답: 작업 폴더(실행마다 정리됨) 바깥 _work\tagohub-cache 에 두고 계속 씀 (이어 받기)
         run: |
-          # 받은 응답: 작업 폴더(실행마다 정리됨) 바깥 _work\tagohub-cache 에 두고 계속 씀 (이어 받기)
           $env:TAGO_CACHE_DIR = Join-Path (Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent) "tagohub-cache"
-          Write-Host "받은 응답 저장 폴더: $env:TAGO_CACHE_DIR"
+          Write-Host "Response cache folder: $env:TAGO_CACHE_DIR"
           python pipeline/build_data.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Release(data-latest)에 올리기
         env:
           GH_TOKEN: ${{ github.token }}
+        # 오류 출력을 버리면(*> $null) PowerShell 5.1 이 그걸 오류로 바꿔 멈추므로, 결과만 버리고 종료 코드로 판단
         run: |
-          # 오류 출력을 버리면(*> $null) PowerShell 5.1 이 그걸 오류로 바꿔 멈추므로, 결과만 버리고 종료 코드로 판단
           gh release view data-latest | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            gh release create data-latest --title "정류장·노선 데이터" --notes "자동 갱신 (pipeline/build_data.py)" --latest=false
+            gh release create data-latest --title "TagoHub stop and route data" --notes "Auto-updated by pipeline/build_data.py" --latest=false
           }
           gh release upload data-latest pipeline/out/bus_stops.db.gz pipeline/out/manifest.json --clobber
-          if ($LASTEXITCODE -ne 0) { Write-Error "Release 올리기 실패 (GitHub CLI 설치를 확인하세요)"; exit 1 }
+          if ($LASTEXITCODE -ne 0) { Write-Host "Release upload failed (check GitHub CLI install)"; exit 1 }
           Get-Content pipeline/out/manifest.json
