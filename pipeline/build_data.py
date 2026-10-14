@@ -77,6 +77,14 @@ def total_count(text):
         return None
 
 
+def result_code(text):
+    """TAGO JSON 의 response.header.resultCode (JSON 이 아니거나 없으면 None)"""
+    try:
+        return str(json.loads(text).get("response", {}).get("header", {}).get("resultCode"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def is_limit(text):
     return "LIMITED_NUMBER_OF_SERVICE_REQUESTS" in (text or "") or '"resultCode":"22"' in (text or "").replace(" ", "")
 
@@ -124,6 +132,7 @@ class Fetcher:
         self.s = session or requests.Session()
         self.calls = 0
         self.lock = threading.Lock()
+        self.last = ""
 
     def get(self, url, params, cache_file, max_age):
         f = CACHE / cache_file
@@ -141,8 +150,14 @@ class Fetcher:
                     raise KeyError_(key_error(text))
                 if r.status_code != 200:
                     raise RuntimeError(f"HTTP {r.status_code}: {text[:200]}")
-                f.parent.mkdir(parents=True, exist_ok=True)
-                f.write_text(text, encoding="utf-8")
+                self.last = text
+                # 정상 응답(TAGO resultCode 00, 또는 경기처럼 header 형식이 다른 것)만 저장 — 이상한 응답이 저장돼 다음 실행까지 0개가 되는 것 방지
+                code = result_code(text)
+                if code in (None, "00") and (code == "00" or url == GBIS):
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(text, encoding="utf-8")
+                elif code not in (None, "00"):
+                    print(f"  비정상 응답 (resultCode {code}, 저장 안 함): {text[:200]}", flush=True)
                 time.sleep(0.12)
                 return text
             except (Limit, KeyError_):
@@ -215,6 +230,9 @@ def fetch_tago(fx, targets):
                         routes[rid] = prev
             data[code] = {"name": name, "routes": routes}
             print(f"{name} ({code}): 노선 {len(routes)}개 (호출 {fx.calls})", flush=True)
+            if not routes:
+                # 왜 0개인지 보이게: 마지막 응답 앞부분
+                print(f"  ↳ 노선 0개 — 마지막 응답: {(getattr(fx, 'last', '') or '(없음)')[:400]}", flush=True)
         jobs = [(code, rid, r) for code, c in data.items() for rid, r in c["routes"].items()]
 
         def stops_of(job):
@@ -365,6 +383,8 @@ def main():
         sys.exit(KEY_HELP.format(code=e))
     gbis = fetch_gbis(fx)
     version = datetime.datetime.utcnow().strftime("%Y%m%d%H%M")
+    if sum(len(c["routes"]) for c in tago.values()) == 0:
+        sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version)
     m = package(OUT / "bus_stops.db", version, complete, added)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 완료 여부 {complete}")

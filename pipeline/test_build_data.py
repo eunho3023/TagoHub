@@ -149,6 +149,33 @@ def test_real_tago_route_list():
         db.close()
 
 
+def test_only_normal_responses_cached():
+    """resultCode 00 이 아닌 응답(예: 03 NODATA_ERROR)은 저장하지 않음 → 다음 실행에서 다시 받음"""
+    import threading
+    bad = '{"response":{"header":{"resultCode":"03","resultMsg":"NODATA_ERROR"}}}'
+    good = '{"response":{"header":{"resultCode":"00","resultMsg":"NORMAL SERVICE."},"body":{"items":"","totalCount":0}}}'
+
+    class R:
+        def __init__(self, t): self.status_code, self.content = 200, t.encode()
+
+    class S:
+        def __init__(self, t): self.t = t
+        def get(self, *a, **k): return R(self.t)
+
+    with tempfile.TemporaryDirectory() as d:
+        old = bd.CACHE
+        bd.CACHE = pathlib.Path(d)
+        try:
+            for text, name, saved in ((bad, "bad.json", False), (good, "good.json", True)):
+                fx = bd.Fetcher.__new__(bd.Fetcher)
+                fx.key, fx.s, fx.calls, fx.lock, fx.last = "k", S(text), 0, threading.Lock(), ""
+                assert fx.get(bd.TAGO + "/x", {}, name, 0) == text
+                assert (pathlib.Path(d) / name).exists() is saved, name
+                assert fx.last == text                          # 0개일 때 로그에 보여줄 마지막 응답
+        finally:
+            bd.CACHE = old
+
+
 def test_helpers():
     assert bd.clock("0530") == "05:30" and bd.clock(530) == "05:30" and bd.clock(2310) == "23:10" and bd.clock(None) is None
     assert bd.region_name("경상남도 김해시") == "김해" and bd.region_name("부산광역시") == "부산" and bd.region_name("충청북도 청주시") == "청주"
@@ -161,6 +188,6 @@ def test_helpers():
 
 
 if __name__ == "__main__":
-    for t in (test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
