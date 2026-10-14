@@ -105,6 +105,50 @@ def test_daily_limit_partial():
     assert len(tago["21"]["routes"]) == 2
 
 
+def test_key_error_stops_immediately():
+    """실제로 겪은 응답: 403 + SERVICE_KEY_IS_NOT_REGISTERED_ERROR (코드 30) → 재시도 없이 바로 KeyError_"""
+    body = '{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR","returnAuthMsg":"등록되지 않은 서비스키","returnReasonCode":"30"}}}'
+    assert bd.key_error(body) == "SERVICE_KEY_IS_NOT_REGISTERED"
+
+    class R:
+        status_code = 403
+        content = body.encode()
+
+    class S:
+        n = 0
+        def get(self, *a, **k):
+            S.n += 1
+            return R()
+
+    fx = bd.Fetcher.__new__(bd.Fetcher)
+    import threading
+    fx.key, fx.s, fx.calls, fx.lock = "k", S(), 0, threading.Lock()
+    try:
+        fx.get(bd.TAGO + "/getRouteNoList", {}, "tago/_t.json", 0)
+        raise AssertionError("키 오류인데 통과")
+    except bd.KeyError_:
+        pass
+    assert S.n == 1                                   # 세 번 다시 시도하지 않음
+
+
+def test_real_tago_route_list():
+    """실제 TAGO 응답 (대전 routeNo=5, 2026-10-14 브라우저): 포함 검색, routeno·막차는 숫자, 첫차는 글자"""
+    text = (pathlib.Path(__file__).parent / "real_tago_routes_daejeon_5.json").read_text(encoding="utf-8")
+    its = bd.items(text)
+    assert [str(x["routeno"]) for x in its] == ["75", "105", "115", "315", "501", "511"]   # '5' 가 들어간 번호 모두
+    assert its[0]["routeid"] == "DJB30300035" and its[0]["routetp"] == "외곽버스"
+    assert bd.clock(its[0]["startvehicletime"]) == "07:20" and bd.clock(its[0]["endvehicletime"]) == "22:10"   # "0720" 글자 / 2210 숫자
+    # 노선 정보(getRouteInfoIem)를 못 받아도 노선 목록의 첫차·막차로 채움
+    tago = {"25": {"name": "대전광역시", "routes": {x["routeid"]: {"route": x, "stops": [], "info": None} for x in its}}}
+    with tempfile.TemporaryDirectory() as d:
+        out = pathlib.Path(d) / "bus_stops.db"
+        bd.write_db(BASE, out, tago, [], "202610140300")
+        db = sqlite3.connect(out)
+        assert db.execute("SELECT no, start_name, rtype, realtime, region FROM routes WHERE id='DJB30300035'").fetchone() == ("75", "세종고속시외버스터미널", "외곽버스", "tago", "대전")
+        assert db.execute("SELECT first, last FROM route_info WHERE id='DJB30300035'").fetchone() == ("07:20", "22:10")
+        db.close()
+
+
 def test_helpers():
     assert bd.clock("0530") == "05:30" and bd.clock(530) == "05:30" and bd.clock(2310) == "23:10" and bd.clock(None) is None
     assert bd.region_name("경상남도 김해시") == "김해" and bd.region_name("부산광역시") == "부산" and bd.region_name("충청북도 청주시") == "청주"
@@ -117,6 +161,6 @@ def test_helpers():
 
 
 if __name__ == "__main__":
-    for t in (test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

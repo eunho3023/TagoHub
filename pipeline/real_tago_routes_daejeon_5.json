@@ -1,0 +1,68 @@
+{
+ "response": {
+  "header": {
+   "resultCode": "00",
+   "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "endnodenm": "보훈병원종점",
+      "endvehicletime": 2210,
+      "routeid": "DJB30300035",
+      "routeno": 75,
+      "routetp": "외곽버스",
+      "startnodenm": "세종고속시외버스터미널",
+      "startvehicletime": "0720"
+     },
+     {
+      "endnodenm": "삼호아파트",
+      "endvehicletime": 2235,
+      "routeid": "DJB30300040",
+      "routeno": 105,
+      "routetp": "간선버스",
+      "startnodenm": "충대농대종점",
+      "startvehicletime": "0540"
+     },
+     {
+      "endnodenm": "충대농대종점",
+      "endvehicletime": 2235,
+      "routeid": "DJB30300047",
+      "routeno": 115,
+      "routetp": "간선버스",
+      "startnodenm": "윗사정삼거리",
+      "startvehicletime": "0540"
+     },
+     {
+      "endnodenm": "향촌아파트",
+      "endvehicletime": 2235,
+      "routeid": "DJB30300059",
+      "routeno": 315,
+      "routetp": "간선버스",
+      "startnodenm": "오월드",
+      "startvehicletime": "0540"
+     },
+     {
+      "endnodenm": "마전종점",
+      "endvehicletime": 2230,
+      "routeid": "DJB30300063",
+      "routeno": 501,
+      "routetp": "간선버스",
+      "startnodenm": "비래동종점",
+      "startvehicletime": "0550"
+     },
+     {
+      "endnodenm": "푸르지오아파트",
+      "endvehicletime": 2250,
+      "routeid": "DJB30300064",
+      "routeno": 511,
+      "routetp": "간선버스",
+      "startnodenm": "낭월공영차고지기점",
+      "startvehicletime": "0550"
+     }
+    ]
+   }
+  }
+ }
+}

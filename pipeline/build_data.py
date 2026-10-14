@@ -13,7 +13,8 @@ TagoHub 정류장·노선 데이터 만들기 (GitHub Actions 에서 매주 실�
 - 앱이 하던 TAGO 응답 해석과 같은 필드: routeid·routeno·routetp·startnodenm·endnodenm / nodeid·nodenm·nodeno·nodeord·updowncd·gpslati·gpslong /
   startvehicletime·endvehicletime·intervaltime·intervalsattime·intervalsuntime
 """
-import datetime, gzip, hashlib, json, os, pathlib, shutil, sqlite3, sys, time, urllib.parse
+import datetime, gzip, hashlib, json, os, pathlib, shutil, sqlite3, sys, threading, time, urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BASE_DB = ROOT / "app/src/main/assets/bus_stops.db"
@@ -24,10 +25,29 @@ TAGO = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService"
 GBIS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteListv2"
 KEYWORDS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "마을", "급행", "순환", "좌석", "직행"]
 DAY = 86400
+# 동시에 받는 개수: 활용가이드 '초당 최대 30건' 안에서 (4개 × 호출 사이 0.12초 ≈ 초당 20건)
+WORKERS = 4
 
 
 class Limit(Exception):
     """하루 호출 한도 (TAGO resultCode 22)"""
+
+
+class KeyError_(Exception):
+    """인증키 오류 — 다시 시도해도 소용없으니 바로 멈춤 (등록 안 된 키, 활용신청 안 된 서비스 등)"""
+
+
+# 공공데이터포털 인증 오류 (returnReasonCode): 20 접근 거부, 30 등록되지 않은 서비스키, 31 기한 만료, 32 등록되지 않은 IP
+KEY_ERRORS = ("SERVICE_KEY_IS_NOT_REGISTERED", "SERVICE_ACCESS_DENIED", "DEADLINE_HAS_EXPIRED", "UNREGISTERED_IP")
+
+
+def key_error(text):
+    """인증키 오류면 사람이 읽을 이유, 아니면 None"""
+    t = text or ""
+    for code in KEY_ERRORS:
+        if code in t:
+            return code
+    return None
 
 
 # ───────────── 해석 (순수 함수 — 테스트 대상) ─────────────
@@ -103,6 +123,7 @@ class Fetcher:
         self.key = urllib.parse.unquote(key.strip())  # 인코딩된 키면 풀어서 requests 가 다시 인코딩
         self.s = session or requests.Session()
         self.calls = 0
+        self.lock = threading.Lock()
 
     def get(self, url, params, cache_file, max_age):
         f = CACHE / cache_file
@@ -110,18 +131,21 @@ class Fetcher:
             return f.read_text(encoding="utf-8")
         for attempt in range(3):
             try:
-                self.calls += 1
+                with self.lock:
+                    self.calls += 1
                 r = self.s.get(url, params={"serviceKey": self.key, **params}, timeout=60)
                 text = r.content.decode("utf-8", errors="replace")
                 if is_limit(text):
                     raise Limit()
+                if key_error(text):
+                    raise KeyError_(key_error(text))
                 if r.status_code != 200:
                     raise RuntimeError(f"HTTP {r.status_code}: {text[:200]}")
                 f.parent.mkdir(parents=True, exist_ok=True)
                 f.write_text(text, encoding="utf-8")
                 time.sleep(0.12)
                 return text
-            except Limit:
+            except (Limit, KeyError_):
                 raise
             except Exception as e:  # 연결 오류는 세 번까지
                 print(f"  재시도 {attempt + 1}: {e}", flush=True)
@@ -140,6 +164,34 @@ def list_all(fx, url, params, cache_prefix, max_age, rows):
         if not got or total is None or len(out) >= total:
             break
     return out
+
+
+def run_parallel(fx, jobs, fn, label):
+    """WORKERS 개씩 동시에. 하루 한도(Limit)가 나면 남은 일은 건너뛰고 Limit 을 다시 던짐"""
+    stop = threading.Event()
+
+    def one(job):
+        if stop.is_set():
+            return
+        try:
+            fn(job)
+        except Limit:
+            stop.set()
+            raise
+
+    hit = False
+    done = 0
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        for f in as_completed([ex.submit(one, j) for j in jobs]):
+            try:
+                f.result()
+            except Limit:
+                hit = True
+            done += 1
+            if done % 200 == 0 or done == len(jobs):
+                print(f"  {label} {done}/{len(jobs)} (호출 {fx.calls})", flush=True)
+    if hit:
+        raise Limit()
 
 
 def fetch_tago(fx, targets):
@@ -163,16 +215,21 @@ def fetch_tago(fx, targets):
                         routes[rid] = prev
             data[code] = {"name": name, "routes": routes}
             print(f"{name} ({code}): 노선 {len(routes)}개 (호출 {fx.calls})", flush=True)
-        for code, c in data.items():
-            for rid, r in c["routes"].items():
-                r["stops"] = list_all(fx, f"{TAGO}/getRouteAcctoThrghSttnList", {"_type": "json", "cityCode": code, "routeId": rid},
-                                      f"tago/{code}/stops_{rid}", 7 * DAY, 500)
-        for code, c in data.items():
-            for rid, r in c["routes"].items():
-                t = fx.get(f"{TAGO}/getRouteInfoIem", {"_type": "json", "cityCode": code, "routeId": rid},
-                           f"tago/{code}/info_{rid}.json", 7 * DAY)
-                info = items(t)
-                r["info"] = info[0] if info else None
+        jobs = [(code, rid, r) for code, c in data.items() for rid, r in c["routes"].items()]
+
+        def stops_of(job):
+            code, rid, r = job
+            r["stops"] = list_all(fx, f"{TAGO}/getRouteAcctoThrghSttnList", {"_type": "json", "cityCode": code, "routeId": rid},
+                                  f"tago/{code}/stops_{rid}", 7 * DAY, 500)
+
+        def info_of(job):
+            code, rid, r = job
+            t = fx.get(f"{TAGO}/getRouteInfoIem", {"_type": "json", "cityCode": code, "routeId": rid}, f"tago/{code}/info_{rid}.json", 7 * DAY)
+            info = items(t)
+            r["info"] = info[0] if info else None
+
+        run_parallel(fx, jobs, stops_of, "정류장 순서")
+        run_parallel(fx, jobs, info_of, "노선 정보")
     except Limit:
         print(f"하루 호출 한도에 도달 (호출 {fx.calls}) — 받은 데까지로 만들고 다음 실행에서 이어 받음", flush=True)
         complete = False
@@ -234,11 +291,13 @@ def write_db(base_db, out_db, tago, gbis_routes, version):
             db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",
                        (rid, str(it.get("routeno", "")).strip(), it.get("startnodenm"), it.get("endnodenm"), first, last, code, region,
                         it.get("routetp"), "tago"))
-            info = r.get("info")
-            if info:
+            # 첫차·막차: 노선 정보(getRouteInfoIem)가 있으면 그것, 없으면 노선 목록에 같이 오는 값 (실제 응답에 있음)
+            info = r.get("info") or {}
+            t_first = clock(info.get("startvehicletime")) or clock(it.get("startvehicletime"))
+            t_last = clock(info.get("endvehicletime")) or clock(it.get("endvehicletime"))
+            if t_first or t_last or info:
                 db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)",
-                           (rid, clock(info.get("startvehicletime")), clock(info.get("endvehicletime")),
-                            to_int(info.get("intervaltime")), to_int(info.get("intervalsattime")), to_int(info.get("intervalsuntime"))))
+                           (rid, t_first, t_last, to_int(info.get("intervaltime")), to_int(info.get("intervalsattime")), to_int(info.get("intervalsuntime"))))
             added_routes += 1
             added_stops += len(rows)
     for rid, no, s, e in gbis_routes:
@@ -269,6 +328,29 @@ def package(out_db, version, complete, added):
     return manifest
 
 
+KEY_HELP = """인증키가 공공데이터포털에서 거부됐습니다 ({code}).
+확인할 것:
+ 1) GitHub 저장소 Settings → Secrets → Actions 의 TAGO_SERVICE_KEY 값이 공공데이터포털 '일반 인증키'와 똑같은지
+    (앞뒤 공백·따옴표·'TAGO_SERVICE_KEY=' 같은 글자 없이 키만. Decoding·Encoding 어느 쪽이든 됨)
+ 2) 공공데이터포털에서 '국토교통부_(TAGO)_버스노선정보' 활용신청이 승인돼 있는지
+ 3) 브라우저에서 같은 키로 아래 주소가 열리는지:
+    https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteNoList?serviceKey=키&_type=json&cityCode=25&routeNo=5"""
+
+
+def check_key(fx):
+    """시작 전에 실제 키로 한 번 불러봄 — 키 오류면 몇 초 만에 멈춤 (전에는 모든 요청을 세 번씩 다시 시도하느라 한 시간을 허비)"""
+    f = CACHE / "tago/_keycheck.json"
+    if f.exists():
+        f.unlink()
+    try:
+        t = fx.get(f"{TAGO}/getRouteNoList", {"_type": "json", "cityCode": "25", "routeNo": "5", "numOfRows": 1, "pageNo": 1}, "tago/_keycheck.json", 0)
+    except KeyError_ as e:
+        sys.exit(KEY_HELP.format(code=e))
+    if t is None:
+        sys.exit("공공데이터포털 응답이 없습니다 (연결 실패). 해외 접속 제한일 수 있습니다 — pipeline/README.md")
+    print("인증키 확인: 정상", flush=True)
+
+
 def main():
     key = os.environ.get("TAGO_SERVICE_KEY", "").strip()
     if not key:
@@ -276,7 +358,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     targets = json.loads((HERE / "tago_targets.json").read_text(encoding="utf-8"))
     fx = Fetcher(key)
-    tago, complete = fetch_tago(fx, targets)
+    check_key(fx)
+    try:
+        tago, complete = fetch_tago(fx, targets)
+    except KeyError_ as e:
+        sys.exit(KEY_HELP.format(code=e))
     gbis = fetch_gbis(fx)
     version = datetime.datetime.utcnow().strftime("%Y%m%d%H%M")
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version)

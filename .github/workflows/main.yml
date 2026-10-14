@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: 받아 둔 응답 불러오기 (하루 한도에 걸렸으면 다음 실행에서 이어 받기)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: pipeline/cache
           key: api-cache-${{ github.run_id }}
@@ -42,6 +42,13 @@ jobs:
         env:
           TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
         run: python pipeline/build_data.py
+
+      - name: 받은 응답 저장 (실패·한도·취소여도 저장 → 다음 실행이 이어 받음)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: pipeline/cache
+          key: api-cache-${{ github.run_id }}
 
       - name: Release(data-latest)에 올리기
         env:
