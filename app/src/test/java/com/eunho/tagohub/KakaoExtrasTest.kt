@@ -66,3 +66,19 @@ class KakaoExtrasTest {
         assertEquals("경기 안성시 죽산면 죽산리 343-1", KakaoLocal.addressName("""{"documents":[{"road_address":null,"address":{"address_name":"경기 안성시 죽산면 죽산리 343-1"}}]}"""))
     }
 }
+
+class ShapeSliceTest {
+    @Test
+    fun slice_betweenTwoStops() {
+        // ㄱ자로 꺾이는 공식 모양: 동쪽으로 가다 북쪽으로
+        val shape = listOf(LatLng(35.80, 127.10), LatLng(35.80, 127.11), LatLng(35.80, 127.12), LatLng(35.81, 127.12))
+        val a = LatLng(35.80001, 127.105)     // 첫 구간 가운데 (도로 옆 1m)
+        val b = LatLng(35.805, 127.12001)     // 꺾인 뒤 가운데
+        val s = Shapes.slice(shape, a, b)!!
+        assertEquals(127.105, s.first().lng, 1e-4)
+        assertTrue(s.contains(LatLng(35.80, 127.11)) && s.contains(LatLng(35.80, 127.12)))   // 사이 점과 꺾이는 점 그대로
+        assertEquals(35.805, s.last().lat, 1e-4)
+        assertEquals(null, Shapes.slice(shape, b, a))                       // 순서가 거꾸로면 null
+        assertEquals(null, Shapes.slice(shape, a, LatLng(35.9, 127.3)))     // 모양에서 먼 정류장이면 null
+    }
+}

@@ -169,6 +169,29 @@ object Shapes {
         return ok >= stops.size * ratio
     }
 
+    /**
+     * 노선 모양에서 두 정류장 사이 구간만 잘라내기 (카카오 경로를 못 받은 구간을 지역 공식 모양으로 채울 때).
+     * 두 정류장이 모양 곁(maxM 안)에 있고 순서가 맞아야 함. 아니면 null.
+     */
+    fun slice(shape: List<LatLng>, from: LatLng, to: LatLng, maxM: Double = 80.0): List<LatLng>? {
+        if (shape.size < 2) return null
+        val (fa, da) = project(shape, from)
+        val (fb, db) = project(shape, to)
+        if (da > maxM || db > maxM || fb <= fa) return null
+        val total = length(shape)
+        if (total <= 0) return null
+        // 길이 비율 → 점 번호: 앞쪽 경계는 정류장 위치, 사이 점들은 그대로
+        var acc = 0.0
+        val out = arrayListOf(along(shape, fa))
+        for (i in 1 until shape.size) {
+            acc += Geo.meters(shape[i - 1].lat, shape[i - 1].lng, shape[i].lat, shape[i].lng)
+            val f = acc / total
+            if (f > fa && f < fb) out += shape[i]
+        }
+        out += along(shape, fb)
+        return out.takeIf { it.size >= 2 }
+    }
+
     /** 이 선이 정류장들 곁(maxM 안)을 모두 지나는지 — 카카오 경로가 이 노선 길이 맞는지 확인 */
     fun passesStops(path: List<LatLng>, stops: List<LatLng>, maxM: Double): Boolean {
         if (path.size < 2) return false

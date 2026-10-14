@@ -307,6 +307,10 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
             val dl = ctx.getDatabasePath(DOWNLOADED)
             if (dl.exists()) {
                 if (DataManifest.isNewer(versionOf(dl), VERSION)) {
+                    // 받은 데이터를 쓰면 앱 안 데이터 복사본(약 63MB)은 필요 없음 → 지움 (앱 업데이트로 앱 안 데이터가 더 새로워지면 다시 복사)
+                    dl.parentFile?.listFiles()
+                        ?.filter { it.name.startsWith("bus_stops_") && !it.name.startsWith("bus_stops_dl") }
+                        ?.forEach { it.delete() }
                     return@runCatching StopDb(SQLiteDatabase.openDatabase(dl.path, null, SQLiteDatabase.OPEN_READONLY))
                 }
                 dl.delete() // 앱 업데이트로 앱 안 데이터가 더 새로워짐

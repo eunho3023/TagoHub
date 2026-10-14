@@ -992,21 +992,24 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (d.shape.value == null) {
             viewModelScope.launch {
                 val pts = d.stops.value.valueOrNull()?.mapNotNull { s -> s.lat?.let { la -> s.lng?.let { LatLng(la, it) } } }.orEmpty()
-                // 전주 노선은 전주시가 주는 실제 노선 모양, 그 외는 도로 경로 추정
+                // 노선 선: 카카오 지도 도로를 따라 (카카오 대중교통 경로에서 이 노선 번호 구간).
+                // 카카오가 못 찾은 구간은 지역 공식 모양(서울시·경기·전주시)으로, 그것도 없으면 OSRM.
                 val saved = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
-                val shape = saved ?: if (com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId)) {
-                    (Graph.seoulBus.path(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
-                        ?: RoadShapeClient.shape(d.routeId, pts, d.routeNo)
-                } else if (com.eunho.tagohub.data.Gyeonggi.isGyeonggi(d.routeId)) {
-                    // 앱 안 노선 모양(경기 경로이력 2025-10). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (노선이 바뀌었으면 경기 API)
-                    stopDb?.let { db -> withContext(Dispatchers.IO) { db.gyeonggiShape(d.routeId) } }
-                        ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts) }
-                        ?: (Graph.gyeonggi.line(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
-                        ?: RoadShapeClient.shape(d.routeId, pts, d.routeNo)
-                } else if (com.eunho.tagohub.data.Jeonju.isJeonju(d.routeId)) {
-                    (Graph.jeonju.drawing(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
-                        ?: RoadShapeClient.shape(d.routeId, pts, d.routeNo)
-                } else RoadShapeClient.shape(d.routeId, pts, d.routeNo)
+                val shape = saved ?: run {
+                    val official: List<LatLng>? = when {
+                        com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) ->
+                            (Graph.seoulBus.path(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                        com.eunho.tagohub.data.Gyeonggi.isGyeonggi(d.routeId) ->
+                            // 앱 안 노선 모양(경기 경로이력 2025-10). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (노선이 바뀌었으면 경기 API)
+                            stopDb?.let { db -> withContext(Dispatchers.IO) { db.gyeonggiShape(d.routeId) } }
+                                ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts) }
+                                ?: (Graph.gyeonggi.line(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                        com.eunho.tagohub.data.Jeonju.isJeonju(d.routeId) ->
+                            (Graph.jeonju.drawing(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                        else -> null
+                    }
+                    RoadShapeClient.shape(d.routeId, pts, d.routeNo, official)
+                }
                 if (saved == null && shape != null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
                 if (shape != null && route.value === d) {
                     d.shape.value = shape

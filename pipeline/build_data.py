@@ -23,6 +23,9 @@ CACHE = HERE / "cache"
 OUT = HERE / "out"                        # 만드는 중인 DB (올리지 않음)
 TAGO = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService"
 GBIS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteListv2"
+# 한국교통안전공단_버스 노선 및 시간표 정보 (파일데이터 API, 2026-07-16 기준) — 노선 아이디 = TAGO 의 TSB+번호
+KOTSA_TT = "https://api.odcloud.kr/api/15150451/v1/uddi:8711dcd0-1fb8-456f-95a4-95659499de14"
+KOTSA_DAYS = {"평일": "weekday", "토요일": "sat", "공휴일": "sun", "일요일": "sun"}
 KEYWORDS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "마을", "급행", "순환", "좌석", "직행"]
 DAY = 86400
 # 동시에 받는 개수: TAGO 서버가 '가용한 세션이 존재하지 않습니다 (30/30)' 로 자주 바빠서 2개만
@@ -187,7 +190,7 @@ class Fetcher:
                 self.last = text
                 # 정상 응답(TAGO resultCode 00, 또는 경기처럼 header 형식이 다른 것)만 저장 — 이상한 응답이 저장돼 다음 실행까지 0개가 되는 것 방지
                 code = result_code(text)
-                if code in (None, "00") and (code == "00" or url == GBIS):
+                if code in (None, "00") and (code == "00" or url in (GBIS, KOTSA_TT)):
                     f.parent.mkdir(parents=True, exist_ok=True)
                     f.write_text(text, encoding="utf-8")
                 elif code not in (None, "00"):
@@ -311,7 +314,82 @@ def fetch_gbis(fx):
 
 # ───────────── 쓰기 ─────────────
 
-def write_db(base_db, out_db, tago, gbis_routes, version):
+# ───────────── 교통안전공단 시간표 ─────────────
+
+def kotsa_rows(text):
+    """파일데이터 API 응답의 data (오류·빈 응답이면 [])"""
+    try:
+        d = json.loads(text or "{}")
+    except ValueError:
+        return []
+    return [r for r in d.get("data", []) if isinstance(r, dict)] if isinstance(d, dict) else []
+
+
+def kotsa_total(text):
+    try:
+        return int(json.loads(text).get("totalCount"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def fetch_kotsa(fx):
+    """전체 행 (1,000행씩, 약 11번)"""
+    out = []
+    try:
+        for page in range(1, 40):
+            t = fx.get(KOTSA_TT, {"page": page, "perPage": 1000, "returnType": "JSON"}, f"kotsa/tt_p{page}.json", 7 * DAY)
+            got = kotsa_rows(t)
+            out += got
+            total = kotsa_total(t) if t else None
+            if not got or total is None or len(out) >= total:
+                break
+    except (Limit, KeyError_) as e:
+        print(f"교통안전공단 시간표: 받지 못함 ({e}) — 활용신청을 확인하세요", flush=True)
+    print(f"교통안전공단 시간표: {len(out)}행", flush=True)
+    return out
+
+
+def kotsa_cities(base_db):
+    """교통안전공단 노선(TSB)이 있는 TAGO 도시코드 — 비교용 TAGO 노선 목록을 받을 지역"""
+    db = sqlite3.connect(base_db)
+    cities = [r[0] for r in db.execute("SELECT DISTINCT city FROM routes WHERE id LIKE 'TSB%' AND city NOT LIKE 'TS%'")]
+    db.close()
+    return cities
+
+
+def fetch_tago_lists(fx, cities):
+    """비교용: 이 지역들의 TAGO 노선 목록 (첫차·막차가 같이 옴). {routeid: item}"""
+    out = {}
+    try:
+        for code in cities:
+            for it in list_all(fx, f"{TAGO}/getRouteNoList", {"_type": "json", "cityCode": code}, f"tago/{code}/routes_all", DAY, 1000):
+                if it.get("routeid"):
+                    out[str(it["routeid"])] = it
+    except (Limit, KeyError_):
+        print("비교용 TAGO 노선 목록: 한도 — 받은 데까지만 비교", flush=True)
+    return out
+
+
+def compare(kotsa, tago_items):
+    """같은 노선(TSB+번호 = TAGO routeid)의 평일 기점 첫차·막차가 일치하는 비율"""
+    week = {"TSB" + str(r.get("노선 아이디")): r for r in kotsa if r.get("요일") == "평일"}
+    both = [rid for rid in week if rid in tago_items]
+    def same(a, b):
+        return a is not None and b is not None and a == b
+    first = sum(same(clock(tago_items[r].get("startvehicletime")), (week[r].get("기점첫차출발시각") or None)) for r in both)
+    last = sum(same(clock(tago_items[r].get("endvehicletime")), (week[r].get("기점막차출발시각") or None)) for r in both)
+    tago_has = sum(clock(tago_items[r].get("startvehicletime")) is not None for r in both)
+    return {
+        "sameRoutes": len(both),
+        "kotsaOnly": len(set(week) - set(tago_items)),
+        "tagoOnly": len([r for r in tago_items if r.startswith("TSB") and r not in week]),
+        "firstMatch": round(first / len(both) * 100, 1) if both else None,
+        "lastMatch": round(last / len(both) * 100, 1) if both else None,
+        "tagoHasFirst": round(tago_has / len(both) * 100, 1) if both else None,
+    }
+
+
+def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=()):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -352,6 +430,28 @@ def write_db(base_db, out_db, tago, gbis_routes, version):
                            (rid, t_first, t_last, to_int(info.get("intervaltime")), to_int(info.get("intervalsattime")), to_int(info.get("intervalsuntime"))))
             added_routes += 1
             added_stops += len(rows)
+    # 교통안전공단 요일별 시간표 + 배차간격 (TAGO 노선 정보에 배차간격이 비어 있어서)
+    db.execute("""CREATE TABLE IF NOT EXISTS route_schedule(id TEXT, day TEXT, trips INTEGER, first TEXT, last TEXT,
+                  end_first TEXT, end_last TEXT, min_int INTEGER, max_int INTEGER, PRIMARY KEY(id, day)) WITHOUT ROWID""")
+    by_route = {}
+    for r in kotsa:
+        day = KOTSA_DAYS.get(str(r.get("요일", "")).strip())
+        if not day or r.get("노선 아이디") is None:
+            continue
+        rid = "TSB" + str(r["노선 아이디"]).split(".")[0]
+        row = (rid, day, to_int(r.get("일일운행횟수")), r.get("기점첫차출발시각") or None, r.get("기점막차출발시각") or None,
+               r.get("종점첫차출발시각") or None, r.get("종점막차출발시각") or None, to_int(r.get("최소배차간격")), to_int(r.get("최대배차간격")))
+        db.execute("INSERT OR REPLACE INTO route_schedule VALUES(?,?,?,?,?,?,?,?,?)", row)
+        by_route.setdefault(rid, {})[day] = row
+    for rid, days in by_route.items():
+        wk = days.get("weekday")
+        def gap(d):
+            v = days.get(d, (None,) * 9)[7]
+            return v if v and v > 0 else None
+        old = db.execute("SELECT first, last FROM route_info WHERE id = ?", (rid,)).fetchone()
+        first = (old[0] if old and old[0] else None) or (wk[3] if wk else None)
+        last = (old[1] if old and old[1] else None) or (wk[4] if wk else None)
+        db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)", (rid, first, last, gap("weekday"), gap("sat"), gap("sun")))
     for rid, no, s, e in gbis_routes:
         db.execute("INSERT OR REPLACE INTO gbis_routes(id,no,start_name,end_name) VALUES(?,?,?,?)", ("GGB" + rid, no, s, e))
     db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('version', ?)", (version,))
@@ -361,7 +461,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version):
     return added_routes, added_stops
 
 
-def package(out_db, version, complete, added):
+def package(out_db, version, complete, added, report=None):
     """압축 + 안내 파일 (pipeline/out). Release 에 같은 이름으로 덮어 올리고, 앱은 manifest 의 version 으로 새것인지 판단"""
     gz = out_db.with_suffix(".db.gz")
     with open(out_db, "rb") as src, gzip.open(gz, "wb", compresslevel=9) as dst:
@@ -375,6 +475,7 @@ def package(out_db, version, complete, added):
         "dbSize": out_db.stat().st_size,
         "complete": complete,
         "tagoRoutes": added,
+        "compare": report or {},
     }
     (out_db.parent / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
@@ -416,11 +517,16 @@ def main():
     except KeyError_ as e:
         sys.exit(KEY_HELP.format(code=e))
     gbis = fetch_gbis(fx)
+    kotsa = fetch_kotsa(fx)
+    report = compare(kotsa, fetch_tago_lists(fx, kotsa_cities(BASE_DB))) if kotsa else {}
+    if report:
+        print(f"TAGO ↔ 교통안전공단 비교: 같은 노선 {report['sameRoutes']}개, 평일 첫차 일치 {report['firstMatch']}%, 막차 일치 {report['lastMatch']}%, "
+              f"TAGO 에 첫차 있음 {report['tagoHasFirst']}%, 교통안전공단에만 {report['kotsaOnly']}개, TAGO 에만 {report['tagoOnly']}개", flush=True)
     version = datetime.datetime.utcnow().strftime("%Y%m%d%H%M")
     if sum(len(c["routes"]) for c in tago.values()) == 0:
         sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
-    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version)
-    m = package(OUT / "bus_stops.db", version, complete, added)
+    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa)
+    m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
 

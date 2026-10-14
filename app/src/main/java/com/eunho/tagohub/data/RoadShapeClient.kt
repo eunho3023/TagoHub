@@ -26,9 +26,14 @@ object RoadShapeClient {
      *    구간 시작·끝이 정류장 200m 안이고, 사이 정류장들 곁(80m)을 지나고, 너무 돌아가지 않아야(정류장 직선 합의 2.2배 + 300m) 채택.
      * 2) 아니면 OSRM. 정류장 사이에서 블록을 한 바퀴 도는 구간은 직선으로 (Shapes.removeDetours).
      */
-    suspend fun shape(routeId: String, stops: List<LatLng>, routeNo: String? = null): List<LatLng>? {
-        if (stops.size < 2) return null
+    /**
+     * fallback: 지역 공식 노선 모양(서울시·경기·전주시). 카카오 키가 없으면 그대로 쓰고,
+     * 있으면 카카오 경로를 못 받은 구간만 이 모양에서 잘라 채움 (그래도 안 되면 OSRM).
+     */
+    suspend fun shape(routeId: String, stops: List<LatLng>, routeNo: String? = null, fallback: List<LatLng>? = null): List<LatLng>? {
+        if (stops.size < 2) return fallback
         synchronized(cache) { cache[routeId]?.let { return it } }
+        if (fallback != null && (routeNo == null || !KakaoExtra.available)) return fallback
         val out = ArrayList<LatLng>()
         var anyRoad = false
         val kakao = routeNo != null && KakaoExtra.available
@@ -41,6 +46,11 @@ object RoadShapeClient {
                 piece = r?.let { KakaoTransit.ridePath(it, routeNo!!, part.first(), part.last()) }
                     ?.takeIf { p -> Shapes.passesStops(p, part.drop(1).dropLast(1), 80.0) && Shapes.length(p) <= Shapes.length(part) * 2.2 + 300 }
             }
+            if (piece == null && fallback != null) {
+                // 카카오가 이 구간을 못 찾음 → 지역 공식 모양의 같은 구간 (사이 정류장 곁을 지나야)
+                piece = Shapes.slice(fallback, part.first(), part.last())
+                    ?.takeIf { p -> Shapes.passesStops(p, part.drop(1).dropLast(1), 80.0) }
+            }
             if (piece == null) {
                 piece = fetch(part)?.takeIf { Shapes.length(it) <= Shapes.length(part) * 3 + 300 }?.let { Shapes.removeDetours(it, part) }
             }
@@ -48,7 +58,7 @@ object RoadShapeClient {
             val seg = piece ?: part
             out += if (out.isEmpty()) seg else seg.drop(1)
         }
-        if (!anyRoad) return null
+        if (!anyRoad) return fallback
         synchronized(cache) { cache[routeId] = out }
         return out
     }

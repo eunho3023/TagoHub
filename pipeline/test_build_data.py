@@ -210,6 +210,30 @@ def test_busy_server_waits_and_retries():
             bd.CACHE = old
 
 
+def test_kotsa_timetable_real():
+    """실제 응답 (교통안전공단 버스 노선 및 시간표, page 1): 태백 10·10-2·1·11번"""
+    text = (pathlib.Path(__file__).parent / "real_kotsa_timetable_p1.json").read_text(encoding="utf-8")
+    rows = bd.kotsa_rows(text)
+    assert len(rows) == 10 and bd.kotsa_total(text) == 10563
+    with tempfile.TemporaryDirectory() as d:
+        out = pathlib.Path(d) / "bus_stops.db"
+        bd.write_db(BASE, out, {}, [], "202610140300", rows)
+        db = sqlite3.connect(out)
+        assert db.execute("SELECT COUNT(*) FROM route_schedule").fetchone()[0] == 10
+        # 태백 1번(254000003): 평일 46회 06:30~22:10, 배차 평일 10·토 10·공휴일 10분
+        assert db.execute("SELECT trips, first, last, min_int FROM route_schedule WHERE id='TSB254000003' AND day='weekday'").fetchone() == (46, "06:30", "22:10", 10)
+        assert db.execute("SELECT first, last, interval, int_sat, int_sun FROM route_info WHERE id='TSB254000003'").fetchone() == ("06:30", "22:10", 10, 10, 10)
+        # 하루 1번 다니는 10번(254000001): 배차간격 0 → 비움
+        assert db.execute("SELECT first, interval FROM route_info WHERE id='TSB254000001'").fetchone() == ("07:20", None)
+        db.close()
+    # 비교: 같은 노선의 TAGO 첫차·막차
+    tago = {"TSB254000003": {"routeid": "TSB254000003", "startvehicletime": "0630", "endvehicletime": 2210},
+            "TSB254000005": {"routeid": "TSB254000005", "startvehicletime": "0740", "endvehicletime": 2100},   # 막차 다름 (교통안전공단 21:10)
+            "TSB999": {"routeid": "TSB999"}}
+    r = bd.compare(rows, tago)
+    assert r["sameRoutes"] == 2 and r["firstMatch"] == 100.0 and r["lastMatch"] == 50.0 and r["tagoOnly"] == 1 and r["kotsaOnly"] == 2
+
+
 def test_helpers():
     assert bd.clock("0530") == "05:30" and bd.clock(530) == "05:30" and bd.clock(2310) == "23:10" and bd.clock(None) is None
     assert bd.region_name("경상남도 김해시") == "김해" and bd.region_name("부산광역시") == "부산" and bd.region_name("충청북도 청주시") == "청주"
@@ -222,6 +246,6 @@ def test_helpers():
 
 
 if __name__ == "__main__":
-    for t in (test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

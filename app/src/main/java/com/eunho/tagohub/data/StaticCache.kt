@@ -93,12 +93,12 @@ object StaticCache {
     fun seoulTurn(routeId: String): String? = read("sturn_$routeId")?.firstOrNull()?.getOrNull(0)
     fun putSeoulTurn(routeId: String, stationId: String?) = write("sturn_$routeId", listOf(listOf(stationId.orEmpty())))
 
-    // ── 노선 모양 ── (shape2_: 한 바퀴 도는 OSRM 선을 고치면서 예전 저장분은 다시 받음)
-    fun shape(id: String): List<LatLng>? = read("shape2_$id")?.mapNotNull { r ->
+    // ── 노선 모양 ── (shape3_: 모든 노선을 카카오 도로 경로 우선으로 바꾸면서 예전 저장분은 다시 받음)
+    fun shape(id: String): List<LatLng>? = read("shape3_$id")?.mapNotNull { r ->
         val lat = r.getOrNull(0)?.toDoubleOrNull() ?: return@mapNotNull null
         LatLng(lat, r.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null)
     }?.takeIf { it.size >= 2 }
-    fun putShape(id: String, pts: List<LatLng>) { if (pts.size >= 2) write("shape2_$id", pts.map { listOf(it.lat, it.lng) }) }
+    fun putShape(id: String, pts: List<LatLng>) { if (pts.size >= 2) write("shape3_$id", pts.map { listOf(it.lat, it.lng) }) }
 
     // ── 노선 정류장 순서 ──
     fun routeStops(id: String): List<RouteStop>? = read("stops_$id")?.mapNotNull { r ->

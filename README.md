@@ -356,6 +356,14 @@ TagoTransit 과 같은 구성입니다. WebView·OpenLayers·국토정보플랫�
 
 
 
+
+### 노선 선: 모든 노선을 카카오 지도 도로 우선으로 (2026-10-14)
+
+- 전주시 노선 모양은 점 간격이 넓어 크게 확대하면 모퉁이를 가로질러 건물 위로 지나가고, 유턴 교차로가 뾰족한 삼각형으로 보였음.
+- 이제 모든 노선을 정류장 6개씩 카카오 대중교통 경로에서 이 노선 번호 구간으로 그림(카카오 지도 도로). 카카오가 못 찾은 구간만
+  지역 공식 모양(서울시·경기·전주시)에서 그 두 정류장 사이를 잘라(`Shapes.slice`) 채우고, 그것도 안 되면 OSRM(한 바퀴 제거).
+  카카오 REST 키가 없으면 예전처럼 공식 모양 그대로. 저장 이름 shape3_ 로 바꿔 예전에 저장된 선은 한 번씩 다시 받음.
+
 ### TAGO 활용가이드(9종)·기차 실제 응답으로 검증 (2026-10-14)
 
 - **기차 실제 응답 4개**(TrainInfo/GetCtyCodeList·GetVhcleKndList·GetCtyAcctoTrainSttnList·GetStrtpntAlocFndTrainInfo)를 시험 자료로(`TrainRealTest`):
