@@ -151,6 +151,9 @@ class KakaoCanvas(
         km.routeLineManager?.addLayer(TRIP_LAYER, 5)
         km.setOnCameraMoveEndListener { _, position, _ ->
             main.post {
+                // 방위표시: 지도가 북쪽에서 조금이라도 돌아갔을 때만 (각도가 라디안·도 어느 쪽이어도 0.01 넘으면)
+                runCatching { if (kotlin.math.abs(position.rotationAngle) > 0.01) map?.compass?.show() else map?.compass?.hide() }
+                vm.onMapTouched()
                 val z = position.zoomLevel
                 if (z != lastZoom) {
                     lastZoom = z
@@ -173,6 +176,7 @@ class KakaoCanvas(
         // 지도에 원래 있는 정류장·역·장소(POI) 누르기 → 앱 데이터의 정류장·역으로, 없으면 출발·도착 고르기
         km.setPoiClickable(true)
         km.setOnMapClickListener { _, position, _, poi ->
+            vm.onMapTouched()
             if (poi.isPoi()) {
                 val name = poi.getName().orEmpty()
                 main.post { vm.onMapPoi(name, position.latitude, position.longitude) }
@@ -180,13 +184,13 @@ class KakaoCanvas(
         }
         // 바닥 꾹 누르기 → 여기서 출발 / 여기로 도착
         km.setOnTerrainLongClickListener { _, position, _ ->
-            main.post { vm.onMapLongPress(position.latitude, position.longitude) }
+            main.post { vm.onMapTouched(); vm.onMapLongPress(position.latitude, position.longitude) }
         }
         // 나침반: 기본 자리가 검색창에 가려져서 검색창 아래 왼쪽으로 (지도를 돌리면 방위가 보임, 누르면 북쪽으로)
         km.compass?.let {
             it.setBackToNorthOnClick(true)
             it.setPosition(com.kakao.vectormap.MapGravity.TOP or com.kakao.vectormap.MapGravity.LEFT, 16 * density, 104 * density)
-            it.show()
+            it.hide()   // 북쪽이면 숨김, 돌리면 보임 (카메라 이동 끝에서)
         }
         km.scaleBar?.let { it.setAutoHide(true); it.show() }
         applyBase()
@@ -365,7 +369,7 @@ class KakaoCanvas(
 
     private fun add(layer: com.kakao.vectormap.route.RouteLineLayer, pts: List<LatLng>, styles: RouteLineStyles): RouteLine? {
         val set = RouteLineStylesSet.from(styles)
-        val seg = RouteLineSegment.from(pts.map { KLatLng.from(it.lat, it.lng) }.toTypedArray(), styles)
+        val seg = RouteLineSegment.from(com.eunho.tagohub.data.Shapes.smooth(pts).map { KLatLng.from(it.lat, it.lng) }.toTypedArray(), styles)   // 꺾이는 곳 부드럽게
         return runCatching { layer.addRouteLine(RouteLineOptions.from(seg).setStylesSet(set)) }.getOrNull()
     }
 

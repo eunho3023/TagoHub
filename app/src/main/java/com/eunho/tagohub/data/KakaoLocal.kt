@@ -20,6 +20,9 @@ object KakaoLocal {
                 address = r.text("road_address_name")?.ifBlank { null } ?: r.text("address_name")?.ifBlank { null },
                 lat = lat,
                 lng = lng,
+                category = r.text("category_name")?.substringAfterLast(" > ")?.ifBlank { null },
+                phone = r.text("phone")?.ifBlank { null },
+                url = r.text("place_url")?.ifBlank { null },
             )
         }
     }

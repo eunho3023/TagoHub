@@ -56,6 +56,8 @@ class TripController(
     val results = MutableStateFlow<Load<List<PlanPoint>>>(Load.Idle)
     /** 길찾기 결과 정렬 (최단시간·최소도보·최소환승) */
     val sort = MutableStateFlow(PlanSort.Fast)
+    /** 경유지 (카카오 길찾기로 출발→경유, 경유→도착을 이어 붙임) */
+    val via = MutableStateFlow<PlanPoint?>(null)
     val plans = MutableStateFlow<Load<List<TripPlan>>>(Load.Idle)
     val selected = MutableStateFlow<TripPlan?>(null)
     val live = MutableStateFlow<TripLive?>(null)
@@ -81,19 +83,29 @@ class TripController(
         editing.value = PlanField.Dest
         results.value = Load.Idle
         plans.value = Load.Idle
+        via.value = null
         selected.value = null
         live.value = null
         note.value = null
         canvas()?.setTrip(emptyList(), emptyList())
     }
 
+    /** 경유: 앞 경로 + 뒤 경로 (경유지에서 내려 다시 타는 걷기와 3분 여유 포함) */
+    private fun joinVia(a: TripPlan, b: TripPlan): TripPlan = a.copy(
+        dest = b.dest,
+        walkEndM = b.walkEndM,
+        legs = a.legs + b.legs,
+        transferWalkM = a.transferWalkM + b.transferWalkM + a.walkEndM + b.walkStartM,
+        fixedMinutes = (a.fixedMinutes ?: a.minutes) + (b.fixedMinutes ?: b.minutes) + 3,
+        fare = listOfNotNull(a.fare, b.fare).takeIf { it.isNotEmpty() }?.sum(),
+        walkPaths = a.walkPaths.orEmpty() + b.walkPaths.orEmpty(),
+        source = "카카오 길찾기 · 경유 ${via.value?.name.orEmpty()}",
+    )
+
     fun edit(field: PlanField?) {
         editing.value = field
         results.value = Load.Idle
     }
-
-    /** 길찾기 결과 정렬 */
-enum class PlanSort(val label: String) { Fast("최단시간"), LessWalk("최소도보"), LessTransfer("최소환승") }
 
 /** 목적지·출발지 검색: 장소(카카오 로컬) + 정류장(내장 DB, 전주 정류장 먼저) */
     fun search(q: String) {
@@ -158,6 +170,19 @@ enum class PlanSort(val label: String) { Fast("최단시간"), LessWalk("최소�
             }
             note.value = if (origin.value == null && me() == null) "현재 위치를 몰라 지도 중심에서 출발합니다." else null
 
+            // 0) 경유지가 있으면: 출발→경유, 경유→도착을 각각 찾아 빠른 것끼리 이어 붙임 (환승 여러 번 포함)
+            val v = via.value
+            if (v != null && com.eunho.tagohub.data.KakaoRoutes.available) {
+                val (_, a) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, v.lat, v.lng) }
+                val (_, b) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(v.lat, v.lng, d.lat, d.lng) }
+                val joined = a.sortedBy { it.minutes }.take(3).flatMap { x -> b.sortedBy { it.minutes }.take(3).map { y -> joinVia(x, y) } }
+                if (joined.isNotEmpty()) {
+                    plans.value = Load.Ok(joined.sortedBy { it.minutes })
+                    canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(v.lat, v.lng), LatLng(d.lat, d.lng)))
+                    return@launch
+                }
+                note.value = "경유 경로를 찾지 못해 바로 가는 길을 보여줍니다."
+            }
             // 1) 카카오 대중교통 길찾기 (전국, 버스·지하철·환승·요금·실제 경로). 결과가 있으면 그걸로 끝
             if (com.eunho.tagohub.data.KakaoRoutes.available) {
                 val (status, kakao) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, d.lat, d.lng) }
@@ -417,3 +442,6 @@ enum class PlanSort(val label: String) { Fast("최단시간"), LessWalk("최소�
         val MARK_END = 0xFFD7262E.toInt()
     }
 }
+
+/** 길찾기 결과 정렬 (최단시간·최소도보·최소환승) — 화면에서도 쓰므로 파일 최상위 */
+enum class PlanSort(val label: String) { Fast("최단시간"), LessWalk("최소도보"), LessTransfer("최소환승") }

@@ -133,7 +133,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 지도에서 고른 곳 (꾹 누른 곳, 정류장·역이 아닌 POI) — 출발·도착으로 쓰기 */
-    data class PickedPlace(val name: String, val sub: String?, val lat: Double, val lng: Double)
+    data class PickedPlace(val name: String, val sub: String?, val lat: Double, val lng: Double, val kind: com.eunho.tagohub.ui.ModeJump.Kind? = null,
+                           val category: String? = null, val phone: String? = null, val url: String? = null)
+
+    /** 지도를 만지거나 움직이면 검색창 키보드를 내림 */
+    val hideKeyboard = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    fun onMapTouched() { hideKeyboard.tryEmit(Unit) }
+
+    /** 검색창의 장소 검색 (카카오 키워드 검색 — REST 키 필요) */
+    suspend fun searchPlaces(q: String): List<com.eunho.tagohub.data.Place2> =
+        if (q.isBlank()) emptyList() else com.eunho.tagohub.data.PlaceSearch.search(q, me?.let { LatLng(it.first, it.second) } ?: lastView?.let { LatLng(it.first, it.second) })
+
+    /** 검색 결과의 장소를 누름 → 지도 이동 + 출발·경유·도착·정보 카드 */
+    fun pickPlace(p: com.eunho.tagohub.data.Place2) {
+        picked.value = PickedPlace(p.name, p.address, p.lat, p.lng, com.eunho.tagohub.ui.ModeJump.kindOf(p.name), p.category, p.phone, p.url)
+        canvas?.setPin(p.lat, p.lng)
+        canvas?.moveTo(p.lat, p.lng, null)
+    }
     val picked = MutableStateFlow<PickedPlace?>(null)
 
     /** 카카오 지도의 POI 를 누름: 정류장이면 정류장, 지하철역이면 역, 아니면 출발·도착 고르기 */
@@ -157,8 +173,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
-            picked.value = PickedPlace(name.ifBlank { "선택한 장소" }, null, lat, lng)
+            // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게
+            val first = PickedPlace(name.ifBlank { "선택한 장소" }, null, lat, lng, com.eunho.tagohub.ui.ModeJump.kindOf(name))
+            picked.value = first
             canvas?.setPin(lat, lng)
+            // 그곳 정보 (주소·분류·전화·카카오 상세): 이름으로 근처 장소 검색
+            val info = runCatching { com.eunho.tagohub.data.PlaceSearch.search(name, LatLng(lat, lng)) }.getOrNull()
+                ?.firstOrNull { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) < 150 }
+            if (info != null && picked.value === first) picked.value = first.copy(sub = info.address, category = info.category, phone = info.phone, url = info.url)
         }
     }
 
@@ -179,6 +201,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val point = PlanPoint(p.name, p.sub, p.lat, p.lng)
         openPlanner()
         if (asOrigin) trip.origin.value = point else trip.dest.value = point
+        closePick()
+        if (trip.dest.value != null) trip.plan()
+    }
+
+    /** 고른 기차역·터미널·공항을 그 시간표의 출발지(asOrigin)·도착지로 */
+    fun jumpPicked(asOrigin: Boolean) {
+        val p = picked.value ?: return
+        val k = p.kind ?: return
+        com.eunho.tagohub.ui.ModeJump.request.value = com.eunho.tagohub.ui.ModeJump.Jump(k, p.name, asOrigin)
+        closePick()
+    }
+
+    /** 고른 곳을 경유지로 → 길찾기 */
+    fun usePickedAsVia() {
+        val p = picked.value ?: return
+        openPlanner()
+        trip.via.value = PlanPoint(p.name, p.sub, p.lat, p.lng)
         closePick()
         if (trip.dest.value != null) trip.plan()
     }
@@ -747,12 +786,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 canvas?.setBuses(emptyList())
             }
             MapPanel.Stop -> {
+                // 정류장 ✕ = 정류장 해제 (예전에 본 역·열차가 다시 나오지 않게)
                 selected.value = null
                 pushStops()
-            }
-            MapPanel.Station -> {
                 station.value = null
                 pushSelectedStation()
+                trainView.value = null
+                canvas?.selectTrain(null)
+            }
+            MapPanel.Station -> {
+                // 역 ✕ = 역 해제 (예전 정류장·노선이 다시 나오지 않게)
+                station.value = null
+                pushSelectedStation()
+                selected.value = null
+                pushStops()
+                route.value = null
+                canvas?.setRoute(null, emptyList(), null)
+                canvas?.setBuses(emptyList())
             }
             MapPanel.Train -> {
                 trainView.value = null

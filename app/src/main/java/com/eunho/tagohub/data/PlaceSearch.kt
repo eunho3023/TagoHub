@@ -9,7 +9,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-data class Place2(val name: String, val address: String?, val lat: Double, val lng: Double)
+data class Place2(val name: String, val address: String?, val lat: Double, val lng: Double,
+    val category: String? = null, val phone: String? = null, val url: String? = null)
 
 /**
  * 장소 이름 검색 (카카오 로컬 API, 키워드로 장소 검색). 키는 같은 카카오 앱의 REST API 키(KAKAO_REST_KEY).
@@ -133,4 +134,68 @@ object KakaoExtra {
         KakaoLocal.COORD2ADDRESS_URL.toHttpUrl().newBuilder()
             .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
     )?.let(KakaoLocal::addressName)
+}
+
+/** 한국공항공사 국제선 운항 스케줄 (공공데이터포털 인증키 = TAGO_SERVICE_KEY) */
+object KacIntlClient {
+    private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+
+    private suspend fun fetch(dep: String, arr: String, date: java.time.LocalDate): List<KacIntl.Flight> = withContext(Dispatchers.IO) {
+        val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+        val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
+        val out = ArrayList<KacIntl.Flight>()
+        for (page in 1..5) {
+            val url = KacIntl.URL.toHttpUrl().newBuilder()
+                .addEncodedQueryParameter("serviceKey", key)
+                .addQueryParameter("type", "json").addQueryParameter("pageNo", page.toString()).addQueryParameter("numOfRows", "1000")
+                .addQueryParameter("schDate", date.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE))
+                .addQueryParameter("schDeptCityCode", dep).addQueryParameter("schArrvCityCode", arr)
+                .build()
+            val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
+            val got = KacIntl.parse(body)
+            out += got
+            val total = Regex("\"totalCount\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            if (got.isEmpty() || out.size >= total) break
+        }
+        out
+    }
+
+    /** dep→arr 의 date 운항편. 출발이 한국공항공사 공항이면 출발편(OUT), 아니면 도착편(IN) */
+    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
+        if (dep == "ICN" || arr == "ICN") return@runCatching icn(dep, arr, date)
+        val outbound = KacIntl.isKac(dep)
+        if (!outbound && !KacIntl.isKac(arr)) error("출발·도착 중 하나는 인천·김포·김해·제주·청주·대구·무안·양양이어야 합니다")
+        var rows = fetch(dep, arr, date)
+        if (rows.isEmpty() && !outbound) rows = fetch(arr, dep, date)   // 도착편 조회 방식이 다를 때를 대비
+        val mine = rows.filter { f -> if (outbound) f.out && f.airportCode == dep && f.cityCode == arr else !f.out && f.airportCode == arr && f.cityCode == dep }
+        KacIntl.toTrips(KacIntl.forDate(mine, date), date)
+    }.fold({ com.eunho.tagohub.core.TagoResult.Success(it) }, { com.eunho.tagohub.core.TagoResult.Error(it.message ?: "국제선 조회 실패") })
+
+    /** 인천공항 실시간 운항 현황 (조회일 기준 -3일 ~ +6일) */
+    private suspend fun icn(dep: String, arr: String, date: java.time.LocalDate): List<Trip> = withContext(Dispatchers.IO) {
+        val today = java.time.LocalDate.now()
+        if (date.isBefore(today.minusDays(3)) || date.isAfter(today.plusDays(6))) error("인천공항은 오늘 기준 3일 전부터 6일 후까지만 조회됩니다")
+        val departure = dep == "ICN"
+        val other = if (departure) arr else dep
+        val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+        val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
+        val url = (IcnFlights.BASE + if (departure) "/getFltDeparturesDeOdp" else "/getFltArrivalsDeOdp").toHttpUrl().newBuilder()
+            .addEncodedQueryParameter("serviceKey", key)
+            .addQueryParameter("type", "json").addQueryParameter("numOfRows", "1000").addQueryParameter("pageNo", "1")
+            .addQueryParameter("searchdtCode", "S").addQueryParameter("searchDate", date.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE))
+            .addQueryParameter("searchFrom", "0000").addQueryParameter("searchTo", "2400")
+            .addQueryParameter("passengerOrCargo", "P").addQueryParameter("airportCode", other)
+            .build()
+        val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
+        IcnFlights.toTrips(IcnFlights.parse(body).filter { it.airportCode == other }, departure, date)
+    }
+}
+
+/** 공지사항 받기 (깃허브 notices.json) */
+object NoticeClient {
+    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
+    suspend fun load(): List<Notices.Notice> = withContext(Dispatchers.IO) {
+        runCatching { client.newCall(Request.Builder().url(Notices.URL).build()).execute().use { Notices.parse(it.body?.string().orEmpty()) } }
+            .getOrDefault(emptyList())
+    }
 }

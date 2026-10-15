@@ -40,6 +40,18 @@ class TimetableController(
         }
     }
 
+    /** 지도에서 누른 역·터미널·공항 이름으로 출발지(asOrigin) 또는 도착지를 채움. 못 찾으면 false */
+    suspend fun jumpTo(name: String, asOrigin: Boolean): Boolean {
+        val key = name.replace(Regex("\\(.*?\\)"), "")
+            .replace(Regex("(국제공항|공항|종합버스터미널|고속버스터미널|시외버스터미널|버스터미널|터미널|역)"), " ").trim()
+            .ifEmpty { name }
+        val places = (placeLoader(key) as? com.eunho.tagohub.core.TagoResult.Success)?.data.orEmpty()
+        // 이름이 비슷한 것만 (전에는 못 찾으면 목록 첫 번째를 넣어서 엉뚱한 공항·역이 출발지가 됐음)
+        val p = places.firstOrNull { com.eunho.tagohub.data.PoiMatch.similar(it.name, name) || com.eunho.tagohub.data.PoiMatch.similar(it.name, key) } ?: return false
+        if (asOrigin) setDep(p) else setArr(p)
+        return true
+    }
+
     fun setDep(p: Place) { dep.value = p; search() }
     fun setArr(p: Place) { arr.value = p; search() }
     fun setDate(d: LocalDate) { date.value = d; search() }

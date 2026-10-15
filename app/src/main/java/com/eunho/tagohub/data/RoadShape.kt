@@ -192,6 +192,27 @@ object Shapes {
         return out.takeIf { it.size >= 2 }
     }
 
+    /**
+     * 꺾이는 곳을 부드럽게 (Chaikin 2번). 각 꼭짓점을 양옆 1/4 지점 두 개로 바꿔 모서리를 둥글게 — 처음·끝 점은 그대로.
+     * 점이 너무 많으면(이미 촘촘한 도로 경로) 그대로.
+     */
+    fun smooth(path: List<LatLng>, rounds: Int = 2): List<LatLng> {
+        var p = path
+        if (p.size < 3 || p.size > 4000) return p
+        repeat(rounds) {
+            val out = ArrayList<LatLng>(p.size * 2)
+            out += p.first()
+            for (i in 0 until p.size - 1) {
+                val a = p[i]; val b = p[i + 1]
+                out += LatLng(a.lat * 0.75 + b.lat * 0.25, a.lng * 0.75 + b.lng * 0.25)
+                out += LatLng(a.lat * 0.25 + b.lat * 0.75, a.lng * 0.25 + b.lng * 0.75)
+            }
+            out += p.last()
+            p = out
+        }
+        return p
+    }
+
     /** 이 선이 정류장들 곁(maxM 안)을 모두 지나는지 — 카카오 경로가 이 노선 길이 맞는지 확인 */
     fun passesStops(path: List<LatLng>, stops: List<LatLng>, maxM: Double): Boolean {
         if (path.size < 2) return false

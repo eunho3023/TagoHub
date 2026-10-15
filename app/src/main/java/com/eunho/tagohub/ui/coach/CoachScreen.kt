@@ -118,6 +118,16 @@ class CoachViewModel : ViewModel() {
 
 @Composable
 fun CoachScreen(vm: CoachViewModel = viewModel()) {
+    // 지도에서 고른 터미널: 고속버스에서 먼저 찾고, 없으면 시외버스
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.eunho.tagohub.ui.ModeJump.request.collect { j ->
+            if (j?.kind == com.eunho.tagohub.ui.ModeJump.Kind.Coach) {
+                com.eunho.tagohub.ui.ModeJump.request.value = null
+                if (vm.express.jumpTo(j.name, j.asOrigin)) vm.mode.value = CoachMode.Express
+                else if (vm.suburb.jumpTo(j.name, j.asOrigin)) vm.mode.value = CoachMode.Suburb
+            }
+        }
+    }
     val mode by vm.mode.collectAsStateWithLifecycle()
     val accent = if (mode == CoachMode.Suburb) ModeColor.Suburb else ModeColor.Coach
 

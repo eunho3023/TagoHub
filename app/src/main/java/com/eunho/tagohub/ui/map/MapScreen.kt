@@ -81,6 +81,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.AirportShuttle
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.imePadding
@@ -309,6 +312,7 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                 if (hasLocationPermission(context)) locate()
                 else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             }) { Icon(Icons.Filled.MyLocation, contentDescription = "내 위치") }
+            // 기차·고속시외·항공·제보·공지사항은 왼쪽 메뉴(☰)로
             // 지하철 실시간 열차는 늘 표시 (버튼 없앰)
             // 지도 종류: 카카오맵 기본·위성
             if (mode == "kakao") {
@@ -386,12 +390,27 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     p.sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    val extra = listOfNotNull(p.category, p.phone).joinToString(" · ")
+                    if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                    p.url?.let { u ->
+                        Text("카카오맵에서 자세히 보기", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { runCatching { uri.openUri(u) } })
+                    }
                 }
                 IconButton(onClick = vm::closePick) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
             Row(Modifier.padding(top = 6.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.usePicked(asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("여기서 출발") }
+                OutlinedButton(onClick = vm::usePickedAsVia, modifier = Modifier.weight(1f)) { Text("경유지로") }
                 Button(onClick = { vm.usePicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("여기로 도착") }
+            }
+            // 기차역·터미널·공항: 그 시간표의 출발지·도착지로
+            p.kind?.let { k ->
+                Row(Modifier.padding(top = 4.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vm.jumpPicked(asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("${k.label} 출발") }
+                    OutlinedButton(onClick = { vm.jumpPicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("${k.label} 도착") }
+                }
             }
         }
     }
@@ -426,7 +445,7 @@ private class Sheet(val frac: MutableFloatState, val maxPx: Float)
 
 private val LocalSheet = compositionLocalOf<Sheet?> { null }
 
-private val SNAPS = listOf(0.22f, 0.45f, 0.88f)
+private val SNAPS = listOf(0.22f, 0.45f, 0.88f, 1.0f)   // 1.0 = 맨 위까지 끌면 전체화면
 
 /** 위쪽 손잡이를 위아래로 끌면 높이가 바뀌고, 놓으면 가까운 높이(작게·중간·크게)에 맞춰진다. 손잡이를 누르면 중간↔크게 */
 @Composable
@@ -435,7 +454,7 @@ private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
     val density = LocalDensity.current
     val heightDp = sheet?.let { with(density) { (it.maxPx * it.frac.floatValue).toDp() } } ?: 340.dp
     val drag = rememberDraggableState { delta ->
-        sheet?.let { it.frac.floatValue = (it.frac.floatValue - delta / it.maxPx).coerceIn(0.15f, 0.92f) }
+        sheet?.let { it.frac.floatValue = (it.frac.floatValue - delta / it.maxPx).coerceIn(0.15f, 1.0f) }
     }
     Surface(
         Modifier
@@ -464,9 +483,7 @@ private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
                             }
                         },
                     )
-                    .clickable {
-                        sheet?.let { s -> s.frac.floatValue = if (s.frac.floatValue < 0.6f) SNAPS.last() else SNAPS[1] }
-                    },
+                    ,
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -829,6 +846,11 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     // 버스·지하철 통합: 검색한 말로 지하철역도 (앱 안 데이터)
     var searched by rememberSaveable { mutableStateOf("") }
     val stations = remember(searched, result) { if (withStations && searched.isNotBlank()) vm.searchStations(searched).take(8) else emptyList() }
+    // 장소도 같이 (카카오 키워드 검색)
+    val places by produceState(emptyList<com.eunho.tagohub.data.Place2>(), searched) { value = vm.searchPlaces(searched) }
+    // 지도를 만지거나 움직이면 키보드 내림
+    val focusMgr = LocalFocusManager.current
+    LaunchedEffect(Unit) { vm.hideKeyboard.collect { focusMgr.clearFocus() } }
     val progress by vm.busProgress.collectAsStateWithLifecycle()
     val names by vm.cityNames.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
@@ -837,6 +859,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { com.eunho.tagohub.ui.ModeJump.drawer.value = true }) { Icon(Icons.Filled.Menu, contentDescription = "메뉴") }
                 SearchBox(
                     query,
                     {
@@ -912,6 +935,32 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                         LazyColumn {
                             r.warning?.let { w ->
                                 item { Text(w, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                            }
+                            if (places.isNotEmpty()) {
+                                item { SectionHeader("장소 ${places.size}") }
+                                items(places.take(8)) { pl ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                vm.pickPlace(pl)
+                                                query = ""
+                                                searched = ""
+                                                vm.clearBusSearch()
+                                                focus.clearFocus()
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Filled.Place, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(pl.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(listOfNotNull(pl.category, pl.address).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
                             }
                             if (stations.isNotEmpty()) {
                                 item { SectionHeader("지하철역 ${stations.size}") }
@@ -1234,6 +1283,13 @@ private fun PlanList(t: TripController) {
             }
         }
         Column(Modifier.fillMaxSize()) {
+        val via by t.via.collectAsStateWithLifecycle()
+        via?.let { v ->
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("경유  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { t.via.value = null; t.plan() }) { Text("경유 빼기") }
+            }
+        }
         Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             PlanSort.entries.forEach { o ->
                 FilterChip(selected = sort == o, onClick = { t.sort.value = o }, label = { Text(o.label) })
