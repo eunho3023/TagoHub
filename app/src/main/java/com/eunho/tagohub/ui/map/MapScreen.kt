@@ -114,6 +114,7 @@ import com.eunho.tagohub.ui.bus.StopRouteItem
 import com.eunho.tagohub.ui.bus.currentLocation
 import com.eunho.tagohub.ui.bus.lastKnownLocation
 import com.eunho.tagohub.ui.bus.hasLocationPermission
+import com.eunho.tagohub.ui.bus.startLocationUpdates
 import com.eunho.tagohub.ui.common.LoadView
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState

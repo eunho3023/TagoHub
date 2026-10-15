@@ -269,8 +269,11 @@ def fetch_tago(fx, targets):
             data[code] = {"name": name, "routes": routes}
             print(f"{name} ({code}): 노선 {len(routes)}개 (호출 {fx.calls})", flush=True)
             if not routes:
-                # 왜 0개인지 보이게: 마지막 응답 앞부분
-                print(f"  ↳ 노선 0개 — 마지막 응답: {(getattr(fx, 'last', '') or '(없음)')[:400]}", flush=True)
+                # 왜 0개인지: 이 지역의 응답 (전에는 시작할 때 받은 인증키 확인 응답(대전)이 잘못 찍혔음)
+                own = CACHE / f"tago/{code}/routes_all_p1.json"
+                txt = own.read_text(encoding='utf-8') if own.exists() else (getattr(fx, 'last', '') or '')
+                why = 'TAGO 에 이 지역 노선 데이터가 없음 (정상 응답, 0개)' if total_count(txt) == 0 else txt[:300]
+                print(f"  ↳ 노선 0개 — {why}", flush=True)
         jobs = [(code, rid, r) for code, c in data.items() for rid, r in c["routes"].items()]
 
         def stops_of(job):
