@@ -335,7 +335,7 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                         // 카카오 지도 겹쳐 보기
                         HorizontalDivider()
                         val on by vm.overlays.collectAsStateWithLifecycle()
-                        listOf("traffic_info" to "교통정보", "bicycle_road" to "자전거도로", "hill_shading" to "지형도").forEach { (id, label) ->
+                        listOf("traffic_info" to "교통정보", "bicycle_road" to "자전거도로", "hill_shading" to "지형도", "cctv" to "CCTV (전국)").forEach { (id, label) ->
                             DropdownMenuItem(
                                 text = { Text(label) },
                                 onClick = { vm.toggleOverlay(id) },
@@ -390,11 +390,12 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     p.sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    p.region?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     val extra = listOfNotNull(p.category, p.phone).joinToString(" · ")
                     if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val uri = androidx.compose.ui.platform.LocalUriHandler.current
                     p.url?.let { u ->
-                        Text("카카오맵에서 자세히 보기", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                        Text(p.linkLabel ?: "카카오맵에서 자세히 보기", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { runCatching { uri.openUri(u) } })
                     }
                 }
@@ -404,6 +405,23 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 OutlinedButton(onClick = { vm.usePicked(asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("여기서 출발") }
                 OutlinedButton(onClick = vm::usePickedAsVia, modifier = Modifier.weight(1f)) { Text("경유지로") }
                 Button(onClick = { vm.usePicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("여기로 도착") }
+            }
+            // 주변 찾기 (카카오 카테고리로 장소 검색)
+            androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->
+                    AssistChip(onClick = { vm.findNearby(code, label) }, label = { Text("주변 $label") })
+                }
+            }
+            val near by vm.nearby.collectAsStateWithLifecycle()
+            near?.let { (label, list) ->
+                Text(if (list.isEmpty()) "1.5km 안에 $label 없음" else "가까운 $label", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+                list.take(6).forEach { pl ->
+                    Row(Modifier.fillMaxWidth().clickable { vm.pickPlace(pl) }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(pl.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        pl.distance?.let { Text(if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it}m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
             }
             // 기차역·터미널·공항: 그 시간표의 출발지·도착지로
             p.kind?.let { k ->
@@ -1289,6 +1307,11 @@ private fun PlanList(t: TripController) {
                 Text("경유  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { t.via.value = null; t.plan() }) { Text("경유 빼기") }
             }
+        }
+        // 자전거·도보 (카카오 경로)
+        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AssistChip(onClick = { t.ride(bicycle = true) }, label = { Text("🚲 자전거") })
+            AssistChip(onClick = { t.ride(bicycle = false) }, label = { Text("🚶 도보") })
         }
         Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             PlanSort.entries.forEach { o ->

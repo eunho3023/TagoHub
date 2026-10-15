@@ -130,25 +130,72 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         overlays.value = if (id in overlays.value) overlays.value - id else overlays.value + id
         prefs.edit().putString("overlays", overlays.value.joinToString(",")).apply()
         canvas?.setOverlays(overlays.value)
+        cctvBox?.let { b -> refreshCctv(cctvLevel, b[0], b[1], b[2], b[3]) }
     }
+    /** CCTV 를 다시 받을 때 쓰는 마지막 지도 범위 */
+    private var cctvBox: DoubleArray? = null
+    private var cctvLevel = 0
 
     /** 지도에서 고른 곳 (꾹 누른 곳, 정류장·역이 아닌 POI) — 출발·도착으로 쓰기 */
     data class PickedPlace(val name: String, val sub: String?, val lat: Double, val lng: Double, val kind: com.eunho.tagohub.ui.ModeJump.Kind? = null,
-                           val category: String? = null, val phone: String? = null, val url: String? = null)
+                           val category: String? = null, val phone: String? = null, val url: String? = null, val region: String? = null,
+                           val linkLabel: String? = null)
+
+    // ── 전국 CCTV (겹쳐 보기 'cctv', 브이월드) ──
+    private var cctvList: List<com.eunho.tagohub.data.Cctv> = emptyList()
+    private var cctvJob: kotlinx.coroutines.Job? = null
+    private fun refreshCctv(level: Int, s: Double, w: Double, n: Double, e: Double) {
+        if ("cctv" !in overlays.value || level < 1) { if (cctvList.isNotEmpty()) { cctvList = emptyList(); canvas?.setCctvs(emptyList()) }; return }
+        cctvJob?.cancel()
+        cctvJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(400)
+            cctvList = com.eunho.tagohub.data.CctvClient.inBox(s, w, n, e)
+            canvas?.setCctvs(cctvList)
+            if (cctvList.isEmpty() && !com.eunho.tagohub.data.CctvClient.available) banner.value = "CCTV: local.properties 에 VWORLD_DATA_KEY 가 없습니다."
+        }
+    }
+
+    fun onCctvClick(id: String) {
+        val c = cctvList.firstOrNull { it.id == id } ?: return
+        picked.value = PickedPlace(c.name, "CCTV", c.lat, c.lng, url = c.url, linkLabel = "CCTV 영상 보기")
+        canvas?.setPin(c.lat, c.lng)
+    }
+
+    /** 장소 카드의 '주변 찾기' 결과 (카카오 카테고리 검색) */
+    val nearby = MutableStateFlow<Pair<String, List<com.eunho.tagohub.data.Place2>>?>(null)
+    fun findNearby(code: String, label: String) {
+        val p = picked.value ?: return
+        viewModelScope.launch { nearby.value = label to com.eunho.tagohub.data.KakaoExtra.category(code, p.lat, p.lng) }
+    }
+
+    /** 고른 곳의 행정동을 채움 */
+    private fun fillRegion(p: PickedPlace) {
+        viewModelScope.launch {
+            val r = com.eunho.tagohub.data.KakaoExtra.region(p.lat, p.lng) ?: return@launch
+            picked.value?.let { cur -> if (cur.lat == p.lat && cur.lng == p.lng) picked.value = cur.copy(region = r) }
+        }
+    }
 
     /** 지도를 만지거나 움직이면 검색창 키보드를 내림 */
     val hideKeyboard = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     fun onMapTouched() { hideKeyboard.tryEmit(Unit) }
 
     /** 검색창의 장소 검색 (카카오 키워드 검색 — REST 키 필요) */
-    suspend fun searchPlaces(q: String): List<com.eunho.tagohub.data.Place2> =
-        if (q.isBlank()) emptyList() else com.eunho.tagohub.data.PlaceSearch.search(q, me?.let { LatLng(it.first, it.second) } ?: lastView?.let { LatLng(it.first, it.second) })
+    suspend fun searchPlaces(q: String): List<com.eunho.tagohub.data.Place2> {
+        if (q.isBlank()) return emptyList()
+        val near = me?.let { LatLng(it.first, it.second) } ?: lastView?.let { LatLng(it.first, it.second) }
+        // 주소처럼 보이면(숫자가 있으면) 주소 검색 결과를 앞에 (카카오 주소로 좌표 변환)
+        val addr = if (q.any(Char::isDigit)) com.eunho.tagohub.data.KakaoExtra.address(q) else emptyList()
+        return addr + com.eunho.tagohub.data.PlaceSearch.search(q, near)
+    }
 
     /** 검색 결과의 장소를 누름 → 지도 이동 + 출발·경유·도착·정보 카드 */
     fun pickPlace(p: com.eunho.tagohub.data.Place2) {
         picked.value = PickedPlace(p.name, p.address, p.lat, p.lng, com.eunho.tagohub.ui.ModeJump.kindOf(p.name), p.category, p.phone, p.url)
         canvas?.setPin(p.lat, p.lng)
         canvas?.moveTo(p.lat, p.lng, null)
+        nearby.value = null
+        picked.value?.let(::fillRegion)
     }
     val picked = MutableStateFlow<PickedPlace?>(null)
 
@@ -176,6 +223,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게
             val first = PickedPlace(name.ifBlank { "선택한 장소" }, null, lat, lng, com.eunho.tagohub.ui.ModeJump.kindOf(name))
             picked.value = first
+            nearby.value = null
+            fillRegion(first)
             canvas?.setPin(lat, lng)
             // 그곳 정보 (주소·분류·전화·카카오 상세): 이름으로 근처 장소 검색
             val info = runCatching { com.eunho.tagohub.data.PlaceSearch.search(name, LatLng(lat, lng)) }.getOrNull()
@@ -188,6 +237,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun onMapLongPress(lat: Double, lng: Double) {
         val p = PickedPlace("선택한 위치", "주소 확인 중…", lat, lng)
         picked.value = p
+        nearby.value = null
+        fillRegion(p)
         canvas?.setPin(lat, lng)
         viewModelScope.launch {
             val name = com.eunho.tagohub.data.KakaoExtra.placeName(lat, lng)
@@ -223,6 +274,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closePick() {
+        nearby.value = null
         picked.value = null
         canvas?.setPin(null, null)
     }
@@ -442,6 +494,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onMoveEnd(lat: Double, lng: Double, zoom: Double, level: Int, s: Double, w: Double, n: Double, e: Double) {
+        cctvBox = doubleArrayOf(s, w, n, e); cctvLevel = level
+        refreshCctv(level, s, w, n, e)
         lastView = Triple(lat, lng, zoom)
         saveView(lat, lng, zoom)
         lastLevel = level

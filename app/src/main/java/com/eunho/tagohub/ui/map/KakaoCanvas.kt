@@ -169,6 +169,7 @@ class KakaoCanvas(
                     STOP_LAYER, ROUTE_PIN_LAYER -> vm.onStopClick(id)
                     STATION_LAYER -> vm.onStationClick(id)
                     TRAIN_LAYER -> vm.onTrainClick(id)
+                    CCTV_LAYER -> vm.onCctvClick(id)
                 }
             }
             true
@@ -197,7 +198,7 @@ class KakaoCanvas(
         applyOverlays()
         vm.onMapMode("kakao")
         lastZoom = km.zoomLevel
-        drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawPin()
+        drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawPin(); drawCctvs()
         drawVehicles(busPins, buses, BUS_LAYER, null)
         drawVehicles(trainPins, trains, TRAIN_LAYER, selectedTrain)
         pendingCamera?.invoke()
@@ -523,6 +524,24 @@ class KakaoCanvas(
         }
     }
 
+    private var cctvs: List<com.eunho.tagohub.data.Cctv> = emptyList()
+    private val cctvLabels = ArrayList<Label>()
+
+    override fun setCctvs(list: List<com.eunho.tagohub.data.Cctv>) {
+        cctvs = list
+        drawCctvs()
+    }
+
+    private fun drawCctvs() {
+        cctvLabels.forEach { runCatching { it.remove() } }
+        cctvLabels.clear()
+        val l = layer(CCTV_LAYER) ?: return
+        val st = styles("cctv") { LabelStyles.from(icon(icons.cctv(), 0.5f, 0.5f)) }
+        for (c in cctvs) {
+            l.addLabel(LabelOptions.from(KLatLng.from(c.lat, c.lng)).setStyles(st).setTag(c.id))?.let { cctvLabels += it }
+        }
+    }
+
     override fun setOverlays(ids: Set<String>) {
         overlays = ids
         applyOverlays()
@@ -587,12 +606,13 @@ class KakaoCanvas(
         private const val TRAIN_LAYER = "trains"
         private const val ME_LAYER = "me"
         private const val PIN_LAYER = "pin"
+        private const val CCTV_LAYER = "cctv"
         /** 카카오 지도 오버레이 id (KakaoMap.showOverlay(String) 문서) */
         val OVERLAY_IDS = listOf("traffic_info", "bicycle_road", "hill_shading")
         private const val ROUTE_LAYER = "routeLines"
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
-            BUS_LAYER to 400, TRAIN_LAYER to 450, PIN_LAYER to 480, ME_LAYER to 500)
+            BUS_LAYER to 400, TRAIN_LAYER to 450, PIN_LAYER to 480, CCTV_LAYER to 350, ME_LAYER to 500)
         private val STOP_GREEN = 0xFF2E8B57.toInt()
         private val TRANSFER_RING = 0xFF333F4F.toInt()
 

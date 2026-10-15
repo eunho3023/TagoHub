@@ -131,9 +131,19 @@ object KakaoTransit {
     }
 }
 
-/** 카카오맵 REST API — 도보 경로 조회 (GET https://dapi.kakao.com/v2/routing/walk). route.legs[].steps[].path.points = [[x, y], …] */
+/** 카카오맵 REST API — 도보·자전거 경로 조회 (routing/walk, routing/bicycle 같은 형식). route.legs[].steps[].path.points = [[x, y], …] */
 object KakaoWalk {
     const val URL = "https://dapi.kakao.com/v2/routing/walk"
+    const val BICYCLE_URL = "https://dapi.kakao.com/v2/routing/bicycle"
+
+    /** route.properties 의 총 거리(m)·총 시간(초) */
+    fun totals(body: String): Pair<Int, Int>? {
+        val root = runCatching { com.eunho.tagohub.core.MiniJson.parse(body) }.getOrNull() as? Map<*, *> ?: return null
+        val p = (root["route"] as? Map<*, *>)?.get("properties") as? Map<*, *> ?: return null
+        val d = p["totalDistance"]?.toString()?.toDoubleOrNull()?.toInt() ?: return null
+        val t = p["totalTime"]?.toString()?.toDoubleOrNull()?.toInt() ?: return null
+        return d to t
+    }
 
     /** status 와 전체 경로 좌표 (OK 가 아니면 빈 목록) */
     fun parse(body: String): Pair<String, List<LatLng>> {

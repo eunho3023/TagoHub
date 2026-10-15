@@ -90,6 +90,21 @@ class TripController(
         canvas()?.setTrip(emptyList(), emptyList())
     }
 
+    /** 카카오 자전거(bicycle)·도보 경로를 지도에 그리고 시간·거리를 알림 */
+    fun ride(bicycle: Boolean) {
+        val d = dest.value ?: return
+        val o = origin.value?.let { LatLng(it.lat, it.lng) } ?: me() ?: center() ?: return
+        scope.launch {
+            val r = com.eunho.tagohub.data.KakaoExtra.ride(o, LatLng(d.lat, d.lng), bicycle)
+            if (r == null) { note.value = (if (bicycle) "자전거" else "도보") + " 경로를 찾지 못했습니다 (카카오 REST 키 확인)"; return@launch }
+            val (path, m, sec) = r
+            canvas()?.setTrip(listOf(TripSegment(path, if (bicycle) 0xFF2E7D32.toInt() else WALK, !bicycle)),
+                listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)))
+            canvas()?.fitTo(path)
+            note.value = (if (bicycle) "🚲 자전거 " else "🚶 도보 ") + "약 ${(sec + 59) / 60}분 · " + (if (m >= 1000) "%.1fkm".format(m / 1000.0) else "${m}m") + " (카카오)"
+        }
+    }
+
     /** 경유: 앞 경로 + 뒤 경로 (경유지에서 내려 다시 타는 걷기와 3분 여유 포함) */
     private fun joinVia(a: TripPlan, b: TripPlan): TripPlan = a.copy(
         dest = b.dest,

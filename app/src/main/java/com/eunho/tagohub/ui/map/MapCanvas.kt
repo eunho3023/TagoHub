@@ -36,6 +36,8 @@ data class TripMark(val lat: Double, val lng: Double, val label: String, val col
 interface MapCanvas {
     /** 지도 겹쳐 보기: 카카오 오버레이 id ("traffic_info" 교통정보, "bicycle_road" 자전거도로, "hill_shading" 지형도) */
     fun setOverlays(ids: Set<String>) {}
+    /** 전국 CCTV (겹쳐 보기 'CCTV') */
+    fun setCctvs(list: List<com.eunho.tagohub.data.Cctv>) {}
     /** 지도에서 꾹 누르거나 고른 곳 표시 (null 이면 지움) */
     fun setPin(lat: Double?, lng: Double?) {}
     /** 길찾기 경로 (빈 목록이면 지움) */

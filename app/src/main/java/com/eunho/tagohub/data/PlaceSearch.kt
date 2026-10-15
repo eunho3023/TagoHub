@@ -10,7 +10,7 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 data class Place2(val name: String, val address: String?, val lat: Double, val lng: Double,
-    val category: String? = null, val phone: String? = null, val url: String? = null)
+    val category: String? = null, val phone: String? = null, val url: String? = null, val distance: Int? = null)
 
 /**
  * 장소 이름 검색 (카카오 로컬 API, 키워드로 장소 검색). 키는 같은 카카오 앱의 REST API 키(KAKAO_REST_KEY).
@@ -129,6 +129,35 @@ object KakaoExtra {
             .addQueryParameter("end_x", b.lng.toString()).addQueryParameter("end_y", b.lat.toString()).build()
     )?.let(KakaoWalk::parse)?.takeIf { it.first == "OK" && it.second.size >= 2 }?.second
 
+    /** 주소로 좌표 변환 */
+    suspend fun address(q: String): List<Place2> = get(
+        KakaoLocal.ADDRESS_URL.toHttpUrl().newBuilder().addQueryParameter("query", q).addQueryParameter("size", "5").build()
+    )?.let(KakaoLocal::parseAddress).orEmpty()
+
+    /** 좌표로 행정구역 (행정동) */
+    suspend fun region(lat: Double, lng: Double): String? = get(
+        KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
+    )?.let(KakaoLocal::regionName)
+
+    /** 카테고리로 장소 검색 (주변 1.5km, 가까운 순) */
+    suspend fun category(code: String, lat: Double, lng: Double): List<Place2> = get(
+        KakaoLocal.CATEGORY_URL.toHttpUrl().newBuilder().addQueryParameter("category_group_code", code)
+            .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString())
+            .addQueryParameter("radius", "1500").addQueryParameter("sort", "distance").addQueryParameter("size", "15").build()
+    )?.let(KakaoLocal::parse).orEmpty()
+
+    /** 자전거(bicycle=true)·도보 경로: (경로, 거리 m, 시간 초) */
+    suspend fun ride(a: LatLng, b: LatLng, bicycle: Boolean): Triple<List<LatLng>, Int, Int>? {
+        val body = get(
+            (if (bicycle) KakaoWalk.BICYCLE_URL else KakaoWalk.URL).toHttpUrl().newBuilder()
+                .addQueryParameter("start_x", a.lng.toString()).addQueryParameter("start_y", a.lat.toString())
+                .addQueryParameter("end_x", b.lng.toString()).addQueryParameter("end_y", b.lat.toString()).build()
+        ) ?: return null
+        val (status, path) = KakaoWalk.parse(body)
+        val (d, t) = KakaoWalk.totals(body) ?: return null
+        return if (status == "OK" && path.size >= 2) Triple(path, d, t) else null
+    }
+
     /** 지도에서 꾹 누른 곳 이름: 건물 이름 → 도로명 주소 → 지번 주소 */
     suspend fun placeName(lat: Double, lng: Double): String? = get(
         KakaoLocal.COORD2ADDRESS_URL.toHttpUrl().newBuilder()
@@ -197,5 +226,27 @@ object NoticeClient {
     suspend fun load(): List<Notices.Notice> = withContext(Dispatchers.IO) {
         runCatching { client.newCall(Request.Builder().url(Notices.URL).build()).execute().use { Notices.parse(it.body?.string().orEmpty()) } }
             .getOrDefault(emptyList())
+    }
+}
+
+/** 전국 CCTV (브이월드 2D 데이터 API) — 지금 지도 범위 */
+object CctvClient {
+    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+    val available: Boolean get() = BuildConfig.VWORLD_DATA_KEY.isNotBlank()
+
+    suspend fun inBox(s: Double, w: Double, n: Double, e: Double): List<Cctv> = withContext(Dispatchers.IO) {
+        if (!available) return@withContext emptyList()
+        runCatching {
+            val b = CctvParse.URL.toHttpUrl().newBuilder()
+                .addQueryParameter("service", "data").addQueryParameter("request", "GetFeature").addQueryParameter("data", "LT_P_UTISCCTV")
+                .addQueryParameter("key", BuildConfig.VWORLD_DATA_KEY.trim()).addQueryParameter("format", "json")
+                .addQueryParameter("size", "1000").addQueryParameter("page", "1").addQueryParameter("crs", "EPSG:4326")
+                .addQueryParameter("geomFilter", "BOX($w,$s,$e,$n)")
+            BuildConfig.VWORLD_DOMAIN.trim().takeIf { it.isNotEmpty() }?.let { b.addQueryParameter("domain", it) }
+            client.newCall(Request.Builder().url(b.build()).build()).execute().use { res ->
+                val body = res.body?.string().orEmpty()
+                CctvParse.parse(body).also { if (it.isEmpty()) Log.w("TagoMap", "CCTV 0개: ${body.take(300)}") }
+            }
+        }.onFailure { Log.w("TagoMap", "CCTV 실패: ${it.message}") }.getOrDefault(emptyList())
     }
 }

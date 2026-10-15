@@ -31,6 +31,9 @@ android {
         buildConfigField("String", "KAKAO_NATIVE_KEY", "\"${localProps.getProperty("KAKAO_NATIVE_KEY", "")}\"")
         // 카카오 로컬 API (길찾기 장소 이름 검색) — 같은 카카오 앱의 REST API 키
         buildConfigField("String", "KAKAO_REST_KEY", "\"${localProps.getProperty("KAKAO_REST_KEY", "")}\"")
+        // 브이월드 2D 데이터 API (전국 CCTV, LT_P_UTISCCTV) — 키 발급 때 등록한 서비스 URL 이 domain
+        buildConfigField("String", "VWORLD_DATA_KEY", "\"${localProps.getProperty("VWORLD_DATA_KEY", "")}\"")
+        buildConfigField("String", "VWORLD_DOMAIN", "\"${localProps.getProperty("VWORLD_DOMAIN", "")}\"")
         // 정류장·노선 데이터 저장소 안내 파일 (GitHub Release data-latest 의 manifest.json, pipeline/README.md). local.properties 로 바꿀 수 있음
         buildConfigField("String", "DATA_MANIFEST_URL", "\"${localProps.getProperty("DATA_MANIFEST_URL", "https://github.com/eunho3023/TagoHub/releases/download/data-latest/manifest.json")}\"")
     }
