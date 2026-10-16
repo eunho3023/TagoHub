@@ -4,6 +4,12 @@ import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.data.ExitInfo
+import com.eunho.tagohub.data.Graph
+import com.eunho.tagohub.data.KricRouteStation
+import com.eunho.tagohub.data.KricSubwayCodes
+import com.eunho.tagohub.data.KricSubwayRepository
+import com.eunho.tagohub.data.KricSubwayRegion
+import com.eunho.tagohub.data.KricTrainStop
 import com.eunho.tagohub.data.SeoulSubwayRepository
 import com.eunho.tagohub.data.StationGroup
 import com.eunho.tagohub.data.StationName
@@ -20,8 +26,8 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
-enum class DayType(val code: String, val label: String) {
-    Weekday("01", "평일"), Saturday("02", "토요일"), Sunday("03", "일요일·공휴일");
+enum class DayType(val code: String, val kricCode: String, val label: String) {
+    Weekday("01", "8", "평일"), Saturday("02", "7", "토요일"), Sunday("03", "9", "일요일·공휴일");
 
     companion object {
         /** 공휴일은 판별하지 않는다 (요일만) */
@@ -33,7 +39,9 @@ enum class DayType(val code: String, val label: String) {
     }
 }
 
-enum class StationTab(val label: String) { Live("실시간 도착"), Timetable("시간표"), Exits("출구정보") }
+enum class StationTab(val label: String) { Live("실시간 도착"), Timetable("시간표"), Route("노선"), Exits("출구정보") }
+
+enum class SubwayTimetableSource { Tago, Kric }
 
 /** 지도에서 역을 눌렀을 때의 상세 상태 (역 하나당 인스턴스 하나) */
 class StationDetail(val group: StationGroup) {
@@ -45,26 +53,33 @@ class StationDetail(val group: StationGroup) {
     val arrivals = MutableStateFlow<Load<List<SubwayArrival>>>(Load.Loading)
     val arrivalsUpdated = MutableStateFlow<LocalTime?>(null)
 
-    // 시간표·출구 (TAGO SubwayInfo): 노선마다 역 ID 가 따로라 노선 선택이 필요
+    // TAGO 역별 시간표·출구, KRIC 열차별 시간표·노선정보: 노선마다 역 ID 가 달라 노선 선택이 필요
     val tagoLines = MutableStateFlow<Load<List<SubwayStation>>>(Load.Loading)
     val line = MutableStateFlow<SubwayStation?>(null)
     val dayType = MutableStateFlow(DayType.today())
     val upDown = MutableStateFlow("U")
     val schedule = MutableStateFlow<Load<List<SubwayDeparture>>>(Load.Idle)
+    val timetableSource = MutableStateFlow(SubwayTimetableSource.Tago)
+    val kricTimetable = MutableStateFlow<Load<List<KricTrainStop>>>(Load.Idle)
+    val kricRoute = MutableStateFlow<Load<List<KricRouteStation>>>(Load.Idle)
+    val kricCodes = MutableStateFlow<KricSubwayCodes?>(null)
     val exits = MutableStateFlow<Load<List<ExitInfo>>>(Load.Idle)
 
     internal var scheduleJob: Job? = null
+    internal var kricTimetableJob: Job? = null
+    internal var kricRouteJob: Job? = null
     internal var exitsJob: Job? = null
 }
 
 /**
  * 역 상세 동작. 지도 탭과 지하철 탭이 같이 쓴다.
- * 시간표·출구정보는 TAGO, 실시간 도착은 서울 API.
+ * 역별 시간표·출구는 TAGO, 열차별 시각·노선정보는 KRIC, 실시간 도착은 서울 API.
  */
 class StationDetailController(
     private val scope: CoroutineScope,
     private val tago: TagoRepository,
     private val seoul: SeoulSubwayRepository,
+    private val kric: KricSubwayRepository = Graph.kricSubway,
 ) {
     fun open(group: StationGroup): StationDetail {
         val d = StationDetail(group)
@@ -108,17 +123,36 @@ class StationDetailController(
     fun setTab(d: StationDetail, t: StationTab) {
         d.tab.value = t
         if (t == StationTab.Exits && d.exits.value !is Load.Ok) loadExits(d)
+        if (t == StationTab.Route && d.kricRoute.value !is Load.Ok) loadKricRoute(d)
+        if (t == StationTab.Timetable && d.timetableSource.value == SubwayTimetableSource.Kric &&
+            d.kricTimetable.value !is Load.Ok
+        ) loadKricTimetable(d)
     }
 
     fun selectLine(d: StationDetail, s: SubwayStation) {
         d.line.value = s
         d.exits.value = Load.Idle
+        d.kricTimetableJob?.cancel()
+        d.kricRouteJob?.cancel()
+        d.kricTimetable.value = Load.Idle
+        d.kricRoute.value = Load.Idle
+        d.kricCodes.value = null
         loadSchedule(d)
+        if (d.timetableSource.value == SubwayTimetableSource.Kric) loadKricTimetable(d)
+        if (d.tab.value == StationTab.Route) loadKricRoute(d)
         if (d.tab.value == StationTab.Exits) loadExits(d)
     }
 
-    fun setDay(d: StationDetail, t: DayType) { d.dayType.value = t; loadSchedule(d) }
+    fun setDay(d: StationDetail, t: DayType) {
+        d.dayType.value = t
+        if (d.timetableSource.value == SubwayTimetableSource.Kric) loadKricTimetable(d) else loadSchedule(d)
+    }
     fun setUpDown(d: StationDetail, v: String) { d.upDown.value = v; loadSchedule(d) }
+
+    fun setTimetableSource(d: StationDetail, source: SubwayTimetableSource) {
+        d.timetableSource.value = source
+        if (source == SubwayTimetableSource.Kric) loadKricTimetable(d) else loadSchedule(d)
+    }
 
     fun loadSchedule(d: StationDetail) {
         val s = d.line.value ?: return
@@ -127,6 +161,56 @@ class StationDetailController(
             d.schedule.value = Load.Loading
             d.schedule.value = tago.subwaySchedule(s.id, d.dayType.value.code, d.upDown.value).toLoad()
         }
+    }
+
+    fun loadKricTimetable(d: StationDetail) {
+        d.kricTimetableJob?.cancel()
+        val s = d.line.value ?: return
+        val regionCode = kricRegionCode(d, s)
+        if (regionCode == null) {
+            d.kricTimetable.value = Load.Fail("이 운영기관의 KRIC 광역권 코드를 찾지 못했습니다.")
+            return
+        }
+        d.kricTimetableJob = scope.launch {
+            d.kricTimetable.value = Load.Loading
+            val route = kric.routeForStation(s, regionCode)
+            d.kricTimetable.value = when (route) {
+                is TagoResult.Error -> route.toLoad()
+                is TagoResult.Success -> {
+                    d.kricCodes.value = route.data.codes
+                    kric.timetable(route.data.codes, d.dayType.value.kricCode).toLoad()
+                }
+            }
+        }
+    }
+
+    fun loadKricRoute(d: StationDetail) {
+        if (d.kricRoute.value is Load.Loading) return
+        d.kricRouteJob?.cancel()
+        val s = d.line.value ?: return
+        val regionCode = kricRegionCode(d, s)
+        if (regionCode == null) {
+            d.kricRoute.value = Load.Fail("이 운영기관의 KRIC 광역권 코드를 찾지 못했습니다.")
+            return
+        }
+        d.kricRoute.value = Load.Loading
+        d.kricRouteJob = scope.launch {
+            d.kricRoute.value = when (val result = kric.routeForStation(s, regionCode)) {
+                is TagoResult.Error -> result.toLoad()
+                is TagoResult.Success -> {
+                    d.kricCodes.value = result.data.codes
+                    Load.Ok(result.data.stations)
+                }
+            }
+        }
+    }
+
+    private fun kricRegionCode(d: StationDetail, station: SubwayStation): String? {
+        val metro = d.group.stations.firstOrNull {
+            StationName.sameLine(station.routeName, it.displayLine) ||
+                StationName.sameLine(station.routeName, it.line)
+        } ?: d.group.stations.firstOrNull()
+        return metro?.let { KricSubwayRegion.fromOperator(it.operator) }
     }
 
     fun loadExits(d: StationDetail) {

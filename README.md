@@ -1,13 +1,14 @@
 # TagoHub — TAGO(1613000) 통합 교통 앱
 
-업로드한 PDF의 국토교통부 TAGO API 전부를 하나의 앱으로 묶었습니다.
+국토교통부 TAGO와 KRIC 철도 Open API 등 공공 교통 API를 하나의 앱으로 묶었습니다.
 Kotlin + Jetpack Compose + Retrofit, 패키지 `com.eunho.tagohub`.
 TagoTransit 과 같은 규칙(`BuildConfig.TAGO_SERVICE_KEY`, `TagoResult`, HTTP/1.1 강제, 페이지 크기 폴백)을 따르므로 모듈 단위로 옮겨 붙일 수 있습니다.
 
 ## 실행
 
 1. `local.properties` 에 `TAGO_SERVICE_KEY=...` 추가 (Encoding/Decoding 키 둘 다 가능)
-2. Android Studio 에서 열고 실행 (minSdk 26, AGP 8.5.2, Kotlin 2.0.20)
+2. 열차별 도시철도 운행정보를 쓰려면 `KRIC_SUBWAY_KEY=...` 도 추가
+3. Android Studio 에서 열고 실행 (minSdk 26, AGP 8.5.2, Kotlin 2.0.20)
 
 data.go.kr 은 서비스마다 활용신청이 따로입니다. 화면에 "서비스 접근 거부 (코드 20)" 이 뜨면 해당 서비스 신청 상태를 확인하세요:
 버스정류소정보 · 버스노선정보 · 버스위치정보 · 버스도착정보 · 지하철정보 · 열차정보 · 국내항공운항정보 · 고속버스정보 · 시외버스정보 · 고속버스도착정보
@@ -69,6 +70,7 @@ TagoTransit 과 같은 구성입니다. WebView·OpenLayers·국토정보플랫�
 - **시간표·출구정보**: TAGO `SubwayInfo`. 표준데이터 역과 TAGO 역을 이름+노선으로 연결합니다
   (`StationName.sameLine`: TAGO "경의중앙"↔"경의중앙선", "공항"↔"공항철도"). 환승역이면 노선 칩으로 고릅니다.
   노선이 하나도 안 맞으면 이름이 같은 TAGO 역을 모두 보여줍니다.
+- 시간표의 **열차별** 보기와 **노선** 탭은 KRIC `trainUseInfo` API 를 사용합니다. TAGO 역 검색 응답에 KRIC 노선 코드가 빠져 있는 경우 KRIC 전체노선정보에서 역 코드를 먼저 확인합니다. `KRIC_SUBWAY_KEY` 가 없으면 해당 화면에 설정 안내가 표시되고 TAGO 시간표는 계속 이용할 수 있습니다.
 - 표준데이터에 없는 노선(예: GTX-A)은 서울역 같은 환승역 상세에서 시간표 노선 칩에 나오지 않습니다.
 
 ### 지하철 (지도)

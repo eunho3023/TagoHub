@@ -549,7 +549,7 @@ class KakaoCanvas(
 
     private fun applyOverlays() {
         val km = map ?: return
-        OVERLAY_IDS.forEach { id -> runCatching { if (id in overlays) km.showOverlay(id) else km.hideOverlay(id) } }
+        OVERLAY_IDS.forEach { (id, ov) -> runCatching { if (id in overlays) km.showOverlay(ov) else km.hideOverlay(ov) } }
     }
 
     override fun setPin(lat: Double?, lng: Double?) {
@@ -608,7 +608,8 @@ class KakaoCanvas(
         private const val PIN_LAYER = "pin"
         private const val CCTV_LAYER = "cctv"
         /** 카카오 지도 오버레이 id (KakaoMap.showOverlay(String) 문서) */
-        val OVERLAY_IDS = listOf("traffic_info", "bicycle_road", "hill_shading")
+        // 안드로이드 공식 MapOverlay: 로드뷰 라인·지형·자전거도로·스카이뷰 하이브리드 (교통정보는 카카오와 협의해야 쓸 수 있음)
+        val OVERLAY_IDS = listOf("bicycle_road" to com.kakao.vectormap.MapOverlay.BICYCLE_ROAD, "hill_shading" to com.kakao.vectormap.MapOverlay.HILLSHADING)
         private const val ROUTE_LAYER = "routeLines"
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,

@@ -63,11 +63,17 @@ object StaticCache {
     private fun hex(s: String) = s.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it) }
 
     fun subwayStations(q: String): List<SubwayStation>? = read("sstn_" + hex(q))?.mapNotNull { r ->
-        SubwayStation(r.getOrNull(0) ?: return@mapNotNull null, r.getOrNull(1).orEmpty(), r.getOrNull(2).orEmpty())
+        val id = r.getOrNull(0) ?: return@mapNotNull null
+        SubwayStation(
+            id,
+            r.getOrNull(1).orEmpty(),
+            r.getOrNull(2).orEmpty(),
+            r.getOrNull(3).orEmpty(),
+        )
     }?.takeIf { it.isNotEmpty() }
 
     fun putSubwayStations(q: String, list: List<SubwayStation>) {
-        if (list.isNotEmpty()) write("sstn_" + hex(q), list.map { listOf(it.id, it.name, it.routeName) })
+        if (list.isNotEmpty()) write("sstn_" + hex(q), list.map { listOf(it.id, it.name, it.routeName, it.routeId) })
     }
 
     fun schedule(stationId: String, day: String, upDown: String): List<SubwayDeparture>? =

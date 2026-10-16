@@ -54,6 +54,18 @@ fun MainScreen() {
         ModeJump.drawer.collect { if (it) { drawerState.open(); ModeJump.drawer.value = false } }
     }
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+    // 홈 화면(열린 창 없음)에서 뒤로 가기 → 앱을 끌지 물어봄 (지도 위 창이 열려 있으면 지도 화면이 먼저 닫음)
+    var askExit by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = panel == null && !drawerState.isOpen) { askExit = true }
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    if (askExit) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { askExit = false },
+            title = { Text("앱을 종료할까요?") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { askExit = false; activity?.finish() }) { Text("종료") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { askExit = false }) { Text("취소") } },
+        )
+    }
     LaunchedEffect(Unit) {
         // 출발/도착 요청은 패널 화면이 받아서 채운 뒤 지움 — 여기서는 패널만 엶
         ModeJump.request.collect { j -> j?.let { panel = it.kind } }

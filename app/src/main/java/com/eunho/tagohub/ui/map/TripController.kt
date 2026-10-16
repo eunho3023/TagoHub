@@ -199,8 +199,10 @@ class TripController(
                 note.value = "경유 경로를 찾지 못해 바로 가는 길을 보여줍니다."
             }
             // 1) 카카오 대중교통 길찾기 (전국, 버스·지하철·환승·요금·실제 경로). 결과가 있으면 그걸로 끝
+            var kakaoStatus: String? = if (com.eunho.tagohub.data.KakaoRoutes.available) null else "REST 키 없음"
             if (com.eunho.tagohub.data.KakaoRoutes.available) {
                 val (status, kakao) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, d.lat, d.lng) }
+                kakaoStatus = status
                 if (kakao.isNotEmpty()) {
                     plans.value = Load.Ok(kakao.sortedBy { it.minutes }.take(10))
                     canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
@@ -229,7 +231,8 @@ class TripController(
             }
             if (ranked.isEmpty() && seoul.isNotEmpty()) ranked = TripPlanner.rank(seoul)
             plans.value = if (ranked.isEmpty()) {
-                Load.Fail("출발지·도착지 ${(lastRadius / 1000).let { if (it >= 1) "${it.toInt()}km" else "${lastRadius.toInt()}m" }} 안의 정류장으로는 직통·1회 환승 경로를 찾지 못했습니다.")
+                Load.Fail("출발지·도착지 ${(lastRadius / 1000).let { if (it >= 1) "${it.toInt()}km" else "${lastRadius.toInt()}m" }} 안의 정류장으로는 직통·1회 환승 경로를 찾지 못했습니다." +
+                    (kakaoStatus?.takeIf { it != "OK" }?.let { " (카카오 길찾기: $it)" } ?: ""))
             } else Load.Ok(ranked)
             if (ranked.isNotEmpty()) canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
         }

@@ -108,7 +108,38 @@ data class ExpArrival(
 )
 
 // ── 지하철 ────────────────────────────────────────────────
-data class SubwayStation(val id: String, val name: String, val routeName: String)
+data class SubwayStation(
+    val id: String,
+    val name: String,
+    val routeName: String,
+    val routeId: String = "",
+)
+
+data class KricRouteStation(
+    val regionCode: String,
+    val routeCode: String,
+    val routeName: String,
+    val stationOrder: Int,
+    val operatorCode: String,
+    val lineCode: String,
+    val stationCode: String,
+    val stationName: String,
+)
+
+data class KricStationRoute(
+    val codes: KricSubwayCodes,
+    val stations: List<KricRouteStation>,
+)
+
+data class KricTrainStop(
+    val operatorCode: String,
+    val trainNo: String,
+    val dayCode: String,
+    val stationCode: String,
+    val lineCode: String,
+    val arrivalTime: String?,
+    val departureTime: String?,
+)
 
 data class SubwayDeparture(
     /** 운행일 기준 분 (00~02시는 +24h) */

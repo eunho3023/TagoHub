@@ -58,6 +58,8 @@ import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoTime
 import com.eunho.tagohub.data.ExitInfo
+import com.eunho.tagohub.data.KricRouteStation
+import com.eunho.tagohub.data.KricTrainStop
 import com.eunho.tagohub.data.SeoulLines
 import com.eunho.tagohub.data.SubwayArrival
 import com.eunho.tagohub.data.SubwayDeparture
@@ -116,6 +118,7 @@ fun StationDetailPanel(
         when (tab) {
             StationTab.Live -> LiveTab(d, onArrivalClick)
             StationTab.Timetable -> TimetableTab(d, c)
+            StationTab.Route -> RouteTab(d, c)
             StationTab.Exits -> ExitsTab(d, c)
         }
     }
@@ -250,34 +253,152 @@ private fun TimetableTab(d: StationDetail, c: StationDetailController) {
     LinePicker(d, c) { line ->
         val day by d.dayType.collectAsStateWithLifecycle()
         val upDown by d.upDown.collectAsStateWithLifecycle()
+        val source by d.timetableSource.collectAsStateWithLifecycle()
         val schedule by d.schedule.collectAsStateWithLifecycle()
+        val kricSchedule by d.kricTimetable.collectAsStateWithLifecycle()
         val lineColor = subwayLineColor(line.routeName)
         Column(Modifier.fillMaxSize()) {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(DayType.entries) { t ->
-                    FilterChip(selected = t == day, onClick = { c.setDay(d, t) }, label = { Text(t.label) })
-                }
-            }
             SingleChoiceSegmentedButtonRow(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
-                listOf("U" to "상행", "D" to "하행").forEachIndexed { i, (code, label) ->
-                    SegmentedButton(
-                        selected = upDown == code,
-                        onClick = { c.setUpDown(d, code) },
-                        shape = SegmentedButtonDefaults.itemShape(i, 2),
-                    ) { Text(label) }
+                listOf(SubwayTimetableSource.Tago to "역별 시간표", SubwayTimetableSource.Kric to "열차별 시각표")
+                    .forEachIndexed { i, (option, label) ->
+                        SegmentedButton(
+                            selected = source == option,
+                            onClick = { c.setTimetableSource(d, option) },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        ) { Text(label) }
+                    }
+            }
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(DayType.entries) { t ->
+                    FilterChip(selected = t == day, onClick = { c.setDay(d, t) }, label = { Text(t.label) })
                 }
             }
-            LoadView(
-                schedule,
-                onRetry = { c.loadSchedule(d) },
-                isEmpty = { it.isEmpty() },
-                emptyText = "이 조건의 시간표가 없습니다. 종착역이면 반대 방향을 확인하세요.",
-            ) { list -> TimetableBoard(list, lineColor, live = day == DayType.today()) }
+            if (source == SubwayTimetableSource.Tago) {
+                SingleChoiceSegmentedButtonRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    listOf("U" to "상행", "D" to "하행").forEachIndexed { i, (code, label) ->
+                        SegmentedButton(
+                            selected = upDown == code,
+                            onClick = { c.setUpDown(d, code) },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        ) { Text(label) }
+                    }
+                }
+            }
+            if (source == SubwayTimetableSource.Tago) {
+                LoadView(
+                    schedule,
+                    onRetry = { c.loadSchedule(d) },
+                    isEmpty = { it.isEmpty() },
+                    emptyText = "이 조건의 시간표가 없습니다. 종착역이면 반대 방향을 확인하세요.",
+                ) { list -> TimetableBoard(list, lineColor, live = day == DayType.today()) }
+            } else {
+                LoadView(
+                    kricSchedule,
+                    onRetry = { c.loadKricTimetable(d) },
+                    isEmpty = { it.isEmpty() },
+                    emptyText = "이 역의 열차별 운행시각 정보가 없습니다.",
+                ) { list -> KricTimetableBoard(list, lineColor) }
+            }
         }
+    }
+}
+
+@Composable
+private fun KricTimetableBoard(list: List<KricTrainStop>, lineColor: Color) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("열차번호", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = lineColor)
+                Text("도착", Modifier.width(64.dp), textAlign = TextAlign.End, style = MaterialTheme.typography.labelLarge)
+                Text("출발", Modifier.width(64.dp), textAlign = TextAlign.End, style = MaterialTheme.typography.labelLarge)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        items(list, key = { "${it.trainNo}_${it.arrivalTime}_${it.departureTime}" }) { stop ->
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stop.trainNo.ifBlank { "열차" },
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    stop.arrivalTime?.let(TagoTime::clockText).orEmpty().ifBlank { "—" },
+                    Modifier.width(64.dp),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.bodyLarge.merge(Tnum),
+                )
+                Text(
+                    stop.departureTime?.let(TagoTime::clockText).orEmpty().ifBlank { "—" },
+                    Modifier.width(64.dp),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.bodyLarge.merge(Tnum),
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+    }
+}
+
+@Composable
+private fun RouteTab(d: StationDetail, c: StationDetailController) {
+    LinePicker(d, c) { line ->
+        val route by d.kricRoute.collectAsStateWithLifecycle()
+        val codes by d.kricCodes.collectAsStateWithLifecycle()
+        val selectedStationCode = remember(line, codes) { codes?.stationCode }
+        LaunchedEffect(line.id) {
+            if (d.kricRoute.value !is Load.Ok) c.loadKricRoute(d)
+        }
+        LoadView(
+            route,
+            onRetry = { c.loadKricRoute(d) },
+            isEmpty = { it.isEmpty() },
+            emptyText = "이 노선의 역 정보가 없습니다.",
+        ) { stations ->
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(stations, key = { "${it.stationOrder}_${it.stationCode}" }) { station ->
+                    KricRouteRow(station, station.stationCode == selectedStationCode)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KricRouteRow(station: KricRouteStation, selected: Boolean) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            station.stationOrder.toString(),
+            Modifier.width(40.dp),
+            style = MaterialTheme.typography.bodyMedium.merge(Tnum),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            station.stationName.ifBlank { "역명 정보 없음" },
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        )
     }
 }
 

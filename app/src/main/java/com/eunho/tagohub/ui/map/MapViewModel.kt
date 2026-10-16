@@ -191,6 +191,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 검색 결과의 장소를 누름 → 지도 이동 + 출발·경유·도착·정보 카드 */
     fun pickPlace(p: com.eunho.tagohub.data.Place2) {
+        clearForPlace()
         picked.value = PickedPlace(p.name, p.address, p.lat, p.lng, com.eunho.tagohub.ui.ModeJump.kindOf(p.name), p.category, p.phone, p.url)
         canvas?.setPin(p.lat, p.lng)
         canvas?.moveTo(p.lat, p.lng, null)
@@ -222,6 +223,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
             // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게
             val first = PickedPlace(name.ifBlank { "선택한 장소" }, null, lat, lng, com.eunho.tagohub.ui.ModeJump.kindOf(name))
+            clearForPlace()
             picked.value = first
             nearby.value = null
             fillRegion(first)
@@ -236,6 +238,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 지도 바닥을 꾹 누름: 그 자리를 출발·도착으로 (이름은 카카오 좌표→주소로) */
     fun onMapLongPress(lat: Double, lng: Double) {
         val p = PickedPlace("선택한 위치", "주소 확인 중…", lat, lng)
+        clearForPlace()
         picked.value = p
         nearby.value = null
         fillRegion(p)
@@ -244,6 +247,15 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val name = com.eunho.tagohub.data.KakaoExtra.placeName(lat, lng)
             if (picked.value === p) picked.value = p.copy(name = name ?: "선택한 위치", sub = if (name == null) "%.5f, %.5f".format(lat, lng) else null)
         }
+    }
+
+    /** 장소를 고르면 정류장·역·노선·열차 창은 닫고 장소만 */
+    private fun clearForPlace() {
+        selected.value = null; pushStops()
+        station.value = null; pushSelectedStation()
+        trainView.value = null; canvas?.selectTrain(null)
+        if (route.value != null) { route.value = null; canvas?.setRoute(null, emptyList(), null); canvas?.setBuses(emptyList()) }
+        if (panel.value != MapPanel.Plan) panel.value = MapPanel.None
     }
 
     /** 고른 곳을 출발(asOrigin) 또는 도착으로 → 길찾기 (도착이 정해지면 바로 검색) */

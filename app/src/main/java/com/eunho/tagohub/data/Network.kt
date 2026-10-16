@@ -54,6 +54,7 @@ object Network {
 
 object Graph {
     val repo: TagoRepository by lazy { TagoRepository(Network.api) }
+    val kricSubway: KricSubwayRepository by lazy { KricSubwayRepository.create() }
     val seoul: SeoulSubwayRepository by lazy { SeoulSubwayRepository.create() }
     val jeonju: JeonjuRepository by lazy { JeonjuRepository.create() }
     val jeju: JejuRepository by lazy { JejuRepository.create() }

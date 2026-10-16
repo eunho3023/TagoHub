@@ -81,6 +81,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.AirportShuttle
@@ -251,6 +254,9 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
     LaunchedEffect(route, refreshTick) { route?.let { vm.runRoute(it) } }
 
     BackHandler(enabled = panel != MapPanel.None) { vm.closePanel() }
+    // 장소 카드가 열려 있으면 뒤로 가기로 먼저 닫음 (앱 종료 묻기보다 먼저)
+    val pickedOpen by vm.picked.collectAsStateWithLifecycle()
+    BackHandler(enabled = pickedOpen != null) { vm.closePick() }
 
     // 패널 높이(화면 대비 비율). 패널 종류가 바뀌면 기본 높이로
     val sheetFrac = remember { mutableFloatStateOf(0.45f) }
@@ -335,7 +341,7 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                         // 카카오 지도 겹쳐 보기
                         HorizontalDivider()
                         val on by vm.overlays.collectAsStateWithLifecycle()
-                        listOf("traffic_info" to "교통정보", "bicycle_road" to "자전거도로", "hill_shading" to "지형도", "cctv" to "CCTV (전국)").forEach { (id, label) ->
+                        listOf("bicycle_road" to "자전거도로", "hill_shading" to "지형도", "cctv" to "CCTV 위치 (전국)").forEach { (id, label) ->
                             DropdownMenuItem(
                                 text = { Text(label) },
                                 onClick = { vm.toggleOverlay(id) },
@@ -349,7 +355,7 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
 
         // ── 하단 패널 ── (imePadding: 키보드가 올라오면 패널도 키보드 위로, 내려가면 다시 아래로)
         val pickedPlace by vm.picked.collectAsStateWithLifecycle()
-        Column(Modifier.align(Alignment.BottomCenter).imePadding()) {
+        Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
             pickedPlace?.let { PickCard(vm, it) }
             when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }

@@ -76,6 +76,7 @@ class ParserTest {
         val s = Mappers.subwayStation(TagoXml.parse(fixture("subway_search.xml")).rows.single())
         assertEquals("서울역", s.name)
         assertEquals("GTX-A", s.routeName)
+        assertEquals("", s.routeId)
     }
 
     @Test

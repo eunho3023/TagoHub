@@ -135,11 +135,49 @@ object Mappers {
     )
 
     // ── 지하철 ──
-    fun subwayStation(r: Row) = SubwayStation(
-        id = r.text("subwayStationId"),
-        name = r.text("subwayStationName", "subwayStationNm"),
-        routeName = r.text("subwayRouteName", "subwayRouteNm"),
+    fun subwayStation(r: Row): SubwayStation {
+        val id = r.text("subwayStationId")
+        return SubwayStation(
+            id = id,
+            name = r.text("subwayStationName", "subwayStationNm"),
+            routeName = r.text("subwayRouteName", "subwayRouteNm"),
+            routeId = r.text("subwayRouteId"),
+        )
+    }
+
+    fun kricRouteStation(r: Row) = KricRouteStation(
+        regionCode = r.text("mreaWideCd"),
+        routeCode = r.text("routCd"),
+        routeName = r.text("routNm"),
+        stationOrder = r.int("stinConsOrdr") ?: 0,
+        operatorCode = r.text("railOprIsttCd"),
+        lineCode = r.text("lnCd"),
+        stationCode = r.text("stinCd"),
+        stationName = r.text("stinNm"),
     )
+
+    fun kricTrainStop(r: Row): KricTrainStop? {
+        val arrival = r.str("arvTm")?.takeIf { TagoTime.minutesOfDay(it) != null }
+        val departure = r.str("dptTm")?.takeIf { TagoTime.minutesOfDay(it) != null }
+        if (arrival == null && departure == null) return null
+        return KricTrainStop(
+            operatorCode = r.text("railOprIsttCd"),
+            trainNo = r.text("trnNo"),
+            dayCode = r.text("dayCd"),
+            stationCode = r.text("stinCd"),
+            lineCode = r.text("lnCd"),
+            arrivalTime = arrival,
+            departureTime = departure,
+        )
+    }
+
+    fun cleanKricTimetable(rows: List<Row>): List<KricTrainStop> =
+        rows.mapNotNull(::kricTrainStop)
+            .distinctBy { listOf(it.trainNo, it.arrivalTime.orEmpty(), it.departureTime.orEmpty()) }
+            .sortedWith(compareBy(
+                { TagoTime.minutesOfDay(it.departureTime ?: it.arrivalTime) ?: Int.MAX_VALUE },
+                { it.trainNo },
+            ))
 
     /**
      * depTime "000000" + arrTime "0" 은 실제 운행시각이 아니라 빈 값으로 판단해 버린다.

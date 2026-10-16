@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ROOT>
+  <header><resultCnt>2</resultCnt><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body>
+    <item><mreaWideCd>01</mreaWideCd><routCd>A1</routCd><routNm>공항</routNm><stinConsOrdr>2</stinConsOrdr><railOprIsttCd>AR</railOprIsttCd><lnCd>A1</lnCd><stinCd>A02</stinCd><stinNm>공덕</stinNm></item>
+    <item><mreaWideCd>01</mreaWideCd><routCd>A1</routCd><routNm>공항</routNm><stinConsOrdr>1</stinConsOrdr><railOprIsttCd>AR</railOprIsttCd><lnCd>A1</lnCd><stinCd>A01</stinCd><stinNm>서울역</stinNm></item>
+  </body>
+</ROOT>

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ROOT>
+  <header><resultCnt>3</resultCnt><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body>
+    <item><railOprIsttCd>AR</railOprIsttCd><trnNo>A102</trnNo><dayCd>8</dayCd><stinCd>A01</stinCd><lnCd>A1</lnCd><arvTm>054930</arvTm><dptTm>054959</dptTm></item>
+    <item><railOprIsttCd>AR</railOprIsttCd><trnNo>A101</trnNo><dayCd>8</dayCd><stinCd>A01</stinCd><lnCd>A1</lnCd><arvTm>052000</arvTm><dptTm>052030</dptTm></item>
+    <item><railOprIsttCd>AR</railOprIsttCd><trnNo>A101</trnNo><dayCd>8</dayCd><stinCd>A01</stinCd><lnCd>A1</lnCd><arvTm>052000</arvTm><dptTm>052030</dptTm></item>
+  </body>
+</ROOT>
