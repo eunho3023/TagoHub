@@ -37,6 +37,7 @@ import com.eunho.tagohub.ui.map.MapScreen
 import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.timetable.AirScreen
 import com.eunho.tagohub.ui.timetable.TrainScreen
+import com.eunho.tagohub.ui.map.ItsRoadScreen
 
 /**
  * 한 화면: 지도(버스·지하철) 위에 기차·고속시외·항공을 패널로 띄움 (아래 탭 없음).
@@ -58,6 +59,7 @@ fun MainScreen() {
     var askExit by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = panel == null && !drawerState.isOpen) { askExit = true }
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    val mapVm = viewModel<MapViewModel>(key = "transitMap")
     if (askExit) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { askExit = false },
@@ -86,6 +88,7 @@ fun MainScreen() {
                     ModeJump.Kind.Coach to "🚌  고속·시외버스",
                     ModeJump.Kind.Air to "✈️  항공",
                     ModeJump.Kind.Utic to "🚦  UTIC 교통정보",
+                    ModeJump.Kind.ItsRoad to "🛣️  ITS 도로정보",
                 ).forEach { (k, label) ->
                     androidx.compose.material3.NavigationDrawerItem(label = { Text(label) }, selected = panel == k,
                         onClick = { panel = k; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
@@ -103,7 +106,7 @@ fun MainScreen() {
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars)   // 아래 탭이 없어져서 시스템 버튼 영역만 비움
     ) {
-        MapScreen(viewModel<MapViewModel>(key = "transitMap"), MapMode.Transit)
+        MapScreen(mapVm, MapMode.Transit)
         panel?.let { k ->
             Surface(
                 Modifier
@@ -125,6 +128,7 @@ fun MainScreen() {
                             ModeJump.Kind.Coach -> CoachScreen()
                             ModeJump.Kind.Air -> AirScreen()
                             ModeJump.Kind.Utic -> UticTrafficScreen()
+                            ModeJump.Kind.ItsRoad -> ItsRoadScreen(mapVm)
                         }
                     }
                 }

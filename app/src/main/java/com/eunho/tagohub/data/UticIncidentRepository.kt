@@ -7,7 +7,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+import java.io.File
 import java.io.StringReader
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -29,13 +32,15 @@ object UticIncidentParser {
     fun parse(xml: String): List<UticIncident> {
         val document = try {
             DocumentBuilderFactory.newInstance().apply {
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-                setFeature("http://xml.org/sax/features/external-general-entities", false)
-                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+                runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
+                runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
                 isExpandEntityReferences = false
-            }.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+            }.newDocumentBuilder().apply {
+                setEntityResolver { _, _ -> InputSource(StringReader("")) }
+            }.parse(InputSource(StringReader(xml.trim().removePrefix("\uFEFF"))))
         } catch (e: Exception) {
-            throw IOException("UTIC 돌발정보 XML을 읽지 못했습니다.", e)
+            throw IOException("UTIC 돌발정보 XML을 읽지 못했습니다: ${e.message ?: e.javaClass.simpleName}", e)
         }
 
         val records = document.getElementsByTagName("record")
@@ -45,6 +50,7 @@ object UticIncidentParser {
             if (!message.isNullOrBlank() && code !in setOf("00", "04")) {
                 throw IOException("UTIC 응답 오류${code?.let { " ($it)" }.orEmpty()}: $message")
             }
+
         }
 
         fun Element.text(tag: String): String? =
@@ -70,35 +76,71 @@ object UticIncidentParser {
 
 class UticIncidentRepository(
     private val key: String = BuildConfig.UTIC_API_KEY.trim(),
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .build(),
 ) {
     suspend fun incidents(): List<UticIncident> {
         if (key.isBlank()) throw IOException("local.properties에 UTIC_API_KEY를 설정하세요.")
         val request = Request.Builder().url(UticFeeds.incidents.url(key)).build()
-        return suspendCancellableCoroutine { continuation ->
-            val call = client.newCall(request)
-            continuation.invokeOnCancellation { call.cancel() }
-            call.enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
+        return UticHttp.get(request).let(UticIncidentParser::parse)
+    }
+}
+
+internal object UticHttp {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    suspend fun get(request: Request, providerName: String = "UTIC"): String = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWith(Result.failure(e))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.use {
+                        if (!it.isSuccessful) throw IOException("$providerName 요청 실패 (HTTP ${it.code}).")
+                        it.body?.string() ?: throw IOException("UTIC 응답 본문이 비어 있습니다.")
+                    }
+                    continuation.resumeWith(Result.success(body))
+                } catch (e: IOException) {
                     continuation.resumeWith(Result.failure(e))
                 }
+            }
+        })
+    }
 
-                override fun onResponse(call: Call, response: Response) {
-                    try {
-                        val incidents = response.use {
-                            if (!it.isSuccessful) throw IOException("UTIC 돌발정보 요청 실패 (HTTP ${it.code}).")
-                            val body = it.body?.string() ?: throw IOException("UTIC 응답 본문이 비어 있습니다.")
-                            UticIncidentParser.parse(body)
-                        }
-                        continuation.resumeWith(Result.success(incidents))
-                    } catch (e: IOException) {
-                        continuation.resumeWith(Result.failure(e))
-                    }
-                }
-            })
+    suspend fun download(request: Request, destination: File) = suspendCancellableCoroutine<Unit> { continuation ->
+        val temporary = File(destination.parentFile, "${destination.name}.download")
+        val call = client.newCall(request)
+        continuation.invokeOnCancellation {
+            call.cancel()
+            temporary.delete()
         }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                temporary.delete()
+                continuation.resumeWith(Result.failure(e))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    response.use {
+                        if (!it.isSuccessful) throw IOException("UTIC 요청 실패 (HTTP ${it.code}).")
+                        val body = it.body ?: throw IOException("UTIC 응답 본문이 비어 있습니다.")
+                        body.byteStream().use { input ->
+                            temporary.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                    Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    continuation.resumeWith(Result.success(Unit))
+                } catch (e: IOException) {
+                    temporary.delete()
+                    continuation.resumeWith(Result.failure(e))
+                }
+            }
+        })
     }
 }

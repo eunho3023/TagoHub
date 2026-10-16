@@ -3,6 +3,10 @@
 package com.eunho.tagohub.ui.map
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,6 +70,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -177,6 +183,17 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
     val overlays by vm.overlays.collectAsStateWithLifecycle()
     val uticIncidentCount by vm.uticIncidentCount.collectAsStateWithLifecycle()
     val uticLoading by vm.uticLoading.collectAsStateWithLifecycle()
+    val uticRoadRiskCount by vm.uticRoadRiskCount.collectAsStateWithLifecycle()
+    val uticRiskLoading by vm.uticRiskLoading.collectAsStateWithLifecycle()
+    val uticSafetyPointCount by vm.uticSafetyPointCount.collectAsStateWithLifecycle()
+    val uticSafetyLoading by vm.uticSafetyLoading.collectAsStateWithLifecycle()
+    val itsCctvCount by vm.itsCctvCount.collectAsStateWithLifecycle()
+    val itsCctvLoading by vm.itsCctvLoading.collectAsStateWithLifecycle()
+    val selectedItsCctv by vm.selectedItsCctv.collectAsStateWithLifecycle()
+    val itsRoadCounts by vm.itsRoadCounts.collectAsStateWithLifecycle()
+    val itsRoadLoading by vm.itsRoadLoading.collectAsStateWithLifecycle()
+    val itsRoadCachedLayers by vm.itsRoadCachedLayers.collectAsStateWithLifecycle()
+    val selectedItsRoadFeature by vm.selectedItsRoadFeature.collectAsStateWithLifecycle()
 
     // 지도: 카카오맵. 인증이 실패하면 이유(등록할 패키지명·키 해시)를 알리고, 설정을 고친 뒤 새로고침 버튼으로 다시 시도.
     // 화면 생명주기에 맞춰 resume/pause (카카오맵은 꼭 불러야 함)
@@ -305,6 +322,39 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
             if ("utic_incidents" in overlays) {
                 Hint(if (uticLoading) "UTIC 돌발정보 불러오는 중" else "화면 안 UTIC 돌발정보 ${uticIncidentCount}건")
             }
+            if ("utic_road_risk" in overlays) {
+                Hint(if (uticRiskLoading) "UTIC 도로위험예보 불러오는 중" else "화면 안 UTIC 도로위험예보 ${uticRoadRiskCount}건")
+            }
+            if ("utic_safety" in overlays) {
+                Hint(if (uticSafetyLoading) "UTIC 교통안전 XLSX 다운로드·분석 중" else "화면 안 UTIC 교통안전 ${uticSafetyPointCount}건")
+            }
+            if ("its_cctv" in overlays) {
+                Hint(
+                    if (itsCctvLoading) "ITS CCTV 불러오는 중"
+                    else "화면 안 ITS CCTV ${itsCctvCount}곳 · 마커를 눌러 영상 보기",
+                )
+            }
+            val itsRoadLabels = mapOf(
+                "its_events" to "ITS 돌발정보",
+                "its_disasters" to "ITS 재난정보",
+                "its_vsl" to "가변속도표지",
+                "its_vms" to "도로전광표지",
+                "its_safe_driving" to "주의운전",
+                "its_dangerous_cars" to "위험물 사고",
+                "its_vds" to "VDS 시설물",
+                "its_ice_sections" to "상습 결빙구간",
+            )
+            itsRoadLabels.filterKeys { it in overlays }.forEach { (id, label) ->
+                val count = itsRoadCounts[id] ?: 0
+                Hint(
+                    when {
+                        id in itsRoadCachedLayers && id in itsRoadLoading -> "저장된 $label ${count}건 표시 · 최신정보 확인 중"
+                        id in itsRoadCachedLayers -> "저장된 $label ${count}건 표시"
+                        id in itsRoadLoading -> "$label 불러오는 중"
+                        else -> "$label ${count}건"
+                    },
+                )
+            }
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
 
@@ -350,6 +400,17 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                             "bicycle_road" to "자전거도로",
                             "hill_shading" to "지형도",
                             "utic_incidents" to "UTIC 돌발정보",
+                            "utic_road_risk" to "UTIC 도로위험예보",
+                            "utic_safety" to "UTIC 교통안전정보",
+                            "its_cctv" to "ITS 고속도로·국도 CCTV",
+                            "its_events" to "ITS 돌발정보",
+                            "its_disasters" to "ITS 재난정보",
+                            "its_vsl" to "가변속도표지",
+                            "its_vms" to "도로전광표지",
+                            "its_safe_driving" to "주의운전정보",
+                            "its_dangerous_cars" to "위험물 사고",
+                            "its_vds" to "VDS 시설물",
+                            "its_ice_sections" to "상습 결빙구간",
                         ).forEach { (id, label) ->
                             DropdownMenuItem(
                                 text = { Text(label) },
@@ -385,6 +446,107 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
             }
         }
       }
+    }
+    selectedItsCctv?.let { cctv ->
+        ItsCctvDialog(cctv = cctv, onDismiss = vm::dismissItsCctv)
+    }
+    selectedItsRoadFeature?.let { feature ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = vm::dismissItsRoadFeature,
+            title = { Text(feature.title) },
+            text = { Text(feature.details.ifBlank { "ITS에서 제공한 도로 정보입니다." }) },
+            confirmButton = {
+                TextButton(onClick = vm::dismissItsRoadFeature) { Text("닫기") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var playbackError by remember(cctv.id) { mutableStateOf<String?>(null) }
+    var videoView by remember(cctv.id) { mutableStateOf<VideoView?>(null) }
+    DisposableEffect(cctv.id, videoView) {
+        onDispose { videoView?.stopPlayback() }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 480.dp),
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(
+                Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(cctv.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "${if (cctv.roadType == "ex") "고속도로" else "국도"} · ${cctv.format ?: "실시간 영상"}" +
+                        (cctv.resolution?.let { " · $it" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                key(cctv.id) {
+                    AndroidView(
+                        factory = { viewContext ->
+                            VideoView(viewContext).apply {
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                                setOnErrorListener { _, what, extra ->
+                                    playbackError = "앱에서 영상을 재생하지 못했습니다 (오류 $what/$extra). 외부 플레이어로 시도해 보세요."
+                                    true
+                                }
+                                setOnPreparedListener { player ->
+                                    player.isLooping = true
+                                    player.start()
+                                }
+                                setVideoURI(Uri.parse(cctv.streamUrl))
+                                videoView = this
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(220.dp),
+                    )
+                }
+                playbackError?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                Text(
+                    "ITS가 제공하는 고속도로·국도 CCTV입니다. 기기 또는 영상 제공 상태에 따라 재생되지 않을 수 있습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = {
+                            val uri = Uri.parse(cctv.streamUrl)
+                            try {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.apple.mpegurl"),
+                                )
+                            } catch (_: ActivityNotFoundException) {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                } catch (_: ActivityNotFoundException) {
+                                    playbackError = "이 영상을 열 수 있는 외부 플레이어가 설치되어 있지 않습니다."
+                                } catch (_: SecurityException) {
+                                    playbackError = "외부 플레이어를 실행할 권한이 없습니다."
+                                }
+                            } catch (_: SecurityException) {
+                                playbackError = "외부 플레이어를 실행할 권한이 없습니다."
+                            }
+                        },
+                    ) { Text("외부 플레이어") }
+                    TextButton(onClick = onDismiss) { Text("닫기") }
+                }
+            }
+        }
     }
 }
 

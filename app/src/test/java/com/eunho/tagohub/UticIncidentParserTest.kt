@@ -10,7 +10,7 @@ class UticIncidentParserTest {
     @Test
     fun parsesCoordinatesAndIncidentDetails() {
         val records = UticIncidentParser.parse(
-            """
+            "\uFEFF  \n" + """
             <result>
               <record>
                 <incidentId>incident-1</incidentId>

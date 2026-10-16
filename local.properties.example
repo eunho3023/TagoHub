@@ -1,8 +1,9 @@
 # 이 파일을 local.properties 로 복사(또는 내용 추가)하고 키를 넣으세요.
 # 공공데이터포털의 Encoding 키(%2F, %2B 포함)와 Decoding 키 모두 사용 가능합니다.
 TAGO_SERVICE_KEY=여기에_서비스키
-KRIC_SUBWAY_KEY=KRIC_도시철도_API_서비스키
+KRIC_SUBWAY_KEY=$2a$10$wQ2fCVx8Cy1fx2TlFwa0IucyazBGMYbmAtyHlCv6zWVnoqQa2zIi2
 UTIC_API_KEY=UTIC_개방데이터_인증키
+ITS_API_KEY=ITS_오픈API_CCTV_인증키
 SEOUL_SUBWAY_KEY=서울_실시간지하철_인증키
 KAKAO_NATIVE_KEY=카카오_네이티브_앱_키
 KAKAO_REST_KEY=카카오_REST_API_키

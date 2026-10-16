@@ -16,6 +16,14 @@ import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.City
 import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.data.GpsTracker
+import com.eunho.tagohub.data.ItsCctv
+import com.eunho.tagohub.data.ItsCctvRepository
+import com.eunho.tagohub.data.ItsRoadFeature
+import com.eunho.tagohub.data.ItsRoadRepository
+import com.eunho.tagohub.data.ItsTrafficRow
+import com.eunho.tagohub.data.ItsForecastRow
+import com.eunho.tagohub.data.ItsMainlineSection
+import com.eunho.tagohub.data.ItsFogSection
 import com.eunho.tagohub.data.LatLng
 import com.eunho.tagohub.data.MetroStation
 import com.eunho.tagohub.data.RoadShapeClient
@@ -40,6 +48,10 @@ import com.eunho.tagohub.data.SubwayArrival
 import com.eunho.tagohub.data.SubwayTrain
 import com.eunho.tagohub.data.UticIncident
 import com.eunho.tagohub.data.UticIncidentRepository
+import com.eunho.tagohub.data.UticRoadRisk
+import com.eunho.tagohub.data.UticRoadRiskRepository
+import com.eunho.tagohub.data.UticSafetyPoint
+import com.eunho.tagohub.data.UticSafetyRepository
 import com.eunho.tagohub.ui.bus.BusDest
 import com.eunho.tagohub.ui.bus.StopRouteRow
 import com.eunho.tagohub.ui.bus.loadRouteData
@@ -53,6 +65,7 @@ import com.eunho.tagohub.ui.subway.StationDetailController
 import com.eunho.tagohub.ui.theme.busRouteColor
 import com.eunho.tagohub.ui.theme.subwayLineColor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -66,6 +79,8 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.time.Duration
 import java.time.LocalDateTime
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class MapPanel { None, Stop, Route, Station, Train, Plan }
 
@@ -94,6 +109,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = Graph.repo
     private val seoul = Graph.seoul
     private val uticIncidentsRepo = UticIncidentRepository()
+    private val uticRoadRiskRepo = UticRoadRiskRepository()
+    private val uticSafetyRepo = UticSafetyRepository(app.cacheDir)
+    private val itsCctvRepo = ItsCctvRepository()
+    private val itsRoadRepo = ItsRoadRepository()
 
     /** "kakao" | null(준비 전·실패) */
     val mode = MutableStateFlow<String?>(null)
@@ -150,6 +169,54 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 uticIncidentCount.value = 0
             }
         }
+        if (id == ITS_CCTV_OVERLAY) {
+            if (id in overlays.value) scheduleItsCctvRefresh()
+            else {
+                itsCctvGeneration++
+                itsCctvJob?.cancel()
+                itsCctvJob = null
+                itsCctvDebounceJob?.cancel()
+                itsCctvDebounceJob = null
+                itsCctvLoading.value = false
+                canvas?.setItsCctvs(emptyList())
+                itsCctvCount.value = 0
+                selectedItsCctv.value = null
+            }
+        }
+        if (id in ITS_ROAD_OVERLAY_IDS) {
+            if (id in overlays.value) {
+                pushItsRoadFeatures()
+                if (id !in STATIC_ITS_ROAD_LAYERS) refreshItsRoadLayer(id)
+            } else {
+                itsRoadGenerations[id] = (itsRoadGenerations[id] ?: 0) + 1
+                itsRoadJobs.remove(id)?.cancel()
+                itsRoadLoading.value = itsRoadLoading.value - id
+                if (selectedItsRoadFeature.value?.layer == id) selectedItsRoadFeature.value = null
+                pushItsRoadFeatures()
+            }
+        }
+        if (id == UTIC_ROAD_RISK_OVERLAY) {
+            if (id in overlays.value) refreshUticRoadRisks()
+            else {
+                uticRiskGeneration++
+                uticRiskJob?.cancel()
+                uticRiskJob = null
+                uticRiskLoading.value = false
+                canvas?.setUticRoadRisks(emptyList())
+                uticRoadRiskCount.value = 0
+            }
+        }
+        if (id == UTIC_SAFETY_OVERLAY) {
+            if (id in overlays.value) refreshUticSafetyPoints()
+            else {
+                uticSafetyGeneration++
+                uticSafetyJob?.cancel()
+                uticSafetyJob = null
+                uticSafetyLoading.value = false
+                canvas?.setUticSafetyPoints(emptyList())
+                uticSafetyPointCount.value = 0
+            }
+        }
     }
 
     val uticIncidentCount = MutableStateFlow(0)
@@ -158,6 +225,48 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private var uticJob: Job? = null
     private var uticRequestedAt = 0L
     private var uticGeneration = 0
+    val uticRoadRiskCount = MutableStateFlow(0)
+    val uticRiskLoading = MutableStateFlow(false)
+    private var uticRoadRisks: List<UticRoadRisk> = emptyList()
+    private var uticRiskJob: Job? = null
+    private var uticRiskRequestedAt = 0L
+    private var uticRiskGeneration = 0
+    val uticSafetyPointCount = MutableStateFlow(0)
+    val uticSafetyLoading = MutableStateFlow(false)
+    private var uticSafetyPoints: List<UticSafetyPoint> = emptyList()
+    private var uticSafetyJob: Job? = null
+    private var uticSafetyRequestedAt = 0L
+    private var uticSafetyGeneration = 0
+    val itsCctvCount = MutableStateFlow(0)
+    val itsCctvLoading = MutableStateFlow(false)
+    val selectedItsCctv = MutableStateFlow<ItsCctv?>(null)
+    private var itsCctvItems: List<ItsCctv> = emptyList()
+    private var itsCctvJob: Job? = null
+    private var itsCctvDebounceJob: Job? = null
+    private var itsCctvRequestedAt = 0L
+    private var itsCctvGeneration = 0
+    val itsRoadCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val itsRoadLoading = MutableStateFlow<Set<String>>(emptySet())
+    val itsRoadCachedLayers = MutableStateFlow<Set<String>>(emptySet())
+    val selectedItsRoadFeature = MutableStateFlow<ItsRoadFeature?>(null)
+    private val itsRoadItems = mutableMapOf<String, List<ItsRoadFeature>>()
+    private val itsRoadJobs = mutableMapOf<String, Job>()
+    private val itsRoadRequestedAt = mutableMapOf<String, Long>()
+    private val itsRoadGenerations = mutableMapOf<String, Int>()
+    private val itsRoadCoverage = mutableMapOf<String, DoubleArray>()
+    val itsMainlineSections = MutableStateFlow<List<ItsMainlineSection>>(emptyList())
+    val itsFogSections = MutableStateFlow<List<ItsFogSection>>(emptyList())
+    val itsTrafficRows = MutableStateFlow<List<ItsTrafficRow>>(emptyList())
+    val itsForecastRows = MutableStateFlow<List<ItsForecastRow>>(emptyList())
+    val itsQueryLoading = MutableStateFlow(false)
+    val itsQueryError = MutableStateFlow<String?>(null)
+    private var itsQueryJob: Job? = null
+    private var itsQueryGeneration = 0
+
+    private data class CachedItsRoadLayer(
+        val features: List<ItsRoadFeature>,
+        val bounds: DoubleArray,
+    )
 
     private fun refreshUticIncidents() {
         if (UTIC_INCIDENTS_OVERLAY !in overlays.value) return
@@ -177,6 +286,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 uticItems = uticIncidentsRepo.incidents()
                 pushUticIncidents()
             } catch (e: IOException) {
+                uticRequestedAt = 0L
                 banner.value = "UTIC 돌발정보를 불러오지 못했습니다: ${e.message}"
             } finally {
                 if (generation == uticGeneration) {
@@ -208,6 +318,388 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             incident.address,
             incident.startDate?.let { "시작: $it" },
             incident.endDate?.let { "종료: $it" },
+        ).joinToString("\n")
+    }
+
+    fun onItsCctvClick(id: String) {
+        selectedItsCctv.value = itsCctvItems.firstOrNull { it.id == id }
+    }
+
+    fun dismissItsCctv() {
+        selectedItsCctv.value = null
+    }
+
+    private fun scheduleItsCctvRefresh() {
+        if (ITS_CCTV_OVERLAY !in overlays.value) return
+        itsCctvDebounceJob?.cancel()
+        itsCctvDebounceJob = viewModelScope.launch {
+            delay(ITS_CCTV_DEBOUNCE_MS)
+            refreshItsCctvs()
+        }
+    }
+
+    private fun refreshItsCctvs() {
+        if (ITS_CCTV_OVERLAY !in overlays.value) return
+        pushItsCctvs()
+        val box = lastBox ?: return
+        if (com.eunho.tagohub.BuildConfig.ITS_API_KEY.isBlank()) {
+            banner.value = "ITS CCTV를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요."
+            return
+        }
+        if (box[2] - box[0] > ITS_CCTV_MAX_LAT_SPAN || box[3] - box[1] > ITS_CCTV_MAX_LNG_SPAN) {
+            banner.value = "ITS CCTV를 불러오려면 지도에서 도로 주변을 더 확대하세요."
+            return
+        }
+        if (itsCctvJob?.isActive == true) return
+
+        val requestBox = box.copyOf()
+        val now = android.os.SystemClock.elapsedRealtime()
+        val waitMs = (ITS_CCTV_REFRESH_INTERVAL_MS - (now - itsCctvRequestedAt)).coerceAtLeast(0L)
+        val generation = ++itsCctvGeneration
+        itsCctvLoading.value = true
+        itsCctvJob = viewModelScope.launch {
+            try {
+                if (waitMs > 0) delay(waitMs)
+                if (ITS_CCTV_OVERLAY !in overlays.value) return@launch
+                itsCctvRequestedAt = android.os.SystemClock.elapsedRealtime()
+                itsCctvItems = itsCctvRepo.cctvs(
+                    south = requestBox[0],
+                    west = requestBox[1],
+                    north = requestBox[2],
+                    east = requestBox[3],
+                )
+                pushItsCctvs()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                itsCctvRequestedAt = 0L
+                banner.value = "ITS CCTV를 불러오지 못했습니다: ${e.message}"
+            } finally {
+                if (generation == itsCctvGeneration) {
+                    itsCctvLoading.value = false
+                    itsCctvJob = null
+                    if (ITS_CCTV_OVERLAY in overlays.value && lastBox?.contentEquals(requestBox) == false) {
+                        scheduleItsCctvRefresh()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun pushItsCctvs() {
+        val box = lastBox
+        val pins = if (box == null) emptyList() else {
+            val latMargin = (box[2] - box[0]).coerceAtLeast(0.0) * 0.1
+            val lngMargin = (box[3] - box[1]).coerceAtLeast(0.0) * 0.1
+            itsCctvItems.asSequence()
+                .filter {
+                    it.lat in (box[0] - latMargin)..(box[2] + latMargin) &&
+                        it.lng in (box[1] - lngMargin)..(box[3] + lngMargin)
+                }
+                .take(ITS_CCTV_MAX_MARKERS)
+                .map { ItsCctvPin(it.id, it.name, it.lat, it.lng) }
+                .toList()
+        }
+        itsCctvCount.value = pins.size
+        canvas?.setItsCctvs(pins)
+    }
+
+    fun onItsRoadFeatureClick(id: String) {
+        selectedItsRoadFeature.value = itsRoadItems.values.asSequence().flatten().firstOrNull { it.id == id }
+    }
+
+    fun dismissItsRoadFeature() {
+        selectedItsRoadFeature.value = null
+    }
+
+    private fun refreshItsRoadLayer(id: String) {
+        if (id !in overlays.value || id in STATIC_ITS_ROAD_LAYERS) return
+        val box = lastBox ?: return
+        if (itsRoadJobs[id]?.isActive == true) return
+        if (com.eunho.tagohub.BuildConfig.ITS_API_KEY.isBlank()) {
+            banner.value = "ITS 도로정보를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요."
+            return
+        }
+        if (box[2] - box[0] > ITS_ROAD_MAX_LAT_SPAN || box[3] - box[1] > ITS_ROAD_MAX_LNG_SPAN) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - (itsRoadRequestedAt[id] ?: 0L) < ITS_ROAD_REFRESH_INTERVAL_MS) return
+        val requestBox = box.copyOf()
+        itsRoadRequestedAt[id] = now
+        itsRoadLoading.value = itsRoadLoading.value + id
+        val generation = (itsRoadGenerations[id] ?: 0) + 1
+        itsRoadGenerations[id] = generation
+        itsRoadJobs[id] = viewModelScope.launch {
+            try {
+                val features = itsRoadRepo.features(id, requestBox[0], requestBox[1], requestBox[2], requestBox[3])
+                itsRoadItems[id] = features
+                itsRoadCoverage[id] = requestBox
+                itsRoadCachedLayers.value = itsRoadCachedLayers.value - id
+                persistItsRoadCache(id, features, requestBox)
+                pushItsRoadFeatures()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                itsRoadRequestedAt[id] = 0L
+                banner.value = "ITS 도로정보를 불러오지 못했습니다: ${e.message}"
+            } finally {
+                if (itsRoadGenerations[id] == generation) {
+                    itsRoadJobs.remove(id)
+                    itsRoadLoading.value = itsRoadLoading.value - id
+                }
+            }
+        }
+    }
+
+    private fun pushItsRoadFeatures() {
+        val box = lastBox
+        val counts = mutableMapOf<String, Int>()
+        val visible = if (box == null) emptyList() else ITS_ROAD_OVERLAY_IDS
+            .filter { it in overlays.value }
+            .filter { id ->
+                id in STATIC_ITS_ROAD_LAYERS || itsRoadCoverage[id]?.intersectsBounds(box) == true
+            }
+            .flatMap { id ->
+                val latMargin = (box[2] - box[0]).coerceAtLeast(0.0) * 0.1
+                val lngMargin = (box[3] - box[1]).coerceAtLeast(0.0) * 0.1
+                val features = itsRoadItems[id].orEmpty().filter {
+                    it.lat in (box[0] - latMargin)..(box[2] + latMargin) &&
+                        it.lng in (box[1] - lngMargin)..(box[3] + lngMargin)
+                }.take(ITS_ROAD_MAX_PER_LAYER)
+                counts[id] = features.size
+                features
+            }.take(ITS_ROAD_MAX_MARKERS)
+            .map { ItsRoadFeaturePin(it.id, it.layer, it.title, it.lat, it.lng) }
+        itsRoadCounts.value = counts
+        canvas?.setItsRoadFeatures(visible)
+    }
+
+    private fun persistItsRoadCache(id: String, features: List<ItsRoadFeature>, bounds: DoubleArray) {
+        val saved = features.asSequence().filter {
+            it.lat in bounds[0]..bounds[2] && it.lng in bounds[1]..bounds[3]
+        }.take(ITS_ROAD_CACHE_MAX_FEATURES).toList()
+        val json = JSONObject()
+            .put("fetchedAt", System.currentTimeMillis())
+            .put("south", bounds[0])
+            .put("west", bounds[1])
+            .put("north", bounds[2])
+            .put("east", bounds[3])
+            .put("features", JSONArray().apply {
+                saved.forEach { feature ->
+                    put(
+                        JSONObject()
+                            .put("id", feature.id)
+                            .put("layer", feature.layer)
+                            .put("title", feature.title)
+                            .put("details", feature.details)
+                            .put("lat", feature.lat)
+                            .put("lng", feature.lng),
+                    )
+                }
+            })
+        prefs.edit().putString(itsRoadCacheKey(id), json.toString()).apply()
+    }
+
+    private fun readItsRoadCache(id: String): CachedItsRoadLayer? {
+        val encoded = prefs.getString(itsRoadCacheKey(id), null) ?: return null
+        return try {
+            val json = JSONObject(encoded)
+            val fetchedAt = json.getLong("fetchedAt")
+            if (System.currentTimeMillis() - fetchedAt !in 0..ITS_ROAD_CACHE_TTL_MS) return null
+            val bounds = doubleArrayOf(
+                json.getDouble("south"),
+                json.getDouble("west"),
+                json.getDouble("north"),
+                json.getDouble("east"),
+            )
+            if (!bounds.isValidItsRoadBounds()) return null
+            val features = json.getJSONArray("features")
+            val rows = (0 until features.length()).mapNotNull { index ->
+                val item = features.getJSONObject(index)
+                val lat = item.getDouble("lat")
+                val lng = item.getDouble("lng")
+                if (lat !in -90.0..90.0 || lng !in -180.0..180.0) return@mapNotNull null
+                ItsRoadFeature(
+                    id = item.getString("id"),
+                    layer = item.getString("layer"),
+                    title = item.getString("title"),
+                    details = item.getString("details"),
+                    lat = lat,
+                    lng = lng,
+                )
+            }
+            CachedItsRoadLayer(rows, bounds)
+        } catch (e: org.json.JSONException) {
+            android.util.Log.w("TagoITS", "저장된 ITS $id 캐시를 읽지 못했습니다.", e)
+            prefs.edit().remove(itsRoadCacheKey(id)).apply()
+            null
+        }
+    }
+
+    private fun DoubleArray.isValidItsRoadBounds(): Boolean =
+        size == 4 &&
+            this[0] in -90.0..90.0 && this[2] in -90.0..90.0 &&
+            this[1] in -180.0..180.0 && this[3] in -180.0..180.0 &&
+            this[0] <= this[2] && this[1] <= this[3]
+
+    private fun DoubleArray.intersectsBounds(other: DoubleArray): Boolean =
+        isValidItsRoadBounds() && other.isValidItsRoadBounds() &&
+            this[0] <= other[2] && this[2] >= other[0] &&
+            this[1] <= other[3] && this[3] >= other[1]
+
+    private fun itsRoadCacheKey(id: String) = "its_road_cache_$id"
+
+    fun loadItsTraffic() {
+        val box = lastBox
+        if (box == null) {
+            itsQueryError.value = "지도를 먼저 불러온 뒤 현재 지도 범위에서 조회하세요."
+            return
+        }
+        runItsQuery {
+            itsTrafficRows.value = itsRoadRepo.traffic(box[0], box[1], box[2], box[3])
+            itsQueryError.value = if (itsTrafficRows.value.isEmpty()) "현재 지도 범위에 조회된 교통소통 정보가 없습니다." else null
+        }
+    }
+
+    fun loadItsForecast(sectionId: String, date: String, hour: Int) {
+        runItsQuery {
+            itsForecastRows.value = itsRoadRepo.forecast(sectionId, date, hour)
+            itsQueryError.value = if (itsForecastRows.value.isEmpty()) "선택한 구간의 예측정보가 없습니다." else null
+        }
+    }
+
+    private fun runItsQuery(block: suspend () -> Unit) {
+        itsQueryJob?.cancel()
+        val generation = ++itsQueryGeneration
+        itsQueryError.value = null
+        itsQueryLoading.value = true
+        itsQueryJob = viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                itsQueryError.value = "ITS 정보를 불러오지 못했습니다: ${e.message}"
+            } finally {
+                if (generation == itsQueryGeneration) {
+                    itsQueryLoading.value = false
+                    itsQueryJob = null
+                }
+            }
+        }
+    }
+
+    private fun refreshUticRoadRisks() {
+        if (UTIC_ROAD_RISK_OVERLAY !in overlays.value) return
+        pushUticRoadRisks()
+        if (uticRiskJob?.isActive == true) return
+        if (com.eunho.tagohub.BuildConfig.UTIC_API_KEY.isBlank()) {
+            banner.value = "UTIC 도로위험예보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요."
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (uticRiskRequestedAt != 0L && now - uticRiskRequestedAt < UTIC_ROAD_RISK_REFRESH_MS) return
+        uticRiskRequestedAt = now
+        val generation = ++uticRiskGeneration
+        uticRiskLoading.value = true
+        uticRiskJob = viewModelScope.launch {
+            try {
+                uticRoadRisks = uticRoadRiskRepo.roadRisks()
+                pushUticRoadRisks()
+                if (uticRoadRisks.isEmpty()) banner.value = "현재 UTIC 도로위험예보 데이터가 없습니다. 기상·예보 조건에 따라 달라집니다."
+            } catch (e: IOException) {
+                uticRiskRequestedAt = 0L
+                banner.value = "UTIC 도로위험예보를 불러오지 못했습니다: ${e.message}"
+            } finally {
+                if (generation == uticRiskGeneration) {
+                    uticRiskLoading.value = false
+                    uticRiskJob = null
+                }
+            }
+        }
+    }
+
+    private fun pushUticRoadRisks() {
+        val box = lastBox
+        val pins = if (box == null) emptyList() else {
+            val latMargin = (box[2] - box[0]).coerceAtLeast(0.0) * 0.15
+            val lngMargin = (box[3] - box[1]).coerceAtLeast(0.0) * 0.15
+            uticRoadRisks.asSequence()
+                .filter { it.lat in (box[0] - latMargin)..(box[2] + latMargin) && it.lng in (box[1] - lngMargin)..(box[3] + lngMargin) }
+                .map { UticRoadRiskPin(it.id, it.title, it.lat, it.lng) }
+                .toList()
+        }
+        uticRoadRiskCount.value = pins.size
+        canvas?.setUticRoadRisks(pins)
+    }
+
+    fun onUticRoadRiskClick(id: String) {
+        val risk = uticRoadRisks.firstOrNull { it.id == id } ?: return
+        banner.value = listOfNotNull(
+            risk.title,
+            risk.address,
+            risk.grade?.let { "위험 등급: $it" },
+            risk.precipitation?.let { "1시간 강수량: $it" },
+            risk.temperature?.let { "기온: $it°C" },
+        ).joinToString("\n")
+    }
+
+    private fun refreshUticSafetyPoints() {
+        if (UTIC_SAFETY_OVERLAY !in overlays.value) return
+        pushUticSafetyPoints()
+        if (uticSafetyJob?.isActive == true) return
+        if (com.eunho.tagohub.BuildConfig.UTIC_API_KEY.isBlank()) {
+            banner.value = "UTIC 교통안전정보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요."
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (uticSafetyRequestedAt != 0L && now - uticSafetyRequestedAt < UTIC_SAFETY_REFRESH_MS) return
+        uticSafetyRequestedAt = now
+        val generation = ++uticSafetyGeneration
+        uticSafetyLoading.value = true
+        uticSafetyJob = viewModelScope.launch {
+            try {
+                uticSafetyPoints = uticSafetyRepo.safetyPoints()
+                pushUticSafetyPoints()
+            } catch (e: IOException) {
+                uticSafetyRequestedAt = 0L
+                banner.value = "UTIC 교통안전정보를 불러오지 못했습니다: ${e.message}"
+            } finally {
+                if (generation == uticSafetyGeneration) {
+                    uticSafetyLoading.value = false
+                    uticSafetyJob = null
+                }
+            }
+        }
+    }
+
+    private fun pushUticSafetyPoints() {
+        val box = lastBox
+        val visible = if (box == null) emptyList() else {
+            val latMargin = (box[2] - box[0]).coerceAtLeast(0.0) * 0.15
+            val lngMargin = (box[3] - box[1]).coerceAtLeast(0.0) * 0.15
+            uticSafetyPoints.filter {
+                it.lat in (box[0] - latMargin)..(box[2] + latMargin) &&
+                    it.lng in (box[1] - lngMargin)..(box[3] + lngMargin)
+            }
+        }
+        uticSafetyPointCount.value = visible.size
+        val centerLat = box?.let { (it[0] + it[2]) / 2.0 } ?: 0.0
+        val centerLng = box?.let { (it[1] + it[3]) / 2.0 } ?: 0.0
+        val pins = visible.asSequence()
+            .sortedBy { Geo.meters(centerLat, centerLng, it.lat, it.lng) }
+            .take(UTIC_SAFETY_MAX_MARKERS)
+            .map {
+            UticSafetyPin(it.id, it.description, it.category, it.lat, it.lng)
+        }.toList()
+        canvas?.setUticSafetyPoints(pins)
+    }
+
+    fun onUticSafetyPointClick(id: String) {
+        val point = uticSafetyPoints.firstOrNull { it.id == id } ?: return
+        banner.value = listOfNotNull(
+            point.description,
+            point.address,
+            "분류: ${point.category}",
         ).joinToString("\n")
     }
 
@@ -444,6 +936,46 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
+            val cachedLayers = withContext(Dispatchers.IO) {
+                ITS_ROAD_OVERLAY_IDS.filterNot(STATIC_ITS_ROAD_LAYERS::contains)
+                    .mapNotNull { id -> readItsRoadCache(id)?.let { id to it } }
+            }
+            cachedLayers.forEach { (id, cached) ->
+                if (id !in itsRoadItems && itsRoadJobs[id]?.isActive != true) {
+                    itsRoadItems[id] = cached.features
+                    itsRoadCoverage[id] = cached.bounds
+                    itsRoadCachedLayers.value = itsRoadCachedLayers.value + id
+                }
+            }
+            pushItsRoadFeatures()
+        }
+        viewModelScope.launch {
+            try {
+                val staticData = withContext(Dispatchers.IO) {
+                    val vds = app.assets.open("its_vds_facilities.tsv").bufferedReader(Charsets.UTF_8).use {
+                        com.eunho.tagohub.data.ItsRoadParser.vdsFacilities(it.readText())
+                    }
+                    val ice = app.assets.open("its_ice_sections.csv").bufferedReader(java.nio.charset.Charset.forName("MS949")).use {
+                        com.eunho.tagohub.data.ItsRoadParser.iceSections(it.readText())
+                    }
+                    val mainline = app.assets.open("its_mainline_sections.tsv").bufferedReader(Charsets.UTF_8).use {
+                        itsRoadRepo.mainlineSections(it.readText())
+                    }
+                    val fog = app.assets.open("its_fog_sections.csv").bufferedReader(java.nio.charset.Charset.forName("MS949")).use {
+                        com.eunho.tagohub.data.ItsRoadParser.fogSections(it.readText())
+                    }
+                    StaticItsRoadData(vds, ice, mainline, fog)
+                }
+                itsRoadItems["its_vds"] = staticData.vds
+                itsRoadItems["its_ice_sections"] = staticData.ice
+                itsMainlineSections.value = staticData.mainline
+                itsFogSections.value = staticData.fog
+                pushItsRoadFeatures()
+            } catch (e: IOException) {
+                banner.value = "ITS 구간 자료를 읽지 못했습니다: ${e.message}"
+            }
+        }
+        viewModelScope.launch {
             index = withContext(Dispatchers.IO) {
                 runCatching {
                     app.assets.open("subway_stations.tsv").bufferedReader().use { StationIndex.parseTsv(it.readText()) }
@@ -466,6 +998,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             lastBox?.let { box -> if (lastLevel >= 2 && busLayer) loadStopsInView(box, immediate = true) }
         }
     }
+
+    private data class StaticItsRoadData(
+        val vds: List<ItsRoadFeature>,
+        val ice: List<ItsRoadFeature>,
+        val mainline: List<ItsMainlineSection>,
+        val fog: List<ItsFogSection>,
+    )
 
     private suspend fun <T> tracked(block: suspend () -> T): T {
         busy.value++
@@ -511,7 +1050,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         c.setBase(effectiveBase())
         c.setOverlays(overlays.value)
         pushUticIncidents()
+        pushUticRoadRisks()
+        pushUticSafetyPoints()
+        pushItsCctvs()
+        pushItsRoadFeatures()
         if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
+        if (UTIC_ROAD_RISK_OVERLAY in overlays.value) refreshUticRoadRisks()
+        if (UTIC_SAFETY_OVERLAY in overlays.value) refreshUticSafetyPoints()
+        if (ITS_CCTV_OVERLAY in overlays.value) scheduleItsCctvRefresh()
+        ITS_ROAD_OVERLAY_IDS.filter { it in overlays.value && it !in STATIC_ITS_ROAD_LAYERS }
+            .forEach(::refreshItsRoadLayer)
         picked.value?.let { c.setPin(it.lat, it.lng) }
         pushStations()
         pushStops()
@@ -550,6 +1098,36 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             uticRequestedAt = 0L
         }
         uticLoading.value = false
+        if (uticRiskJob?.isActive == true) {
+            uticRiskGeneration++
+            uticRiskJob?.cancel()
+            uticRiskJob = null
+            uticRiskRequestedAt = 0L
+        }
+        uticRiskLoading.value = false
+        if (uticSafetyJob?.isActive == true) {
+            uticSafetyGeneration++
+            uticSafetyJob?.cancel()
+            uticSafetyJob = null
+            uticSafetyRequestedAt = 0L
+        }
+        uticSafetyLoading.value = false
+        itsCctvGeneration++
+        itsCctvJob?.cancel()
+        itsCctvJob = null
+        itsCctvDebounceJob?.cancel()
+        itsCctvDebounceJob = null
+        itsCctvLoading.value = false
+        selectedItsCctv.value = null
+        ITS_ROAD_OVERLAY_IDS.forEach { id ->
+            itsRoadGenerations[id] = (itsRoadGenerations[id] ?: 0) + 1
+            itsRoadJobs.remove(id)?.cancel()
+        }
+        itsRoadLoading.value = emptySet()
+        itsQueryJob?.cancel()
+        itsQueryGeneration++
+        itsQueryJob = null
+        itsQueryLoading.value = false
     }
 
     fun onMapMode(m: String) { mode.value = m }
@@ -574,7 +1152,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         saveView(lat, lng, zoom)
         lastLevel = level
         lastBox = doubleArrayOf(s, w, n, e)
+        pushItsRoadFeatures()
         if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
+        if (UTIC_ROAD_RISK_OVERLAY in overlays.value) refreshUticRoadRisks()
+        if (UTIC_SAFETY_OVERLAY in overlays.value) refreshUticSafetyPoints()
+        if (ITS_CCTV_OVERLAY in overlays.value) scheduleItsCctvRefresh()
+        ITS_ROAD_OVERLAY_IDS.filter { it in overlays.value && it !in STATIC_ITS_ROAD_LAYERS }
+            .forEach(::refreshItsRoadLayer)
         needZoom.value = if (subwayLayer) level < 1 else level < 2
         updateTrainLines()
         if (level >= 2 && busLayer) loadStopsInView(doubleArrayOf(s, w, n, e))
@@ -1457,7 +2041,36 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val MAX_STOPS = 400
         const val UTIC_INCIDENTS_OVERLAY = "utic_incidents"
+        const val UTIC_ROAD_RISK_OVERLAY = "utic_road_risk"
+        const val UTIC_SAFETY_OVERLAY = "utic_safety"
+        const val ITS_CCTV_OVERLAY = "its_cctv"
+        val ITS_ROAD_OVERLAY_IDS = listOf(
+            "its_events",
+            "its_disasters",
+            "its_vsl",
+            "its_vms",
+            "its_safe_driving",
+            "its_dangerous_cars",
+            "its_vds",
+            "its_ice_sections",
+        )
+        val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L
+        const val UTIC_ROAD_RISK_REFRESH_MS = 30 * 60_000L
+        const val UTIC_SAFETY_REFRESH_MS = 30L * 24 * 60 * 60 * 1_000
+        const val UTIC_SAFETY_MAX_MARKERS = 500
+        const val ITS_CCTV_REFRESH_INTERVAL_MS = 30_000L
+        const val ITS_CCTV_DEBOUNCE_MS = 600L
+        const val ITS_CCTV_MAX_LAT_SPAN = 1.5
+        const val ITS_CCTV_MAX_LNG_SPAN = 2.0
+        const val ITS_CCTV_MAX_MARKERS = 300
+        const val ITS_ROAD_REFRESH_INTERVAL_MS = 60_000L
+        const val ITS_ROAD_MAX_LAT_SPAN = 4.0
+        const val ITS_ROAD_MAX_LNG_SPAN = 4.0
+        const val ITS_ROAD_MAX_PER_LAYER = 300
+        const val ITS_ROAD_MAX_MARKERS = 1_000
+        const val ITS_ROAD_CACHE_MAX_FEATURES = 150
+        const val ITS_ROAD_CACHE_TTL_MS = 24L * 60 * 60 * 1_000
         /** 도시철도 평균 속도 (정차 포함) m/s ≈ 40km/h */
         const val TRAIN_SPEED = 11.0
         /** 다음 역 직전에서 멈춰 다음 갱신을 기다리는 지점 */

@@ -13,6 +13,10 @@ data class StopPin(val id: String, val name: String, val lat: Double, val lng: D
 data class RoutePin(val id: String, val name: String, val lat: Double, val lng: Double, val focus: Boolean)
 data class StationPin(val id: String, val name: String, val lat: Double, val lng: Double, val colors: List<Int>)
 data class UticIncidentPin(val id: String, val title: String, val lat: Double, val lng: Double)
+data class UticRoadRiskPin(val id: String, val title: String, val lat: Double, val lng: Double)
+data class UticSafetyPin(val id: String, val title: String, val category: String, val lat: Double, val lng: Double)
+data class ItsCctvPin(val id: String, val title: String, val lat: Double, val lng: Double)
+data class ItsRoadFeaturePin(val id: String, val layer: String, val title: String, val lat: Double, val lng: Double)
 /**
  * 움직이는 차량. path 위에서 startFrac(지금) → endFrac 까지 durationMs 동안 이동한다.
  * 정지 차량은 path 가 점 하나.
@@ -54,6 +58,10 @@ interface MapCanvas {
     fun setBuses(list: List<VehiclePin>)
     fun setStations(list: List<StationPin>)
     fun setUticIncidents(list: List<UticIncidentPin>) {}
+    fun setUticRoadRisks(list: List<UticRoadRiskPin>) {}
+    fun setUticSafetyPoints(list: List<UticSafetyPin>) {}
+    fun setItsCctvs(list: List<ItsCctvPin>) {}
+    fun setItsRoadFeatures(list: List<ItsRoadFeaturePin>) {}
     fun setTrains(list: List<VehiclePin>)
     fun selectStation(id: String?)
     fun selectTrain(id: String?)
