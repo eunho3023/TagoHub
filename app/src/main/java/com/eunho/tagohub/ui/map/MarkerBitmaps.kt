@@ -144,19 +144,6 @@ class MarkerBitmaps(private val density: Float) {
         return forKakao(b)
     }
 
-    /** CCTV: 검은 원 + 흰 카메라 */
-    fun cctv(): Bitmap {
-        val b = bmp(20f, 20f)
-        val c = Canvas(b)
-        val cx = b.width / 2f; val cy = b.height / 2f
-        fill.color = Color.rgb(38, 50, 56); c.drawCircle(cx, cy, b.width / 2f, fill)
-        fill.color = Color.WHITE
-        c.drawRect(cx - px(5f), cy - px(3f), cx + px(3f), cy + px(3f), fill)
-        val tri = Path().apply { moveTo(cx + px(3f), cy); lineTo(cx + px(6f), cy - px(3f)); lineTo(cx + px(6f), cy + px(3f)); close() }
-        c.drawPath(tri, fill)
-        return forKakao(b)
-    }
-
     /** 꾹 누른 곳 핀: 빨간 물방울 + 흰 점. anchor (0.5, 1) */
     fun pin(): Bitmap {
         val b = bmp(26f, 34f)

@@ -228,25 +228,3 @@ object NoticeClient {
             .getOrDefault(emptyList())
     }
 }
-
-/** 전국 CCTV (브이월드 2D 데이터 API) — 지금 지도 범위 */
-object CctvClient {
-    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
-    val available: Boolean get() = BuildConfig.VWORLD_DATA_KEY.isNotBlank()
-
-    suspend fun inBox(s: Double, w: Double, n: Double, e: Double): List<Cctv> = withContext(Dispatchers.IO) {
-        if (!available) return@withContext emptyList()
-        runCatching {
-            val b = CctvParse.URL.toHttpUrl().newBuilder()
-                .addQueryParameter("service", "data").addQueryParameter("request", "GetFeature").addQueryParameter("data", "LT_P_UTISCCTV")
-                .addQueryParameter("key", BuildConfig.VWORLD_DATA_KEY.trim()).addQueryParameter("format", "json")
-                .addQueryParameter("size", "1000").addQueryParameter("page", "1").addQueryParameter("crs", "EPSG:4326")
-                .addQueryParameter("geomFilter", "BOX($w,$s,$e,$n)")
-            BuildConfig.VWORLD_DOMAIN.trim().takeIf { it.isNotEmpty() }?.let { b.addQueryParameter("domain", it) }
-            client.newCall(Request.Builder().url(b.build()).build()).execute().use { res ->
-                val body = res.body?.string().orEmpty()
-                CctvParse.parse(body).also { if (it.isEmpty()) Log.w("TagoMap", "CCTV 0개: ${body.take(300)}") }
-            }
-        }.onFailure { Log.w("TagoMap", "CCTV 실패: ${it.message}") }.getOrDefault(emptyList())
-    }
-}

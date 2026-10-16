@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * (탭마다 ViewModel 이 따로라 이 객체로 전달)
  */
 object ModeJump {
-    enum class Kind(val label: String) { Train("기차"), Coach("고속·시외"), Air("항공") }
+    enum class Kind(val label: String) { Train("기차"), Coach("고속·시외"), Air("항공"), Utic("UTIC 교통정보") }
 
     data class Jump(val kind: Kind, val name: String, val asOrigin: Boolean)
 

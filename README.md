@@ -8,7 +8,8 @@ TagoTransit 과 같은 규칙(`BuildConfig.TAGO_SERVICE_KEY`, `TagoResult`, HTTP
 
 1. `local.properties` 에 `TAGO_SERVICE_KEY=...` 추가 (Encoding/Decoding 키 둘 다 가능)
 2. 열차별 도시철도 운행정보를 쓰려면 `KRIC_SUBWAY_KEY=...` 도 추가
-3. Android Studio 에서 열고 실행 (minSdk 26, AGP 8.5.2, Kotlin 2.0.20)
+3. UTIC 교통정보 링크를 쓰려면 `UTIC_API_KEY=...` 도 추가
+4. Android Studio 에서 열고 실행 (minSdk 26, AGP 8.5.2, Kotlin 2.0.20)
 
 data.go.kr 은 서비스마다 활용신청이 따로입니다. 화면에 "서비스 접근 거부 (코드 20)" 이 뜨면 해당 서비스 신청 상태를 확인하세요:
 버스정류소정보 · 버스노선정보 · 버스위치정보 · 버스도착정보 · 지하철정보 · 열차정보 · 국내항공운항정보 · 고속버스정보 · 시외버스정보 · 고속버스도착정보
@@ -36,6 +37,9 @@ data.go.kr 은 서비스마다 활용신청이 따로입니다. 화면에 "서�
 | 기차 | TrainInfo | 전국 역 검색(17개 시도 병렬 수집 후 캐시), 차종 필터, 날짜별 시간표·운임 |
 | 고속·시외 | ExpBusInfo / SuburbsBusInfo / ExpBusArrInfo | 고속·시외 배차표, **고속버스 실시간 위치·도착 예정** |
 | 항공 | DmstcFlightNvgInfo | 공항 간 운항편, 항공사 필터, 일반석·비즈니스 운임 |
+| UTIC 교통정보 | UTIC 개방데이터 | 메뉴에서 소통·돌발·안전·CCTV·도로위험·신호·공사 원본 API 열기; 지도에서 좌표가 있는 돌발정보 표시 |
+
+지도 CCTV 위치 표시는 제거했습니다. 지도 레이어 메뉴의 **UTIC 돌발정보**를 켜면 UTIC 돌발정보 XML의 경도·위도 좌표를 지도 마커로 표시하고, 마커를 눌러 상세 내용을 볼 수 있습니다. 지도 이동 시 캐시된 결과를 화면 범위에 맞춰 보여주며 API 요청은 최대 1분에 한 번으로 제한합니다. UTIC 가이드가 CCTV 목록의 반복 수집을 금지하므로 CCTV 위치는 지도에서 가져오지 않습니다. 나머지 데이터는 메뉴의 **UTIC 교통정보**에서 원본을 열 수 있습니다.
 
 ## 지도 (OSMDroid + 브이월드)
 

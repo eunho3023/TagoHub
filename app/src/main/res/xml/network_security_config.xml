@@ -8,5 +8,7 @@
         <!-- 서울시 버스 API 는 http -->
         <domain includeSubdomains="false">ws.bus.go.kr</domain>
         <domain includeSubdomains="false">busopen.jeju.go.kr</domain>
+        <!-- UTIC open data uses HTTP -->
+        <domain includeSubdomains="false">www.utic.go.kr</domain>
     </domain-config>
 </network-security-config>

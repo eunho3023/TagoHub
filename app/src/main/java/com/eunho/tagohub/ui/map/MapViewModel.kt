@@ -38,6 +38,8 @@ import com.eunho.tagohub.data.RouteTimes
 import com.eunho.tagohub.data.TripPlanner
 import com.eunho.tagohub.data.SubwayArrival
 import com.eunho.tagohub.data.SubwayTrain
+import com.eunho.tagohub.data.UticIncident
+import com.eunho.tagohub.data.UticIncidentRepository
 import com.eunho.tagohub.ui.bus.BusDest
 import com.eunho.tagohub.ui.bus.StopRouteRow
 import com.eunho.tagohub.ui.bus.loadRouteData
@@ -61,6 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.time.Duration
 import java.time.LocalDateTime
 
@@ -90,6 +93,7 @@ enum class MapMode { Bus, Subway, Transit }
 class MapViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = Graph.repo
     private val seoul = Graph.seoul
+    private val uticIncidentsRepo = UticIncidentRepository()
 
     /** "kakao" | null(준비 전·실패) */
     val mode = MutableStateFlow<String?>(null)
@@ -124,42 +128,93 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     // ───────── 카카오 지도: 겹쳐 보기, POI 누르기, 꾹 누르기 → 출발·도착 ─────────
 
     /** 지도 겹쳐 보기 (교통정보·자전거도로·지형도) — 저장해 두고 다음에도 */
-    val overlays = MutableStateFlow(prefs.getString("overlays", null).orEmpty().split(',').filter { it.isNotBlank() }.toSet())
+    private val savedOverlays = prefs.getString("overlays", null).orEmpty().split(',').filter { it.isNotBlank() }.toSet()
+    val overlays = MutableStateFlow(savedOverlays - "cctv")
+
+    init {
+        if ("cctv" in savedOverlays) prefs.edit().putString("overlays", (savedOverlays - "cctv").joinToString(",")).apply()
+    }
 
     fun toggleOverlay(id: String) {
         overlays.value = if (id in overlays.value) overlays.value - id else overlays.value + id
         prefs.edit().putString("overlays", overlays.value.joinToString(",")).apply()
         canvas?.setOverlays(overlays.value)
-        cctvBox?.let { b -> refreshCctv(cctvLevel, b[0], b[1], b[2], b[3]) }
+        if (id == UTIC_INCIDENTS_OVERLAY) {
+            if (id in overlays.value) refreshUticIncidents()
+            else {
+                uticGeneration++
+                uticJob?.cancel()
+                uticJob = null
+                uticLoading.value = false
+                canvas?.setUticIncidents(emptyList())
+                uticIncidentCount.value = 0
+            }
+        }
     }
-    /** CCTV 를 다시 받을 때 쓰는 마지막 지도 범위 */
-    private var cctvBox: DoubleArray? = null
-    private var cctvLevel = 0
+
+    val uticIncidentCount = MutableStateFlow(0)
+    val uticLoading = MutableStateFlow(false)
+    private var uticItems: List<UticIncident> = emptyList()
+    private var uticJob: Job? = null
+    private var uticRequestedAt = 0L
+    private var uticGeneration = 0
+
+    private fun refreshUticIncidents() {
+        if (UTIC_INCIDENTS_OVERLAY !in overlays.value) return
+        pushUticIncidents()
+        if (uticJob?.isActive == true) return
+        if (com.eunho.tagohub.BuildConfig.UTIC_API_KEY.isBlank()) {
+            banner.value = "UTIC 돌발정보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요."
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (uticRequestedAt != 0L && now - uticRequestedAt < UTIC_REFRESH_INTERVAL_MS) return
+        uticRequestedAt = now
+        val generation = ++uticGeneration
+        uticLoading.value = true
+        uticJob = viewModelScope.launch {
+            try {
+                uticItems = uticIncidentsRepo.incidents()
+                pushUticIncidents()
+            } catch (e: IOException) {
+                banner.value = "UTIC 돌발정보를 불러오지 못했습니다: ${e.message}"
+            } finally {
+                if (generation == uticGeneration) {
+                    uticLoading.value = false
+                    uticJob = null
+                }
+            }
+        }
+    }
+
+    private fun pushUticIncidents() {
+        val box = lastBox
+        val pins = if (box == null) emptyList() else {
+            val latMargin = (box[2] - box[0]).coerceAtLeast(0.0) * 0.15
+            val lngMargin = (box[3] - box[1]).coerceAtLeast(0.0) * 0.15
+            uticItems.asSequence()
+                .filter { it.lat in (box[0] - latMargin)..(box[2] + latMargin) && it.lng in (box[1] - lngMargin)..(box[3] + lngMargin) }
+                .map { UticIncidentPin(it.id, it.title, it.lat, it.lng) }
+                .toList()
+        }
+        uticIncidentCount.value = pins.size
+        canvas?.setUticIncidents(pins)
+    }
+
+    fun onUticIncidentClick(id: String) {
+        val incident = uticItems.firstOrNull { it.id == id } ?: return
+        banner.value = listOfNotNull(
+            incident.title,
+            incident.address,
+            incident.startDate?.let { "시작: $it" },
+            incident.endDate?.let { "종료: $it" },
+        ).joinToString("\n")
+    }
 
     /** 지도에서 고른 곳 (꾹 누른 곳, 정류장·역이 아닌 POI) — 출발·도착으로 쓰기 */
     data class PickedPlace(val name: String, val sub: String?, val lat: Double, val lng: Double, val kind: com.eunho.tagohub.ui.ModeJump.Kind? = null,
                            val category: String? = null, val phone: String? = null, val url: String? = null, val region: String? = null,
                            val linkLabel: String? = null)
-
-    // ── 전국 CCTV (겹쳐 보기 'cctv', 브이월드) ──
-    private var cctvList: List<com.eunho.tagohub.data.Cctv> = emptyList()
-    private var cctvJob: kotlinx.coroutines.Job? = null
-    private fun refreshCctv(level: Int, s: Double, w: Double, n: Double, e: Double) {
-        if ("cctv" !in overlays.value || level < 1) { if (cctvList.isNotEmpty()) { cctvList = emptyList(); canvas?.setCctvs(emptyList()) }; return }
-        cctvJob?.cancel()
-        cctvJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(400)
-            cctvList = com.eunho.tagohub.data.CctvClient.inBox(s, w, n, e)
-            canvas?.setCctvs(cctvList)
-            if (cctvList.isEmpty() && !com.eunho.tagohub.data.CctvClient.available) banner.value = "CCTV: local.properties 에 VWORLD_DATA_KEY 가 없습니다."
-        }
-    }
-
-    fun onCctvClick(id: String) {
-        val c = cctvList.firstOrNull { it.id == id } ?: return
-        picked.value = PickedPlace(c.name, "CCTV", c.lat, c.lng, url = c.url, linkLabel = "CCTV 영상 보기")
-        canvas?.setPin(c.lat, c.lng)
-    }
 
     /** 장소 카드의 '주변 찾기' 결과 (카카오 카테고리 검색) */
     val nearby = MutableStateFlow<Pair<String, List<com.eunho.tagohub.data.Place2>>?>(null)
@@ -455,6 +510,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         updateTrainLines()
         c.setBase(effectiveBase())
         c.setOverlays(overlays.value)
+        pushUticIncidents()
+        if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
         picked.value?.let { c.setPin(it.lat, it.lng) }
         pushStations()
         pushStops()
@@ -486,6 +543,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         trainJob?.cancel()
         trainLines = emptySet()
         nearbyJob?.cancel()
+        if (uticJob?.isActive == true) {
+            uticGeneration++
+            uticJob?.cancel()
+            uticJob = null
+            uticRequestedAt = 0L
+        }
+        uticLoading.value = false
     }
 
     fun onMapMode(m: String) { mode.value = m }
@@ -506,12 +570,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onMoveEnd(lat: Double, lng: Double, zoom: Double, level: Int, s: Double, w: Double, n: Double, e: Double) {
-        cctvBox = doubleArrayOf(s, w, n, e); cctvLevel = level
-        refreshCctv(level, s, w, n, e)
         lastView = Triple(lat, lng, zoom)
         saveView(lat, lng, zoom)
         lastLevel = level
         lastBox = doubleArrayOf(s, w, n, e)
+        if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
         needZoom.value = if (subwayLayer) level < 1 else level < 2
         updateTrainLines()
         if (level >= 2 && busLayer) loadStopsInView(doubleArrayOf(s, w, n, e))
@@ -1393,6 +1456,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val MAX_STOPS = 400
+        const val UTIC_INCIDENTS_OVERLAY = "utic_incidents"
+        const val UTIC_REFRESH_INTERVAL_MS = 60_000L
         /** 도시철도 평균 속도 (정차 포함) m/s ≈ 40km/h */
         const val TRAIN_SPEED = 11.0
         /** 다음 역 직전에서 멈춰 다음 갱신을 기다리는 지점 */

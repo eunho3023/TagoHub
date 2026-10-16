@@ -12,6 +12,7 @@ enum class BaseMap(val label: String) {
 data class StopPin(val id: String, val name: String, val lat: Double, val lng: Double, val selected: Boolean)
 data class RoutePin(val id: String, val name: String, val lat: Double, val lng: Double, val focus: Boolean)
 data class StationPin(val id: String, val name: String, val lat: Double, val lng: Double, val colors: List<Int>)
+data class UticIncidentPin(val id: String, val title: String, val lat: Double, val lng: Double)
 /**
  * 움직이는 차량. path 위에서 startFrac(지금) → endFrac 까지 durationMs 동안 이동한다.
  * 정지 차량은 path 가 점 하나.
@@ -36,8 +37,6 @@ data class TripMark(val lat: Double, val lng: Double, val label: String, val col
 interface MapCanvas {
     /** 지도 겹쳐 보기: 카카오 오버레이 id ("traffic_info" 교통정보, "bicycle_road" 자전거도로, "hill_shading" 지형도) */
     fun setOverlays(ids: Set<String>) {}
-    /** 전국 CCTV (겹쳐 보기 'CCTV') */
-    fun setCctvs(list: List<com.eunho.tagohub.data.Cctv>) {}
     /** 지도에서 꾹 누르거나 고른 곳 표시 (null 이면 지움) */
     fun setPin(lat: Double?, lng: Double?) {}
     /** 길찾기 경로 (빈 목록이면 지움) */
@@ -54,6 +53,7 @@ interface MapCanvas {
     fun setRoute(color: Int?, stops: List<RoutePin>, shape: List<LatLng>?, parts: List<List<LatLng>>? = null, strong: Int? = null)
     fun setBuses(list: List<VehiclePin>)
     fun setStations(list: List<StationPin>)
+    fun setUticIncidents(list: List<UticIncidentPin>) {}
     fun setTrains(list: List<VehiclePin>)
     fun selectStation(id: String?)
     fun selectTrain(id: String?)

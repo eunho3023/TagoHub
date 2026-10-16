@@ -81,7 +81,12 @@ fun MainScreen() {
         drawerContent = {
             androidx.compose.material3.ModalDrawerSheet {
                 Text("TagoHub", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp))
-                listOf(ModeJump.Kind.Train to "🚆  기차", ModeJump.Kind.Coach to "🚌  고속·시외버스", ModeJump.Kind.Air to "✈️  항공").forEach { (k, label) ->
+                listOf(
+                    ModeJump.Kind.Train to "🚆  기차",
+                    ModeJump.Kind.Coach to "🚌  고속·시외버스",
+                    ModeJump.Kind.Air to "✈️  항공",
+                    ModeJump.Kind.Utic to "🚦  UTIC 교통정보",
+                ).forEach { (k, label) ->
                     androidx.compose.material3.NavigationDrawerItem(label = { Text(label) }, selected = panel == k,
                         onClick = { panel = k; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
                 }
@@ -119,6 +124,7 @@ fun MainScreen() {
                             ModeJump.Kind.Train -> TrainScreen()
                             ModeJump.Kind.Coach -> CoachScreen()
                             ModeJump.Kind.Air -> AirScreen()
+                            ModeJump.Kind.Utic -> UticTrafficScreen()
                         }
                     }
                 }

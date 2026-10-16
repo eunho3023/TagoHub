@@ -73,12 +73,14 @@ class KakaoCanvas(
     private var overlays: Set<String> = emptySet()
     private var pin: LatLng? = null
     private var pinLabel: Label? = null
+    private var uticIncidents: List<UticIncidentPin> = emptyList()
 
     private data class RouteArgs(val color: Int?, val stops: List<RoutePin>, val shape: List<LatLng>?, val parts: List<List<LatLng>>?, val strong: Int?)
 
     // ── 그려 둔 것 ──
     private val stopLabels = HashMap<String, Label>()
     private val stopSelected = HashMap<String, Boolean>()
+    private val uticIncidentLabels = ArrayList<Label>()
     private val stationLabels = HashMap<String, Label>()
     private val routeLines = ArrayList<RouteLine>()
     private val routeLabels = ArrayList<Label>()
@@ -169,7 +171,7 @@ class KakaoCanvas(
                     STOP_LAYER, ROUTE_PIN_LAYER -> vm.onStopClick(id)
                     STATION_LAYER -> vm.onStationClick(id)
                     TRAIN_LAYER -> vm.onTrainClick(id)
-                    CCTV_LAYER -> vm.onCctvClick(id)
+                    UTIC_INCIDENT_LAYER -> vm.onUticIncidentClick(id)
                 }
             }
             true
@@ -198,9 +200,10 @@ class KakaoCanvas(
         applyOverlays()
         vm.onMapMode("kakao")
         lastZoom = km.zoomLevel
-        drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawPin(); drawCctvs()
+        drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawPin()
         drawVehicles(busPins, buses, BUS_LAYER, null)
         drawVehicles(trainPins, trains, TRAIN_LAYER, selectedTrain)
+        drawUticIncidents()
         pendingCamera?.invoke()
         pendingCamera = null
         main.postDelayed({ report() }, 300)
@@ -292,6 +295,33 @@ class KakaoCanvas(
     override fun setStations(list: List<StationPin>) {
         stations = list
         drawStations()
+    }
+
+    override fun setUticIncidents(list: List<UticIncidentPin>) {
+        uticIncidents = list
+        drawUticIncidents()
+    }
+
+    private fun drawUticIncidents() {
+        uticIncidentLabels.forEach { runCatching { it.remove() } }
+        uticIncidentLabels.clear()
+        if ("utic_incidents" !in overlays) return
+        val l = layer(UTIC_INCIDENT_LAYER) ?: return
+        val st = styles("uticIncident") {
+            LabelStyles.from(
+                icon(icons.vehicle(UTIC_RED, "!", true), 0.5f, 0.5f, 10),
+                withText(icon(icons.vehicle(UTIC_RED, "!", true), 0.5f, 0.5f, 16), 10f),
+            )
+        }
+        uticIncidents.forEach { incident ->
+            l.addLabel(
+                LabelOptions.from("ui:${incident.id}", KLatLng.from(incident.lat, incident.lng))
+                    .setStyles(st)
+                    .setTexts(text(incident.title))
+                    .setClickable(true)
+                    .setTag(incident.id),
+            )?.let(uticIncidentLabels::add)
+        }
     }
 
     override fun selectStation(id: String?) {
@@ -524,27 +554,10 @@ class KakaoCanvas(
         }
     }
 
-    private var cctvs: List<com.eunho.tagohub.data.Cctv> = emptyList()
-    private val cctvLabels = ArrayList<Label>()
-
-    override fun setCctvs(list: List<com.eunho.tagohub.data.Cctv>) {
-        cctvs = list
-        drawCctvs()
-    }
-
-    private fun drawCctvs() {
-        cctvLabels.forEach { runCatching { it.remove() } }
-        cctvLabels.clear()
-        val l = layer(CCTV_LAYER) ?: return
-        val st = styles("cctv") { LabelStyles.from(icon(icons.cctv(), 0.5f, 0.5f)) }
-        for (c in cctvs) {
-            l.addLabel(LabelOptions.from(KLatLng.from(c.lat, c.lng)).setStyles(st).setTag(c.id))?.let { cctvLabels += it }
-        }
-    }
-
     override fun setOverlays(ids: Set<String>) {
         overlays = ids
         applyOverlays()
+        drawUticIncidents()
     }
 
     private fun applyOverlays() {
@@ -606,16 +619,17 @@ class KakaoCanvas(
         private const val TRAIN_LAYER = "trains"
         private const val ME_LAYER = "me"
         private const val PIN_LAYER = "pin"
-        private const val CCTV_LAYER = "cctv"
+        private const val UTIC_INCIDENT_LAYER = "uticIncidents"
         /** 카카오 지도 오버레이 id (KakaoMap.showOverlay(String) 문서) */
         // 안드로이드 공식 MapOverlay: 로드뷰 라인·지형·자전거도로·스카이뷰 하이브리드 (교통정보는 카카오와 협의해야 쓸 수 있음)
         val OVERLAY_IDS = listOf("bicycle_road" to com.kakao.vectormap.MapOverlay.BICYCLE_ROAD, "hill_shading" to com.kakao.vectormap.MapOverlay.HILLSHADING)
         private const val ROUTE_LAYER = "routeLines"
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
-            BUS_LAYER to 400, TRAIN_LAYER to 450, PIN_LAYER to 480, CCTV_LAYER to 350, ME_LAYER to 500)
+            BUS_LAYER to 400, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, PIN_LAYER to 480, ME_LAYER to 500)
         private val STOP_GREEN = 0xFF2E8B57.toInt()
         private val TRANSFER_RING = 0xFF333F4F.toInt()
+        private val UTIC_RED = 0xFFD32F2F.toInt()
 
         /**
          * 이 앱의 키 해시 (카카오 개발자 사이트에 등록하는 값): 서명 인증서 SHA-1 의 Base64.

@@ -174,6 +174,9 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
     val trainsOn by vm.trainsOn.collectAsStateWithLifecycle()
     val trainCount by vm.trainCount.collectAsStateWithLifecycle()
     val refreshTick by vm.refreshTick.collectAsStateWithLifecycle()
+    val overlays by vm.overlays.collectAsStateWithLifecycle()
+    val uticIncidentCount by vm.uticIncidentCount.collectAsStateWithLifecycle()
+    val uticLoading by vm.uticLoading.collectAsStateWithLifecycle()
 
     // 지도: 카카오맵. 인증이 실패하면 이유(등록할 패키지명·키 해시)를 알리고, 설정을 고친 뒤 새로고침 버튼으로 다시 시도.
     // 화면 생명주기에 맞춰 resume/pause (카카오맵은 꼭 불러야 함)
@@ -299,6 +302,9 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
             if (mapMode != MapMode.Bus && trainsOn && trainCount > 0 && panel == MapPanel.None) {
                 Hint("수도권 실시간 열차 ${trainCount}대 (30초마다 갱신)")
             }
+            if ("utic_incidents" in overlays) {
+                Hint(if (uticLoading) "UTIC 돌발정보 불러오는 중" else "화면 안 UTIC 돌발정보 ${uticIncidentCount}건")
+            }
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
 
@@ -340,12 +346,15 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                         }
                         // 카카오 지도 겹쳐 보기
                         HorizontalDivider()
-                        val on by vm.overlays.collectAsStateWithLifecycle()
-                        listOf("bicycle_road" to "자전거도로", "hill_shading" to "지형도", "cctv" to "CCTV 위치 (전국)").forEach { (id, label) ->
+                        listOf(
+                            "bicycle_road" to "자전거도로",
+                            "hill_shading" to "지형도",
+                            "utic_incidents" to "UTIC 돌발정보",
+                        ).forEach { (id, label) ->
                             DropdownMenuItem(
                                 text = { Text(label) },
                                 onClick = { vm.toggleOverlay(id) },
-                                trailingIcon = { if (id in on) Icon(Icons.Filled.Check, contentDescription = "켜짐") },
+                                trailingIcon = { if (id in overlays) Icon(Icons.Filled.Check, contentDescription = "켜짐") },
                             )
                         }
                     }
