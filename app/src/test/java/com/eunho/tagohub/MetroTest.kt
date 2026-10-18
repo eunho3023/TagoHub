@@ -6,6 +6,8 @@ import com.eunho.tagohub.core.TagoApiException
 import com.eunho.tagohub.data.SeoulMappers
 import com.eunho.tagohub.data.StationIndex
 import com.eunho.tagohub.data.StationName
+import com.eunho.tagohub.ui.theme.subwayLineColor
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,6 +21,7 @@ class MetroTest {
         javaClass.getResource("/fixtures/$name")!!.readText(Charsets.UTF_8)
 
     private val index by lazy { StationIndex.parseTsv(fixture("subway_stations.tsv")) }
+    private val nationalIndex by lazy { StationIndex.parseTsv(fixture("subway_stations_asset.tsv")) }
 
     @Test
     fun stationFile_loadsAll() {
@@ -58,6 +61,64 @@ class MetroTest {
     }
 
     @Test
+    fun daejeonLineOneUsesRegionalIdentityAndColor() {
+        val station = nationalIndex.stations.first { it.operator.contains("대전") && it.line == "1호선" }
+
+        assertEquals(null, station.seoulLine)
+        assertEquals("대전 1호선", station.displayLine)
+        assertEquals(Color(0xFF007448), subwayLineColor(station.displayLine))
+    }
+
+    @Test
+    fun regionalSubwayLinesKeepTheirOwnColorsAndSeoulExtensionsStayMapped() {
+        val regionalColors = mapOf(
+            ("부산교통공사" to "1호선") to ("부산 1호선" to Color(0xFFF06A00)),
+            ("부산교통공사" to "2호선") to ("부산 2호선" to Color(0xFF81BF48)),
+            ("부산교통공사" to "3호선") to ("부산 3호선" to Color(0xFFBB8C00)),
+            ("부산교통공사" to "4호선") to ("부산 4호선" to Color(0xFF217DCB)),
+            ("대구교통공사" to "1호선") to ("대구 1호선" to Color(0xFFD93F5C)),
+            ("대구교통공사" to "2호선") to ("대구 2호선" to Color(0xFF00AA80)),
+            ("대구교통공사" to "3호선") to ("대구 3호선" to Color(0xFFFFB100)),
+            ("광주교통공사" to "1호선") to ("광주 1호선" to Color(0xFF009088)),
+        )
+        regionalColors.forEach { (operatorLine, expected) ->
+            val station = nationalIndex.stations.first {
+                it.operator.contains(operatorLine.first) && it.line == operatorLine.second
+            }
+            assertEquals("${operatorLine.first} ${operatorLine.second}", expected.first, station.displayLine)
+            assertEquals("${operatorLine.first} ${operatorLine.second}", null, station.seoulLine)
+            assertEquals("${operatorLine.first} ${operatorLine.second}", expected.second, subwayLineColor(station.displayLine))
+        }
+
+        val incheon1 = nationalIndex.stations.first { it.operator.contains("인천교통공사") && it.line == "인천1호선" }
+        val incheon2 = nationalIndex.stations.first { it.operator.contains("인천교통공사") && it.line == "인천2호선" }
+        assertEquals(Color(0xFF7CA8D5), subwayLineColor(incheon1.displayLine))
+        assertEquals(Color(0xFFED8B00), subwayLineColor(incheon2.displayLine))
+
+        val incheon7 = com.eunho.tagohub.data.MetroStation(
+            code = "3757",
+            name = "부천시청",
+            line = "7호선",
+            lat = 37.504611,
+            lng = 126.763561,
+            operator = "인천교통공사",
+        )
+        val guui8 = nationalIndex.stations.first { it.operator.contains("구리도시공사") && it.line == "8호선" }
+        val namyangju8 = nationalIndex.stations.first { it.operator.contains("남양주도시공사") && it.line == "8호선" }
+        assertEquals("1007", incheon7.seoulLine?.id)
+        assertEquals("1008", guui8.seoulLine?.id)
+        assertEquals("1008", namyangju8.seoulLine?.id)
+
+        val seoul1 = nationalIndex.stations.first { it.operator.contains("서울교통공사") && it.line == "1호선" }
+        val korail1 = nationalIndex.stations.first {
+            (it.operator.contains("코레일") || it.operator.contains("한국철도")) && it.line == "1호선"
+        }
+        assertEquals("1001", seoul1.seoulLine?.id)
+        assertEquals("1001", korail1.seoulLine?.id)
+        assertEquals(Color(0xFF0052A4), subwayLineColor(seoul1.displayLine))
+    }
+
+    @Test
     fun sameNameFarApart_staysSeparate() {
         // 양평: 5호선(서울 영등포구) ↔ 경의중앙선(경기 양평군)
         val yp = index.groups.filter { it.name == "양평" }
@@ -90,6 +151,7 @@ class MetroTest {
     fun tagoLineNames_matchDisplayLines() {
         assertTrue(StationName.sameLine("경의중앙", "경의중앙선"))
         assertTrue(StationName.sameLine("공항", "공항철도"))
+        assertTrue(StationName.sameLine("인천국제공항선", "공항철도"))
         assertTrue(StationName.sameLine("1호선", "1호선"))
         assertTrue(StationName.sameLine("수인분당", "수인분당선"))
         assertTrue(!StationName.sameLine("1호선", "4호선"))

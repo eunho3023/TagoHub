@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -52,19 +53,31 @@ fun ItsRoadScreen(vm: MapViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("교통소통", "교통예측", "안개 취약구간").forEachIndexed { index, label ->
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(3) { index ->
+                val label = listOf("교통소통", "교통예측", "안개 취약구간")[index]
                 FilterChip(selected = tab == index, onClick = { tab = index }, label = { Text(label) })
             }
         }
-        if (loading) CircularProgressIndicator(Modifier.padding(vertical = 8.dp))
+        if (loading) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator()
+                Text("ITS 데이터를 불러오고 있습니다.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
         error?.let {
             Text(it, Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         when (tab) {
             0 -> {
                 Button(onClick = vm::loadItsTraffic, Modifier.fillMaxWidth()) {
-                    Text("현재 지도 범위에서 조회")
+                    Text(if (traffic.isEmpty()) "현재 지도에서 교통정보 조회" else "교통정보 새로고침 · ${traffic.size}건")
+                }
+                if (traffic.isEmpty() && !loading && error == null) {
+                    ItsEmptyMessage("교통소통 정보", "현재 지도 위치로 이동한 뒤 조회 버튼을 눌러 주세요.")
                 }
                 LazyColumn(
                     Modifier.fillMaxSize().padding(top = 8.dp),
@@ -117,8 +130,18 @@ private fun ForecastPanel(
 ) {
     var selected by remember { mutableStateOf<com.eunho.tagohub.data.ItsMainlineSection?>(null) }
     var showSections by rememberSaveable { mutableStateOf(false) }
+    var sectionQuery by rememberSaveable { mutableStateOf("") }
     var date by rememberSaveable { mutableStateOf(LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)) }
     var hour by rememberSaveable { mutableStateOf(LocalTime.now().hour.toString().padStart(2, '0')) }
+    val filteredSections = remember(sections, sectionQuery) {
+        val query = sectionQuery.trim()
+        if (query.isEmpty()) sections
+        else sections.filter {
+            it.roadName.contains(query, ignoreCase = true) ||
+                it.startName.contains(query, ignoreCase = true) ||
+                it.endName.contains(query, ignoreCase = true)
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { showSections = true }, Modifier.fillMaxWidth()) {
@@ -142,9 +165,12 @@ private fun ForecastPanel(
         }
         Button(
             onClick = { selected?.let { vm.loadItsForecast(it.id, date, hour.toIntOrNull() ?: -1) } },
-            enabled = selected != null,
+            enabled = selected != null && date.length == 8 && (hour.toIntOrNull() ?: -1) in 0..23,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("예측정보 조회") }
+        if (forecasts.isEmpty() && selected != null) {
+            ItsEmptyMessage("예측정보", "조회 버튼을 눌러 선택한 구간의 예측 정보를 확인하세요.")
+        }
         LazyColumn(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -174,21 +200,45 @@ private fun ForecastPanel(
             onDismissRequest = { showSections = false },
             title = { Text("본선 구간 선택") },
             text = {
-                LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                    items(sections, key = { it.id }) { section ->
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { selected = section; showSections = false }
-                                .padding(vertical = 10.dp),
-                        ) {
-                            Text(section.roadName, fontWeight = FontWeight.SemiBold)
-                            Text("${section.startName}~${section.endName}", style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.heightIn(max = 480.dp)) {
+                    OutlinedTextField(
+                        value = sectionQuery,
+                        onValueChange = { sectionQuery = it },
+                        label = { Text("고속도로·나들목 검색") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    LazyColumn(Modifier.weight(1f).padding(top = 8.dp)) {
+                        items(filteredSections, key = { it.id }) { section ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selected = section; showSections = false }
+                                    .padding(vertical = 10.dp),
+                            ) {
+                                Text(section.roadName, fontWeight = FontWeight.SemiBold)
+                                Text("${section.startName}~${section.endName}", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
             },
             confirmButton = { TextButton(onClick = { showSections = false }) { Text("닫기") } },
         )
+    }
+}
+
+@Composable
+private fun ItsEmptyMessage(title: String, message: String) {
+    Card(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("$title 조회 전", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

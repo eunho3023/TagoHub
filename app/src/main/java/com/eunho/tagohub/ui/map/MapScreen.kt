@@ -60,6 +60,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
@@ -68,8 +70,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Train
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.HorizontalDivider
@@ -159,8 +159,12 @@ import java.time.LocalTime
 private fun LocalTime.hhmm() = TagoTime.clockText(hour * 60 + minute)
 
 @Composable
-fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
-    remember(mapMode) { vm.configure(mapMode) }
+fun MapScreen(
+    vm: MapViewModel = viewModel(),
+    mapMode: MapMode = MapMode.Bus,
+    onMapModeChange: ((MapMode) -> Unit)? = null,
+) {
+    LaunchedEffect(mapMode) { vm.configure(mapMode) }
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val scope = rememberCoroutineScope()
@@ -177,20 +181,13 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
     val baseMap by vm.baseMap.collectAsStateWithLifecycle()
     var baseMenu by remember { mutableStateOf(false) }
     val station by vm.station.collectAsStateWithLifecycle()
-    val trainsOn by vm.trainsOn.collectAsStateWithLifecycle()
-    val trainCount by vm.trainCount.collectAsStateWithLifecycle()
     val refreshTick by vm.refreshTick.collectAsStateWithLifecycle()
     val overlays by vm.overlays.collectAsStateWithLifecycle()
-    val uticIncidentCount by vm.uticIncidentCount.collectAsStateWithLifecycle()
     val uticLoading by vm.uticLoading.collectAsStateWithLifecycle()
-    val uticRoadRiskCount by vm.uticRoadRiskCount.collectAsStateWithLifecycle()
     val uticRiskLoading by vm.uticRiskLoading.collectAsStateWithLifecycle()
-    val uticSafetyPointCount by vm.uticSafetyPointCount.collectAsStateWithLifecycle()
     val uticSafetyLoading by vm.uticSafetyLoading.collectAsStateWithLifecycle()
-    val itsCctvCount by vm.itsCctvCount.collectAsStateWithLifecycle()
     val itsCctvLoading by vm.itsCctvLoading.collectAsStateWithLifecycle()
     val selectedItsCctv by vm.selectedItsCctv.collectAsStateWithLifecycle()
-    val itsRoadCounts by vm.itsRoadCounts.collectAsStateWithLifecycle()
     val itsRoadLoading by vm.itsRoadLoading.collectAsStateWithLifecycle()
     val itsRoadCachedLayers by vm.itsRoadCachedLayers.collectAsStateWithLifecycle()
     val selectedItsRoadFeature by vm.selectedItsRoadFeature.collectAsStateWithLifecycle()
@@ -316,24 +313,10 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                     else "지도를 확대하면 주변 버스 정류장이 표시됩니다"
                 )
             }
-            if (mapMode != MapMode.Bus && trainsOn && trainCount > 0 && panel == MapPanel.None) {
-                Hint("수도권 실시간 열차 ${trainCount}대 (30초마다 갱신)")
-            }
-            if ("utic_incidents" in overlays) {
-                Hint(if (uticLoading) "UTIC 돌발정보 불러오는 중" else "화면 안 UTIC 돌발정보 ${uticIncidentCount}건")
-            }
-            if ("utic_road_risk" in overlays) {
-                Hint(if (uticRiskLoading) "UTIC 도로위험예보 불러오는 중" else "화면 안 UTIC 도로위험예보 ${uticRoadRiskCount}건")
-            }
-            if ("utic_safety" in overlays) {
-                Hint(if (uticSafetyLoading) "UTIC 교통안전 XLSX 다운로드·분석 중" else "화면 안 UTIC 교통안전 ${uticSafetyPointCount}건")
-            }
-            if ("its_cctv" in overlays) {
-                Hint(
-                    if (itsCctvLoading) "ITS CCTV 불러오는 중"
-                    else "화면 안 ITS CCTV ${itsCctvCount}곳 · 마커를 눌러 영상 보기",
-                )
-            }
+            if ("utic_incidents" in overlays && uticLoading) Hint("UTIC 돌발정보 불러오는 중")
+            if ("utic_road_risk" in overlays && uticRiskLoading) Hint("UTIC 도로위험예보 불러오는 중")
+            if ("utic_safety" in overlays && uticSafetyLoading) Hint("UTIC 교통안전정보 불러오는 중")
+            if ("its_cctv" in overlays && itsCctvLoading) Hint("ITS CCTV 불러오는 중")
             val itsRoadLabels = mapOf(
                 "its_events" to "ITS 돌발정보",
                 "its_disasters" to "ITS 재난정보",
@@ -345,15 +328,7 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                 "its_ice_sections" to "상습 결빙구간",
             )
             itsRoadLabels.filterKeys { it in overlays }.forEach { (id, label) ->
-                val count = itsRoadCounts[id] ?: 0
-                Hint(
-                    when {
-                        id in itsRoadCachedLayers && id in itsRoadLoading -> "저장된 $label ${count}건 표시 · 최신정보 확인 중"
-                        id in itsRoadCachedLayers -> "저장된 $label ${count}건 표시"
-                        id in itsRoadLoading -> "$label 불러오는 중"
-                        else -> "$label ${count}건"
-                    },
-                )
+                if (id in itsRoadLoading) Hint("$label 불러오는 중")
             }
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
@@ -370,6 +345,9 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                     Icon(Icons.Filled.Refresh, contentDescription = "지도 다시 시도")
                 }
             }
+            SmallFloatingActionButton(onClick = vm::refreshNow) {
+                Icon(Icons.Filled.Refresh, contentDescription = "지도 정보 새로고침")
+            }
             SmallFloatingActionButton(onClick = {
                 if (hasLocationPermission(context)) locate()
                 else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -378,47 +356,8 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
             // 지하철 실시간 열차는 늘 표시 (버튼 없앰)
             // 지도 종류: 카카오맵 기본·위성
             if (mode == "kakao") {
-                Box {
-                    SmallFloatingActionButton(onClick = { baseMenu = true }) {
-                        Icon(Icons.Filled.Layers, contentDescription = "지도 종류")
-                    }
-                    DropdownMenu(expanded = baseMenu, onDismissRequest = { baseMenu = false }) {
-                        val current = baseMap ?: vm.effectiveBase()
-                        BaseMap.entries.forEach { t ->
-                            DropdownMenuItem(
-                                text = { Text(t.label) },
-                                onClick = {
-                                    vm.setBaseMap(t)
-                                    baseMenu = false
-                                },
-                                trailingIcon = { if (t == current) Icon(Icons.Filled.Check, contentDescription = "선택됨") },
-                            )
-                        }
-                        // 카카오 지도 겹쳐 보기
-                        HorizontalDivider()
-                        listOf(
-                            "bicycle_road" to "자전거도로",
-                            "hill_shading" to "지형도",
-                            "utic_incidents" to "UTIC 돌발정보",
-                            "utic_road_risk" to "UTIC 도로위험예보",
-                            "utic_safety" to "UTIC 교통안전정보",
-                            "its_cctv" to "ITS 고속도로·국도 CCTV",
-                            "its_events" to "ITS 돌발정보",
-                            "its_disasters" to "ITS 재난정보",
-                            "its_vsl" to "가변속도표지",
-                            "its_vms" to "도로전광표지",
-                            "its_safe_driving" to "주의운전정보",
-                            "its_dangerous_cars" to "위험물 사고",
-                            "its_vds" to "VDS 시설물",
-                            "its_ice_sections" to "상습 결빙구간",
-                        ).forEach { (id, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = { vm.toggleOverlay(id) },
-                                trailingIcon = { if (id in overlays) Icon(Icons.Filled.Check, contentDescription = "켜짐") },
-                            )
-                        }
-                    }
+                SmallFloatingActionButton(onClick = { baseMenu = true }) {
+                    Icon(Icons.Filled.Layers, contentDescription = "지도 종류와 레이어")
                 }
             }
         }
@@ -437,6 +376,7 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                             onClose = vm::closePanel,
                             refreshKey = refreshTick,
                             onArrivalClick = { a -> vm.showArrivalPath(d.group, a) },
+                            onUseStation = { asOrigin -> vm.useStationAs(d.group, asOrigin) },
                         )
                     }
                 }
@@ -459,6 +399,151 @@ fun MapScreen(vm: MapViewModel = viewModel(), mapMode: MapMode = MapMode.Bus) {
                 TextButton(onClick = vm::dismissItsRoadFeature) { Text("닫기") }
             },
         )
+    }
+    if (baseMenu && mode == "kakao") {
+        MapLayerSheet(
+            base = baseMap ?: vm.effectiveBase(),
+            overlays = overlays,
+            uticLoading = uticLoading,
+            uticRiskLoading = uticRiskLoading,
+            uticSafetyLoading = uticSafetyLoading,
+            itsCctvLoading = itsCctvLoading,
+            loadingLayers = itsRoadLoading,
+            cachedLayers = itsRoadCachedLayers,
+            onBaseSelect = vm::setBaseMap,
+            onToggle = vm::toggleOverlay,
+            onDismiss = { baseMenu = false },
+        )
+    }
+}
+
+private data class MapLayerOption(
+    val id: String,
+    val title: String,
+    val description: String,
+)
+
+@Composable
+private fun MapLayerSheet(
+    base: BaseMap,
+    overlays: Set<String>,
+    uticLoading: Boolean,
+    uticRiskLoading: Boolean,
+    uticSafetyLoading: Boolean,
+    itsCctvLoading: Boolean,
+    loadingLayers: Set<String>,
+    cachedLayers: Set<String>,
+    onBaseSelect: (BaseMap) -> Unit,
+    onToggle: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val groups = listOf(
+        "지도" to listOf(
+            MapLayerOption("bicycle_road", "자전거도로", "지도에 자전거도로를 겹쳐 표시합니다."),
+            MapLayerOption("hill_shading", "지형도", "지형의 높낮이를 음영으로 표시합니다."),
+        ),
+        "UTIC 교통정보" to listOf(
+            MapLayerOption("utic_incidents", "돌발정보", "공사·사고 등 교통 돌발 상황"),
+            MapLayerOption("utic_road_risk", "도로위험예보", "도로 위 위험 상황과 예보"),
+            MapLayerOption("utic_safety", "교통안전정보", "교통안전 시설·위험 지점"),
+        ),
+        "ITS 도로정보" to listOf(
+            MapLayerOption("its_cctv", "고속도로·국도 CCTV", "마커를 눌러 실시간 영상을 봅니다."),
+            MapLayerOption("its_events", "돌발정보", "ITS에서 제공하는 도로 돌발 상황"),
+            MapLayerOption("its_disasters", "재난정보", "도로 통제 등 재난 정보를 표시합니다."),
+            MapLayerOption("its_vsl", "가변속도표지", "가변 제한속도 표지 위치"),
+            MapLayerOption("its_vms", "도로전광표지", "전광표지 위치와 표시 내용"),
+            MapLayerOption("its_safe_driving", "주의운전정보", "주의가 필요한 도로 구간"),
+            MapLayerOption("its_dangerous_cars", "위험물 사고", "위험물 운송차량 사고 정보"),
+            MapLayerOption("its_vds", "VDS 시설물", "교통량 검지 시설물 위치"),
+            MapLayerOption("its_ice_sections", "상습 결빙구간", "겨울철 결빙 주의 구간"),
+        ),
+    )
+    val enabledCount = overlays.count { id -> groups.any { group -> group.second.any { it.id == id } } }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.82f),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item {
+                Text("지도와 교통 레이어", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    if (enabledCount == 0) "원하는 정보를 켜서 지도에 표시하세요."
+                    else "${enabledCount}개 레이어 사용 중 · 다시 눌러 끌 수 있어요.",
+                    Modifier.padding(top = 4.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BaseMap.entries.forEach { type ->
+                        androidx.compose.material3.FilterChip(
+                            selected = base == type,
+                            onClick = { onBaseSelect(type) },
+                            label = { Text(type.label) },
+                            trailingIcon = if (base == type) {
+                                { Icon(Icons.Filled.Check, contentDescription = "선택됨") }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+            }
+            groups.forEach { (groupTitle, options) ->
+                item(key = "heading:$groupTitle") {
+                    Text(
+                        groupTitle,
+                        Modifier.padding(top = 12.dp, bottom = 2.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                items(options, key = { it.id }) { option ->
+                    val enabled = option.id in overlays
+                    val status = when (option.id) {
+                        "utic_incidents" -> if ("utic_incidents" in overlays && uticLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
+                        "utic_road_risk" -> if ("utic_road_risk" in overlays && uticRiskLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
+                        "utic_safety" -> if ("utic_safety" in overlays && uticSafetyLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
+                        "its_cctv" -> if ("its_cctv" in overlays && itsCctvLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
+                        else -> {
+                            when {
+                                option.id in loadingLayers -> "불러오는 중"
+                                option.id in cachedLayers -> "저장된 정보"
+                                enabled -> "사용 중"
+                                else -> "지도 범위"
+                            }
+                        }
+                    }
+                    Surface(
+                        onClick = { onToggle(option.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (enabled) MaterialTheme.colorScheme.secondaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(option.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                Text(
+                                    if (enabled && option.id in loadingLayers && option.id in cachedLayers) {
+                                        "저장된 $status 표시 · 최신 정보 갱신 중"
+                                    } else if (enabled) "$status 표시 중" else option.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (enabled) Icon(Icons.Filled.Check, contentDescription = "켜짐")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -567,7 +652,6 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     p.sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    p.region?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     val extra = listOfNotNull(p.category, p.phone).joinToString(" · ")
                     if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val uri = androidx.compose.ui.platform.LocalUriHandler.current
@@ -1351,7 +1435,7 @@ private fun PlannerPanel(vm: MapViewModel) {
     PanelSurface {
         PanelHeader(
             title = if (selected != null) "경로 상세" else "길찾기",
-            subtitle = note ?: "직통·1회 환승",
+            subtitle = note ?: "카카오 대중교통 길찾기",
             color = ModeColor.Bus,
             onClose = vm::closePanel,
             switchLabel = if (selected != null) "목록" else null,
@@ -1410,7 +1494,7 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                 q = it
                 t.search(it)
             },
-            if (field == PlanField.Dest) "목적지 (장소·정류장 이름)" else "출발지 (장소·정류장 이름)",
+            if (field == PlanField.Dest) "목적지 (카카오 장소 검색)" else "출발지 (카카오 장소 검색)",
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             onSearch = { t.search(q) },
         )
@@ -1429,7 +1513,7 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                     }
                 }
                 is Load.Fail -> item { MessageText(r.message) }
-                is Load.Idle -> item { MessageText("장소 이름(예: 전주한옥마을, 전북대학교)이나 정류장 이름을 입력하세요.") }
+                is Load.Idle -> item { MessageText("장소를 검색하거나 지도에서 위치를 길게 눌러 선택하세요.") }
             }
         }
     }
@@ -1462,45 +1546,108 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
 @Composable
 private fun PlanList(t: TripController) {
     val plans by t.plans.collectAsStateWithLifecycle()
-    LoadView(
-        plans,
-        onRetry = t::plan,
-        isEmpty = { it.isEmpty() },
-        emptyText = "경로가 없습니다.",
-        idle = { MessageText("도착지를 입력하면 지금 위치에서 탈 수 있는 버스(직통·1회 환승)를 보여줍니다. 다른 지역으로 가는 길도 찾습니다.") },
-    ) { list ->
-        val sort by t.sort.collectAsStateWithLifecycle()
-        val shown = remember(list, sort) {
-            when (sort) {
-                PlanSort.Fast -> list.sortedBy { it.minutes }
-                PlanSort.LessWalk -> list.sortedWith(compareBy({ it.walkStartM + it.walkEndM + it.transferWalkM }, { it.minutes }))
-                PlanSort.LessTransfer -> list.sortedWith(compareBy({ it.legs.size }, { it.minutes }))
+    val destination by t.dest.collectAsStateWithLifecycle()
+    val ridePlan by t.ridePlan.collectAsStateWithLifecycle()
+    val sort by t.sort.collectAsStateWithLifecycle()
+    val mode by t.mode.collectAsStateWithLifecycle()
+    val via by t.via.collectAsStateWithLifecycle()
+
+    Column(Modifier.fillMaxSize()) {
+        if (destination != null) {
+            androidx.compose.foundation.lazy.LazyRow(
+                Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(PlanMode.entries) { option ->
+                    val icon = when (option) {
+                        PlanMode.Transit -> Icons.Filled.DirectionsBus
+                        PlanMode.Car -> Icons.Filled.DirectionsCar
+                        PlanMode.Walk -> Icons.AutoMirrored.Filled.DirectionsWalk
+                        PlanMode.Bicycle -> Icons.AutoMirrored.Filled.DirectionsBike
+                    }
+                    FilterChip(
+                        selected = mode == option,
+                        onClick = { if (mode != option) t.selectMode(option) },
+                        label = { Text(option.label) },
+                        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    )
+                }
+            }
+            if (mode != PlanMode.Transit) {
+                when (val route = ridePlan) {
+                    is Load.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                    is Load.Fail -> MessageText(route.message)
+                    is Load.Ok -> {
+                        val result = route.value
+                        val distance = if (result.distanceMeters >= 1000) {
+                            "%.1fkm".format(result.distanceMeters / 1000.0)
+                        } else "${result.distanceMeters}m"
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "약 ${(result.durationSeconds + 59) / 60}분",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(distance, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(
+                            when (result.mode) {
+                                PlanMode.Car -> "카카오 자동차 길찾기 · 교통상황에 따라 달라질 수 있습니다."
+                                PlanMode.Walk -> "카카오 도보 경로"
+                                PlanMode.Bicycle -> "카카오 자전거 경로"
+                                PlanMode.Transit -> ""
+                            },
+                            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었습니다.")
+                }
             }
         }
-        Column(Modifier.fillMaxSize()) {
-        val via by t.via.collectAsStateWithLifecycle()
         via?.let { v ->
             Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("경유  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { t.via.value = null; t.plan() }) { Text("경유 빼기") }
             }
         }
-        // 자전거·도보 (카카오 경로)
-        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            AssistChip(onClick = { t.ride(bicycle = true) }, label = { Text("🚲 자전거") })
-            AssistChip(onClick = { t.ride(bicycle = false) }, label = { Text("🚶 도보") })
-        }
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PlanSort.entries.forEach { o ->
-                FilterChip(selected = sort == o, onClick = { t.sort.value = o }, label = { Text(o.label) })
+        if (mode == PlanMode.Transit) {
+            Box(Modifier.weight(1f)) {
+                LoadView(
+                    plans,
+                    onRetry = t::plan,
+                    isEmpty = { it.isEmpty() },
+                    emptyText = "대중교통 경로가 없습니다. 다른 이동수단을 선택해 경로를 확인하세요.",
+                    idle = { MessageText("출발지와 도착지를 선택하면 대중교통 경로를 보여줍니다.") },
+                ) { list ->
+                    val shown = remember(list, sort) {
+                        when (sort) {
+                            PlanSort.Fast -> list.sortedBy { it.minutes }
+                            PlanSort.LessWalk -> list.sortedWith(compareBy({ it.walkStartM + it.walkEndM + it.transferWalkM }, { it.minutes }))
+                            PlanSort.LessTransfer -> list.sortedWith(compareBy({ it.legs.size }, { it.minutes }))
+                        }
+                    }
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            PlanSort.entries.forEach { option ->
+                                FilterChip(selected = sort == option, onClick = { t.sort.value = option }, label = { Text(option.label) })
+                            }
+                        }
+                        LazyColumn(Modifier.weight(1f)) {
+                            items(shown) { p ->
+                                PlanCard(p) { t.select(p) }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                }
             }
-        }
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(shown) { p ->
-                PlanCard(p) { t.select(p) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
-        }
         }
     }
 }

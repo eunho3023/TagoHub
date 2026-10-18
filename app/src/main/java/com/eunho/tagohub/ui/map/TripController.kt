@@ -30,9 +30,12 @@ import kotlinx.coroutines.withContext
 data class PlanPoint(val name: String, val sub: String?, val lat: Double, val lng: Double, val stopId: String? = null)
 
 enum class PlanField { Origin, Dest }
+enum class PlanMode(val label: String) { Transit("대중교통"), Car("자동차"), Walk("도보"), Bicycle("자전거") }
 
 /** 고른 경로의 실시간 정보 */
 data class TripLive(val first: List<BusArrival>, val transfer: List<BusArrival>)
+
+data class RidePlan(val mode: PlanMode, val distanceMeters: Int, val durationSeconds: Int)
 
 /**
  * 버스 길찾기 (전주시 시내버스).
@@ -61,11 +64,14 @@ class TripController(
     val plans = MutableStateFlow<Load<List<TripPlan>>>(Load.Idle)
     val selected = MutableStateFlow<TripPlan?>(null)
     val live = MutableStateFlow<TripLive?>(null)
+    val mode = MutableStateFlow(PlanMode.Transit)
+    val ridePlan = MutableStateFlow<Load<RidePlan>>(Load.Idle)
     val note = MutableStateFlow<String?>(null)
 
     private var searchJob: Job? = null
     private var planJob: Job? = null
     private var liveJob: Job? = null
+    private var rideJob: Job? = null
 
     private suspend fun <T> tracked(block: suspend () -> T): T {
         busy.value++
@@ -77,7 +83,7 @@ class TripController(
     }
 
     fun reset() {
-        searchJob?.cancel(); planJob?.cancel(); liveJob?.cancel()
+        searchJob?.cancel(); planJob?.cancel(); liveJob?.cancel(); rideJob?.cancel()
         origin.value = null
         dest.value = null
         editing.value = PlanField.Dest
@@ -86,22 +92,83 @@ class TripController(
         via.value = null
         selected.value = null
         live.value = null
+        mode.value = PlanMode.Transit
+        ridePlan.value = Load.Idle
         note.value = null
         canvas()?.setTrip(emptyList(), emptyList())
     }
 
-    /** 카카오 자전거(bicycle)·도보 경로를 지도에 그리고 시간·거리를 알림 */
-    fun ride(bicycle: Boolean) {
+    fun selectMode(value: PlanMode) {
+        mode.value = value
+        when (value) {
+            PlanMode.Transit -> plan()
+            PlanMode.Car -> drive()
+            PlanMode.Walk -> ride(bicycle = false)
+            PlanMode.Bicycle -> ride(bicycle = true)
+        }
+    }
+
+    private fun drive() {
         val d = dest.value ?: return
-        val o = origin.value?.let { LatLng(it.lat, it.lng) } ?: me() ?: center() ?: return
-        scope.launch {
-            val r = com.eunho.tagohub.data.KakaoExtra.ride(o, LatLng(d.lat, d.lng), bicycle)
-            if (r == null) { note.value = (if (bicycle) "자전거" else "도보") + " 경로를 찾지 못했습니다 (카카오 REST 키 확인)"; return@launch }
+        val o = origin.value?.let { LatLng(it.lat, it.lng) } ?: me() ?: center()
+        rideJob?.cancel()
+        note.value = "카카오 자동차 길찾기"
+        rideJob = scope.launch {
+            ridePlan.value = Load.Loading
+            if (o == null) {
+                ridePlan.value = Load.Fail("출발 위치를 확인할 수 없습니다. 출발지를 선택해주세요.")
+                return@launch
+            }
+            if (!com.eunho.tagohub.data.KakaoExtra.available) {
+                ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                return@launch
+            }
+            val (status, route) = tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng)) }
+            if (route == null) {
+                ridePlan.value = Load.Fail(
+                    when {
+                        status == "HTTP 401" || status == "HTTP 403" -> "카카오 자동차 길찾기 권한 또는 REST API 키를 확인해주세요."
+                        status.startsWith("HTTP ") -> "카카오 자동차 경로 요청에 실패했습니다. ($status)"
+                        else -> "자동차 경로를 찾지 못했습니다. ($status)"
+                    },
+                )
+                return@launch
+            }
+            canvas()?.setTrip(
+                listOf(TripSegment(route.points, 0xFF3D5BAB.toInt(), false)),
+                listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)),
+            )
+            canvas()?.fitTo(route.points)
+            ridePlan.value = Load.Ok(RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds))
+        }
+    }
+
+    /** 카카오 자전거(bicycle)·도보 경로 */
+    private fun ride(bicycle: Boolean) {
+        val d = dest.value ?: return
+        val o = origin.value?.let { LatLng(it.lat, it.lng) } ?: me() ?: center()
+        rideJob?.cancel()
+        note.value = if (bicycle) "카카오 자전거 경로" else "카카오 도보 경로"
+        rideJob = scope.launch {
+            ridePlan.value = Load.Loading
+            if (o == null) {
+                ridePlan.value = Load.Fail("출발 위치를 확인할 수 없습니다. 출발지를 선택해주세요.")
+                return@launch
+            }
+            if (!com.eunho.tagohub.data.KakaoExtra.available) {
+                ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                return@launch
+            }
+            val r = tracked { com.eunho.tagohub.data.KakaoExtra.ride(o, LatLng(d.lat, d.lng), bicycle) }
+            if (r == null) {
+                ridePlan.value = Load.Fail("${if (bicycle) "자전거" else "도보"} 경로를 카카오에서 찾지 못했습니다.")
+                return@launch
+            }
             val (path, m, sec) = r
             canvas()?.setTrip(listOf(TripSegment(path, if (bicycle) 0xFF2E7D32.toInt() else WALK, !bicycle)),
                 listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)))
             canvas()?.fitTo(path)
-            note.value = (if (bicycle) "🚲 자전거 " else "🚶 도보 ") + "약 ${(sec + 59) / 60}분 · " + (if (m >= 1000) "%.1fkm".format(m / 1000.0) else "${m}m") + " (카카오)"
+            ridePlan.value = Load.Ok(RidePlan(if (bicycle) PlanMode.Bicycle else PlanMode.Walk, m, sec))
         }
     }
 
@@ -122,7 +189,7 @@ class TripController(
         results.value = Load.Idle
     }
 
-/** 목적지·출발지 검색: 장소(카카오 로컬) + 정류장(내장 DB, 전주 정류장 먼저) */
+/** 출발지·도착지 검색은 카카오 로컬 장소 검색을 사용한다. */
     fun search(q: String) {
         searchJob?.cancel()
         val k = q.trim()
@@ -133,20 +200,23 @@ class TripController(
         searchJob = scope.launch {
             delay(250)
             results.value = Load.Loading
-            val near = me() ?: center()
-            val db = StopDb.peek()
-            val stops = if (db != null) withContext(Dispatchers.IO) { db.search(k, 40) } else emptyList()
-            val stopPoints = stops.sortedBy { !Jeonju.isJeonju(it.nodeId) }.take(15).mapNotNull { s ->
-                val lat = s.lat ?: return@mapNotNull null
-                val lng = s.lng ?: return@mapNotNull null
-                PlanPoint(s.name, listOfNotNull("정류장", s.nodeNo).joinToString(" "), lat, lng, s.nodeId)
+            if (!PlaceSearch.available) {
+                results.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                return@launch
             }
-            val places = tracked { PlaceSearch.search(k, near) }.map { PlanPoint(it.name, it.address, it.lat, it.lng) }
-            results.value = Load.Ok(places + stopPoints)
+            val near = me() ?: center()
+            val response = tracked { PlaceSearch.searchResult(k, near) }
+            results.value = response.fold(
+                onSuccess = { places -> Load.Ok(places.map { PlanPoint(it.name, it.address, it.lat, it.lng) }) },
+                onFailure = { Load.Fail("카카오 장소 검색 실패: ${it.message ?: "네트워크 오류"}") },
+            )
         }
     }
 
     fun pick(p: PlanPoint?) {
+        rideJob?.cancel()
+        mode.value = PlanMode.Transit
+        ridePlan.value = Load.Idle
         when (editing.value) {
             PlanField.Origin -> origin.value = p
             PlanField.Dest -> dest.value = p
@@ -158,6 +228,9 @@ class TripController(
     }
 
     fun swap() {
+        rideJob?.cancel()
+        mode.value = PlanMode.Transit
+        ridePlan.value = Load.Idle
         val o = origin.value
         origin.value = dest.value
         dest.value = o
@@ -169,72 +242,62 @@ class TripController(
         planJob?.cancel()
         selected.value = null
         live.value = null
+        rideJob?.cancel()
+        mode.value = PlanMode.Transit
+        ridePlan.value = Load.Idle
         canvas()?.setTrip(emptyList(), emptyList())
         planJob = scope.launch {
             plans.value = Load.Loading
-            val db = StopDb.peek()
-            if (db == null) {
-                plans.value = Load.Fail("정류장 데이터를 아직 준비 중입니다. 잠시 후 다시 시도하세요.")
-                return@launch
-            }
             val o = origin.value ?: me()?.let { PlanPoint("내 위치", null, it.lat, it.lng) }
                 ?: center()?.let { PlanPoint("지도 중심", null, it.lat, it.lng) }
             if (o == null) {
                 plans.value = Load.Fail("출발지를 정해주세요.")
                 return@launch
             }
-            note.value = if (origin.value == null && me() == null) "현재 위치를 몰라 지도 중심에서 출발합니다." else null
+            note.value = if (origin.value == null && me() == null) "현재 위치를 몰라 지도 중심에서 출발합니다. · 카카오" else "카카오 대중교통 길찾기"
+            if (!com.eunho.tagohub.data.KakaoRoutes.available) {
+                plans.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                return@launch
+            }
 
-            // 0) 경유지가 있으면: 출발→경유, 경유→도착을 각각 찾아 빠른 것끼리 이어 붙임 (환승 여러 번 포함)
             val v = via.value
-            if (v != null && com.eunho.tagohub.data.KakaoRoutes.available) {
-                val (_, a) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, v.lat, v.lng) }
-                val (_, b) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(v.lat, v.lng, d.lat, d.lng) }
+            if (v != null) {
+                val (statusA, a) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, v.lat, v.lng) }
+                val (statusB, b) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(v.lat, v.lng, d.lat, d.lng) }
                 val joined = a.sortedBy { it.minutes }.take(3).flatMap { x -> b.sortedBy { it.minutes }.take(3).map { y -> joinVia(x, y) } }
                 if (joined.isNotEmpty()) {
                     plans.value = Load.Ok(joined.sortedBy { it.minutes })
                     canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(v.lat, v.lng), LatLng(d.lat, d.lng)))
                     return@launch
                 }
-                note.value = "경유 경로를 찾지 못해 바로 가는 길을 보여줍니다."
+                plans.value = Load.Fail("카카오에서 경유 경로를 찾지 못했습니다. ${routeFailure(statusA, statusB)}")
+                return@launch
             }
-            // 1) 카카오 대중교통 길찾기 (전국, 버스·지하철·환승·요금·실제 경로). 결과가 있으면 그걸로 끝
-            var kakaoStatus: String? = if (com.eunho.tagohub.data.KakaoRoutes.available) null else "REST 키 없음"
-            if (com.eunho.tagohub.data.KakaoRoutes.available) {
-                val (status, kakao) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, d.lat, d.lng) }
-                kakaoStatus = status
-                if (kakao.isNotEmpty()) {
-                    plans.value = Load.Ok(kakao.sortedBy { it.minutes }.take(10))
-                    canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
-                    return@launch
-                }
-                if (status == "EQUAL_POINTS") {
-                    plans.value = Load.Fail(com.eunho.tagohub.data.KakaoTransit.message(status)!!)
-                    return@launch
-                }
-                // 그 밖의 경우(키·권한 오류, 경로 없음)는 앱 안 데이터로 계속
+            val (status, kakao) = tracked {
+                com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, d.lat, d.lng)
             }
-            // 2) 정류장을 600m → 1.2km → 2km 로 넓혀가며 경로가 나올 때까지 (다른 지역으로 가는 길도)
-            // 서울·수도권 안이면 서울시 대중교통 환승경로(버스+지하철)도 함께
-            val seoul = if (com.eunho.tagohub.data.SeoulPathParser.covers(o.lat, o.lng) && com.eunho.tagohub.data.SeoulPathParser.covers(d.lat, d.lng)) {
-                (tracked { Graph.seoulBus.paths(o.lat, o.lng, d.lat, d.lng) } as? TagoResult.Success)?.data.orEmpty()
-            } else emptyList()
-            var ranked = emptyList<TripPlan>()
-            var lastRadius = 0.0
-            for (radius in RADII) {
-                lastRadius = radius
-                val origins = withContext(Dispatchers.IO) { nearStops(db, o, radius) }
-                val dests = withContext(Dispatchers.IO) { nearStops(db, d, radius) }
-                if (origins.isEmpty() || dests.isEmpty()) continue
-                ranked = TripPlanner.rank(tracked { computePlans(db, origins, dests) } + seoul)
-                if (ranked.isNotEmpty()) break
+            if (kakao.isEmpty()) {
+                plans.value = Load.Fail(routeFailure(status))
+                return@launch
             }
-            if (ranked.isEmpty() && seoul.isNotEmpty()) ranked = TripPlanner.rank(seoul)
-            plans.value = if (ranked.isEmpty()) {
-                Load.Fail("출발지·도착지 ${(lastRadius / 1000).let { if (it >= 1) "${it.toInt()}km" else "${lastRadius.toInt()}m" }} 안의 정류장으로는 직통·1회 환승 경로를 찾지 못했습니다." +
-                    (kakaoStatus?.takeIf { it != "OK" }?.let { " (카카오 길찾기: $it)" } ?: ""))
-            } else Load.Ok(ranked)
-            if (ranked.isNotEmpty()) canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
+            plans.value = Load.Ok(kakao.sortedBy { it.minutes }.take(10))
+            canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
+        }
+    }
+
+    private fun routeFailure(vararg statuses: String): String {
+        val status = statuses.firstOrNull { it != "OK" && it != "NO_RESULTS" }
+            ?: statuses.firstOrNull { it != "OK" }
+            ?: "NO_RESULTS"
+        return when {
+            status == "HTTP 401" || status == "HTTP 403" ->
+                "카카오 길찾기 권한을 확인해주세요. REST API 키와 카카오맵 사용 설정을 확인하세요."
+            status.startsWith("HTTP ") ->
+                "카카오 길찾기 요청에 실패했습니다. ($status)"
+            status == "OK" ->
+                "카카오에서 대중교통 경로를 찾지 못했습니다."
+            else -> com.eunho.tagohub.data.KakaoTransit.message(status)
+                ?: "카카오 대중교통 경로를 찾지 못했습니다. ($status)"
         }
     }
 

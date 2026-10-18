@@ -4,7 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 /** 교통수단별 색. 화면 제목 왼쪽 띠·배지·선택 표시에 일관되게 쓴다. */
 object ModeColor {
-    val Map = Color(0xFF1F4E8C)
+    val Map = Color(0xFF294653)
     val Bus = Color(0xFF2E8B57)
     val Subway = Color(0xFF5A6474)
     val Train = Color(0xFF1B3E8A)

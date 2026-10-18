@@ -5,6 +5,7 @@ import com.eunho.tagohub.data.SeoulMappers
 import com.eunho.tagohub.data.SubwayText
 import com.eunho.tagohub.core.SeoulXml
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 서울 실시간 API 가 아는 역(실시간도착_역정보 20260902, 696역)을 앱 역 데이터에서 모두 찾을 수 있는지 */
@@ -18,6 +19,11 @@ class SeoulCoverageTest {
         val missing = realtime.filter { (line, _, name) -> index.locate(line, name) == null }.map { "${it[0]}:${it[2]}" }
         println("실시간 역 ${realtime.size}곳 중 못 찾음 ${missing.size}: $missing")
         assertEquals(emptyList<String>(), missing)
+    }
+
+    @Test
+    fun nationalStationCoordinatesStayWithinKorea() {
+        assertTrue(index.stations.all { it.lat in 33.0..39.0 && it.lng in 124.0..132.0 })
     }
 
     /** 실제 응답(서울역, 2026-10-12 07:02): 도착 예정 초가 모두 0 → 메시지로 */

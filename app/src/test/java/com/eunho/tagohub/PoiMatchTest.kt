@@ -1,6 +1,8 @@
 package com.eunho.tagohub
 
 import com.eunho.tagohub.data.PoiMatch
+import com.eunho.tagohub.data.MetroStation
+import com.eunho.tagohub.data.StationIndex
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,5 +28,29 @@ class PoiMatchTest {
         // 이름이 다르면 30m 안의 가장 가까운 것, 없으면 null
         assertEquals(c[2], PoiMatch.pick("모르는곳", 35.79526, 127.13106, c, { it.name }, { it.lat to it.lng }, 30.0))
         assertEquals(null, PoiMatch.pick("모르는곳", 35.80, 127.14, c, { it.name }, { it.lat to it.lng }, 30.0))
+    }
+
+    @Test
+    fun busStopPoiPrefersNearestMatchingStopAmongNearbyCandidates() {
+        val stops = listOf(
+            S("시청", 36.3510, 127.3850),
+            S("시청", 36.3520, 127.3850),
+            S("시청앞", 36.3511, 127.3850),
+        )
+        assertEquals(
+            stops[0],
+            PoiMatch.pick("시청", 36.35101, 127.385, stops, { it.name }, { it.lat to it.lng }, 25.0),
+        )
+    }
+
+    @Test
+    fun stationPoiMatchesNearbyStationByNameWithinEntranceOffset() {
+        val station = MetroStation("1", "샘플", "1호선", 37.0, 127.0, "테스트 운영기관")
+        val index = StationIndex(listOf(station))
+        val group = index.groups.single()
+
+        assertEquals(group, index.matchPoi("샘플역 1호선", 37.0045, 127.0))
+        assertEquals(null, index.matchPoi("근처 카페", 37.0045, 127.0))
+        assertEquals(null, index.matchPoi("샘플역", 37.02, 127.0))
     }
 }

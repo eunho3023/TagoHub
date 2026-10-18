@@ -27,15 +27,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -85,10 +88,13 @@ fun StationDetailPanel(
     onClose: () -> Unit,
     refreshKey: Int = 0,
     onArrivalClick: ((SubwayArrival) -> Unit)? = null,
+    onUseStation: ((Boolean) -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
     val lines = d.group.displayLines
     val color = subwayLineColor(lines.first())
+    val stationName = d.group.name.let { if (it.endsWith("역")) it else "${it}역" }
+    val operatorLabel = stationOperatorLabel(d.group.stations.firstOrNull()?.operator.orEmpty())
 
     LaunchedEffect(d, refreshKey) { c.runArrivals(d) }
 
@@ -102,13 +108,49 @@ fun StationDetailPanel(
                     .background(color)
             )
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(d.group.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    lines.forEach { Pill(it, subwayLineColor(it)) }
+            Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stationName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        lines.forEach { Pill(it, subwayLineColor(it)) }
+                    }
+                }
+                if (operatorLabel.isNotBlank()) {
+                    Text(
+                        operatorLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
+        }
+        LazyRow(
+            Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            item {
+                OutlinedButton(onClick = { onUseStation?.invoke(true) }, enabled = onUseStation != null) {
+                    Text("출발")
+                }
+            }
+            item {
+                Button(onClick = { onUseStation?.invoke(false) }, enabled = onUseStation != null) {
+                    Text("도착")
+                }
+            }
+            item {
+                OutlinedButton(onClick = { c.setTab(d, StationTab.Timetable) }) {
+                    Text("전체 시간표")
+                }
+            }
+            item {
+                OutlinedButton(onClick = { c.setTab(d, StationTab.Live) }, enabled = d.realtime) {
+                    Text("실시간 도착")
+                }
+            }
         }
         TabRow(selectedTabIndex = tab.ordinal, contentColor = color) {
             StationTab.entries.forEach { t ->
@@ -116,10 +158,51 @@ fun StationDetailPanel(
             }
         }
         when (tab) {
-            StationTab.Live -> LiveTab(d, onArrivalClick)
+            StationTab.Live -> LiveTab(d, c, onArrivalClick)
             StationTab.Timetable -> TimetableTab(d, c)
             StationTab.Route -> RouteTab(d, c)
             StationTab.Exits -> ExitsTab(d, c)
+            StationTab.Facilities -> FacilitiesTab(d)
+        }
+    }
+}
+
+private fun stationOperatorLabel(operator: String): String = when {
+    operator.contains("대전") -> "대전 지하철"
+    operator.contains("부산") -> "부산 지하철"
+    operator.contains("대구") -> "대구 지하철"
+    operator.contains("광주") -> "광주 지하철"
+    operator.contains("인천") -> "인천 지하철"
+    operator.contains("서울") -> "서울 지하철"
+    operator.contains("코레일") || operator.contains("한국철도") -> "수도권 전철"
+    else -> operator
+}
+
+@Composable
+private fun FacilitiesTab(d: StationDetail) {
+    val facilities by d.facilities.collectAsStateWithLifecycle()
+    if (facilities.isEmpty()) {
+        MessageBox("등록된 역 편의정보가 없습니다.")
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        facilities.groupBy { it.category }.forEach { (category, records) ->
+            item(key = "facility-$category") {
+                Text(
+                    category,
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = subwayLineColor(d.group.displayLines.first()),
+                )
+            }
+            items(records) { record ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("${record.station} · ${record.line}", style = MaterialTheme.typography.labelMedium)
+                    Text(record.detail, style = MaterialTheme.typography.bodyMedium)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
         }
     }
 }
@@ -127,41 +210,141 @@ fun StationDetailPanel(
 // ───────────────────────── 실시간 도착 ─────────────────────────
 
 @Composable
-private fun LiveTab(d: StationDetail, onArrivalClick: ((SubwayArrival) -> Unit)?) {
-    if (!d.realtime) {
-        MessageBox("실시간 도착정보는 수도권 노선만 제공됩니다.\n시간표 탭에서 운행 시각을 확인하세요.")
-        return
-    }
+private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick: ((SubwayArrival) -> Unit)?) {
     val state by d.arrivals.collectAsStateWithLifecycle()
     val updated by d.arrivalsUpdated.collectAsStateWithLifecycle()
+    val day by d.dayType.collectAsStateWithLifecycle()
+    val upDown by d.upDown.collectAsStateWithLifecycle()
+    val schedule by d.schedule.collectAsStateWithLifecycle()
+    val selectedLine by d.line.collectAsStateWithLifecycle()
+    val lines by d.tagoLines.collectAsStateWithLifecycle()
+    val availableLines = (lines as? Load.Ok)?.value.orEmpty()
+    val color = subwayLineColor(selectedLine?.routeName ?: d.group.displayLines.first())
+
     Column(Modifier.fillMaxSize()) {
-        updated?.let {
+        StationInfoCard(d)
+        if (!d.realtime) {
             Text(
-                "${it.hhmm()} 갱신, 20초마다 자동 갱신",
-                Modifier.padding(start = 16.dp, top = 6.dp),
+                "실시간 도착 대신 오늘 운행 시간표를 표시합니다.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        LoadView(state, isEmpty = { it.isEmpty() }, emptyText = "지금 도착 예정인 열차가 없습니다.") { list ->
-            // 매초 다시 계산해서 "n분 후"가 실제로 줄어들게
-            val now by produceState(LocalDateTime.now()) {
-                while (true) {
-                    delay(1000)
-                    value = LocalDateTime.now()
+            if (availableLines.size > 1) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(availableLines) { option ->
+                        FilterChip(
+                            selected = selectedLine?.id == option.id,
+                            onClick = { c.selectLine(d, option) },
+                            label = { Text(option.routeName) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = subwayLineColor(option.routeName),
+                                selectedLabelColor = Color.White,
+                            ),
+                        )
+                    }
                 }
             }
-            LazyColumn(Modifier.fillMaxSize()) {
-                list.groupBy { it.lineId }.forEach { (lineId, rows) ->
-                    val name = SeoulLines.byId[lineId]?.apiName ?: lineId
-                    item(key = "h$lineId") {
-                        Row(Modifier.padding(start = 16.dp, top = 10.dp, bottom = 2.dp)) { Pill(name, subwayLineColor(name)) }
-                    }
-                    items(rows) { a ->
-                        ArrivalRow(a, now, onClick = onArrivalClick?.let { cb -> { cb(a) } })
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SingleChoiceSegmentedButtonRow(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                listOf("U" to "상행", "D" to "하행").forEachIndexed { i, (code, label) ->
+                    SegmentedButton(
+                        selected = upDown == code,
+                        onClick = { c.setUpDown(d, code) },
+                        shape = SegmentedButtonDefaults.itemShape(i, 2),
+                    ) { Text(label) }
+                }
+            }
+            LoadView(
+                schedule,
+                onRetry = { c.loadSchedule(d) },
+                isEmpty = { it.isEmpty() },
+                emptyText = "이 방향의 오늘 시간표가 없습니다.",
+            ) { departures ->
+                TimetableBoard(departures, color, live = day == DayType.today())
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "도착·출발 정보",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                updated?.let {
+                    Text(
+                        "${it.hhmm()} 갱신",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            LoadView(state, isEmpty = { it.isEmpty() }, emptyText = "현재 도착·출발 예정인 열차가 없습니다.") { list ->
+                val now by produceState(LocalDateTime.now()) {
+                    while (true) {
+                        delay(1000)
+                        value = LocalDateTime.now()
                     }
                 }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    list.groupBy { it.lineId }.forEach { (lineId, rows) ->
+                        val name = SeoulLines.byId[lineId]?.apiName ?: lineId
+                        item(key = "h$lineId") {
+                            Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)) {
+                                Pill(name, subwayLineColor(name))
+                            }
+                        }
+                        rows.groupBy { it.upDown.ifBlank { "방향 정보 없음" } }.forEach { (direction, directionRows) ->
+                            item(key = "d$lineId$direction") {
+                                Text(
+                                    direction,
+                                    Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = subwayLineColor(name),
+                                )
+                            }
+                            items(directionRows) { a ->
+                                ArrivalRow(a, now, onClick = onArrivalClick?.let { cb -> { cb(a) } })
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StationInfoCard(d: StationDetail) {
+    val facilities by d.facilities.collectAsStateWithLifecycle()
+    val address = facilities.firstOrNull { it.category == "주소" }?.detail
+    val structure = facilities.firstOrNull { it.category == "역 구조" }?.detail
+    Surface(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            address?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            structure?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (address == null && structure == null) {
+                Text(
+                    d.group.displayLines.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

@@ -161,6 +161,49 @@ object KakaoWalk {
                 if (out.lastOrNull() != p) out += p
             }
         }
+
         return status to out
+    }
+}
+
+data class KakaoDriveRoute(
+    val distanceMeters: Int,
+    val durationSeconds: Int,
+    val points: List<LatLng>,
+)
+
+object KakaoDrive {
+    fun parse(body: String): Pair<String, KakaoDriveRoute?> {
+        val root = runCatching { com.eunho.tagohub.core.MiniJson.parse(body) }.getOrNull() as? Map<*, *>
+            ?: return "INVALID_RESPONSE" to null
+        val route = (root["routes"] as? List<*>)?.firstOrNull() as? Map<*, *>
+            ?: return "NO_ROUTE" to null
+        val resultCode = route["result_code"]?.toString()?.toIntOrNull()
+        if (resultCode != 0) {
+            return (route["result_msg"]?.toString()?.takeIf { it.isNotBlank() } ?: "ROUTE_ERROR") to null
+        }
+        val summary = route["summary"] as? Map<*, *> ?: return "INVALID_RESPONSE" to null
+        val distance = summary["distance"]?.toString()?.toDoubleOrNull()?.toInt()
+            ?: return "INVALID_RESPONSE" to null
+        val duration = summary["duration"]?.toString()?.toDoubleOrNull()?.toInt()
+            ?: return "INVALID_RESPONSE" to null
+        val points = ArrayList<LatLng>()
+        val sections = route["sections"] as? List<*> ?: emptyList<Any?>()
+        sections.forEach sectionLoop@{ section ->
+            val roads = (section as? Map<*, *>)?.get("roads") as? List<*> ?: return@sectionLoop
+            roads.forEach roadLoop@{ road ->
+                val vertexes = (road as? Map<*, *>)?.get("vertexes") as? List<*> ?: return@roadLoop
+                vertexes.chunked(2).forEach pointLoop@{ pair ->
+                    val lng = pair.getOrNull(0)?.toString()?.toDoubleOrNull() ?: return@pointLoop
+                    val lat = pair.getOrNull(1)?.toString()?.toDoubleOrNull() ?: return@pointLoop
+                    if (lat in -90.0..90.0 && lng in -180.0..180.0) {
+                        val point = LatLng(lat, lng)
+                        if (points.lastOrNull() != point) points += point
+                    }
+                }
+            }
+        }
+        if (points.size < 2) return "INVALID_RESPONSE" to null
+        return "OK" to KakaoDriveRoute(distance, duration, points)
     }
 }

@@ -2,6 +2,7 @@ package com.eunho.tagohub
 
 import com.eunho.tagohub.core.Geo
 import com.eunho.tagohub.data.KakaoLocal
+import com.eunho.tagohub.data.KakaoDrive
 import com.eunho.tagohub.data.KakaoTransit
 import com.eunho.tagohub.data.KakaoWalk
 import com.eunho.tagohub.data.LatLng
@@ -11,6 +12,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KakaoExtrasTest {
+    @Test
+    fun kakaoCarRoute_parsesSummaryAndRoadGeometry() {
+        val body = """{"routes":[
+          {"result_code":0,"result_msg":"길찾기 성공",
+           "summary":{"distance":1850,"duration":420},
+           "sections":[{"roads":[
+             {"name":"테헤란로","vertexes":[127.0001,37.5001,127.001,37.501]},
+             {"name":"역삼로","vertexes":[127.001,37.501,127.002,37.502]}
+           ]}]
+          }]}"""
+
+        val (status, route) = KakaoDrive.parse(body)
+
+        assertEquals("OK", status)
+        assertEquals(1850, route?.distanceMeters)
+        assertEquals(420, route?.durationSeconds)
+        assertEquals(listOf(LatLng(37.5001, 127.0001), LatLng(37.501, 127.001), LatLng(37.502, 127.002)), route?.points)
+        assertEquals("서비스 신청 필요", KakaoDrive.parse("""{"routes":[{"result_code":1,"result_msg":"서비스 신청 필요"}]}""").first)
+        assertEquals("INVALID_RESPONSE", KakaoDrive.parse("oops").first)
+    }
+
     @Test
     fun removeDetours_replacesBlockLoopOnly() {
         // 동쪽으로 곧게 가는 노선. 두 번째 구간에서 OSRM 이 블록(약 300m × 300m)을 한 바퀴 돌았음

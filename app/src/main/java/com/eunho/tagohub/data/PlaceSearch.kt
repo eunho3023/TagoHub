@@ -3,10 +3,12 @@ package com.eunho.tagohub.data
 import android.util.Log
 import com.eunho.tagohub.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 data class Place2(val name: String, val address: String?, val lat: Double, val lng: Double,
@@ -22,10 +24,19 @@ object PlaceSearch {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    suspend fun search(query: String, near: LatLng?): List<Place2> = withContext(Dispatchers.IO) {
+    val available: Boolean get() = BuildConfig.KAKAO_REST_KEY.isNotBlank()
+
+    suspend fun search(query: String, near: LatLng?): List<Place2> =
+        searchResult(query, near).getOrElse {
+            Log.w("TagoMap", "장소 검색 실패: ${it.message}")
+            emptyList()
+        }
+
+    suspend fun searchResult(query: String, near: LatLng?): Result<List<Place2>> = withContext(Dispatchers.IO) {
         val key = BuildConfig.KAKAO_REST_KEY.trim()
-        if (key.isEmpty() || query.isBlank()) return@withContext emptyList()
-        runCatching {
+        if (key.isEmpty()) return@withContext Result.failure(IllegalStateException("카카오 REST API 키가 설정되지 않았습니다."))
+        if (query.isBlank()) return@withContext Result.success(emptyList())
+        try {
             val url = KakaoLocal.KEYWORD_URL.toHttpUrl().newBuilder()
                 .addQueryParameter("query", query)
                 .addQueryParameter("size", "15")
@@ -39,14 +50,17 @@ object PlaceSearch {
                 .build()
             val req = Request.Builder().url(url).header("Authorization", "KakaoAK $key").build()
             client.newCall(req).execute().use { res ->
-                val body = res.body?.string() ?: return@use emptyList()
+                val body = res.body?.string().orEmpty()
                 if (!res.isSuccessful) {
-                    Log.w("TagoMap", "장소 검색 ${res.code}: ${KakaoLocal.error(body) ?: body.take(200)}")
-                    return@use emptyList()
+                    val detail = KakaoLocal.error(body)
+                    Result.failure(IllegalStateException("카카오 장소 검색 실패 (HTTP ${res.code})${detail?.let { ": $it" }.orEmpty()}"))
+                } else {
+                    Result.success(KakaoLocal.parse(body))
                 }
-                KakaoLocal.parse(body)
             }
-        }.onFailure { Log.w("TagoMap", "장소 검색 실패: ${it.message}") }.getOrDefault(emptyList())
+        } catch (e: IOException) {
+            Result.failure(e)
+        }
     }
 }
 
@@ -100,13 +114,15 @@ object KakaoProbe {
 /** 카카오 REST: 대중교통 결과 원본(노선 모양용), 도보 경로, 좌표 → 이름 */
 object KakaoExtra {
     private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+    private val addressClient = client.newBuilder().connectTimeout(2, TimeUnit.SECONDS).readTimeout(3, TimeUnit.SECONDS).build()
+    private val addressCache = android.util.LruCache<String, String>(128)
     private fun key() = BuildConfig.KAKAO_REST_KEY.trim()
     val available: Boolean get() = key().isNotEmpty()
 
-    private suspend fun get(url: okhttp3.HttpUrl): String? = withContext(Dispatchers.IO) {
+    private suspend fun get(url: okhttp3.HttpUrl, http: OkHttpClient = client): String? = withContext(Dispatchers.IO) {
         if (key().isEmpty()) return@withContext null
         runCatching {
-            client.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK ${key()}").build()).execute().use { res ->
+            http.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK ${key()}").build()).execute().use { res ->
                 val body = res.body?.string()
                 if (!res.isSuccessful) {
                     Log.w("TagoMap", "카카오 ${url.encodedPath} ${res.code}: ${body?.let { KakaoLocal.error(it) } ?: ""}")
@@ -134,11 +150,6 @@ object KakaoExtra {
         KakaoLocal.ADDRESS_URL.toHttpUrl().newBuilder().addQueryParameter("query", q).addQueryParameter("size", "5").build()
     )?.let(KakaoLocal::parseAddress).orEmpty()
 
-    /** 좌표로 행정구역 (행정동) */
-    suspend fun region(lat: Double, lng: Double): String? = get(
-        KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
-    )?.let(KakaoLocal::regionName)
-
     /** 카테고리로 장소 검색 (주변 1.5km, 가까운 순) */
     suspend fun category(code: String, lat: Double, lng: Double): List<Place2> = get(
         KakaoLocal.CATEGORY_URL.toHttpUrl().newBuilder().addQueryParameter("category_group_code", code)
@@ -158,11 +169,47 @@ object KakaoExtra {
         return if (status == "OK" && path.size >= 2) Triple(path, d, t) else null
     }
 
+    /** Kakao Mobility car route; uses the Kakao REST key and the same origin/destination coordinates. */
+    suspend fun drive(a: LatLng, b: LatLng): Pair<String, KakaoDriveRoute?> = withContext(Dispatchers.IO) {
+        val key = key()
+        if (key.isEmpty()) return@withContext "NO_KEY" to null
+        runCatching {
+            val url = okhttp3.HttpUrl.Builder()
+                .scheme("https")
+                .host("apis-navi.kakaomobility.com")
+                .addPathSegments("v1/directions")
+                .addQueryParameter("origin", "${a.lng},${a.lat}")
+                .addQueryParameter("destination", "${b.lng},${b.lat}")
+                .addQueryParameter("priority", "RECOMMEND")
+                .addQueryParameter("car_fuel", "GASOLINE")
+                .addQueryParameter("car_hipass", "false")
+                .addQueryParameter("alternatives", "false")
+                .addQueryParameter("road_details", "false")
+                .build()
+            client.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK $key").build()).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) "HTTP ${response.code}" to null
+                else KakaoDrive.parse(body)
+            }
+        }.onFailure {
+            if (it is CancellationException) throw it
+            Log.w("TagoMap", "카카오 자동차 경로 요청 실패: ${it.message}")
+        }
+            .getOrElse { "ERROR" to null }
+    }
+
     /** 지도에서 꾹 누른 곳 이름: 건물 이름 → 도로명 주소 → 지번 주소 */
-    suspend fun placeName(lat: Double, lng: Double): String? = get(
-        KakaoLocal.COORD2ADDRESS_URL.toHttpUrl().newBuilder()
-            .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
-    )?.let(KakaoLocal::addressName)
+    suspend fun placeName(lat: Double, lng: Double): String? {
+        val cacheKey = "%.5f,%.5f".format(java.util.Locale.ROOT, lat, lng)
+        addressCache.get(cacheKey)?.let { return it }
+        val name = get(
+            KakaoLocal.COORD2ADDRESS_URL.toHttpUrl().newBuilder()
+                .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build(),
+            addressClient,
+        )?.let(KakaoLocal::addressName)
+        if (name != null) addressCache.put(cacheKey, name)
+        return name
+    }
 }
 
 /** 한국공항공사 국제선 운항 스케줄 (공공데이터포털 인증키 = TAGO_SERVICE_KEY) */

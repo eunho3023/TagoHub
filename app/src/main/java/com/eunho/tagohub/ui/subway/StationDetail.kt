@@ -10,8 +10,11 @@ import com.eunho.tagohub.data.KricSubwayCodes
 import com.eunho.tagohub.data.KricSubwayRepository
 import com.eunho.tagohub.data.KricSubwayRegion
 import com.eunho.tagohub.data.KricTrainStop
+import com.eunho.tagohub.data.MetroStation
 import com.eunho.tagohub.data.SeoulSubwayRepository
 import com.eunho.tagohub.data.StationGroup
+import com.eunho.tagohub.data.StationFacility
+import com.eunho.tagohub.data.StationFacilityIndex
 import com.eunho.tagohub.data.StationName
 import com.eunho.tagohub.data.SubwayArrival
 import com.eunho.tagohub.data.SubwayDeparture
@@ -26,6 +29,26 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
+internal fun matchTagoStations(
+    group: StationGroup,
+    candidates: List<SubwayStation>,
+    expectedCodes: (MetroStation) -> KricSubwayCodes?,
+): List<SubwayStation> {
+    val sameName = candidates.filter { StationName.norm(it.name) == StationName.norm(group.name) }
+    return sameName.filter { candidate ->
+        group.stations.any { metro ->
+            if (!StationName.sameLine(candidate.routeName, metro.line) &&
+                !StationName.sameLine(candidate.routeName, metro.displayLine)
+            ) {
+                false
+            } else {
+                val officialCodes = expectedCodes(metro)
+                officialCodes == null || officialCodes in KricSubwayCodes.candidates(candidate.id)
+            }
+        }
+    }.distinctBy { it.id }
+}
+
 enum class DayType(val code: String, val kricCode: String, val label: String) {
     Weekday("01", "8", "평일"), Saturday("02", "7", "토요일"), Sunday("03", "9", "일요일·공휴일");
 
@@ -39,7 +62,9 @@ enum class DayType(val code: String, val kricCode: String, val label: String) {
     }
 }
 
-enum class StationTab(val label: String) { Live("실시간 도착"), Timetable("시간표"), Route("노선"), Exits("출구정보") }
+enum class StationTab(val label: String) {
+    Live("역 정보·도착"), Timetable("시간표"), Route("노선"), Exits("출구정보"), Facilities("편의정보")
+}
 
 enum class SubwayTimetableSource { Tago, Kric }
 
@@ -47,7 +72,7 @@ enum class SubwayTimetableSource { Tago, Kric }
 class StationDetail(val group: StationGroup) {
     val realtime: Boolean = group.seoulLineIds.isNotEmpty()
 
-    val tab = MutableStateFlow(if (realtime) StationTab.Live else StationTab.Timetable)
+    val tab = MutableStateFlow(StationTab.Live)
 
     // 실시간 도착 (서울 API)
     val arrivals = MutableStateFlow<Load<List<SubwayArrival>>>(Load.Loading)
@@ -64,6 +89,7 @@ class StationDetail(val group: StationGroup) {
     val kricRoute = MutableStateFlow<Load<List<KricRouteStation>>>(Load.Idle)
     val kricCodes = MutableStateFlow<KricSubwayCodes?>(null)
     val exits = MutableStateFlow<Load<List<ExitInfo>>>(Load.Idle)
+    val facilities = MutableStateFlow<List<StationFacility>>(emptyList())
 
     internal var scheduleJob: Job? = null
     internal var kricTimetableJob: Job? = null
@@ -81,8 +107,16 @@ class StationDetailController(
     private val seoul: SeoulSubwayRepository,
     private val kric: KricSubwayRepository = Graph.kricSubway,
 ) {
+    @Volatile
+    private var facilityIndex = StationFacilityIndex.parseTsv("")
+
+    fun setFacilityIndex(index: StationFacilityIndex) {
+        facilityIndex = index
+    }
+
     fun open(group: StationGroup): StationDetail {
         val d = StationDetail(group)
+        d.facilities.value = facilityIndex.forStation(group)
         scope.launch { loadTagoLines(d) }
         return d
     }
@@ -102,9 +136,7 @@ class StationDetailController(
     }
 
     /**
-     * 표준데이터 역 ↔ TAGO 지하철역 연결.
-     * 이름(정규화)이 같은 TAGO 역 중 이 역의 노선과 맞는 것만 남긴다.
-     * 노선이 하나도 안 맞으면(지방 노선명 표기 차이 등) 이름이 같은 역을 모두 보여준다.
+     * 표준데이터 역 ↔ TAGO 지하철역 연결. 동명이역은 공식 KRIC 역 코드로 구분한다.
      */
     private suspend fun loadTagoLines(d: StationDetail) {
         val r = tago.subwayStations(d.group.name)
@@ -112,10 +144,15 @@ class StationDetailController(
             d.tagoLines.value = Load.Fail(r.message)
             return
         }
-        val sameName = (r as TagoResult.Success).data.filter { StationName.norm(it.name) == d.group.name }
-        val lines = d.group.displayLines + d.group.stations.map { it.line }
-        val matched = sameName.filter { t -> lines.any { StationName.sameLine(t.routeName, it) } }
-        val list = (matched.ifEmpty { sameName }).distinctBy { it.id }
+        val list = matchTagoStations(d.group, (r as TagoResult.Success).data) { metro ->
+            val regionCode = KricSubwayRegion.fromOperator(metro.operator) ?: return@matchTagoStations null
+            kric.stationCodes(
+                stationName = metro.name,
+                lineNames = listOf(metro.line, metro.displayLine),
+                operatorNames = listOf(metro.operator),
+                regionCode = regionCode,
+            )
+        }
         d.tagoLines.value = Load.Ok(list)
         list.firstOrNull()?.let { selectLine(d, it) }
     }
@@ -173,7 +210,7 @@ class StationDetailController(
         }
         d.kricTimetableJob = scope.launch {
             d.kricTimetable.value = Load.Loading
-            val route = kric.routeForStation(s, regionCode)
+            val route = kric.routeForStation(s, regionCode, kricStationCodes(d, s, regionCode))
             d.kricTimetable.value = when (route) {
                 is TagoResult.Error -> route.toLoad()
                 is TagoResult.Success -> {
@@ -195,7 +232,9 @@ class StationDetailController(
         }
         d.kricRoute.value = Load.Loading
         d.kricRouteJob = scope.launch {
-            d.kricRoute.value = when (val result = kric.routeForStation(s, regionCode)) {
+            d.kricRoute.value = when (val result =
+                kric.routeForStation(s, regionCode, kricStationCodes(d, s, regionCode))
+            ) {
                 is TagoResult.Error -> result.toLoad()
                 is TagoResult.Success -> {
                     d.kricCodes.value = result.data.codes
@@ -211,6 +250,26 @@ class StationDetailController(
                 StationName.sameLine(station.routeName, it.line)
         } ?: d.group.stations.firstOrNull()
         return metro?.let { KricSubwayRegion.fromOperator(it.operator) }
+    }
+
+    private fun kricStationCodes(d: StationDetail, station: SubwayStation, regionCode: String): KricSubwayCodes? {
+        val matchingStations = d.group.stations.filter {
+            StationName.sameLine(station.routeName, it.displayLine) ||
+                StationName.sameLine(station.routeName, it.line)
+        }.ifEmpty { d.group.stations }
+        val lineNames = buildSet {
+            add(station.routeName)
+            matchingStations.forEach {
+                add(it.line)
+                add(it.displayLine)
+            }
+        }
+        return kric.stationCodes(
+            stationName = station.name,
+            lineNames = lineNames,
+            operatorNames = matchingStations.map { it.operator }.distinct(),
+            regionCode = regionCode,
+        )
     }
 
     fun loadExits(d: StationDetail) {

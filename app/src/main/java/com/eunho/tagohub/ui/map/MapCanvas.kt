@@ -56,6 +56,7 @@ interface MapCanvas {
      */
     fun setRoute(color: Int?, stops: List<RoutePin>, shape: List<LatLng>?, parts: List<List<LatLng>>? = null, strong: Int? = null)
     fun setBuses(list: List<VehiclePin>)
+    fun setKlidBuses(list: List<VehiclePin>) {}
     fun setStations(list: List<StationPin>)
     fun setUticIncidents(list: List<UticIncidentPin>) {}
     fun setUticRoadRisks(list: List<UticRoadRiskPin>) {}

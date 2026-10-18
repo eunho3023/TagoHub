@@ -31,6 +31,74 @@ data class KricSubwayCodes(
     }
 }
 
+data class KricStationCode(
+    val operatorCode: String,
+    val operatorName: String,
+    val lineCode: String,
+    val lineName: String,
+    val stationCode: String,
+    val stationName: String,
+)
+
+class KricStationCodeIndex private constructor(private val rows: List<KricStationCode>) {
+    fun find(
+        stationName: String,
+        lineNames: Collection<String>,
+        operatorNames: Collection<String>,
+        regionCode: String,
+    ): KricSubwayCodes? {
+        val stationNorm = StationName.norm(stationName)
+        val candidates = rows.asSequence()
+            .filter { KricSubwayRegion.fromOperator(it.operatorName) == regionCode }
+            .filter { StationName.norm(it.stationName) == stationNorm }
+            .mapNotNull { row ->
+                val lineMatch = lineNames.any { StationName.sameLine(it, row.lineName) }
+                val operatorMatch = operatorNames.any { sameOperator(it, row.operatorName) }
+                val score = (if (lineMatch) 2 else 0) + (if (operatorMatch) 4 else 0)
+                if (score == 0) null else row to score
+            }
+            .toList()
+        val bestScore = candidates.maxOfOrNull { it.second } ?: return null
+        val best = candidates.filter { it.second == bestScore }.map { (row, _) ->
+            KricSubwayCodes(row.operatorCode, row.lineCode, row.stationCode)
+        }.distinct()
+        return best.singleOrNull()
+    }
+
+    private fun sameOperator(a: String, b: String): Boolean {
+        fun key(value: String) = value
+            .replace("코레일", "한국철도")
+            .replace("(주)", "")
+            .replace("㈜", "")
+            .replace("주식회사", "")
+            .replace("공사", "")
+            .replace(Regex("[\\s·()]"), "")
+        val left = key(a)
+        val right = key(b)
+        return left == right || (left.length >= 3 && right.contains(left)) || (right.length >= 3 && left.contains(right))
+    }
+
+    companion object {
+        fun parseTsv(text: String): KricStationCodeIndex {
+            val rows = text.lineSequence().drop(1).filter { it.isNotBlank() }.mapNotNull { line ->
+                val columns = line.split('\t')
+                if (columns.size < 6) return@mapNotNull null
+                KricStationCode(
+                    operatorCode = columns[0],
+                    operatorName = columns[1],
+                    lineCode = columns[2],
+                    lineName = columns[3],
+                    stationCode = columns[4],
+                    stationName = columns[5],
+                )
+            }.toList()
+            return KricStationCodeIndex(rows)
+        }
+
+        fun empty() = KricStationCodeIndex(emptyList())
+    }
+}
+
 object KricSubwayRegion {
     fun fromOperator(operator: String): String? = when {
         operator.contains("부산") || operator.contains("김해") -> "02"
@@ -38,7 +106,7 @@ object KricSubwayRegion {
         operator.contains("광주") -> "04"
         operator.contains("대전") -> "05"
         listOf(
-            "서울", "인천", "경기", "한국철도", "공항", "에스지레일", "지티엑스", "구리", "남양주",
+            "서울", "인천", "경기", "한국철도", "코레일", "공항", "에스지레일", "지티엑스", "구리", "남양주",
             "남서울", "김포", "의정부", "용인", "우이신설", "네오트랜스", "서해철도",
         )
             .any(operator::contains) -> "01"
@@ -51,6 +119,18 @@ class KricSubwayRepository(
     private val key: String = BuildConfig.KRIC_SUBWAY_KEY.trim(),
 ) {
     private val routeCache = ConcurrentHashMap<String, List<KricRouteStation>>()
+    @Volatile private var stationCodeIndex = KricStationCodeIndex.empty()
+
+    fun updateStationCodeIndex(index: KricStationCodeIndex) {
+        stationCodeIndex = index
+    }
+
+    fun stationCodes(
+        stationName: String,
+        lineNames: Collection<String>,
+        operatorNames: Collection<String>,
+        regionCode: String,
+    ): KricSubwayCodes? = stationCodeIndex.find(stationName, lineNames, operatorNames, regionCode)
 
     private suspend fun <T> run(block: suspend () -> T): TagoResult<T> {
         if (key.isEmpty()) {
@@ -69,8 +149,12 @@ class KricSubwayRepository(
         }
     }
 
-    suspend fun routeForStation(station: SubwayStation, regionCode: String): TagoResult<KricStationRoute> = run {
-        val candidates = KricSubwayCodes.candidates(station.id)
+    suspend fun routeForStation(
+        station: SubwayStation,
+        regionCode: String,
+        preferredCodes: KricSubwayCodes? = null,
+    ): TagoResult<KricStationRoute> = run {
+        val candidates = (listOfNotNull(preferredCodes) + KricSubwayCodes.candidates(station.id)).distinct()
         if (candidates.isEmpty()) throw TagoApiException("FORMAT", "KRIC 역 코드를 확인할 수 없습니다.")
         for (codes in candidates) {
             val route = loadRouteInfo(regionCode, codes.lineCode)

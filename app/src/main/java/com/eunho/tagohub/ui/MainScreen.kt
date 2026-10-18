@@ -4,19 +4,30 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Train
+import androidx.compose.material.icons.filled.Traffic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +39,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -47,6 +60,7 @@ import com.eunho.tagohub.ui.map.ItsRoadScreen
 @Composable
 fun MainScreen() {
     var panel by rememberSaveable { mutableStateOf<ModeJump.Kind?>(null) }
+    var mapMode by rememberSaveable { mutableStateOf(MapMode.Transit) }
     val drawerState = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var showNotices by rememberSaveable { mutableStateOf(false) }
@@ -81,23 +95,55 @@ fun MainScreen() {
         drawerState = drawerState,
         gesturesEnabled = drawerState.isOpen,   // 닫혀 있을 땐 지도 끌기와 겹치지 않게 ☰ 로만 엶
         drawerContent = {
-            androidx.compose.material3.ModalDrawerSheet {
-                Text("TagoHub", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp))
-                listOf(
-                    ModeJump.Kind.Train to "🚆  기차",
-                    ModeJump.Kind.Coach to "🚌  고속·시외버스",
-                    ModeJump.Kind.Air to "✈️  항공",
-                    ModeJump.Kind.Utic to "🚦  UTIC 교통정보",
-                    ModeJump.Kind.ItsRoad to "🛣️  ITS 도로정보",
-                ).forEach { (k, label) ->
-                    androidx.compose.material3.NavigationDrawerItem(label = { Text(label) }, selected = panel == k,
-                        onClick = { panel = k; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
+            androidx.compose.material3.ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 18.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(horizontal = 18.dp, vertical = 20.dp),
+                ) {
+                    Text("TAGOHUB", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text("이동 정보를 한곳에서", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                    Text("대중교통 · 철도 · 도로", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 3.dp))
                 }
-                androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                androidx.compose.material3.NavigationDrawerItem(label = { Text("📢  공지사항") }, selected = false,
-                    onClick = { showNotices = true; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
-                androidx.compose.material3.NavigationDrawerItem(label = { Text("✉️  앱 제보 (오류·추가·삭제)") }, selected = false,
-                    onClick = { showReport = true; scope.launch { drawerState.close() } }, modifier = Modifier.padding(horizontal = 12.dp))
+                DrawerSectionLabel("대중교통")
+                DrawerItem("기차", Icons.Filled.Train, panel == ModeJump.Kind.Train) {
+                    panel = ModeJump.Kind.Train; scope.launch { drawerState.close() }
+                }
+                DrawerItem("고속·시외버스", Icons.Filled.DirectionsBus, panel == ModeJump.Kind.Coach) {
+                    panel = ModeJump.Kind.Coach; scope.launch { drawerState.close() }
+                }
+                DrawerItem("항공", Icons.Filled.Flight, panel == ModeJump.Kind.Air) {
+                    panel = ModeJump.Kind.Air; scope.launch { drawerState.close() }
+                }
+                DrawerSectionLabel("교통 정보")
+                DrawerItem("실시간 교통상황", Icons.Filled.Traffic, panel == ModeJump.Kind.Utic) {
+                    panel = ModeJump.Kind.Utic; scope.launch { drawerState.close() }
+                }
+                DrawerItem("도로 정보", Icons.Filled.Info, panel == ModeJump.Kind.ItsRoad) {
+                    panel = ModeJump.Kind.ItsRoad; scope.launch { drawerState.close() }
+                }
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                androidx.compose.material3.NavigationDrawerItem(
+                    label = { Text("공지사항") },
+                    icon = { Icon(Icons.Filled.Info, contentDescription = null) },
+                    selected = false,
+                    onClick = { showNotices = true; scope.launch { drawerState.close() } },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                androidx.compose.material3.NavigationDrawerItem(
+                    label = { Text("앱 제보") },
+                    icon = { Icon(Icons.Filled.Email, contentDescription = null) },
+                    selected = false,
+                    onClick = { showReport = true; scope.launch { drawerState.close() } },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
             }
         },
     ) {
@@ -106,20 +152,29 @@ fun MainScreen() {
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars)   // 아래 탭이 없어져서 시스템 버튼 영역만 비움
     ) {
-        MapScreen(mapVm, MapMode.Transit)
+        MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
         panel?.let { k ->
             Surface(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .fillMaxHeight(0.85f),
-                shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
                 shadowElevation = 12.dp,
                 color = MaterialTheme.colorScheme.surface,
             ) {
                 Column {
-                    Row(Modifier.padding(start = 18.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(k.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 3.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .width(34.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.outlineVariant),
+                        )
+                    }
+                    Row(Modifier.padding(start = 20.dp, end = 4.dp, top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(k.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         IconButton(onClick = { panel = null }) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
                     }
                     Box(Modifier.weight(1f)) {
@@ -138,6 +193,33 @@ fun MainScreen() {
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }
+}
+
+@Composable
+private fun DrawerSectionLabel(label: String) {
+    Text(
+        label,
+        Modifier.padding(start = 28.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
+private fun DrawerItem(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    NavigationDrawerItem(
+        label = { Text(label) },
+        icon = { Icon(icon, contentDescription = null) },
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
 }
 
 /** 공지사항 (깃허브 notices.json) */

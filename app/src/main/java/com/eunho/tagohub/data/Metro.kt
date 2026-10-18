@@ -17,9 +17,25 @@ data class MetroStation(
     val operator: String,
 ) {
     val norm: String = StationName.norm(name)
-    val seoulLine: SeoulLine? get() = SeoulLines.byDataLine[line]
+    val seoulLine: SeoulLine?
+        get() = SeoulLines.byDataLine[line]
+            ?.takeIf { regionalCity(operator) == null }
+
     /** 화면 표시용 노선명: 서울 실시간 노선이면 "1호선"처럼, 아니면 원래 노선명 */
-    val displayLine: String get() = seoulLine?.apiName ?: line
+    val displayLine: String
+        get() {
+            val mappedLine = SeoulLines.byDataLine[line]?.apiName ?: line
+            val city = regionalCity(operator) ?: return mappedLine
+            return if (city in mappedLine) mappedLine else "$city $mappedLine"
+        }
+
+    private fun regionalCity(operator: String): String? = when {
+        operator.contains("대전") -> "대전"
+        operator.contains("부산") -> "부산"
+        operator.contains("대구") -> "대구"
+        operator.contains("광주") -> "광주"
+        else -> null
+    }
 }
 
 /** 환승역처럼 같은 이름·가까운 위치의 역을 지도 마커 하나로 묶은 것 */
@@ -74,7 +90,14 @@ object StationName {
     private val paren = Regex("""\(.*?\)""")
 
     private fun lineKey(s: String): String =
-        s.replace(" ", "").replace("수도권", "").replace("도시철도", "").replace("광역철도", "").removeSuffix("선")
+        s.replace(" ", "")
+            .replace("수도권", "")
+            .replace("도시철도", "")
+            .replace("광역철도", "")
+            .replace("지하철", "")
+            .replace("인천국제공항", "공항")
+            .replace(Regex("^(서울|부산|대구|대전|광주|인천)"), "")
+            .removeSuffix("선")
 
     /**
      * TAGO 지하철 노선명 ↔ 표준데이터/서울 노선명 비교.
@@ -107,17 +130,17 @@ object SeoulLines {
         SeoulLine("1006", "6호선", listOf("6호선")),
         SeoulLine("1007", "7호선", listOf("7호선", "도시철도 7호선")),
         SeoulLine("1008", "8호선", listOf("8호선", "수도권 광역철도 8호선")),
-        SeoulLine("1009", "9호선", listOf("서울 도시철도 9호선", "수도권 도시철도 9호선")),
+        SeoulLine("1009", "9호선", listOf("9호선", "서울 도시철도 9호선", "수도권 도시철도 9호선")),
         SeoulLine("1063", "경의중앙선", listOf("경의중앙선")),
-        SeoulLine("1065", "공항철도", listOf("인천국제공항선")),
+        SeoulLine("1065", "공항철도", listOf("인천국제공항선", "공항철도선")),
         SeoulLine("1067", "경춘선", listOf("경춘선")),
-        SeoulLine("1075", "수인분당선", listOf("분당선", "수인선")),
+        SeoulLine("1075", "수인분당선", listOf("분당선", "수인선", "수인분당선")),
         SeoulLine("1077", "신분당선", listOf("신분당선")),
         SeoulLine("1081", "경강선", listOf("경강선")),
         SeoulLine("1092", "우이신설선", listOf("우이신설선")),
         SeoulLine("1093", "서해선", listOf("서해선")),
-        SeoulLine("1094", "신림선", listOf("수도권 경량도시철도 신림선")),
-        SeoulLine("1032", "GTX-A", listOf("수도권 광역급행철도")),
+        SeoulLine("1094", "신림선", listOf("신림선", "수도권 경량도시철도 신림선")),
+        SeoulLine("1032", "GTX-A", listOf("GTX-A", "수도권 광역급행철도")),
     )
     val byId: Map<String, SeoulLine> = all.associateBy { it.id }
     val byDataLine: Map<String, SeoulLine> = all.flatMap { l -> l.dataLines.map { it to l } }.toMap()
@@ -201,6 +224,15 @@ class StationIndex(val stations: List<MetroStation>) {
             .filter { it.lat in south..north && it.lng in west..east }
             .mapNotNull { it.seoulLine?.id }
             .toSet()
+
+    /** 지도 POI 는 역 출입구 좌표일 수 있어 역 중심점과 차이가 난다. 이름이 맞는 가까운 역만 연결한다. */
+    fun matchPoi(name: String, lat: Double, lng: Double, maxDistanceM: Double = 1_000.0): StationGroup? =
+        groups.asSequence()
+            .map { group -> group to Geo.meters(lat, lng, group.lat, group.lng) }
+            .filter { (_, distance) -> distance <= maxDistanceM }
+            .filter { (group, _) -> PoiMatch.similar(name, group.name) }
+            .minByOrNull { (_, distance) -> distance }
+            ?.first
 
     private fun buildGroups(): List<StationGroup> {
         val buckets = ArrayList<MutableList<MetroStation>>()

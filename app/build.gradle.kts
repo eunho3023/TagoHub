@@ -25,6 +25,10 @@ android {
             "String", "TAGO_SERVICE_KEY",
             "\"${localProps.getProperty("TAGO_SERVICE_KEY", "")}\""
         )
+        buildConfigField(
+            "String", "KLID_BUS_KEY",
+            "\"${localProps.getProperty("KLID_BUS_KEY", localProps.getProperty("TAGO_SERVICE_KEY", ""))}\""
+        )
         buildConfigField("String", "KRIC_SUBWAY_KEY", "\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
         buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
         buildConfigField("String", "ITS_API_KEY", "\"${localProps.getProperty("ITS_API_KEY", "")}\"")

@@ -83,7 +83,6 @@ class KakaoCanvas(
 
     // ── 그려 둔 것 ──
     private val stopLabels = HashMap<String, Label>()
-    private val stopSelected = HashMap<String, Boolean>()
     private val uticIncidentLabels = ArrayList<Label>()
     private val uticRoadRiskLabels = ArrayList<Label>()
     private val uticSafetyLabels = ArrayList<Label>()
@@ -103,8 +102,10 @@ class KakaoCanvas(
         var glideFrom: LatLng?, var glideMs: Long, var t0: Long, var styleKey: String,
     )
     private val buses = HashMap<String, Mover>()
+    private val klidBuses = HashMap<String, Mover>()
     private val trains = HashMap<String, Mover>()
     private var busPins: List<VehiclePin> = emptyList()
+    private var klidBusPins: List<VehiclePin> = emptyList()
     private var trainPins: List<VehiclePin> = emptyList()
 
     private val ticker = object : Runnable {
@@ -214,6 +215,7 @@ class KakaoCanvas(
         lastZoom = km.zoomLevel
         drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawPin()
         drawVehicles(busPins, buses, BUS_LAYER, null)
+        drawVehicles(klidBusPins, klidBuses, KLID_BUS_LAYER, null)
         drawVehicles(trainPins, trains, TRAIN_LAYER, selectedTrain)
         drawUticIncidents()
         drawUticRoadRisks()
@@ -276,64 +278,48 @@ class KakaoCanvas(
     // ───────────────────────── 정류장·역 ─────────────────────────
 
     override fun setStops(list: List<StopPin>) {
+        if (stops == list) return
         stops = list
         drawStops()
     }
 
     private fun drawStops() {
-        val l = layer(STOP_LAYER) ?: return
-        // 정류장은 카카오 지도에 원래 있는 정류장 표시(POI)로 보여주고, 앱은 고른 정류장만 강조
-        val want = stops.filter { it.selected }.associateBy { it.id }
-        stopLabels.keys.filter { it !in want }.forEach { id -> stopLabels.remove(id)?.let { runCatching { it.remove() } }; stopSelected.remove(id) }
-        for (p in want.values) {
-            val st = stopStyles(p.selected)
-            val existing = stopLabels[p.id]
-            if (existing == null) {
-                l.addLabel(LabelOptions.from("s:" + p.id, KLatLng.from(p.lat, p.lng)).setStyles(st).setTexts(text(p.name)).setClickable(true).setTag(p.id))
-                    ?.let { stopLabels[p.id] = it }
-            } else if (stopSelected[p.id] != p.selected) {
-                runCatching { existing.changeStyles(st) }
-            }
-            stopSelected[p.id] = p.selected
-        }
-    }
-
-    private fun stopStyles(selected: Boolean): LabelStyles = styles("stop$selected") {
-        if (selected) {
-            LabelStyles.from(withText(icon(icons.stopSign(STOP_GREEN, 1.35f, true), 0.5f, 1f), 12f))
-        } else {
-            val sign = icons.stopSign(STOP_GREEN, 1f, false)
-            // 14 부터 표지판, 17 부터 이름 
-            LabelStyles.from(icon(sign, 0.5f, 1f, 14), withText(icon(sign, 0.5f, 1f, 17)))
-        }
+        stopLabels.values.forEach { runCatching { it.remove() } }
+        stopLabels.clear()
     }
 
     override fun setStations(list: List<StationPin>) {
+        if (stations == list) return
         stations = list
         drawStations()
     }
 
     override fun setUticIncidents(list: List<UticIncidentPin>) {
+        if (uticIncidents == list) return
         uticIncidents = list
         drawUticIncidents()
     }
 
     override fun setUticRoadRisks(list: List<UticRoadRiskPin>) {
+        if (uticRoadRisks == list) return
         uticRoadRisks = list
         drawUticRoadRisks()
     }
 
     override fun setUticSafetyPoints(list: List<UticSafetyPin>) {
+        if (uticSafetyPoints == list) return
         uticSafetyPoints = list
         drawUticSafetyPoints()
     }
 
     override fun setItsCctvs(list: List<ItsCctvPin>) {
+        if (itsCctvs == list) return
         itsCctvs = list
         drawItsCctvs()
     }
 
     override fun setItsRoadFeatures(list: List<ItsRoadFeaturePin>) {
+        if (itsRoadFeatures == list) return
         itsRoadFeatures = list
         drawItsRoadFeatures()
     }
@@ -566,6 +552,11 @@ class KakaoCanvas(
         drawVehicles(list, buses, BUS_LAYER, null)
     }
 
+    override fun setKlidBuses(list: List<VehiclePin>) {
+        klidBusPins = list
+        drawVehicles(list, klidBuses, KLID_BUS_LAYER, null)
+    }
+
     override fun setTrains(list: List<VehiclePin>) {
         trainPins = list
         drawVehicles(list, trains, TRAIN_LAYER, selectedTrain)
@@ -682,13 +673,15 @@ class KakaoCanvas(
     }
 
     override fun setOverlays(ids: Set<String>) {
+        if (overlays == ids) return
+        val changed = (overlays - ids) + (ids - overlays)
         overlays = ids
-        applyOverlays()
-        drawUticIncidents()
-        drawUticRoadRisks()
-        drawUticSafetyPoints()
-        drawItsCctvs()
-        drawItsRoadFeatures()
+        if (changed.any { id -> OVERLAY_IDS.any { it.first == id } }) applyOverlays()
+        if ("utic_incidents" in changed) drawUticIncidents()
+        if ("utic_road_risk" in changed) drawUticRoadRisks()
+        if ("utic_safety" in changed) drawUticSafetyPoints()
+        if ("its_cctv" in changed) drawItsCctvs()
+        if (changed.any { it.startsWith("its_") && it != "its_cctv" }) drawItsRoadFeatures()
     }
 
     private fun applyOverlays() {
@@ -747,6 +740,7 @@ class KakaoCanvas(
         private const val ROUTE_PIN_LAYER = "routePins"
         private const val TRIP_LAYER = "trip"
         private const val BUS_LAYER = "buses"
+        private const val KLID_BUS_LAYER = "klidBuses"
         private const val TRAIN_LAYER = "trains"
         private const val ME_LAYER = "me"
         private const val PIN_LAYER = "pin"
@@ -761,9 +755,8 @@ class KakaoCanvas(
         private const val ROUTE_LAYER = "routeLines"
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
-            BUS_LAYER to 400, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
+            BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, ME_LAYER to 500)
-        private val STOP_GREEN = 0xFF2E8B57.toInt()
         private val TRANSFER_RING = 0xFF333F4F.toInt()
         private val UTIC_RED = 0xFFD32F2F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()

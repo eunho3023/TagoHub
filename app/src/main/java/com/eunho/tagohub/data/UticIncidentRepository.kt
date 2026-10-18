@@ -101,8 +101,21 @@ internal object UticHttp {
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.use {
-                        if (!it.isSuccessful) throw IOException("$providerName 요청 실패 (HTTP ${it.code}).")
-                        it.body?.string() ?: throw IOException("UTIC 응답 본문이 비어 있습니다.")
+                        val responseBody = it.body?.string().orEmpty()
+                        if (!it.isSuccessful) {
+                            val detail = responseBody
+                                .replace(Regex("\\s+"), " ")
+                                .trim()
+                                .take(240)
+                            val message = if (providerName == "ITS CCTV" && it.code == 401) {
+                                "ITS CCTV 인증 실패 (HTTP 401). local.properties의 ITS_API_KEY가 ITS 오픈API CCTV 키인지, CCTV 서비스 활용신청이 승인됐는지 확인하세요."
+                            } else {
+                                "$providerName 요청 실패 (HTTP ${it.code})."
+                            }
+                            throw IOException(message + detail.takeIf(String::isNotBlank)?.let { " 응답: $it" }.orEmpty())
+                        }
+                        responseBody.takeIf(String::isNotBlank)
+                            ?: throw IOException("$providerName 응답 본문이 비어 있습니다.")
                     }
                     continuation.resumeWith(Result.success(body))
                 } catch (e: IOException) {

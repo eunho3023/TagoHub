@@ -15,6 +15,7 @@ import com.eunho.tagohub.data.BusSearch
 import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.City
 import com.eunho.tagohub.data.Graph
+import com.eunho.tagohub.data.KlidBusPosition
 import com.eunho.tagohub.data.GpsTracker
 import com.eunho.tagohub.data.ItsCctv
 import com.eunho.tagohub.data.ItsCctvRepository
@@ -24,6 +25,7 @@ import com.eunho.tagohub.data.ItsTrafficRow
 import com.eunho.tagohub.data.ItsForecastRow
 import com.eunho.tagohub.data.ItsMainlineSection
 import com.eunho.tagohub.data.ItsFogSection
+import com.eunho.tagohub.data.KricStationCodeIndex
 import com.eunho.tagohub.data.LatLng
 import com.eunho.tagohub.data.MetroStation
 import com.eunho.tagohub.data.RoadShapeClient
@@ -62,6 +64,7 @@ import com.eunho.tagohub.ui.bus.routeStopsFor
 import com.eunho.tagohub.ui.bus.routeInfoFor
 import com.eunho.tagohub.ui.subway.StationDetail
 import com.eunho.tagohub.ui.subway.StationDetailController
+import com.eunho.tagohub.data.StationFacilityIndex
 import com.eunho.tagohub.ui.theme.busRouteColor
 import com.eunho.tagohub.ui.theme.subwayLineColor
 import kotlinx.coroutines.Dispatchers
@@ -705,7 +708,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 지도에서 고른 곳 (꾹 누른 곳, 정류장·역이 아닌 POI) — 출발·도착으로 쓰기 */
     data class PickedPlace(val name: String, val sub: String?, val lat: Double, val lng: Double, val kind: com.eunho.tagohub.ui.ModeJump.Kind? = null,
-                           val category: String? = null, val phone: String? = null, val url: String? = null, val region: String? = null,
+                           val category: String? = null, val phone: String? = null, val url: String? = null,
                            val linkLabel: String? = null)
 
     /** 장소 카드의 '주변 찾기' 결과 (카카오 카테고리 검색) */
@@ -713,14 +716,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun findNearby(code: String, label: String) {
         val p = picked.value ?: return
         viewModelScope.launch { nearby.value = label to com.eunho.tagohub.data.KakaoExtra.category(code, p.lat, p.lng) }
-    }
-
-    /** 고른 곳의 행정동을 채움 */
-    private fun fillRegion(p: PickedPlace) {
-        viewModelScope.launch {
-            val r = com.eunho.tagohub.data.KakaoExtra.region(p.lat, p.lng) ?: return@launch
-            picked.value?.let { cur -> if (cur.lat == p.lat && cur.lng == p.lng) picked.value = cur.copy(region = r) }
-        }
     }
 
     /** 지도를 만지거나 움직이면 검색창 키보드를 내림 */
@@ -743,56 +738,85 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         canvas?.setPin(p.lat, p.lng)
         canvas?.moveTo(p.lat, p.lng, null)
         nearby.value = null
-        picked.value?.let(::fillRegion)
     }
     val picked = MutableStateFlow<PickedPlace?>(null)
 
     /** 카카오 지도의 POI 를 누름: 정류장이면 정류장, 지하철역이면 역, 아니면 출발·도착 고르기 */
     fun onMapPoi(name: String, lat: Double, lng: Double) {
         viewModelScope.launch {
-            // 1) 지하철역: 300m 안에서 이름이 비슷한 역
-            val station = index?.groups
-                ?.filter { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) <= 300.0 }
-                ?.let { gs -> com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, gs, { it.name }, { it.lat to it.lng }, 0.0) }
+            val selectingEndpoint = panel.value == MapPanel.Plan && trip.editing.value != null
+            // 1) 버스 정류장: POI 와 내장 정류소 좌표가 어긋난 경우도 매칭
+            val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 40) } }.orEmpty().map { it.first }
+            val cachedStops = stops.values.filter { stop ->
+                stop.lat != null && stop.lng != null &&
+                    com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat, stop.lng) <= 300.0
+            }
+            val near = (dbStops + cachedStops).distinctBy { it.nodeId }
+            val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
+            val station = index?.matchPoi(name, lat, lng)
+            val stopDistance = stop?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat ?: lat, it.lng ?: lng) }
+            val stationDistance = station?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) }
+            val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
+            val useStop = stop != null && (
+                station == null || busPoi || stopDistance!! <= stationDistance!!
+            )
+            if (useStop) {
+                val matchedStop = stop!!
+                if (selectingEndpoint) {
+                    trip.pick(PlanPoint(matchedStop.name, matchedStop.nodeNo?.let { "정류장 $it" }, matchedStop.lat ?: lat, matchedStop.lng ?: lng, matchedStop.nodeId))
+                    return@launch
+                }
+                closePick()
+                pickStop(matchedStop)
+                return@launch
+            }
+            // 2) 지하철역: 이름과 가까운 역 데이터
             if (station != null) {
+                if (selectingEndpoint) {
+                    trip.pick(PlanPoint(station.name, station.displayLines.joinToString(" · "), station.lat, station.lng))
+                    return@launch
+                }
                 closePick()
                 focusStation(station)
                 return@launch
             }
-            // 2) 버스 정류장: 60m 안에서 이름이 비슷한 것, 없으면 25m 안의 가장 가까운 것
-            val near = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 60.0, 15) } }.orEmpty().map { it.first }
-            val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
-            if (stop != null) {
-                closePick()
-                pickStop(stop)
-                return@launch
-            }
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
             // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게
-            val first = PickedPlace(name.ifBlank { "선택한 장소" }, null, lat, lng, com.eunho.tagohub.ui.ModeJump.kindOf(name))
+            val title = name.ifBlank { "선택한 장소" }
+            if (selectingEndpoint) {
+                trip.pick(PlanPoint(title, null, lat, lng))
+                return@launch
+            }
+            val first = PickedPlace(title, "주소 확인 중…", lat, lng, com.eunho.tagohub.ui.ModeJump.kindOf(name))
             clearForPlace()
             picked.value = first
             nearby.value = null
-            fillRegion(first)
             canvas?.setPin(lat, lng)
-            // 그곳 정보 (주소·분류·전화·카카오 상세): 이름으로 근처 장소 검색
-            val info = runCatching { com.eunho.tagohub.data.PlaceSearch.search(name, LatLng(lat, lng)) }.getOrNull()
-                ?.firstOrNull { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) < 150 }
-            if (info != null && picked.value === first) picked.value = first.copy(sub = info.address, category = info.category, phone = info.phone, url = info.url)
+            updatePickedAddress(first)
         }
     }
 
     /** 지도 바닥을 꾹 누름: 그 자리를 출발·도착으로 (이름은 카카오 좌표→주소로) */
     fun onMapLongPress(lat: Double, lng: Double) {
+        if (panel.value == MapPanel.Plan && trip.editing.value != null) {
+            trip.pick(PlanPoint("선택한 위치", null, lat, lng))
+            return
+        }
         val p = PickedPlace("선택한 위치", "주소 확인 중…", lat, lng)
         clearForPlace()
         picked.value = p
         nearby.value = null
-        fillRegion(p)
         canvas?.setPin(lat, lng)
+        updatePickedAddress(p)
+    }
+
+    private fun updatePickedAddress(p: PickedPlace) {
         viewModelScope.launch {
-            val name = com.eunho.tagohub.data.KakaoExtra.placeName(lat, lng)
-            if (picked.value === p) picked.value = p.copy(name = name ?: "선택한 위치", sub = if (name == null) "%.5f, %.5f".format(lat, lng) else null)
+            val address = com.eunho.tagohub.data.KakaoExtra.placeName(p.lat, p.lng)
+            val current = picked.value ?: return@launch
+            if (current.lat == p.lat && current.lng == p.lng) {
+                picked.value = current.copy(sub = address ?: "%.5f, %.5f".format(p.lat, p.lng))
+            }
         }
     }
 
@@ -802,16 +826,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         station.value = null; pushSelectedStation()
         trainView.value = null; canvas?.selectTrain(null)
         if (route.value != null) { route.value = null; canvas?.setRoute(null, emptyList(), null); canvas?.setBuses(emptyList()) }
+        pushKlidBuses()
         if (panel.value != MapPanel.Plan) panel.value = MapPanel.None
     }
 
     /** 고른 곳을 출발(asOrigin) 또는 도착으로 → 길찾기 (도착이 정해지면 바로 검색) */
     fun usePicked(asOrigin: Boolean) {
         val p = picked.value ?: return
-        val point = PlanPoint(p.name, p.sub, p.lat, p.lng)
-        openPlanner()
-        if (asOrigin) trip.origin.value = point else trip.dest.value = point
+        setTripEndpoint(PlanPoint(p.name, p.sub, p.lat, p.lng), asOrigin)
         closePick()
+    }
+
+    private fun setTripEndpoint(point: PlanPoint, asOrigin: Boolean) {
+        clearBusSearch()
+        panel.value = MapPanel.Plan
+        trip.editing.value = null
+        trip.results.value = Load.Idle
+        if (asOrigin) trip.origin.value = point else trip.dest.value = point
         if (trip.dest.value != null) trip.plan()
     }
 
@@ -826,7 +857,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 고른 곳을 경유지로 → 길찾기 */
     fun usePickedAsVia() {
         val p = picked.value ?: return
-        openPlanner()
+        clearBusSearch()
+        panel.value = MapPanel.Plan
         trip.via.value = PlanPoint(p.name, p.sub, p.lat, p.lng)
         closePick()
         if (trip.dest.value != null) trip.plan()
@@ -842,8 +874,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun useStopAs(stop: BusStop, asOrigin: Boolean) {
         val lat = stop.lat ?: return
         val lng = stop.lng ?: return
-        picked.value = PickedPlace(stop.name, stop.nodeNo?.let { "정류장 $it" }, lat, lng)
-        usePicked(asOrigin)
+        setTripEndpoint(PlanPoint(stop.name, stop.nodeNo?.let { "정류장 $it" }, lat, lng, stop.nodeId), asOrigin)
     }
 
     /** 정류장 검색 결과에 '○○ 방면' (앱 안 노선 정류장 순서에서 다음 정류장, 한 번 구하면 기억) */
@@ -873,6 +904,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     val autoCity = MutableStateFlow<City?>(null)
     private var cityAt: Pair<Double, Double>? = null
     private var cityJob: Job? = null
+    private var klidBusJob: Job? = null
+    private var klidBusCityCode: String? = null
+    private var klidBusPositions: List<KlidBusPosition> = emptyList()
     /** 마지막 검색에 쓴 지역 (노선 열 때 사용) */
     private var searchCity: City? = null
 
@@ -976,6 +1010,27 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch {
+            val kricCodes = try {
+                withContext(Dispatchers.IO) {
+                    app.assets.open("kric_subway_station_codes.tsv").bufferedReader(Charsets.UTF_8).use {
+                        KricStationCodeIndex.parseTsv(it.readText())
+                    }
+                }
+            } catch (e: IOException) {
+                banner.value = "KRIC 역 코드 데이터를 읽지 못했습니다: ${e.message}"
+                null
+            }
+            kricCodes?.let(Graph.kricSubway::updateStationCodeIndex)
+            try {
+                val facilityIndex = withContext(Dispatchers.IO) {
+                    app.assets.open("subway_station_facilities.tsv").bufferedReader(Charsets.UTF_8).use {
+                        StationFacilityIndex.parseTsv(it.readText())
+                    }
+                }
+                stations.setFacilityIndex(facilityIndex)
+            } catch (e: IOException) {
+                banner.value = "역 편의정보 데이터를 읽지 못했습니다: ${e.message}"
+            }
             index = withContext(Dispatchers.IO) {
                 runCatching {
                     app.assets.open("subway_stations.tsv").bufferedReader().use { StationIndex.parseTsv(it.readText()) }
@@ -1016,7 +1071,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun configure(m: MapMode) {
+        if (mapMode == m) return
         mapMode = m
+        needZoom.value = if (subwayLayer) lastLevel < 1 else lastLevel < 2
+        pushStations()
+        pushStops()
+        updateTrainLines()
+        if (lastLevel >= 2 && busLayer) {
+            lastBox?.let { loadStopsInView(it, immediate = true) }
+        }
+        syncKlidBuses()
     }
 
     // ───────────────────────── 지도 연결 ─────────────────────────
@@ -1065,6 +1129,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushStops()
         pushRoute()
         pushBuses()
+        pushKlidBuses()
         pushTrains()
         pushSelectedStation()
         trainView.value?.let {
@@ -1091,6 +1156,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         trainJob?.cancel()
         trainLines = emptySet()
         nearbyJob?.cancel()
+        klidBusJob?.cancel()
+        klidBusJob = null
+        klidBusCityCode = null
+        klidBusPositions = emptyList()
         if (uticJob?.isActive == true) {
             uticGeneration++
             uticJob?.cancel()
@@ -1163,6 +1232,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         updateTrainLines()
         if (level >= 2 && busLayer) loadStopsInView(doubleArrayOf(s, w, n, e))
         if (level >= 1 && busLayer) detectCity(lat, lng)
+        syncKlidBuses()
     }
 
     /**
@@ -1229,7 +1299,84 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             if (autoCity.value?.code != code) {
                 autoCity.value = City(code, cityNames.value[code] ?: repo.busCityName(code) ?: "지역 $code")
             }
+            syncKlidBuses()
         }
+    }
+
+    private fun syncKlidBuses() {
+        if (!busLayer || lastLevel < 2) {
+            klidBusJob?.cancel()
+            klidBusJob = null
+            klidBusCityCode = null
+            klidBusPositions = emptyList()
+            canvas?.setKlidBuses(emptyList())
+            return
+        }
+        val city = autoCity.value ?: return
+        if (klidBusCityCode == city.code && klidBusJob?.isActive == true) {
+            pushKlidBuses()
+            return
+        }
+        klidBusJob?.cancel()
+        klidBusCityCode = city.code
+        klidBusPositions = emptyList()
+        pushKlidBuses()
+        klidBusJob = viewModelScope.launch {
+            val repository = Graph.klidBus
+            var region: com.eunho.tagohub.data.KlidBusRegion? = null
+            while (klidBusCityCode == city.code && busLayer && lastLevel >= 2) {
+                try {
+                    val activeRegion = region ?: withContext(Dispatchers.IO) { repository.resolveRegion(city.name) }
+                        ?: throw IOException("${city.name}의 지역 코드를 찾지 못했습니다.")
+                    region = activeRegion
+                    klidBusPositions = withContext(Dispatchers.IO) { repository.positions(activeRegion.stdgCode) }
+                    clearKlidBusError()
+                    pushKlidBuses()
+                } catch (e: IOException) {
+                    banner.value = "초정밀 버스 위치를 불러오지 못했습니다: ${e.message}"
+                }
+                delay(KLID_BUS_REFRESH_MS)
+            }
+        }
+    }
+
+    private fun pushKlidBuses() {
+        val box = lastBox ?: run {
+            canvas?.setKlidBuses(emptyList())
+            return
+        }
+        val latMargin = (box[2] - box[0]) * 0.12
+        val lngMargin = (box[3] - box[1]) * 0.12
+        val centerLat = (box[0] + box[2]) / 2
+        val centerLng = (box[1] + box[3]) / 2
+        val routeVehicles = route.value?.buses?.value.orEmpty().mapNotNull { it.vehicleNo }.toSet()
+        val pins = klidBusPositions.asSequence()
+            .filter { it.vehicleNo !in routeVehicles }
+            .filter {
+                it.latitude in (box[0] - latMargin)..(box[2] + latMargin) &&
+                    it.longitude in (box[1] - lngMargin)..(box[3] + lngMargin)
+            }
+            .sortedBy { Geo.meters(centerLat, centerLng, it.latitude, it.longitude) }
+            .take(MAX_KLID_BUS_PINS)
+            .map {
+                val point = LatLng(it.latitude, it.longitude)
+                VehiclePin(
+                    id = "klid:${it.id}",
+                    path = listOf(point),
+                    startFrac = 1.0,
+                    endFrac = 1.0,
+                    durationMs = 0L,
+                    color = KLID_BUS_COLOR,
+                    label = it.routeNo,
+                    glyph = "실",
+                )
+            }
+            .toList()
+        canvas?.setKlidBuses(pins)
+    }
+
+    private fun clearKlidBusError() {
+        if (banner.value?.startsWith("초정밀 버스") == true) banner.value = null
     }
 
     fun onStopClick(id: String) {
@@ -1245,14 +1392,21 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         selected.value = BusDest.Stop(stop, merged[stop.nodeId]?.others)
         panel.value = MapPanel.Stop
         pushStops()
+        if (stop.lat != null && stop.lng != null) canvas?.setPin(stop.lat, stop.lng)
         // 누른 정류장을 현위치 버튼과 똑같이 지도 정중앙에
         if (stop.lat != null && stop.lng != null) canvas?.focus(stop.lat, stop.lng)
     }
 
     fun onStationClick(id: String) {
         val g = index?.group(id) ?: return
+        canvas?.setPin(g.lat, g.lng)
         openStation(g)
         canvas?.focus(g.lat, g.lng)
+    }
+
+    fun useStationAs(group: StationGroup, asOrigin: Boolean) {
+        val point = PlanPoint(group.name, group.displayLines.joinToString(" · "), group.lat, group.lng)
+        setTripEndpoint(point, asOrigin)
     }
 
     /** 지도에서 열차를 누름 → 행선지까지 경로 */
@@ -1338,6 +1492,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         cityAt = lastView?.let { it.first to it.second }
         prefs.edit().putString("cityCode", p.id).putString("cityName", p.name).apply()
         busResult.value = Load.Idle
+        syncKlidBuses()
     }
 
     /**
@@ -1437,6 +1592,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         clearBusSearch()
         closeStopTimetable()
         stops[s.nodeId] = s
+        if (s.lat != null && s.lng != null) canvas?.setPin(s.lat, s.lng)
         if (s.lat != null && s.lng != null) canvas?.focus(s.lat, s.lng)
         selected.value = BusDest.Stop(s, merged[s.nodeId]?.others)
         panel.value = MapPanel.Stop
@@ -1472,6 +1628,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun focusStation(g: StationGroup) {
+        canvas?.setPin(g.lat, g.lng)
         canvas?.focus(g.lat, g.lng)
         openStation(g)
     }
@@ -1492,6 +1649,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closePanel() {
+        val closingPickedMapFeature = panel.value == MapPanel.Stop || panel.value == MapPanel.Station
         when (panel.value) {
             MapPanel.Route -> {
                 route.value = null
@@ -1539,6 +1697,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             trainView.value != null -> MapPanel.Train
             else -> MapPanel.None
         }
+        if (closingPickedMapFeature && panel.value == MapPanel.None) canvas?.setPin(null, null)
     }
 
     fun openPanel(p: MapPanel) { panel.value = p }
@@ -2013,6 +2172,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val d = route.value
         if (d == null) {
             canvas?.setBuses(emptyList())
+            pushKlidBuses()
             return
         }
         val color = busRouteColor(d.routeType).toArgb()
@@ -2026,6 +2186,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val k = if (g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
             VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeLast(4).orEmpty(), "")
         })
+        pushKlidBuses()
     }
 
     /** 현재 중심에서 먼 정류소부터 버려 마커 수를 제한 */
@@ -2039,6 +2200,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private companion object {
+        const val KLID_BUS_REFRESH_MS = 30_000L
+        const val MAX_KLID_BUS_PINS = 300
+        const val KLID_BUS_COLOR = 0xFF008577.toInt()
         const val MAX_STOPS = 400
         const val UTIC_INCIDENTS_OVERLAY = "utic_incidents"
         const val UTIC_ROAD_RISK_OVERLAY = "utic_road_risk"
