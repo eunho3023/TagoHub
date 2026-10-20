@@ -314,14 +314,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         canvas?.setUticIncidents(pins)
     }
 
+    val selectedUticIncident = MutableStateFlow<UticIncident?>(null)
+
     fun onUticIncidentClick(id: String) {
-        val incident = uticItems.firstOrNull { it.id == id } ?: return
-        banner.value = listOfNotNull(
-            incident.title,
-            incident.address,
-            incident.startDate?.let { "시작: $it" },
-            incident.endDate?.let { "종료: $it" },
-        ).joinToString("\n")
+        selectedUticIncident.value = uticItems.firstOrNull { it.id == id } ?: return
+    }
+
+    fun dismissUticIncident() {
+        selectedUticIncident.value = null
     }
 
     fun onItsCctvClick(id: String) {

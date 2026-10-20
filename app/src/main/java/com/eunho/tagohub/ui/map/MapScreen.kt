@@ -92,6 +92,21 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Construction
+import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tsunami
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Traffic
+import androidx.compose.material.icons.filled.Dangerous
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.Terrain
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.AirportShuttle
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -191,6 +206,7 @@ fun MapScreen(
     val itsRoadLoading by vm.itsRoadLoading.collectAsStateWithLifecycle()
     val itsRoadCachedLayers by vm.itsRoadCachedLayers.collectAsStateWithLifecycle()
     val selectedItsRoadFeature by vm.selectedItsRoadFeature.collectAsStateWithLifecycle()
+    val selectedUticIncident by vm.selectedUticIncident.collectAsStateWithLifecycle()
 
     // 지도: 카카오맵. 인증이 실패하면 이유(등록할 패키지명·키 해시)를 알리고, 설정을 고친 뒤 새로고침 버튼으로 다시 시도.
     // 화면 생명주기에 맞춰 resume/pause (카카오맵은 꼭 불러야 함)
@@ -385,13 +401,23 @@ fun MapScreen(
         ItsCctvDialog(cctv = cctv, onDismiss = vm::dismissItsCctv)
     }
     selectedItsRoadFeature?.let { feature ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = vm::dismissItsRoadFeature,
-            title = { Text(feature.title) },
-            text = { Text(feature.details.ifBlank { "ITS에서 제공한 도로 정보입니다." }) },
-            confirmButton = {
-                TextButton(onClick = vm::dismissItsRoadFeature) { Text("닫기") }
-            },
+        val lines = feature.details.lines().filter { it.isNotBlank() }
+        val period = lines.filter { Regex("""\d{4}-\d{2}-\d{2}""").containsMatchIn(it) }
+        MapInfoDialog(
+            title = feature.title,
+            body = (lines - period.toSet()).joinToString("\n").ifBlank { "ITS에서 제공한 도로 정보입니다." },
+            period = period,
+            source = "국토교통부 제공",
+            onDismiss = vm::dismissItsRoadFeature,
+        )
+    }
+    selectedUticIncident?.let { i ->
+        MapInfoDialog(
+            title = i.title,
+            body = i.address.orEmpty(),
+            period = listOfNotNull(i.startDate, i.endDate),
+            source = "UTIC 제공",
+            onDismiss = vm::dismissUticIncident,
         )
     }
     if (baseMenu && mode == "kakao") {
@@ -414,9 +440,11 @@ fun MapScreen(
 private data class MapLayerOption(
     val id: String,
     val title: String,
-    val description: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
 )
 
+/** 카카오맵 "지도설정" 시트 형식: 지도 종류 카드 + 둥근 아이콘 격자 (켜면 파란 원, 끄면 회색 원) */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MapLayerSheet(
     base: BaseMap,
@@ -431,114 +459,132 @@ private fun MapLayerSheet(
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val groups = listOf(
-        "지도" to listOf(
-            MapLayerOption("bicycle_road", "자전거도로", "지도에 자전거도로를 겹쳐 표시합니다."),
-            MapLayerOption("hill_shading", "지형도", "지형의 높낮이를 음영으로 표시합니다."),
-        ),
-        "UTIC 교통정보" to listOf(
-            MapLayerOption("utic_incidents", "돌발정보", "공사·사고 등 교통 돌발 상황"),
-            MapLayerOption("utic_road_risk", "도로위험예보", "도로 위 위험 상황과 예보"),
-            MapLayerOption("utic_safety", "교통안전정보", "교통안전 시설·위험 지점"),
-        ),
-        "ITS 도로정보" to listOf(
-            MapLayerOption("its_cctv", "고속도로·국도 CCTV", "마커를 눌러 실시간 영상을 봅니다."),
-            MapLayerOption("its_events", "돌발정보", "ITS에서 제공하는 도로 돌발 상황"),
-            MapLayerOption("its_disasters", "재난정보", "도로 통제 등 재난 정보를 표시합니다."),
-            MapLayerOption("its_vsl", "가변속도표지", "가변 제한속도 표지 위치"),
-            MapLayerOption("its_vms", "도로전광표지", "전광표지 위치와 표시 내용"),
-            MapLayerOption("its_safe_driving", "주의운전정보", "주의가 필요한 도로 구간"),
-            MapLayerOption("its_dangerous_cars", "위험물 사고", "위험물 운송차량 사고 정보"),
-            MapLayerOption("its_vds", "VDS 시설물", "교통량 검지 시설물 위치"),
-            MapLayerOption("its_ice_sections", "상습 결빙구간", "겨울철 결빙 주의 구간"),
-        ),
+    val layers = listOf(
+        MapLayerOption("its_cctv", "CCTV", Icons.Filled.Videocam),
+        MapLayerOption("utic_incidents", "돌발정보", Icons.Filled.Warning),
+        MapLayerOption("its_events", "도로돌발", Icons.Filled.Construction),
+        MapLayerOption("utic_road_risk", "도로위험", Icons.Filled.Report),
+        MapLayerOption("utic_safety", "교통안전", Icons.Filled.Shield),
+        MapLayerOption("its_disasters", "재난정보", Icons.Filled.Tsunami),
+        MapLayerOption("its_vsl", "가변속도", Icons.Filled.Speed),
+        MapLayerOption("its_vms", "전광표지", Icons.Filled.Campaign),
+        MapLayerOption("its_safe_driving", "주의운전", Icons.Filled.Traffic),
+        MapLayerOption("its_dangerous_cars", "위험물사고", Icons.Filled.Dangerous),
+        MapLayerOption("its_vds", "VDS", Icons.Filled.Sensors),
+        MapLayerOption("its_ice_sections", "결빙구간", Icons.Filled.AcUnit),
+        MapLayerOption("bicycle_road", "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),
+        MapLayerOption("hill_shading", "지형도", Icons.Filled.Terrain),
     )
-    val enabledCount = overlays.count { id -> groups.any { group -> group.second.any { it.id == id } } }
+    val anyLoading = uticLoading || uticRiskLoading || uticSafetyLoading || itsCctvLoading || loadingLayers.isNotEmpty()
+    val blue = Color(0xFF3B8CFF)
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.82f),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            item {
-                Text("지도와 교통 레이어", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(
-                    if (enabledCount == 0) "원하는 정보를 켜서 지도에 표시하세요."
-                    else "${enabledCount}개 레이어 사용 중 · 다시 눌러 끌 수 있어요.",
-                    Modifier.padding(top = 4.dp, bottom = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BaseMap.entries.forEach { type ->
-                        androidx.compose.material3.FilterChip(
-                            selected = base == type,
-                            onClick = { onBaseSelect(type) },
-                            label = { Text(type.label) },
-                            trailingIcon = if (base == type) {
-                                { Icon(Icons.Filled.Check, contentDescription = "선택됨") }
-                            } else {
-                                null
-                            },
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
+            Text(
+                "지도설정",
+                Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = blue,
+            )
+            if (anyLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+            else HorizontalDivider()
+
+            // 지도 종류
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                BaseMap.entries.forEach { type ->
+                    val picked = base == type
+                    Column(
+                        Modifier.weight(1f).clickable { onBaseSelect(type) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            Modifier.size(width = 88.dp, height = 64.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (type == BaseMap.Satellite) Color(0xFF3E5A3A) else Color(0xFFE9E3C9))
+                                .then(if (picked) Modifier.border(2.dp, blue, RoundedCornerShape(8.dp)) else Modifier),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (picked) {
+                                Box(Modifier.fillMaxSize().background(blue.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.Check, contentDescription = "선택됨", tint = Color.White, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        }
+                        Text(
+                            type.label,
+                            Modifier.padding(top = 8.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (picked) FontWeight.Bold else FontWeight.Normal,
+                            color = if (picked) blue else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
             }
-            groups.forEach { (groupTitle, options) ->
-                item(key = "heading:$groupTitle") {
-                    Text(
-                        groupTitle,
-                        Modifier.padding(top = 12.dp, bottom = 2.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                items(options, key = { it.id }) { option ->
-                    val enabled = option.id in overlays
-                    val status = when (option.id) {
-                        "utic_incidents" -> if ("utic_incidents" in overlays && uticLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
-                        "utic_road_risk" -> if ("utic_road_risk" in overlays && uticRiskLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
-                        "utic_safety" -> if ("utic_safety" in overlays && uticSafetyLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
-                        "its_cctv" -> if ("its_cctv" in overlays && itsCctvLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
-                        else -> {
-                            when {
-                                option.id in loadingLayers -> "사용 중"
-                                option.id in cachedLayers -> "저장된 정보"
-                                enabled -> "사용 중"
-                                else -> "지도 범위"
-                            }
-                        }
-                    }
-                    Surface(
-                        onClick = { onToggle(option.id) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (enabled) MaterialTheme.colorScheme.secondaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerLow,
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+
+            // 레이어 격자: 한 줄 4개
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp),
+                maxItemsInEachRow = 4,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                layers.forEach { option ->
+                    val on = option.id in overlays
+                    Column(
+                        Modifier.weight(1f).clickable { onToggle(option.id) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Row(
-                            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        Box(
+                            Modifier.size(64.dp).clip(CircleShape)
+                                .background(if (on) blue else MaterialTheme.colorScheme.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(option.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                Text(
-                                    if (enabled && option.id in loadingLayers && option.id in cachedLayers) {
-                                        "저장된 $status 표시 · 최신 정보 갱신 중"
-                                    } else if (enabled) "$status 표시 중" else option.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            if (enabled) Icon(Icons.Filled.Check, contentDescription = "켜짐")
+                            Icon(
+                                option.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(30.dp),
+                                tint = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
+                        Text(
+                            option.title,
+                            Modifier.padding(top = 6.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                            color = if (on) blue else MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
+                // 마지막 줄 빈칸을 채워 정렬 유지
+                repeat((4 - layers.size % 4) % 4) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
+}
+
+/** 지도 위 정보(마커)를 눌렀을 때: 제목 / 본문 / 기간 / 제공처 / 확인 */
+@Composable
+private fun MapInfoDialog(title: String, body: String, period: List<String>, source: String, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(12.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (body.isNotBlank()) Text(body, style = MaterialTheme.typography.bodyLarge)
+                if (period.isNotEmpty()) Text(period.joinToString("\n"), style = MaterialTheme.typography.bodyLarge)
+                Text(source, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("확인", color = Color(0xFF3B8CFF)) } },
+    )
 }
 
 @Composable
