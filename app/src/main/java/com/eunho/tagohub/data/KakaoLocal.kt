@@ -51,6 +51,14 @@ object KakaoLocal {
     }
 
     /** 좌표로 행정구역 (coord2regioncode): 행정동(H) 우선, 없으면 법정동(B) */
+    /** 좌표로 행정구역 → 법정동 코드 10자리 (region_type B 의 code) — 초정밀 버스 stdgCd 구하기 */
+    fun legalCode(body: String): String? {
+        val root = runCatching { MiniJson.parse(body) }.getOrNull() as? Map<*, *> ?: return null
+        val docs = (root["documents"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
+        return (docs.firstOrNull { it["region_type"]?.toString() == "B" } ?: docs.firstOrNull())
+            ?.get("code")?.toString()?.trim()?.takeIf { it.length == 10 && it.all(Char::isDigit) }
+    }
+
     fun regionName(body: String): String? {
         val root = runCatching { MiniJson.parse(body) }.getOrNull() as? Map<*, *> ?: return null
         val docs = (root["documents"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }

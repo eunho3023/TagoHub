@@ -28,8 +28,9 @@ object Fmt {
     /** 버스 arrtime(초) → 표시. 403초 → "7분" (올림: 놓치지 않게 보수적으로) */
     fun arrival(sec: Int?): String = when {
         sec == null -> "정보 없음"
-        sec < 60 -> "곧 도착"
-        else -> "${(sec + 59) / 60}분"
+        sec <= 30 -> "곧 도착"
+        sec < 60 -> "${sec}초"
+        else -> "${sec / 60}분 %02d초".format(sec % 60)
     }
 
     fun distance(meters: Double): String =

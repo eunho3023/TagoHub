@@ -145,12 +145,27 @@ sealed class BusDest {
  * 정류장 도착정보: 지역별 자체 API (전주시·제주 BIS·경기 GBIS), 그 외 지역만 TAGO.
  * 자체 API 가 있는 지역은 TAGO 로 대체하지 않는다 (정보가 섞이지 않게).
  */
-internal suspend fun arrivalsFor(repo: TagoRepository, s: BusStop) = when {
-    Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
-    Gyeonggi.isGyeonggi(s.nodeId) -> Graph.gyeonggi.arrivals(s.nodeId)
-    Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
-    SeoulBus.isSeoul(s.nodeId) -> s.nodeNo?.let { Graph.seoulBus.arrivals(it) } ?: TagoResult.Success(emptyList()) // 서울시 API (정류장 번호로)
-    else -> repo.stopArrivals(tagoCity(repo, s), s.nodeId)
+internal /**
+ * 버스 도착정보: TAGO 버스도착정보(정류소별 도착예정정보) 하나로 — 제주·경기·전주 포함.
+ * 서울은 TAGO 에 없어서(도시코드 목록에 서울 없음) 서울시 API (정류장 번호로).
+ */
+suspend fun arrivalsFor(repo: TagoRepository, s: BusStop): TagoResult<List<BusArrival>> = when {
+    SeoulBus.isSeoul(s.nodeId) -> s.nodeNo?.let { Graph.seoulBus.arrivals(it) } ?: TagoResult.Success(emptyList())
+    else -> kotlinx.coroutines.coroutineScope {
+        // TAGO(시간·남은 정류장·저상) + 지역 API(방면·현재 정류장)를 동시에 받아 합침
+        val tago = async { repo.stopArrivals(tagoCity(repo, s), s.nodeId) }
+        val local = async {
+            runCatching {
+                when {
+                    Gyeonggi.isGyeonggi(s.nodeId) -> Graph.gyeonggi.arrivals(s.nodeId)
+                    Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
+                    Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
+                    else -> null
+                }
+            }.getOrNull()
+        }
+        com.eunho.tagohub.data.ArrivalMerge.merge(tago.await(), local.await())
+    }
 }
 
 /**

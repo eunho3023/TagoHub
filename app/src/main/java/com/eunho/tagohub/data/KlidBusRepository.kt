@@ -54,6 +54,19 @@ class KlidBusRepository(
         }.singleOrNull()
     }
 
+    /**
+     * 법정동 코드(10자리)로 초정밀 버스 제공 지역 찾기: 시군구(앞 5자리+00000) → 시도(앞 2자리+00000000) 순으로 1건만 물어봄.
+     * mst_info 는 stdgCd 가 필수라 지역 코드 없이 전체 목록을 받으려 하면 HTTP 400. 제공 안 하는 지역은 K3(데이터 없음) → null.
+     */
+    fun resolveByLegalCode(legalCode: String): KlidBusRegion? {
+        val candidates = listOf(legalCode.take(5) + "00000", legalCode.take(2) + "00000000").distinct()
+        for (code in candidates) {
+            val page = request("mst_info", code, 1, rows = 1)
+            if (page.totalCount > 0) return KlidBusRegion(code, page.rows.firstOrNull()?.text("lclgvNm").orEmpty().ifBlank { code })
+        }
+        return null
+    }
+
     fun positions(stdgCode: String): List<KlidBusPosition> =
         fetchAll("rtm_loc_info", stdgCode).mapNotNull { row ->
             val lat = row.double("lat") ?: return@mapNotNull null
@@ -73,13 +86,13 @@ class KlidBusRepository(
         return rows
     }
 
-    private fun request(endpoint: String, stdgCode: String?, page: Int): KlidBusPage {
+    private fun request(endpoint: String, stdgCode: String?, page: Int, rows: Int = PAGE_SIZE): KlidBusPage {
         if (serviceKey.isBlank()) throw IOException("local.properties에 KLID_BUS_KEY 또는 TAGO_SERVICE_KEY를 설정하세요.")
         val encodedKey = if ('%' in serviceKey) serviceKey else URLEncoder.encode(serviceKey, Charsets.UTF_8.name())
         val url = "$BASE_URL$endpoint".toHttpUrl().newBuilder()
             .addEncodedQueryParameter("serviceKey", encodedKey)
             .addQueryParameter("pageNo", page.toString())
-            .addQueryParameter("numOfRows", PAGE_SIZE.toString())
+            .addQueryParameter("numOfRows", rows.toString())
             .addQueryParameter("type", "json")
             .apply { stdgCode?.let { addQueryParameter("stdgCd", it) } }
             .build()
@@ -104,7 +117,8 @@ class KlidBusRepository(
 
     private companion object {
         const val BASE_URL = "https://apis.data.go.kr/B551982/rte/"
-        const val PAGE_SIZE = 1000
+        // 한 번에 받는 개수: 1000 은 허용 범위를 넘을 수 있어 100 씩 (여러 쪽으로 나눠 받음)
+        const val PAGE_SIZE = 100
         val httpClient: OkHttpClient = OkHttpClient.Builder()
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -144,6 +158,8 @@ internal object KlidBusJson {
         val header = root["header"] as? Map<*, *>
             ?: throw IOException("초정밀 버스 API 응답에 header가 없습니다.")
         val resultCode = header["resultCode"]?.toString().orEmpty()
+        // K3 = 이 지역은 해당 데이터가 없음 (오류 아님) → 빈 결과
+        if (resultCode == "K3") return KlidBusPage(emptyList(), 0)
         if (resultCode != "K0") {
             val message = header["resultMsg"]?.toString().orEmpty()
             throw IOException("초정밀 버스 API 오류 $resultCode: $message")

@@ -1288,7 +1288,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         cityAt?.let { (la, ln) -> if (Geo.meters(la, ln, lat, lng) < 3000) return }
         cityJob?.cancel()
         cityJob = viewModelScope.launch {
-            delay(300)
             val db = stopDb
             val code = if (db != null) {
                 withContext(Dispatchers.IO) { db.nearestCity(lat, lng) }
@@ -1326,8 +1325,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             var region: com.eunho.tagohub.data.KlidBusRegion? = null
             while (klidBusCityCode == city.code && busLayer && lastLevel >= 2) {
                 try {
-                    val activeRegion = region ?: withContext(Dispatchers.IO) { repository.resolveRegion(city.name) }
-                        ?: throw IOException("${city.name}의 지역 코드를 찾지 못했습니다.")
+                    // 지역 코드: 지도 중심의 법정동 코드(카카오) → 초정밀 버스 제공 지역 (시군구 → 시도)
+                    val activeRegion = region ?: run {
+                        val c = lastView ?: throw IOException("지도 위치를 아직 모릅니다.")
+                        val legal = com.eunho.tagohub.data.KakaoExtra.legalCode(c.first, c.second)
+                            ?: throw IOException("지역 코드를 찾지 못했습니다 (카카오 REST 키 확인).")
+                        withContext(Dispatchers.IO) { repository.resolveByLegalCode(legal) }
+                    }
+                    if (activeRegion == null) {
+                        break   // 제공 안 하는 지역: 계속 묻지 않음
+                    }
                     region = activeRegion
                     klidBusPositions = withContext(Dispatchers.IO) { repository.positions(activeRegion.stdgCode) }
                     clearKlidBusError()
