@@ -200,6 +200,132 @@ class MarkerBitmaps(private val density: Float) {
         return forKakao(b)
     }
 
+    private val ink = Color.rgb(34, 34, 34)
+
+    /** 작은 흰 원(그림자 + 옅은 테두리). 아이콘은 호출한 쪽에서 가운데에 그림 */
+    private fun whiteDisc(sizeDp: Float, draw: (Canvas, Float, Float, Float) -> Unit): Bitmap {
+        val b = bmp(sizeDp + 6f, sizeDp + 6f)
+        val c = Canvas(b)
+        val cx = b.width / 2f
+        val r = px(sizeDp / 2)
+        fill.color = Color.argb(46, 0, 0, 0)
+        c.drawCircle(cx, cx + px(1f), r + px(1.5f), fill)
+        fill.color = Color.WHITE
+        c.drawCircle(cx, cx, r, fill)
+        stroke.color = Color.argb(60, 0, 0, 0)
+        stroke.strokeWidth = px(0.8f)
+        c.drawCircle(cx, cx, r, stroke)
+        draw(c, cx, cx, r)
+        return forKakao(b)
+    }
+
+    /** CCTV: 흰 원 + 검은 카메라. anchor (0.5, 0.5) */
+    fun cameraBadge(): Bitmap = whiteDisc(24f) { c, cx, cy, r ->
+        fill.color = ink
+        val w = r * 1.0f
+        val h = r * 0.62f
+        c.drawRoundRect(RectF(cx - w * 0.78f, cy - h / 2, cx + w * 0.34f, cy + h / 2), px(1.5f), px(1.5f), fill)
+        val tri = Path().apply {
+            moveTo(cx + w * 0.42f, cy - h * 0.18f)
+            lineTo(cx + w * 0.82f, cy - h * 0.5f)
+            lineTo(cx + w * 0.82f, cy + h * 0.5f)
+            lineTo(cx + w * 0.42f, cy + h * 0.18f)
+            close()
+        }
+        c.drawPath(tri, fill)
+    }
+
+    /** 돌발·주의: 노란(색) 삼각형 + 검은 느낌표. anchor (0.5, 0.5) */
+    fun triangleBadge(color: Int): Bitmap {
+        val b = bmp(28f, 28f)
+        val c = Canvas(b)
+        val cx = b.width / 2f
+        val cy = b.height / 2f
+        val s = px(11.5f)
+        val p = Path().apply {
+            moveTo(cx, cy - s)
+            lineTo(cx + s * 1.08f, cy + s * 0.82f)
+            lineTo(cx - s * 1.08f, cy + s * 0.82f)
+            close()
+        }
+        fill.color = Color.argb(46, 0, 0, 0)
+        c.save(); c.translate(0f, px(1f)); c.drawPath(p, fill); c.restore()
+        fill.color = color
+        c.drawPath(p, fill)
+        stroke.color = ink
+        stroke.strokeWidth = px(1.6f)
+        stroke.strokeJoin = Paint.Join.ROUND
+        c.drawPath(p, stroke)
+        fill.color = ink
+        c.drawRoundRect(RectF(cx - px(1.1f), cy - s * 0.38f, cx + px(1.1f), cy + s * 0.22f), px(1f), px(1f), fill)
+        c.drawCircle(cx, cy + s * 0.5f, px(1.25f), fill)
+        return forKakao(b)
+    }
+
+    /** 그 밖의 정보: 흰 원 + 색 글자. anchor (0.5, 0.5) */
+    fun letterBadge(color: Int, glyph: String): Bitmap = whiteDisc(22f) { c, cx, cy, _ ->
+        val t = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            textAlign = Paint.Align.CENTER
+            textSize = px(if (glyph.length > 1) 9f else 12f)
+            isFakeBoldText = true
+        }
+        c.drawText(glyph, cx, cy - (t.ascent() + t.descent()) / 2, t)
+    }
+
+    /**
+     * 마커를 눌렀을 때 마커 위에 뜨는 말풍선: 흰 둥근 상자 + 제목 + ">" (누르면 자세히).
+     * 아래 끝이 마커 중심이 되도록 [liftDp] 만큼 투명 여백을 두고 anchor (0.5, 1) 로 놓는다.
+     */
+    fun callout(title: String, liftDp: Float = 16f): Bitmap {
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ink
+            textSize = px(14f)
+        }
+        val shown = android.text.TextUtils.ellipsize(title, android.text.TextPaint(text), px(220f), android.text.TextUtils.TruncateAt.END).toString()
+        val tw = text.measureText(shown)
+        val padH = px(14f)
+        val chevron = px(16f)
+        val boxW = tw + padH * 2 + chevron
+        val boxH = px(36f)
+        val pointer = px(6f)
+        val shadow = px(3f)
+        val w = (boxW + shadow * 2).toInt()
+        val h = (boxH + pointer + px(liftDp) + shadow).toInt()
+        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        val left = shadow
+        val bottom = h - px(liftDp) - pointer
+        val top = bottom - boxH
+        val rect = RectF(left, top, left + boxW, bottom)
+        fill.color = Color.argb(46, 0, 0, 0)
+        c.drawRoundRect(RectF(rect.left, rect.top + px(1.5f), rect.right, rect.bottom + px(1.5f)), px(8f), px(8f), fill)
+        fill.color = Color.WHITE
+        c.drawRoundRect(rect, px(8f), px(8f), fill)
+        val mid = w / 2f
+        val tri = Path().apply {
+            moveTo(mid - px(6f), bottom - 0.5f)
+            lineTo(mid, bottom + pointer)
+            lineTo(mid + px(6f), bottom - 0.5f)
+            close()
+        }
+        c.drawPath(tri, fill)
+        c.drawText(shown, left + padH, rect.centerY() - (text.ascent() + text.descent()) / 2, text)
+        stroke.color = Color.rgb(120, 124, 130)
+        stroke.strokeWidth = px(1.8f)
+        stroke.strokeCap = Paint.Cap.ROUND
+        stroke.strokeJoin = Paint.Join.ROUND
+        val ax = rect.right - padH * 0.55f - px(2f)
+        val ay = rect.centerY()
+        val chev = Path().apply {
+            moveTo(ax - px(2.5f), ay - px(5f))
+            lineTo(ax + px(2.5f), ay)
+            lineTo(ax - px(2.5f), ay + px(5f))
+        }
+        c.drawPath(chev, stroke)
+        return forKakao(b)
+    }
+
     /** 걷기 점선용 점 (RouteLinePattern) */
     fun walkDot(color: Int): Bitmap {
         val b = Bitmap.createBitmap(6, 6, Bitmap.Config.ARGB_8888)
