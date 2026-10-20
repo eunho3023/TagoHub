@@ -1,0 +1,82 @@
+# 지도 레이어 정보(돌발·재난·CCTV 목록)를 전국 단위로 받아 Release(data-latest)에 올린다 → 앱이 공공 API 대신 이 파일을 읽음
+# 실행 위치: 집 PC 러너 (정류장·노선 데이터 갱신과 같은 러너). 필요한 비밀값: UTIC_API_KEY, ITS_API_KEY (Settings → Secrets → Actions)
+name: 지도 레이어 정보 갱신
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 10분마다 (GitHub 는 몇 분 늦게 시작할 수 있음). 앱은 30분 넘은 저장본은 쓰지 않음
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: overlays
+  cancel-in-progress: false   # 앞 실행이 안 끝났으면 기다림 (겹쳐서 같은 파일을 올리지 않게)
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 찾기
+        # 러너(로컬 시스템 계정)는 사용자 PATH 를 모름 → 설치된 Python 을 직접 찾아 다음 단계 PATH 에 넣음.
+        # 새 Python 설치 관리자(3.14~)는 AppData\Local\Python\pythoncore-3.xx-64 에 깔림. 여러 개면 가장 높은 버전.
+        # 윈도우 PowerShell 5.1 은 러너가 만든 스크립트를 한국어 인코딩으로 읽어 한글이 깨지므로 스크립트 안은 영어만.
+        run: |
+          $patterns = @(
+            "C:\Users\*\AppData\Local\Python\pythoncore-*\python.exe",
+            "C:\Users\*\AppData\Local\Programs\Python\Python3*\python.exe",
+            "C:\Program Files\Python3*\python.exe",
+            "C:\Program Files\Python\pythoncore-*\python.exe",
+            "C:\Python3*\python.exe"
+          )
+          $found = @()
+          $cmd = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch "WindowsApps" }
+          if ($cmd) { $found += $cmd.Source }
+          foreach ($p in $patterns) {
+            $found += (Get-ChildItem -Path $p -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+          }
+          $found = $found | Where-Object { $_ } | Select-Object -Unique
+          if (-not $found) {
+            Write-Host "Python not found. Searched:"
+            $patterns | ForEach-Object { Write-Host "  $_" }
+            Write-Host "Run 'where.exe python' or 'py -0p' on the PC and send the result."
+            exit 1
+          }
+          $py = $found | Sort-Object { if ($_ -match "3[._]?(\d{1,2})") { [int]$Matches[1] } else { 0 } } -Descending | Select-Object -First 1
+          Write-Host "Found: $($found -join ', ')"
+          $dir = Split-Path $py
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $dir "Scripts")
+          & $py --version
+          Write-Host "Using Python: $py"
+
+      - name: 레이어 정보 받기
+        env:
+          UTIC_API_KEY: ${{ secrets.UTIC_API_KEY }}
+          ITS_API_KEY: ${{ secrets.ITS_API_KEY }}
+        run: |
+          python pipeline/build_overlays.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Release(data-latest)에 올리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view data-latest | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create data-latest --title "TagoHub stop and route data" --notes "Auto-updated by pipeline/build_data.py" --latest=false
+          }
+          $files = Get-ChildItem pipeline/out_overlays -File | ForEach-Object { $_.FullName }
+          gh release upload data-latest $files --clobber
+          if ($LASTEXITCODE -ne 0) { Write-Host "Release upload failed"; exit 1 }
+          Get-Content pipeline/out_overlays/ov_meta.json

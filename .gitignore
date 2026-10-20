@@ -16,3 +16,4 @@ tools/tago_data/
 *.zip
 pipeline/public/data/
 .firebase/
+pipeline/out_overlays/

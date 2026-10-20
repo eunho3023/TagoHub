@@ -78,6 +78,8 @@ class UticIncidentRepository(
     private val key: String = BuildConfig.UTIC_API_KEY.trim(),
 ) {
     suspend fun incidents(): List<UticIncident> {
+        // 집 PC 가 받아 둔 저장본이 있으면 그것 (공공 API 를 직접 부르지 않음)
+        OverlaySnapshot.get("ov_utic_incidents.xml") { UticIncidentParser.parse(it) }?.let { return it }
         if (key.isBlank()) throw IOException("local.properties에 UTIC_API_KEY를 설정하세요.")
         val request = Request.Builder().url(UticFeeds.incidents.url(key)).build()
         return UticHttp.get(request).let(UticIncidentParser::parse)
