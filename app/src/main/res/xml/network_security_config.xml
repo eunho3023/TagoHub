@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- ITS CCTV 영상은 여러 호스트·IP 의 http(HLS) 로 와서 http 를 허용 (안 하면 영상이 안 나옴) -->
+    <base-config cleartextTrafficPermitted="true" />
     <!-- 서울 실시간 지하철 API 는 http 만 제공 -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">swopenapi.seoul.go.kr</domain>
