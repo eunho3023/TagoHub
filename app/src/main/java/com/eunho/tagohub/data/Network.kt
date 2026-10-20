@@ -61,4 +61,5 @@ object Graph {
     val gyeonggi: GyeonggiRepository by lazy { GyeonggiRepository.create() }
     val seoulBus: SeoulBusRepository by lazy { SeoulBusRepository.create() }
     val klidBus: KlidBusRepository by lazy { KlidBusRepository() }
+    val regionalBus: RegionalBusRepository by lazy { RegionalBusRepository() }
 }
