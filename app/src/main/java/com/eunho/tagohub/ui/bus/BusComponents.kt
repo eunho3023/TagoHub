@@ -165,12 +165,14 @@ internal fun StopRouteItem(row: StopRouteRow, elapsedSec: Int = 0, dirLabel: Str
             }
             val a0 = row.arrivals.firstOrNull()
             val roundTrip = com.eunho.tagohub.data.RouteDirections.isRoundTrip(row.startName, row.endName)
-            val sub = listOfNotNull(row.region, if (roundTrip) dirLabel?.let { "$it 방면" } else null, a0?.atStop?.let { "현재 $it" })
+            // 방면(지역 API, 없으면 순환 노선의 방향) · 현재 정류장(지역 API)
+            val dir = a0?.towards?.let { "$it 방면" } ?: if (roundTrip) dirLabel?.let { "$it 방면" } else null
+            val sub = listOfNotNull(row.region, dir, a0?.atStop?.let { "현재 $it" })
                 .joinToString("   ").ifEmpty { null }
             if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
-        // 빠른 순으로 두 대: "4분 53초 (5개 전)" / "22분 (20개 전)"
+        // 빠른 순으로 두 대: "4분 53초 · 5정류장 전 · 저상"
         Column(horizontalAlignment = Alignment.End) {
             val first = row.arrivals.getOrNull(0)
             val second = row.arrivals.getOrNull(1)
@@ -188,17 +190,8 @@ internal fun StopRouteItem(row: StopRouteRow, elapsedSec: Int = 0, dirLabel: Str
     }
 }
 
-/** 10분 안쪽은 초까지: "4분 53초 (5개 전)", 그 이상은 "22분 (20개 전)" */
-internal fun arrivalLine(a: BusArrival, elapsedSec: Int): String {
-    val sec = a.arrSeconds?.minus(elapsedSec)?.coerceAtLeast(0)
-    val time = when {
-        sec == null -> "정보없음"
-        sec < 60 -> "곧 도착"
-        sec < 600 -> "${sec / 60}분 ${sec % 60}초"
-        else -> "${(sec + 30) / 60}분"
-    }
-    return time + (a.prevStops?.let { " (${it}개 전)" } ?: "")
-}
+/** 도착 문구: 항상 초까지 + 남은 정류장 + 저상 (TAGO 버스도착정보 필드 그대로) */
+internal fun arrivalLine(a: BusArrival, elapsedSec: Int): String = com.eunho.tagohub.data.ArrivalText.line(a, elapsedSec)
 
 @Composable
 internal fun RouteInfoCard(r: BusRoute) {

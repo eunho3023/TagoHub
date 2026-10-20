@@ -132,6 +132,11 @@ object KakaoExtra {
         }.onFailure { Log.w("TagoMap", "카카오 ${url.encodedPath} 실패: ${it.message}") }.getOrNull()
     }
 
+    /** 좌표의 법정동 코드 10자리 (카카오 좌표로 행정구역) */
+    suspend fun legalCode(lat: Double, lng: Double): String? = get(
+        KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
+    )?.let(KakaoLocal::legalCode)
+
     suspend fun transit(a: LatLng, b: LatLng): KakaoTransit.Result? = get(
         KakaoTransit.URL.toHttpUrl().newBuilder()
             .addQueryParameter("start_x", a.lng.toString()).addQueryParameter("start_y", a.lat.toString())

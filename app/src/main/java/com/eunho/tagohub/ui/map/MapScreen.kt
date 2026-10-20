@@ -306,17 +306,12 @@ fun MapScreen(
             }
             banner?.let { Banner(it) { vm.banner.value = null } }
             when {
-                mode == null -> Hint("지도를 불러오는 중")
                 needZoom && panel == MapPanel.None -> Hint(
                     if (mapMode == MapMode.Transit) "지도를 확대하면 정류장·지하철역과 실시간 열차가 표시됩니다"
                     else if (mapMode == MapMode.Subway) "지도를 확대하면 지하철역과 실시간 열차가 표시됩니다"
                     else "지도를 확대하면 주변 버스 정류장이 표시됩니다"
                 )
             }
-            if ("utic_incidents" in overlays && uticLoading) Hint("UTIC 돌발정보 불러오는 중")
-            if ("utic_road_risk" in overlays && uticRiskLoading) Hint("UTIC 도로위험예보 불러오는 중")
-            if ("utic_safety" in overlays && uticSafetyLoading) Hint("UTIC 교통안전정보 불러오는 중")
-            if ("its_cctv" in overlays && itsCctvLoading) Hint("ITS CCTV 불러오는 중")
             val itsRoadLabels = mapOf(
                 "its_events" to "ITS 돌발정보",
                 "its_disasters" to "ITS 재난정보",
@@ -328,7 +323,6 @@ fun MapScreen(
                 "its_ice_sections" to "상습 결빙구간",
             )
             itsRoadLabels.filterKeys { it in overlays }.forEach { (id, label) ->
-                if (id in itsRoadLoading) Hint("$label 불러오는 중")
             }
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
@@ -504,13 +498,13 @@ private fun MapLayerSheet(
                 items(options, key = { it.id }) { option ->
                     val enabled = option.id in overlays
                     val status = when (option.id) {
-                        "utic_incidents" -> if ("utic_incidents" in overlays && uticLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
-                        "utic_road_risk" -> if ("utic_road_risk" in overlays && uticRiskLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
-                        "utic_safety" -> if ("utic_safety" in overlays && uticSafetyLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
-                        "its_cctv" -> if ("its_cctv" in overlays && itsCctvLoading) "불러오는 중" else if (enabled) "사용 중" else "지도 범위"
+                        "utic_incidents" -> if ("utic_incidents" in overlays && uticLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
+                        "utic_road_risk" -> if ("utic_road_risk" in overlays && uticRiskLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
+                        "utic_safety" -> if ("utic_safety" in overlays && uticSafetyLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
+                        "its_cctv" -> if ("its_cctv" in overlays && itsCctvLoading) "사용 중" else if (enabled) "사용 중" else "지도 범위"
                         else -> {
                             when {
-                                option.id in loadingLayers -> "불러오는 중"
+                                option.id in loadingLayers -> "사용 중"
                                 option.id in cachedLayers -> "저장된 정보"
                                 enabled -> "사용 중"
                                 else -> "지도 범위"
@@ -551,9 +545,25 @@ private fun MapLayerSheet(
 private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var playbackError by remember(cctv.id) { mutableStateOf<String?>(null) }
-    var videoView by remember(cctv.id) { mutableStateOf<VideoView?>(null) }
-    DisposableEffect(cctv.id, videoView) {
-        onDispose { videoView?.stopPlayback() }
+    // ExoPlayer: 창을 열자마자 재생 (버퍼 0.3초만 모이면 시작)
+    val player = remember(cctv.id) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(1500, 6000, 300, 600).build())
+            .build().apply {
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(cctv.streamUrl))
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
+                playWhenReady = true
+                prepare()
+            }
+    }
+    DisposableEffect(player) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                playbackError = "앱에서 영상을 재생하지 못했습니다 (${error.errorCodeName}). 외부 플레이어로 시도해 보세요."
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener); player.release() }
     }
 
     Dialog(
@@ -579,18 +589,10 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                 key(cctv.id) {
                     AndroidView(
                         factory = { viewContext ->
-                            VideoView(viewContext).apply {
+                            androidx.media3.ui.PlayerView(viewContext).apply {
+                                this.player = player
+                                useController = false
                                 setBackgroundColor(android.graphics.Color.BLACK)
-                                setOnErrorListener { _, what, extra ->
-                                    playbackError = "앱에서 영상을 재생하지 못했습니다 (오류 $what/$extra). 외부 플레이어로 시도해 보세요."
-                                    true
-                                }
-                                setOnPreparedListener { player ->
-                                    player.isLooping = true
-                                    player.start()
-                                }
-                                setVideoURI(Uri.parse(cctv.streamUrl))
-                                videoView = this
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(220.dp),
@@ -1728,7 +1730,7 @@ private fun PlanDetail(t: TripController, p: TripPlan) {
                         live == null -> "도착 정보 확인 중"
                         arrivals.isNullOrEmpty() -> "지금 오는 버스 정보가 없습니다"
                         else -> arrivals.take(2).joinToString("   ") { a ->
-                            Fmt.arrival(a.arrSeconds) + (a.prevStops?.let { " (${it}정류장 전)" } ?: "")
+                            com.eunho.tagohub.data.ArrivalText.line(a)
                         }
                     },
                     highlight = !arrivals.isNullOrEmpty(),

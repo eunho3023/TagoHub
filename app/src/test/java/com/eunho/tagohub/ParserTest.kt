@@ -117,8 +117,8 @@ class ParserTest {
 
     @Test
     fun misc() {
-        assertEquals("7분", Fmt.arrival(403))
-        assertEquals("곧 도착", Fmt.arrival(45))
+        assertEquals("6분 43초", Fmt.arrival(403))
+        assertEquals("45초", Fmt.arrival(45))
         assertNull(TagoTime.remainMinutes("도착완료"))
         assertEquals(25 * 60 + 30, TagoTime.minutesOfDay("2530"))
         val places = listOf(Place("1", "센트럴시티(서울)"), Place("2", "서울경부"), Place("3", "동서울"))
