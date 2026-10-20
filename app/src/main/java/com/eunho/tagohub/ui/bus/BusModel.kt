@@ -156,7 +156,10 @@ suspend fun arrivalsFor(repo: TagoRepository, s: BusStop): TagoResult<List<BusAr
         val tago = async { repo.stopArrivals(tagoCity(repo, s), s.nodeId) }
         val local = async {
             runCatching {
+                val regional = com.eunho.tagohub.data.RegionalBus.of(s)
                 when {
+                    // 부산·울산·광주·여수 (울산은 TAGO ID 가 경기와 같은 GGB 접두사라 경기보다 먼저 확인)
+                    regional != null -> Graph.regionalBus.arrivals(regional)
                     Gyeonggi.isGyeonggi(s.nodeId) -> Graph.gyeonggi.arrivals(s.nodeId)
                     Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
                     Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
