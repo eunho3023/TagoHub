@@ -180,11 +180,8 @@ class KakaoCanvas(
                     STOP_LAYER, ROUTE_PIN_LAYER -> vm.onStopClick(id)
                     STATION_LAYER -> vm.onStationClick(id)
                     TRAIN_LAYER -> vm.onTrainClick(id)
-                    UTIC_INCIDENT_LAYER -> vm.onUticIncidentClick(id)
-                    UTIC_ROAD_RISK_LAYER -> vm.onUticRoadRiskClick(id)
-                    UTIC_SAFETY_LAYER -> vm.onUticSafetyPointClick(id)
-                    ITS_CCTV_LAYER -> vm.onItsCctvClick(id)
-                    ITS_ROAD_LAYER -> vm.onItsRoadFeatureClick(id)
+                    UTIC_INCIDENT_LAYER, UTIC_ROAD_RISK_LAYER, UTIC_SAFETY_LAYER, ITS_CCTV_LAYER, ITS_ROAD_LAYER -> showCallout(layer.layerId, id)
+                    CALLOUT_LAYER -> openMarker(id)
                 }
             }
             true
@@ -193,6 +190,7 @@ class KakaoCanvas(
         km.setPoiClickable(true)
         km.setOnMapClickListener { _, position, _, poi ->
             vm.onMapTouched()
+            clearCallout()
             if (poi.isPoi()) {
                 val name = poi.getName().orEmpty()
                 main.post { vm.onMapPoi(name, position.latitude, position.longitude) }
@@ -324,31 +322,74 @@ class KakaoCanvas(
         drawItsRoadFeatures()
     }
 
+    /** 눌렀을 때 말풍선·자세히 보기에 쓰는 정보 (키 = "층|id") */
+    private class MarkerInfo(val layer: String, val id: String, val title: String, val lat: Double, val lng: Double)
+
+    private val markerInfo = HashMap<String, MarkerInfo>()
+    private var calloutLabel: Label? = null
+
+    private fun registerMarkers(layerId: String, items: List<MarkerInfo>) {
+        markerInfo.keys.removeAll { it.startsWith("$layerId|") }
+        items.forEach { markerInfo["$layerId|${it.id}"] = it }
+    }
+
+    private fun clearCallout() {
+        calloutLabel?.let { runCatching { it.remove() } }
+        calloutLabel = null
+    }
+
+    /** 마커를 누르면 그 위에 제목 말풍선만 띄움. 말풍선을 누르면 자세히 */
+    private fun showCallout(layerId: String, id: String) {
+        val info = markerInfo["$layerId|$id"] ?: return
+        val l = layer(CALLOUT_LAYER) ?: return
+        clearCallout()
+        val bitmap = icons.callout(info.title.ifBlank { "정보" })
+        calloutLabel = l.addLabel(
+            LabelOptions.from(KLatLng.from(info.lat, info.lng))
+                .setStyles(LabelStyles.from(icon(bitmap, 0.5f, 1f)))
+                .setClickable(true)
+                .setTag("$layerId|$id"),
+        )
+    }
+
+    private fun openMarker(key: String) {
+        val layerId = key.substringBefore('|')
+        val id = key.substringAfter('|')
+        clearCallout()
+        when (layerId) {
+            UTIC_INCIDENT_LAYER -> vm.onUticIncidentClick(id)
+            UTIC_ROAD_RISK_LAYER -> vm.onUticRoadRiskClick(id)
+            UTIC_SAFETY_LAYER -> vm.onUticSafetyPointClick(id)
+            ITS_CCTV_LAYER -> vm.onItsCctvClick(id)
+            ITS_ROAD_LAYER -> vm.onItsRoadFeatureClick(id)
+        }
+    }
+
+    private val AMBER = 0xFFFFC107.toInt()
+
     private fun drawItsRoadFeatures() {
         itsRoadLabels.forEach { runCatching { it.remove() } }
         itsRoadLabels.clear()
+        registerMarkers(ITS_ROAD_LAYER, itsRoadFeatures.map { MarkerInfo(ITS_ROAD_LAYER, it.id, it.title, it.lat, it.lng) })
         if (itsRoadFeatures.isEmpty()) return
         val l = layer(ITS_ROAD_LAYER) ?: return
         itsRoadFeatures.forEach { feature ->
-            val (color, glyph) = when (feature.layer) {
-                "its_events" -> UTIC_RED to "!"
-                "its_disasters" -> 0xFF7B1FA2.toInt() to "재"
-                "its_vsl" -> 0xFF00897B.toInt() to "V"
-                "its_vms" -> 0xFF1565C0.toInt() to "전"
-                "its_safe_driving" -> 0xFFF9A825.toInt() to "주"
-                "its_dangerous_cars" -> UTIC_ORANGE to "!"
-                "its_vds" -> 0xFF546E7A.toInt() to "D"
-                "its_ice_sections" -> 0xFF00ACC1.toInt() to "빙"
-                else -> ITS_CCTV_COLOR to "I"
-            }
             val st = styles("itsRoad:${feature.layer}") {
-                val marker = icons.vehicle(color, glyph, true)
-                LabelStyles.from(icon(marker, 0.5f, 0.5f, 10), withText(icon(marker, 0.5f, 0.5f, 16), 10f))
+                val marker = when (feature.layer) {
+                    "its_events", "its_safe_driving" -> icons.triangleBadge(AMBER)
+                    "its_dangerous_cars" -> icons.triangleBadge(UTIC_ORANGE)
+                    "its_disasters" -> icons.letterBadge(0xFF7B1FA2.toInt(), "재")
+                    "its_vsl" -> icons.letterBadge(0xFF00897B.toInt(), "V")
+                    "its_vms" -> icons.letterBadge(0xFF1565C0.toInt(), "전")
+                    "its_vds" -> icons.letterBadge(0xFF546E7A.toInt(), "D")
+                    "its_ice_sections" -> icons.letterBadge(0xFF00ACC1.toInt(), "빙")
+                    else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
+                }
+                LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))
             }
             l.addLabel(
                 LabelOptions.from("ir:${feature.id}", KLatLng.from(feature.lat, feature.lng))
                     .setStyles(st)
-                    .setTexts(text(feature.title))
                     .setClickable(true)
                     .setTag(feature.id),
             )?.let(itsRoadLabels::add)
@@ -358,19 +399,14 @@ class KakaoCanvas(
     private fun drawItsCctvs() {
         itsCctvLabels.forEach { runCatching { it.remove() } }
         itsCctvLabels.clear()
+        registerMarkers(ITS_CCTV_LAYER, itsCctvs.map { MarkerInfo(ITS_CCTV_LAYER, it.id, it.title, it.lat, it.lng) })
         if ("its_cctv" !in overlays) return
         val l = layer(ITS_CCTV_LAYER) ?: return
-        val st = styles("itsCctv") {
-            LabelStyles.from(
-                icon(icons.vehicle(ITS_CCTV_COLOR, "C", true), 0.5f, 0.5f, 11),
-                withText(icon(icons.vehicle(ITS_CCTV_COLOR, "C", true), 0.5f, 0.5f, 16), 10f),
-            )
-        }
+        val st = styles("itsCctv") { LabelStyles.from(icon(icons.cameraBadge(), 0.5f, 0.5f, 11)) }
         itsCctvs.forEach { cctv ->
             l.addLabel(
                 LabelOptions.from("ic:${cctv.id}", KLatLng.from(cctv.lat, cctv.lng))
                     .setStyles(st)
-                    .setTexts(text(cctv.title))
                     .setClickable(true)
                     .setTag(cctv.id),
             )?.let(itsCctvLabels::add)
@@ -380,19 +416,14 @@ class KakaoCanvas(
     private fun drawUticIncidents() {
         uticIncidentLabels.forEach { runCatching { it.remove() } }
         uticIncidentLabels.clear()
+        registerMarkers(UTIC_INCIDENT_LAYER, uticIncidents.map { MarkerInfo(UTIC_INCIDENT_LAYER, it.id, it.title, it.lat, it.lng) })
         if ("utic_incidents" !in overlays) return
         val l = layer(UTIC_INCIDENT_LAYER) ?: return
-        val st = styles("uticIncident") {
-            LabelStyles.from(
-                icon(icons.vehicle(UTIC_RED, "!", true), 0.5f, 0.5f, 10),
-                withText(icon(icons.vehicle(UTIC_RED, "!", true), 0.5f, 0.5f, 16), 10f),
-            )
-        }
+        val st = styles("uticIncident") { LabelStyles.from(icon(icons.triangleBadge(AMBER), 0.5f, 0.5f, 10)) }
         uticIncidents.forEach { incident ->
             l.addLabel(
                 LabelOptions.from("ui:${incident.id}", KLatLng.from(incident.lat, incident.lng))
                     .setStyles(st)
-                    .setTexts(text(incident.title))
                     .setClickable(true)
                     .setTag(incident.id),
             )?.let(uticIncidentLabels::add)
@@ -402,16 +433,14 @@ class KakaoCanvas(
     private fun drawUticRoadRisks() {
         uticRoadRiskLabels.forEach { runCatching { it.remove() } }
         uticRoadRiskLabels.clear()
+        registerMarkers(UTIC_ROAD_RISK_LAYER, uticRoadRisks.map { MarkerInfo(UTIC_ROAD_RISK_LAYER, it.id, it.title, it.lat, it.lng) })
         if ("utic_road_risk" !in overlays) return
         val l = layer(UTIC_ROAD_RISK_LAYER) ?: return
-        val st = styles("uticRoadRisk") {
-            LabelStyles.from(icon(icons.vehicle(UTIC_ORANGE, "!", true), 0.5f, 0.5f, 10))
-        }
+        val st = styles("uticRoadRisk") { LabelStyles.from(icon(icons.triangleBadge(UTIC_ORANGE), 0.5f, 0.5f, 10)) }
         uticRoadRisks.forEach { risk ->
             l.addLabel(
                 LabelOptions.from("ur:${risk.id}", KLatLng.from(risk.lat, risk.lng))
                     .setStyles(st)
-                    .setTexts(text(risk.title))
                     .setClickable(true)
                     .setTag(risk.id),
             )?.let(uticRoadRiskLabels::add)
@@ -421,16 +450,14 @@ class KakaoCanvas(
     private fun drawUticSafetyPoints() {
         uticSafetyLabels.forEach { runCatching { it.remove() } }
         uticSafetyLabels.clear()
+        registerMarkers(UTIC_SAFETY_LAYER, uticSafetyPoints.map { MarkerInfo(UTIC_SAFETY_LAYER, it.id, it.title, it.lat, it.lng) })
         if ("utic_safety" !in overlays) return
         val l = layer(UTIC_SAFETY_LAYER) ?: return
-        val st = styles("uticSafety") {
-            LabelStyles.from(icon(icons.vehicle(UTIC_BLUE, "안", false), 0.5f, 0.5f, 11))
-        }
+        val st = styles("uticSafety") { LabelStyles.from(icon(icons.letterBadge(UTIC_BLUE, "안"), 0.5f, 0.5f, 11)) }
         uticSafetyPoints.forEach { point ->
             l.addLabel(
                 LabelOptions.from("us:${point.id}", KLatLng.from(point.lat, point.lng))
                     .setStyles(st)
-                    .setTexts(text(point.title))
                     .setClickable(true)
                     .setTag(point.id),
             )?.let(uticSafetyLabels::add)
@@ -749,6 +776,7 @@ class KakaoCanvas(
         private const val UTIC_SAFETY_LAYER = "uticSafety"
         private const val ITS_CCTV_LAYER = "itsCctvs"
         private const val ITS_ROAD_LAYER = "itsRoadFeatures"
+        private const val CALLOUT_LAYER = "callout"
         /** 카카오 지도 오버레이 id (KakaoMap.showOverlay(String) 문서) */
         // 안드로이드 공식 MapOverlay: 로드뷰 라인·지형·자전거도로·스카이뷰 하이브리드 (교통정보는 카카오와 협의해야 쓸 수 있음)
         val OVERLAY_IDS = listOf("bicycle_road" to com.kakao.vectormap.MapOverlay.BICYCLE_ROAD, "hill_shading" to com.kakao.vectormap.MapOverlay.HILLSHADING)
@@ -756,7 +784,7 @@ class KakaoCanvas(
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
-            UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, ME_LAYER to 500)
+            UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
         private val UTIC_RED = 0xFFD32F2F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()

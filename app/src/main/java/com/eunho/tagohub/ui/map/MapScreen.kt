@@ -596,7 +596,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(1500, 6000, 300, 600).build())
             .build().apply {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(cctv.streamUrl))
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(com.eunho.tagohub.data.CctvProxy.wrap(cctv.streamUrl)))
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
                 playWhenReady = true
                 prepare()
@@ -658,7 +658,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                 ) {
                     TextButton(
                         onClick = {
-                            val uri = Uri.parse(cctv.streamUrl)
+                            val uri = Uri.parse(com.eunho.tagohub.data.CctvProxy.wrap(cctv.streamUrl))
                             try {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.apple.mpegurl"),

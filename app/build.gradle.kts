@@ -32,6 +32,9 @@ android {
         buildConfigField("String", "KRIC_SUBWAY_KEY", "\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
         buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
         buildConfigField("String", "ITS_API_KEY", "\"${localProps.getProperty("ITS_API_KEY", "")}\"")
+        // CCTV 영상 중계 서버 (집 PC, tools/cctv_proxy.py). 비워 두면 원래 영상 주소로 직접 재생
+        buildConfigField("String", "CCTV_PROXY_URL", "\"${localProps.getProperty("CCTV_PROXY_URL", "")}\"")
+        buildConfigField("String", "CCTV_PROXY_KEY", "\"${localProps.getProperty("CCTV_PROXY_KEY", "")}\"")
         // 서울 열린데이터광장 실시간 지하철 인증키 (swopenapi)
         buildConfigField("String", "SEOUL_SUBWAY_KEY", "\"${localProps.getProperty("SEOUL_SUBWAY_KEY", "")}\"")
         // 카카오맵 네이티브 앱 키 (카카오 개발자 사이트 → 내 애플리케이션 → 앱 키)
