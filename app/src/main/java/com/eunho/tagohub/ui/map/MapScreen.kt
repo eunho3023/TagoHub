@@ -699,12 +699,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
     }
 
     var fullscreen by rememberSaveable(cctv.id) { mutableStateOf(false) }
-    // 전체화면이면 화면을 가로로 돌리고(센서에 따라 좌우), 닫거나 나가면 원래대로
-    DisposableEffect(fullscreen) {
-        val activity = context.findActivity()
-        if (fullscreen) activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        onDispose { if (fullscreen) activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-    }
+    // 화면 방향은 고정하지 않음(예전에 가로로 고정했다가 세로로 안 돌아오는 문제). 폰을 가로로 돌리면 영상이 크게 보임
 
     if (fullscreen) {
         // 전체화면은 별도 창(Dialog)이 아니라 화면 위에 직접 덮는다: 창 크기가 회전 전 값으로 남아 영상이 밀리던 문제

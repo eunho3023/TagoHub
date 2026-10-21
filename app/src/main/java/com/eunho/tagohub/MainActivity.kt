@@ -11,6 +11,12 @@ import com.eunho.tagohub.ui.theme.TagoTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        // 방향 고정이 남아 있으면 풀어서 폰을 돌리는 대로 따라가게
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

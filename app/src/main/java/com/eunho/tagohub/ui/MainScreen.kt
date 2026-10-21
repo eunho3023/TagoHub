@@ -3,6 +3,8 @@ package com.eunho.tagohub.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -67,7 +69,14 @@ fun MainScreen() {
     var showNotices by rememberSaveable { mutableStateOf(false) }
     var showReport by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        ModeJump.drawer.collect { if (it) { drawerState.open(); ModeJump.drawer.value = false } }
+        ModeJump.drawer.collect {
+            if (it) {
+                // 신호를 먼저 비워야 다음에 ☰ 를 눌렀을 때 다시 전달됨(값이 계속 true 면 변화가 없어 안 열림).
+                // 여는 동작은 따로 실행해서 회전 등으로 끊겨도 이 수신기가 죽지 않게 함
+                ModeJump.drawer.value = false
+                scope.launch { runCatching { drawerState.open() } }
+            }
+        }
     }
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 홈 화면(열린 창 없음)에서 뒤로 가기 → 앱을 끌지 물어봄 (지도 위 창이 열려 있으면 지도 화면이 먼저 닫음)
@@ -99,6 +108,7 @@ fun MainScreen() {
             androidx.compose.material3.ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
             ) {
+              Column(Modifier.verticalScroll(rememberScrollState())) {
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -151,6 +161,7 @@ fun MainScreen() {
                     onClick = { showReport = true; scope.launch { drawerState.close() } },
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
+              }
             }
         },
     ) {
