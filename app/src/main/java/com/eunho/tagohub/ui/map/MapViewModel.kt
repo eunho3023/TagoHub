@@ -2224,6 +2224,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "its_dangerous_cars",
             "its_vds",
             "its_ice_sections",
+            "ex_rest",
+            "ex_toll",
+            "ex_ic",
+            "ex_vms",
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Train
@@ -128,6 +129,12 @@ fun MainScreen() {
                 DrawerItem("도로 정보", Icons.Filled.Info, panel == ModeJump.Kind.ItsRoad) {
                     panel = ModeJump.Kind.ItsRoad; scope.launch { drawerState.close() }
                 }
+                DrawerItem("고속도로 정보", Icons.Filled.DirectionsCar, panel == ModeJump.Kind.Expressway) {
+                    panel = ModeJump.Kind.Expressway; scope.launch { drawerState.close() }
+                }
+                DrawerItem("도로날씨", Icons.Filled.Info, panel == ModeJump.Kind.RoadWeather) {
+                    panel = ModeJump.Kind.RoadWeather; scope.launch { drawerState.close() }
+                }
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 androidx.compose.material3.NavigationDrawerItem(
@@ -184,6 +191,8 @@ fun MainScreen() {
                             ModeJump.Kind.Air -> AirScreen()
                             ModeJump.Kind.Utic -> UticTrafficScreen()
                             ModeJump.Kind.ItsRoad -> ItsRoadScreen(mapVm)
+                            ModeJump.Kind.Expressway -> ExpresswayScreen()
+                            ModeJump.Kind.RoadWeather -> RoadWeatherScreen()
                         }
                     }
                 }
