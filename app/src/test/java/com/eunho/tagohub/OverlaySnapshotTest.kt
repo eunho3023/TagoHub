@@ -60,3 +60,29 @@ class UticJsonErrorTest {
         org.junit.Assert.assertEquals("UTIC 돌발정보 오류 (02) 유효한 KEY값이 아닙니다.", err)
     }
 }
+
+class UticSafetySnapshotTest {
+    @org.junit.Test
+    fun parsesPointList() {
+        val pts = com.eunho.tagohub.data.UticSafetySnapshot.parse(
+            """[["TAAS","12","교차로 사고다발","서울 중구",37.5,127.0],["단속지점_상습단속지점","7","상습 단속",null,35.1,129.0],["bad","1","x",null,"a","b"]]""",
+        )
+        org.junit.Assert.assertEquals(2, pts.size)
+        org.junit.Assert.assertEquals("TAAS:12", pts[0].id)
+        org.junit.Assert.assertEquals("서울 중구", pts[0].address)
+        org.junit.Assert.assertEquals(null, pts[1].address)
+        org.junit.Assert.assertEquals(129.0, pts[1].lng, 0.0)
+    }
+
+    /** 실제로 PC 가 만든 저장본(있으면)이 앱 해석기로 읽히고 점이 충분한지 확인 */
+    @org.junit.Test
+    fun realSafetySnapshotParses() {
+        val f: File? = listOf("pipeline/out_overlays/ov_utic_safety.json.gz", "../pipeline/out_overlays/ov_utic_safety.json.gz")
+            .map { File(it) }.firstOrNull { it.exists() }
+        org.junit.Assume.assumeTrue(f != null)
+        val text = GZIPInputStream(f!!.inputStream()).bufferedReader(Charsets.UTF_8).readText()
+        val pts = com.eunho.tagohub.data.UticSafetySnapshot.parse(text)
+        org.junit.Assert.assertTrue("점 수 ${pts.size}", pts.size > 10_000)
+        org.junit.Assert.assertTrue(pts.map { it.category }.toSet().any { "위험요소" in it })
+    }
+}

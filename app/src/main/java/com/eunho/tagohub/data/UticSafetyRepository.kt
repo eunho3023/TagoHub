@@ -23,6 +23,28 @@ data class UticSafetyPoint(
     val lng: Double,
 )
 
+/** pipeline/build_overlays.py 가 만든 점 목록: [[분류, id, 설명, 주소, 위도, 경도], ...] */
+object UticSafetySnapshot {
+    fun parse(json: String): List<UticSafetyPoint> {
+        val rows = com.eunho.tagohub.core.MiniJson.parse(json) as? List<*> ?: throw IOException("UTIC 안전정보 저장본 형식이 올바르지 않습니다.")
+        return rows.mapNotNull { r ->
+            val f = r as? List<*> ?: return@mapNotNull null
+            if (f.size < 6) return@mapNotNull null
+            val lat = f[4]?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+            val lng = f[5]?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+            val category = f[0]?.toString().orEmpty()
+            UticSafetyPoint(
+                id = "$category:${f[1]}",
+                category = category,
+                description = f[2]?.toString().orEmpty(),
+                address = f[3]?.toString()?.takeIf { it.isNotBlank() && it != "null" },
+                lat = lat,
+                lng = lng,
+            )
+        }
+    }
+}
+
 object UticSafetyRowParser {
     fun parse(
         category: String,
@@ -51,6 +73,8 @@ class UticSafetyRepository(
     private val key: String = BuildConfig.UTIC_API_KEY.trim(),
 ) {
     suspend fun safetyPoints(): List<UticSafetyPoint> {
+        // 집 PC 가 엑셀 묶음을 미리 풀어 올려 둔 점 목록이 있으면 그것 (16MB 를 받아 폰에서 푸는 일을 안 함)
+        OverlaySnapshot.get(SNAPSHOT, maxAgeSec = SNAPSHOT_MAX_AGE_SEC) { UticSafetySnapshot.parse(it) }?.let { return it }
         if (key.isBlank()) throw IOException("local.properties에 UTIC_API_KEY를 설정하세요.")
         val archive = File(cacheDir, "utic-safety-data.zip")
         val cached = archive.isFile && System.currentTimeMillis() - archive.lastModified() < CACHE_TTL_MS
@@ -215,6 +239,9 @@ class UticSafetyRepository(
     }
 
     private companion object {
+        const val SNAPSHOT = "ov_utic_safety.json"
+        /** 안전정보는 자주 안 바뀌어서 PC 가 12시간마다 새로 만듦 → 3일까지 인정 */
+        const val SNAPSHOT_MAX_AGE_SEC = 3 * 24 * 3600L
         const val CACHE_TTL_MS = 30L * 24 * 60 * 60 * 1_000
 
         fun element(localName: String, qName: String) = localName.ifBlank { qName.substringAfter(':') }
