@@ -47,3 +47,16 @@ class OverlaySnapshotTest {
         text("ov_its_cctv_its.xml")?.let { assertTrue(ItsCctvParser.parse(it, "its").size > 100) }
     }
 }
+
+class UticJsonErrorTest {
+    @org.junit.Test
+    fun jsonErrorBecomesReadableMessage() {
+        val err = try {
+            com.eunho.tagohub.data.UticIncidentParser.parse("""[{"resultCode":"02","resultMsg":"유효한 KEY값이 아닙니다."}]""")
+            null
+        } catch (e: java.io.IOException) {
+            e.message
+        }
+        org.junit.Assert.assertEquals("UTIC 돌발정보 오류 (02) 유효한 KEY값이 아닙니다.", err)
+    }
+}

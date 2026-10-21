@@ -28,8 +28,22 @@ data class UticIncident(
 )
 
 object UticIncidentParser {
+    private val jsonCode = Regex(""""resultCode"\s*:\s*"?([^",}\s]+)""")
+    private val jsonMsg = Regex(""""resultMsg"\s*:\s*"([^"]*)"""")
+
+    /** JSON 오류 응답이면 "(코드) 메시지", 아니면 null */
+    internal fun jsonError(body: String): String? {
+        val text = body.trim().removePrefix("﻿")
+        if (!text.startsWith("[") && !text.startsWith("{")) return null
+        val code = jsonCode.find(text)?.groupValues?.get(1)
+        val msg = jsonMsg.find(text)?.groupValues?.get(1)
+        return "(${code ?: "미상"}) ${msg ?: text.take(120)}"
+    }
+
     @Throws(IOException::class)
     fun parse(xml: String): List<UticIncident> {
+        // 키·접속 IP 가 맞지 않으면 XML 이 아니라 JSON 오류가 옴: [{"resultCode":"02","resultMsg":"유효한 KEY값이 아닙니다."}]
+        jsonError(xml)?.let { throw IOException("UTIC 돌발정보 오류 $it") }
         val document = try {
             DocumentBuilderFactory.newInstance().apply {
                 runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
