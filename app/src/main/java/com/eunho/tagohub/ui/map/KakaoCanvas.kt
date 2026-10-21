@@ -173,6 +173,8 @@ class KakaoCanvas(
                 report()
             }
         }
+        // 사용자가 손으로 지도를 움직이면 안내 중 자동 따라가기를 잠시 멈춤 (내 위치 버튼으로 다시 켬)
+        km.setOnCameraMoveStartListener { _, gesture -> if (gesture != com.kakao.vectormap.GestureType.Unknown) main.post { vm.onUserMovedMap() } }
         km.setOnLabelClickListener { _, layer, label ->
             val id = label.tag as? String
             if (id != null) main.post {
@@ -690,6 +692,11 @@ class KakaoCanvas(
         val bottom = km.fromScreenPoint(vp.centerX(), vp.bottom)
         val span = if (top != null && bottom != null) top.latitude - bottom.latitude else 0.0
         km.moveCamera(CameraUpdateFactory.newCenterPosition(KLatLng.from(lat - span * panelFrac / 2, lng)), CameraAnimation.from(350, true, true))
+    }
+
+    override fun follow(lat: Double, lng: Double, zoom: Int, bearingDeg: Double?, aheadM: Double) = camera { km ->
+        val (la, ln) = if (bearingDeg != null && aheadM > 0) com.eunho.tagohub.core.Geo.offset(lat, lng, bearingDeg, aheadM) else lat to lng
+        km.moveCamera(CameraUpdateFactory.newCenterPosition(KLatLng.from(la, ln), zoom), CameraAnimation.from(800, false, true))
     }
 
     override fun focus(lat: Double, lng: Double) = camera { km ->

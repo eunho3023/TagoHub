@@ -104,7 +104,9 @@ class DriveNavTest {
 
         // 말한 문구는 모두 '다음 안내'에 대한 것이어야 하고, 한 안내에 3번(2km·1km·500m)을 넘게 말하지 않음
         val turnSpeaks = heard.filter { "앞" in it.text }
-        assertTrue("안내가 너무 적음: ${turnSpeaks.size}", turnSpeaks.size > 40)
+        // 교차로 직진 안내(55개 중 38개)는 말하지 않고, 회전·입출구·톨게이트·목적지 16개만 안내
+        assertTrue("안내가 너무 적음: ${turnSpeaks.size}", turnSpeaks.size >= 16)
+        assertTrue("직진 안내를 읽음", turnSpeaks.none { "12시 방향" in it.text })
         turnSpeaks.forEach { h -> assertTrue("엉뚱한 안내: ${h.text}", h.next != null && h.text.contains(h.next.guidance)) }
         val perGuide = turnSpeaks.groupBy { it.next!!.name + "@" + it.next.lat }
         assertTrue(perGuide.values.all { it.size <= 3 })

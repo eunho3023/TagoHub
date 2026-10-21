@@ -43,6 +43,27 @@ class GuidanceTextTest {
         assertEquals("남은 100m · 약 2분 · 도착 09:01", GuidanceText.detail(state(turn, 50.0, remainingM = 100.0, sec = 61), now, tz))
     }
 
+    @Test
+    fun etaLabelIsKoreanAmPmAndDurationIsReadable() {
+        val tz = TimeZone.getTimeZone("Asia/Seoul")
+        val now = java.time.ZonedDateTime.of(2026, 10, 22, 23, 50, 0, 0, java.time.ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli()
+        // 23:50 + 47분 = 다음 날 00:37
+        assertEquals("오전 12:37", GuidanceText.etaLabel(now, 47 * 60, tz))
+        assertEquals("오후 11:50", GuidanceText.etaLabel(now, 0, tz))
+        assertEquals("0분", GuidanceText.duration(0))
+        assertEquals("1분", GuidanceText.duration(1))
+        assertEquals("55분", GuidanceText.duration(3300))
+        assertEquals("2시간", GuidanceText.duration(7200))
+        assertEquals("2시간 10분", GuidanceText.duration(7800))
+        assertEquals("0분", GuidanceText.duration(-5))
+    }
+
+    @Test
+    fun titleReadsClockPhrasesAsWords() {
+        val clock = DriveGuide("", "11시 방향", 100, 29, 37.0, 127.0)
+        assertEquals("200m 앞 · 왼쪽 방향", GuidanceText.title(state(clock, 200.0)))
+    }
+
     /** 가상 주행하며 알림·배너 문구를 매번 만들어 봄: 비어 있거나 이상한 값이 없어야 함 */
     @Test
     fun realDriveNeverProducesBlankOrBrokenText() {

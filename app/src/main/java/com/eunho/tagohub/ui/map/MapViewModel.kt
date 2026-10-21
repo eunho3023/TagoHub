@@ -1638,7 +1638,30 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun setMe(lat: Double, lng: Double, center: Boolean) {
         me = lat to lng
         canvas?.setMe(lat, lng)
-        if (center) canvas?.focus(lat, lng)
+        if (center) {
+            canvas?.focus(lat, lng)
+            following.value = true
+        }
+    }
+
+    /** 안내 중 지도가 내 위치를 따라가는 중인지 (손으로 움직이면 멈추고, 내 위치 버튼으로 다시 켬) */
+    val following = MutableStateFlow(true)
+
+    fun onUserMovedMap() {
+        if (com.eunho.tagohub.guidance.DriveGuidance.active.value) following.value = false
+    }
+
+    /** 안내 중: 내 위치 표시를 옮기고, 따라가는 중이면 지도도 속도에 맞는 배율로 따라감 */
+    fun followMe(lat: Double, lng: Double, speedKmh: Int, bearingDeg: Double?) {
+        me = lat to lng
+        canvas?.setMe(lat, lng)
+        if (!following.value) return
+        val zoom = when {
+            speedKmh >= 80 -> 15
+            speedKmh >= 45 -> 16
+            else -> 17
+        }
+        canvas?.follow(lat, lng, zoom, bearingDeg, 250.0 * Math.pow(2.0, (15 - zoom).toDouble()))
     }
 
     fun showRoute(row: StopRouteRow) {

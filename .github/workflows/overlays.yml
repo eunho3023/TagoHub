@@ -1,5 +1,5 @@
 # 지도 레이어 정보(돌발·재난·CCTV 목록)를 전국 단위로 받아 Release(data-latest)에 올린다 → 앱이 공공 API 대신 이 파일을 읽음
-# 실행 위치: 집 PC 러너 (정류장·노선 데이터 갱신과 같은 러너). 필요한 비밀값: UTIC_API_KEY, ITS_API_KEY (Settings → Secrets → Actions)
+# 실행 위치: 집 PC 러너 (정류장·노선 데이터 갱신과 같은 러너). 필요한 비밀값: UTIC_API_KEY, ITS_API_KEY, TAGO_SERVICE_KEY (Settings → Secrets → Actions)
 name: 지도 레이어 정보 갱신
 
 on:
@@ -64,6 +64,7 @@ jobs:
         env:
           UTIC_API_KEY: ${{ secrets.UTIC_API_KEY }}
           ITS_API_KEY: ${{ secrets.ITS_API_KEY }}
+          TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
         run: |
           python pipeline/build_overlays.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
