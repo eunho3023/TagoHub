@@ -91,6 +91,19 @@ class NavRoute(
         return Projection(i, dist, cum[i] + t * (cum[i + 1] - cum[i]))
     }
 
+    /** 경로 위 [meters] 미터 지점의 좌표(범위 밖이면 양 끝으로 맞춤) */
+    fun pointAt(meters: Double): LatLng {
+        if (points.isEmpty()) return LatLng(0.0, 0.0)
+        if (points.size == 1) return points[0]
+        val m = meters.coerceIn(0.0, length)
+        val seg = segmentAt(m)
+        val a = points[seg]
+        val b = points[seg + 1]
+        val len = cum[seg + 1] - cum[seg]
+        val t = if (len > 0) ((m - cum[seg]) / len).coerceIn(0.0, 1.0) else 0.0
+        return LatLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t)
+    }
+
     /** [meters] 미터 지점이 들어 있는 선분 번호 */
     fun segmentAt(meters: Double): Int {
         var lo = 0
@@ -278,4 +291,38 @@ object NavText {
     /** 화면용: "42km", "850m" */
     fun short(meters: Double): String =
         if (meters >= 1000) "%.1fkm".format(meters / 1000.0) else "${meters.roundToInt()}m"
+}
+
+/**
+ * 모의주행: GPS 대신 경로를 따라 가상 위치를 만들어 준다 (실제 안내와 같은 서비스·엔진·음성·알림을 거치게).
+ * [speedMps] 는 가상 차량의 속도(엔진의 예고 거리 기준), [factor] 배속이면 같은 시간에 그만큼 더 멀리 간다.
+ */
+class RouteSimulator(private var route: NavRoute, val speedMps: Double = 27.8) {
+    data class Fix(val lat: Double, val lng: Double, val speedMps: Double)
+
+    /** 경로 위에서 간 거리(m) */
+    var distance = 0.0
+        private set
+    var finished = false
+        private set
+
+    /** [dtMs] 밀리초가 흘렀다고 보고 위치를 한 번 만든다. [northOffsetM] 는 북쪽으로 벗어난 만큼(이탈 시험) */
+    fun step(dtMs: Long, factor: Int, northOffsetM: Double = 0.0): Fix {
+        if (!finished) {
+            distance += speedMps * factor * dtMs / 1000.0
+            if (distance >= route.length) {
+                distance = route.length
+                finished = true
+            }
+        }
+        val p = route.pointAt(distance)
+        return Fix(p.lat + northOffsetM / 110_540.0, p.lng, if (finished) 0.0 else speedMps)
+    }
+
+    /** 재탐색으로 새 경로가 오면 거기서 이어서 달림 (새 경로는 현재 위치에서 시작하므로 처음부터) */
+    fun replaceRoute(newRoute: NavRoute) {
+        route = newRoute
+        distance = 0.0
+        finished = false
+    }
 }

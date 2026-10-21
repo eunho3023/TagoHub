@@ -34,6 +34,15 @@ object DriveGuidance {
     /** 사용자에게 보여줄 알림 문구 (예: 한국어 음성이 없어 소리 없이 안내) */
     val note = MutableStateFlow<String?>(null)
 
+    /** 모의주행 중인지 (GPS 대신 경로를 따라 가상 위치를 만듦). 소리·알림·재탐색은 실제와 같은 길을 거침 */
+    val simulating = MutableStateFlow(false)
+
+    /** 모의주행 배속 (1·5·15) */
+    val simFactor = MutableStateFlow(5)
+
+    /** 값이 바뀔 때마다 모의주행 차량을 6초 동안 경로에서 300m 벗어나게 함(이탈·재탐색 시험) */
+    val deviate = MutableStateFlow(0)
+
     @Volatile var destination: LatLng? = null
         internal set
 
@@ -41,8 +50,9 @@ object DriveGuidance {
         internal set
 
     /** 안내 시작. 화면이 보이는 상태에서 불러야 위치 서비스를 시작할 수 있음 */
-    fun start(context: Context, route: KakaoDriveRoute, dest: LatLng, destName: String) {
+    fun start(context: Context, route: KakaoDriveRoute, dest: LatLng, destName: String, simulate: Boolean = false) {
         this.route.value = route
+        simulating.value = simulate
         destination = dest
         destinationName = destName
         note.value = null
@@ -56,6 +66,7 @@ object DriveGuidance {
     fun stop(context: Context) {
         context.stopService(Intent(context, DriveGuidanceService::class.java))
         active.value = false
+        simulating.value = false
     }
 }
 

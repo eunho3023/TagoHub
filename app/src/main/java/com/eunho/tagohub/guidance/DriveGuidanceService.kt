@@ -29,12 +29,14 @@ import com.eunho.tagohub.data.LatLng
 import com.eunho.tagohub.data.NavEngine
 import com.eunho.tagohub.data.NavRoute
 import com.eunho.tagohub.data.NavText
+import com.eunho.tagohub.data.RouteSimulator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -49,6 +51,9 @@ class DriveGuidanceService : Service() {
     private var locationManager: LocationManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var stopJob: Job? = null
+    private var simJob: Job? = null
+    private var currentNav: NavRoute? = null
+    private var routeVersion = 0
     private var begun = false
 
     private var lastNotifyAt = 0L
@@ -114,25 +119,71 @@ class DriveGuidanceService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tagohub:guidance").apply { acquire(MAX_SESSION_MS) }
 
-        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        locationManager = lm
-        try {
-            if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                DriveGuidance.note.value = "위치(GPS)가 꺼져 있습니다. 위치를 켜면 안내가 시작됩니다."
+        if (DriveGuidance.simulating.value) {
+            // 모의주행: GPS 를 켜지 않고 경로를 따라 가상 위치를 만든다. 이후 음성·알림·재탐색은 실제 안내와 똑같이 동작
+            startSimulation()
+            voice?.speak("모의주행을 시작합니다. ${NavText.distance(route.distanceMeters.toDouble())}, 약 ${(route.durationSeconds + 59) / 60}분 걸립니다.")
+        } else {
+            val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            locationManager = lm
+            try {
+                if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    DriveGuidance.note.value = "위치(GPS)가 꺼져 있습니다. 위치를 켜면 안내가 시작됩니다."
+                }
+                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper())
+            } catch (e: SecurityException) {
+                Log.w(TAG, "위치 권한 오류", e)
+                stopSelf()
+                return
             }
-            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper())
-        } catch (e: SecurityException) {
-            Log.w(TAG, "위치 권한 오류", e)
-            stopSelf()
-            return
+            voice?.speak("경로 안내를 시작합니다. ${NavText.distance(route.distanceMeters.toDouble())}, 약 ${(route.durationSeconds + 59) / 60}분 걸립니다.")
         }
-        voice?.speak("경로 안내를 시작합니다. ${NavText.distance(route.distanceMeters.toDouble())}, 약 ${(route.durationSeconds + 59) / 60}분 걸립니다.")
         DriveGuidance.active.value = true
     }
 
     private fun install(route: KakaoDriveRoute) {
-        engine = NavEngine(NavRoute.from(route))
+        val nav = NavRoute.from(route)
+        currentNav = nav
+        routeVersion++
+        engine = NavEngine(nav)
         DriveGuidance.route.value = route
+    }
+
+    /** 모의주행 루프: [SIM_TICK_MS] 마다 가상 위치를 만들어 [handleLocation] 에 넣음 */
+    private fun startSimulation() {
+        val nav = currentNav ?: return
+        val sim = RouteSimulator(nav)
+        var seenVersion = routeVersion
+        var seenDeviate = DriveGuidance.deviate.value
+        var deviateUntil = 0L
+        simJob = scope.launch {
+            var last = SystemClock.elapsedRealtime()
+            while (isActive) {
+                delay(SIM_TICK_MS)
+                val now = SystemClock.elapsedRealtime()
+                val dt = now - last
+                last = now
+                // 재탐색으로 새 경로가 설치되면 거기서 이어서 달림(이탈 시험도 끝냄)
+                if (seenVersion != routeVersion) {
+                    seenVersion = routeVersion
+                    currentNav?.let { sim.replaceRoute(it) }
+                    deviateUntil = 0L
+                }
+                val trigger = DriveGuidance.deviate.value
+                if (trigger != seenDeviate) {
+                    seenDeviate = trigger
+                    deviateUntil = now + DEVIATE_MS
+                }
+                val fix = sim.step(dt, DriveGuidance.simFactor.value, if (now < deviateUntil) DEVIATE_OFFSET_M else 0.0)
+                handleLocation(Location("sim").apply {
+                    latitude = fix.lat
+                    longitude = fix.lng
+                    speed = fix.speedMps.toFloat()
+                    accuracy = 5f
+                    time = System.currentTimeMillis()
+                })
+            }
+        }
     }
 
     private fun handleLocation(loc: Location) {
@@ -152,7 +203,8 @@ class DriveGuidanceService : Service() {
             noted = true
             DriveGuidance.note.value = "이 기기에 한국어 음성이 없어 소리 없이 안내합니다. 설정 > 음성 출력에서 한국어 음성을 설치하세요."
         }
-        notify(GuidanceText.title(st), GuidanceText.detail(st, System.currentTimeMillis()))
+        val prefix = if (DriveGuidance.simulating.value) "[모의주행] " else ""
+        notify(prefix + GuidanceText.title(st), GuidanceText.detail(st, System.currentTimeMillis()))
         if (st.offRoute) maybeReroute(loc)
         if (st.arrived && stopJob == null) {
             stopJob = scope.launch {
@@ -236,6 +288,7 @@ class DriveGuidanceService : Service() {
         wakeLock?.takeIf { it.isHeld }?.release()
         scope.cancel()
         DriveGuidance.active.value = false
+        DriveGuidance.simulating.value = false
         DriveGuidance.info.value = null
         DriveGuidance.route.value = null
         super.onDestroy()
@@ -251,6 +304,9 @@ class DriveGuidanceService : Service() {
         private const val REROUTE_MIN_GAP_MS = 12_000L
         private const val MAX_REROUTES = 20
         private const val ARRIVAL_STOP_DELAY_MS = 8_000L
+        private const val SIM_TICK_MS = 200L
+        private const val DEVIATE_MS = 6_000L
+        private const val DEVIATE_OFFSET_M = 300.0
         /** 안내가 끝나지 않아도 여기서 멈춤(배터리 보호): 6시간 */
         private const val MAX_SESSION_MS = 6L * 60 * 60 * 1000
     }

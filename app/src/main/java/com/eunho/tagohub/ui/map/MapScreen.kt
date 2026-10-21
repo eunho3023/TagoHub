@@ -261,7 +261,7 @@ fun MapScreen(
         var stop: () -> Unit = {}
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
             when (e) {
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> { stop(); stop = startLocationUpdates(context) { vm.setMe(it.latitude, it.longitude, center = false) } }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> { stop(); stop = startLocationUpdates(context) { if (!com.eunho.tagohub.guidance.DriveGuidance.simulating.value) vm.setMe(it.latitude, it.longitude, center = false) } }
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> { stop(); stop = {} }
                 else -> {}
             }
@@ -1757,35 +1757,35 @@ private fun DriveStartButton(plan: RidePlan) {
         if (hasLocationPermission(context)) pending?.invoke()
         pending = null
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    /** [simulate] 이 true 면 모의주행(GPS 대신 가상 위치). 둘 다 같은 권한이 필요(위치 유형 서비스를 올리기 때문) */
+    fun begin(simulate: Boolean) {
+        val route = plan.drive ?: return
+        val start = {
+            com.eunho.tagohub.guidance.DriveGuidance.start(
+                context, route, com.eunho.tagohub.data.LatLng(plan.destLat, plan.destLng), plan.destName, simulate,
+            )
+        }
+        val need = buildList {
+            if (!hasLocationPermission(context)) {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+                add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (need.isEmpty()) start() else { pending = start; launcher.launch(need.toTypedArray()) }
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (active) {
             androidx.compose.material3.OutlinedButton(
                 onClick = { com.eunho.tagohub.guidance.DriveGuidance.stop(context) },
                 modifier = Modifier.weight(1f),
             ) { Text("안내 종료") }
         } else {
-            androidx.compose.material3.Button(
-                onClick = {
-                    val route = plan.drive ?: return@Button
-                    val start = {
-                        com.eunho.tagohub.guidance.DriveGuidance.start(
-                            context, route, com.eunho.tagohub.data.LatLng(plan.destLat, plan.destLng), plan.destName,
-                        )
-                    }
-                    val need = buildList {
-                        if (!hasLocationPermission(context)) {
-                            add(Manifest.permission.ACCESS_FINE_LOCATION)
-                            add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                        }
-                        if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                            androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                            android.content.pm.PackageManager.PERMISSION_GRANTED
-                        ) add(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                    if (need.isEmpty()) start() else { pending = start; launcher.launch(need.toTypedArray()) }
-                },
-                modifier = Modifier.weight(1f),
-            ) { Text("안내 시작 (소리 안내)") }
+            androidx.compose.material3.Button(onClick = { begin(false) }, modifier = Modifier.weight(1f)) { Text("안내 시작") }
+            androidx.compose.material3.OutlinedButton(onClick = { begin(true) }) { Text("모의주행") }
         }
     }
 }
@@ -1799,6 +1799,8 @@ private fun DriveGuidanceBanner(vm: MapViewModel, modifier: Modifier = Modifier)
     val route by com.eunho.tagohub.guidance.DriveGuidance.route.collectAsStateWithLifecycle()
     val voiceOn by com.eunho.tagohub.guidance.DriveGuidance.voiceOn.collectAsStateWithLifecycle()
     val note by com.eunho.tagohub.guidance.DriveGuidance.note.collectAsStateWithLifecycle()
+    val simulating by com.eunho.tagohub.guidance.DriveGuidance.simulating.collectAsStateWithLifecycle()
+    val simFactor by com.eunho.tagohub.guidance.DriveGuidance.simFactor.collectAsStateWithLifecycle()
 
     // 지도가 내 위치를 따라감
     LaunchedEffect(info?.lat, info?.lng) { info?.let { vm.setMe(it.lat, it.lng, center = true) } }
@@ -1826,6 +1828,25 @@ private fun DriveGuidanceBanner(vm: MapViewModel, modifier: Modifier = Modifier)
                 )
             }
             note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            if (simulating) {
+                Text(
+                    "모의주행 중 · 실제 위치가 아닙니다. 소리·알림·재탐색은 실제 안내와 같습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1, 5, 15).forEach { f ->
+                        FilterChip(
+                            selected = simFactor == f,
+                            onClick = { com.eunho.tagohub.guidance.DriveGuidance.simFactor.value = f },
+                            label = { Text("${f}배속") },
+                        )
+                    }
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { com.eunho.tagohub.guidance.DriveGuidance.deviate.value += 1 },
+                    ) { Text("이탈 시험") }
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = !voiceOn }) {
                     Icon(
