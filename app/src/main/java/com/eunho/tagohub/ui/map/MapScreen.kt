@@ -596,7 +596,13 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(1500, 6000, 300, 600).build())
             .build().apply {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(com.eunho.tagohub.data.CctvProxy.wrap(cctv.streamUrl)))
+                // 주소에 .m3u8 이 없고(서버가 302 로 넘겨 줌) 확장자로는 HLS 인지 알 수 없어서 형식을 직접 지정
+                setMediaItem(
+                    androidx.media3.common.MediaItem.Builder()
+                        .setUri(com.eunho.tagohub.data.CctvProxy.wrap(cctv.streamUrl))
+                        .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+                        .build(),
+                )
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
                 playWhenReady = true
                 prepare()
