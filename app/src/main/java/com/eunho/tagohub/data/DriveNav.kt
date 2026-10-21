@@ -115,12 +115,109 @@ class NavRoute(
         return lo.coerceIn(0, max(0, points.size - 2))
     }
 
+    /** 안내 중 실제로 알려줄 동작(회전·입출구·톨게이트·목적지)의 번호. 교차로 직진 등은 뺀다 */
+    val maneuvers: List<Int> = guides.indices.filter { TurnKind.of(guides[it]).isManeuver }
+
+    /** [progress] 미터 지점부터 목적지까지 소통 상태를 비율로 나눈 구간 (이어지는 같은 상태는 합침) */
+    fun trafficSpans(progress: Double): List<TrafficSpan> {
+        val remain = length - progress
+        if (roads.isEmpty() || remain <= 0.0) return emptyList()
+        val out = ArrayList<TrafficSpan>()
+        for (i in roads.indices) {
+            if (roadEnd[i] <= progress) continue
+            val a = ((max(roadStart[i], progress) - progress) / remain).toFloat().coerceIn(0f, 1f)
+            val b = ((roadEnd[i] - progress) / remain).toFloat().coerceIn(0f, 1f)
+            if (b <= a) continue
+            val state = roads[i].trafficState
+            val last = out.lastOrNull()
+            if (last != null && last.state == state) out[out.size - 1] = TrafficSpan(last.from, b, state)
+            else out += TrafficSpan(a, b, state)
+        }
+        return out
+    }
+
     data class Projection(val segment: Int, val distance: Double, val along: Double)
 
     companion object {
         fun from(r: KakaoDriveRoute) = NavRoute(r.points, r.guides, r.roads, r.distanceMeters, r.durationSeconds)
     }
 }
+
+/**
+ * 회전(안내) 종류. 카카오 응답의 종류 코드는 일부만 확인되어(1 좌, 2 우, 12 고속도로 입구, 29 교차로 직진 …),
+ * 모든 안내가 갖고 있는 한국어 문구로 판별한다 ("좌회전", "오른쪽에 고속도로 입구", "12시 방향" 등).
+ */
+enum class TurnKind {
+    Start, Destination, Left, Right, UTurn, SlightLeft, SlightRight, Straight, HighwayEnter, HighwayExit, Toll;
+
+    /** 안내할 만한 "동작"인지: 교차로를 직진으로 지나가는 것은 안내하지 않는다(내비 앱도 다음 회전만 보여줌) */
+    val isManeuver: Boolean get() = this != Straight && this != Start
+
+    companion object {
+        private val clock = Regex("""(\d{1,2})\s*시\s*방향""")
+
+        fun of(g: DriveGuide): TurnKind {
+            if (g.isStart) return Start
+            if (g.isDestination) return Destination
+            val t = g.guidance
+            return when {
+                "유턴" in t || "U턴" in t || "u턴" in t -> UTurn
+                "고속도로 입구" in t -> HighwayEnter
+                "고속도로 출구" in t -> HighwayExit
+                "톨게이트" in t -> Toll
+                "좌회전" in t -> Left
+                "우회전" in t -> Right
+                else -> clock.find(t)?.let { m -> fromClock(m.groupValues[1].toIntOrNull() ?: 12) } ?: Straight
+            }
+        }
+
+        /** "N시 방향" → 12시 직진, 10·11시 왼쪽으로 약간, 7~9시 왼쪽, 1·2시 오른쪽으로 약간, 3~5시 오른쪽, 6시 되돌아감 */
+        private fun fromClock(h: Int): TurnKind = when (h) {
+            12 -> Straight
+            10, 11 -> SlightLeft
+            7, 8, 9 -> Left
+            1, 2 -> SlightRight
+            3, 4, 5 -> Right
+            6 -> UTurn
+            else -> Straight
+        }
+
+        /** 말하거나 배너에 쓸 문구: "12시 방향" 같은 시계 표현은 읽기 어려워 풀어 쓴다 */
+        fun text(g: DriveGuide): String {
+            if (g.isDestination) return "목적지"
+            if (!clock.containsMatchIn(g.guidance)) return g.guidance
+            val phrase = when (of(g)) {
+                SlightLeft -> "왼쪽 방향"
+                SlightRight -> "오른쪽 방향"
+                Left -> "좌회전"
+                Right -> "우회전"
+                UTurn -> "유턴"
+                else -> "직진"
+            }
+            return if (g.name.isNotBlank()) "${g.name}에서 $phrase" else phrase
+        }
+    }
+}
+
+/** 경로 미리보기의 한 단계: 동작과, 그 동작 뒤 다음 동작까지 달리는 거리(m, 마지막은 0) */
+data class DriveStep(val kind: TurnKind, val text: String, val distanceAfterMeters: Int)
+
+/** 안내 목록에서 직진 통과를 빼고 출발·회전·입출구·톨게이트·목적지만 남긴다 (거리는 원래 안내 사이 거리를 합산) */
+fun driveSteps(guides: List<DriveGuide>): List<DriveStep> {
+    val pos = IntArray(guides.size)
+    var acc = 0
+    for (i in guides.indices) { acc += guides[i].distanceFromPrev; pos[i] = acc }
+    val keep = guides.indices.filter { val k = TurnKind.of(guides[it]); k.isManeuver || k == TurnKind.Start }
+    return keep.mapIndexed { n, i ->
+        val g = guides[i]
+        val kind = TurnKind.of(g)
+        val next = keep.getOrNull(n + 1)
+        DriveStep(kind, if (kind == TurnKind.Start) "출발" else TurnKind.text(g), if (next != null) pos[next] - pos[i] else 0)
+    }
+}
+
+/** 남은 경로의 소통 구간:[from]·[to] 는 남은 거리 중 비율(0 = 지금 위치, 1 = 목적지) */
+data class TrafficSpan(val from: Float, val to: Float, val state: Int)
 
 /** 한 번 갱신한 결과 */
 data class NavState(
@@ -135,6 +232,9 @@ data class NavState(
     val remainingSeconds: Int,
     /** 지금 말하거나 띄울 문구(이미 말한 것은 다시 나오지 않음) */
     val speak: List<String>,
+    /** 그다음 회전(작은 배너용)과, 다음 회전에서 그곳까지의 거리 */
+    val afterGuide: DriveGuide? = null,
+    val distanceNextToAfter: Double = 0.0,
 )
 
 class NavEngine(private val route: NavRoute) {
@@ -143,14 +243,10 @@ class NavEngine(private val route: NavRoute) {
     private var offCount = 0
     private var offRoute = false
     private var arrived = false
-    private var nextIndex = 0
+    /** route.maneuvers 안에서 다음에 올 동작의 순번 */
+    private var nextManeuver = 0
     private val spoken = HashSet<Long>()
     private var started = false
-
-    init {
-        // 출발지 안내(종류 100)는 건너뜀
-        while (nextIndex < route.guides.size && route.guides[nextIndex].isStart) nextIndex++
-    }
 
     /**
      * @param speedMps 현재 속도(m/s). 모르면 0 → 도심 기준 예고 거리를 씀
@@ -202,15 +298,20 @@ class NavEngine(private val route: NavRoute) {
             say += "목적지 부근입니다. 안내를 종료합니다."
         }
 
-        // 다음 안내 지점 찾기: 이미 지나친 안내는 건너뜀
-        while (nextIndex < route.guides.size - 1 && route.guidePos[nextIndex] < progress - PASSED_M) nextIndex++
-        val guide = route.guides.getOrNull(nextIndex)
-        val distToNext = if (guide != null) max(0.0, route.guidePos[nextIndex] - progress) else 0.0
+        // 다음 동작 찾기: 이미 지나친 것은 건너뜀 (교차로 직진 같은 안내는 처음부터 목록에 없음)
+        val m = route.maneuvers
+        while (nextManeuver < m.size - 1 && route.guidePos[m[nextManeuver]] < progress - PASSED_M) nextManeuver++
+        val nextIndex = m.getOrNull(nextManeuver)
+        val guide = nextIndex?.let { route.guides[it] }
+        val distToNext = if (nextIndex != null) max(0.0, route.guidePos[nextIndex] - progress) else 0.0
+        val afterIndex = m.getOrNull(nextManeuver + 1)
+        val after = afterIndex?.let { route.guides[it] }
+        val distNextToAfter = if (nextIndex != null && afterIndex != null) max(0.0, route.guidePos[afterIndex] - route.guidePos[nextIndex]) else 0.0
 
-        if (!offRoute && !arrived && guide != null) {
+        if (!offRoute && !arrived && nextIndex != null) {
             val leads = leadsFor(speedMps)
             val reached = leads.filter { distToNext <= it && spoken.add(key(nextIndex, it)) }
-            if (reached.isNotEmpty()) say += sentence(nextIndex, distToNext)
+            if (reached.isNotEmpty()) say += sentence(nextIndex, afterIndex, distToNext)
         }
 
         return NavState(
@@ -219,6 +320,8 @@ class NavEngine(private val route: NavRoute) {
             arrived = arrived,
             nextGuide = guide,
             distanceToNext = distToNext,
+            afterGuide = after,
+            distanceNextToAfter = distNextToAfter,
             remainingMeters = remaining,
             remainingSeconds = route.remainingSeconds(progress),
             speak = say,
@@ -249,15 +352,15 @@ class NavEngine(private val route: NavRoute) {
         }
     }
 
-    private fun sentence(index: Int, distance: Double): String {
+    private fun sentence(index: Int, afterIndex: Int?, distance: Double): String {
         val g = route.guides[index]
         val lead = NavText.distance(distance)
         if (g.isDestination) return "$lead 앞이 목적지입니다."
-        var text = "$lead 앞, ${g.guidance}"
-        // 바로 이어지는 안내(200m 안)는 함께 알려줌
-        val nextG = route.guides.getOrNull(index + 1)
-        if (nextG != null && !nextG.isDestination && route.guidePos[index + 1] - route.guidePos[index] < CHAIN_M) {
-            text += ". 이어서 ${nextG.guidance}"
+        var text = "$lead 앞, ${TurnKind.text(g)}"
+        // 바로 이어지는 동작(200m 안)은 함께 알려줌
+        if (afterIndex != null) {
+            val nextG = route.guides[afterIndex]
+            if (!nextG.isDestination && route.guidePos[afterIndex] - route.guidePos[index] < CHAIN_M) text += ". 이어서 ${TurnKind.text(nextG)}"
         }
         return text
     }

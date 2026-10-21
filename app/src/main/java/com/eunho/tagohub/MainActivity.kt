@@ -17,6 +17,14 @@ class MainActivity : ComponentActivity() {
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 
+    override fun onDestroy() {
+        // 뒤로 가기 등으로 앱을 끝낼 때는 경로 안내도 끝냄 (홈 버튼·화면 회전은 해당 없음: 안내는 계속)
+        if (isFinishing && !isChangingConfigurations && com.eunho.tagohub.guidance.DriveGuidance.active.value) {
+            com.eunho.tagohub.guidance.DriveGuidance.stop(applicationContext)
+        }
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

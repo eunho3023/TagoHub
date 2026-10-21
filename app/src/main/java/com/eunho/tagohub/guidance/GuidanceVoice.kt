@@ -33,6 +33,9 @@ class GuidanceVoice(context: Context) : TextToSpeech.OnInitListener {
 
     @Volatile var enabled = true
 
+    /** 안내음성 크기 0.0~1.0 (기기 미디어 음량과 별개로 이 앱 음성만 조절) */
+    @Volatile var volume = 1f
+
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -69,7 +72,8 @@ class GuidanceVoice(context: Context) : TextToSpeech.OnInitListener {
         }
         if (!koreanAvailable) return
         requestFocus()
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "nav-${counter++}")
+        val params = android.os.Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume.coerceIn(0f, 1f)) }
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, "nav-${counter++}")
     }
 
     fun stopSpeaking() {

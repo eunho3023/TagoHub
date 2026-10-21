@@ -76,7 +76,7 @@ class RouteSimulatorTest {
             assertTrue("배속 $factor 에서 도착 처리 안 됨", res.arrived)
             // 15배속은 한 번에 83m 씩 가서 일부 예고를 건너뛸 수 있어도, 회전 안내가 충분히 나와야 함
             val turns = res.spoken.count { "앞" in it }
-            assertTrue("배속 $factor 안내 수 $turns", turns > 35)
+            assertTrue("배속 $factor 안내 수 $turns", turns >= 12)
             assertEquals("목적지 부근 안내는 한 번", 1, res.spoken.count { "목적지 부근" in it })
         }
     }

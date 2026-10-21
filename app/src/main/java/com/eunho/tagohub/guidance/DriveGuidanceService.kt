@@ -116,8 +116,9 @@ class DriveGuidanceService : Service() {
                 if (!on) voice?.stopSpeaking()
             }
         }
+        scope.launch { DriveGuidance.voiceVolume.collect { v -> voice?.volume = v } }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tagohub:guidance").apply { acquire(MAX_SESSION_MS) }
+        wakeLock =pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tagohub:guidance").apply { acquire(MAX_SESSION_MS) }
 
         if (DriveGuidance.simulating.value) {
             // 모의주행: GPS 를 켜지 않고 경로를 따라 가상 위치를 만든다. 이후 음성·알림·재탐색은 실제 안내와 똑같이 동작
@@ -280,6 +281,13 @@ class DriveGuidanceService : Service() {
                 setSound(null, null)
             })
         }
+    }
+
+    /** 최근 앱 목록에서 앱을 밀어 끄면 안내도 함께 끝냄 */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

@@ -90,6 +90,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.filled.Menu
@@ -295,6 +296,8 @@ fun MapScreen(
     // 장소 카드가 열려 있으면 뒤로 가기로 먼저 닫음 (앱 종료 묻기보다 먼저)
     val pickedOpen by vm.picked.collectAsStateWithLifecycle()
     BackHandler(enabled = pickedOpen != null) { vm.closePick() }
+    // 경로 안내 중에는 검색창·하단 패널을 숨기고 안내 화면만 보여줌
+    val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
 
     // 패널 높이(화면 대비 비율). 패널 종류가 바뀌면 기본 높이로
     val sheetFrac = remember { mutableFloatStateOf(0.45f) }
@@ -313,7 +316,7 @@ fun MapScreen(
         key(osm) { AndroidView(factory = { osm.view }, modifier = Modifier.fillMaxSize()) }
 
         // ── 상단 안내 ──
-        Column(
+        if (!guiding) Column(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -348,11 +351,11 @@ fun MapScreen(
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
 
-        // ── 오른쪽 버튼 ──
+        // ── 오른쪽 버튼 ── (안내 중에는 아래쪽으로 내려 파란 배너·소통 막대를 가리지 않게)
         Column(
             Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 12.dp, end = 12.dp),
+                .align(if (guiding) Alignment.BottomEnd else Alignment.TopEnd)
+                .then(if (guiding) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 96.dp, end = 30.dp) else Modifier.padding(top = 12.dp, end = 12.dp)),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (mapFailed) {
@@ -360,7 +363,7 @@ fun MapScreen(
                     Icon(Icons.Filled.Refresh, contentDescription = "지도 다시 시도")
                 }
             }
-            SmallFloatingActionButton(onClick = vm::refreshNow) {
+            if (!guiding) SmallFloatingActionButton(onClick = vm::refreshNow) {
                 Icon(Icons.Filled.Refresh, contentDescription = "지도 정보 새로고침")
             }
             SmallFloatingActionButton(onClick = {
@@ -377,12 +380,12 @@ fun MapScreen(
             }
         }
 
-        // ── 경로 안내 중 배너 ──
-        DriveGuidanceBanner(vm, Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 12.dp, vertical = 8.dp))
+        // ── 경로 안내 중 화면 (배너·소통 막대·도착 시각 바) ──
+        DriveGuidanceOverlay(vm)
 
         // ── 하단 패널 ── (imePadding: 키보드가 올라오면 패널도 키보드 위로, 내려가면 다시 아래로)
         val pickedPlace by vm.picked.collectAsStateWithLifecycle()
-        Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
+        if (!guiding) Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
             pickedPlace?.let { PickCard(vm, it) }
             when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
@@ -1744,148 +1747,6 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/**
- * "안내 시작": 위치(앱 사용 중)와 알림(안드로이드 13+) 권한을 확인한 뒤 경로 안내 서비스를 켠다.
- * 위치 권한이 없으면 시작하지 않는다. 알림 권한만 없으면 안내는 되지만 알림이 보이지 않을 수 있다.
- */
-@Composable
-private fun DriveStartButton(plan: RidePlan) {
-    val context = LocalContext.current
-    val active by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
-    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        if (hasLocationPermission(context)) pending?.invoke()
-        pending = null
-    }
-    /** [simulate] 이 true 면 모의주행(GPS 대신 가상 위치). 둘 다 같은 권한이 필요(위치 유형 서비스를 올리기 때문) */
-    fun begin(simulate: Boolean) {
-        val route = plan.drive ?: return
-        val start = {
-            com.eunho.tagohub.guidance.DriveGuidance.start(
-                context, route, com.eunho.tagohub.data.LatLng(plan.destLat, plan.destLng), plan.destName, simulate,
-            )
-        }
-        val need = buildList {
-            if (!hasLocationPermission(context)) {
-                add(Manifest.permission.ACCESS_FINE_LOCATION)
-                add(Manifest.permission.ACCESS_COARSE_LOCATION)
-            }
-            if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        if (need.isEmpty()) start() else { pending = start; launcher.launch(need.toTypedArray()) }
-    }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (active) {
-            androidx.compose.material3.OutlinedButton(
-                onClick = { com.eunho.tagohub.guidance.DriveGuidance.stop(context) },
-                modifier = Modifier.weight(1f),
-            ) { Text("안내 종료") }
-        } else {
-            androidx.compose.material3.Button(onClick = { begin(false) }, modifier = Modifier.weight(1f)) { Text("안내 시작") }
-            androidx.compose.material3.OutlinedButton(onClick = { begin(true) }) { Text("모의주행") }
-        }
-    }
-}
-
-/** 안내 중 지도 위 배너: 다음 안내, 남은 거리·시간·도착 시각, 소리 켜기/끄기, 종료. 재탐색으로 경로가 바뀌면 지도에 다시 그림 */
-@Composable
-private fun DriveGuidanceBanner(vm: MapViewModel, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val active by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
-    val info by com.eunho.tagohub.guidance.DriveGuidance.info.collectAsStateWithLifecycle()
-    val route by com.eunho.tagohub.guidance.DriveGuidance.route.collectAsStateWithLifecycle()
-    val voiceOn by com.eunho.tagohub.guidance.DriveGuidance.voiceOn.collectAsStateWithLifecycle()
-    val note by com.eunho.tagohub.guidance.DriveGuidance.note.collectAsStateWithLifecycle()
-    val simulating by com.eunho.tagohub.guidance.DriveGuidance.simulating.collectAsStateWithLifecycle()
-    val simFactor by com.eunho.tagohub.guidance.DriveGuidance.simFactor.collectAsStateWithLifecycle()
-
-    // 지도가 내 위치를 따라감
-    LaunchedEffect(info?.lat, info?.lng) { info?.let { vm.setMe(it.lat, it.lng, center = true) } }
-    // 재탐색 등으로 경로가 바뀌면 지도에 다시 그림(화면은 옮기지 않음)
-    LaunchedEffect(route) {
-        val r = route ?: return@LaunchedEffect
-        val here = info?.let { com.eunho.tagohub.data.LatLng(it.lat, it.lng) } ?: r.points.first()
-        vm.trip.showDriveRoute(here, com.eunho.tagohub.guidance.DriveGuidance.destination ?: r.points.last(), r, fit = false)
-    }
-    if (!active) return
-
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val st = info?.state
-            Text(
-                if (st != null) com.eunho.tagohub.guidance.GuidanceText.title(st) else "위치를 찾는 중…",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            if (st != null) {
-                Text(
-                    com.eunho.tagohub.guidance.GuidanceText.detail(st, System.currentTimeMillis()),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            if (simulating) {
-                Text(
-                    "모의주행 중 · 실제 위치가 아닙니다. 소리·알림·재탐색은 실제 안내와 같습니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(1, 5, 15).forEach { f ->
-                        FilterChip(
-                            selected = simFactor == f,
-                            onClick = { com.eunho.tagohub.guidance.DriveGuidance.simFactor.value = f },
-                            label = { Text("${f}배속") },
-                        )
-                    }
-                    androidx.compose.material3.OutlinedButton(
-                        onClick = { com.eunho.tagohub.guidance.DriveGuidance.deviate.value += 1 },
-                    ) { Text("이탈 시험") }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = !voiceOn }) {
-                    Icon(
-                        if (voiceOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (voiceOn) "소리 켜짐" else "소리 꺼짐")
-                }
-                Spacer(Modifier.weight(1f))
-                androidx.compose.material3.Button(onClick = { com.eunho.tagohub.guidance.DriveGuidance.stop(context) }) { Text("안내 종료") }
-            }
-        }
-    }
-}
-
-/** 자동차 경로의 회전 안내 목록: "양재역 방면으로 우회전" + 직전 안내부터의 거리 */
-@Composable
-private fun DriveGuideList(guides: List<com.eunho.tagohub.data.DriveGuide>, modifier: Modifier = Modifier) {
-    val steps = guides.filter { !it.isStart }
-    androidx.compose.foundation.lazy.LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
-        items(steps.size) { i ->
-            val g = steps[i]
-            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${i + 1}", Modifier.width(26.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    if (g.isDestination) "목적지" else g.guidance,
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (g.isDestination) FontWeight.Bold else FontWeight.Normal,
-                )
-                Text(com.eunho.tagohub.data.NavText.short(g.distanceFromPrev.toDouble()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            HorizontalDivider()
-        }
-    }
-}
-
 @Composable
 private fun PlanList(t: TripController) {
     val plans by t.plans.collectAsStateWithLifecycle()
@@ -1923,47 +1784,30 @@ private fun PlanList(t: TripController) {
                     is Load.Fail -> MessageText(route.message)
                     is Load.Ok -> {
                         val result = route.value
-                        val distance = if (result.distanceMeters >= 1000) {
-                            "%.1fkm".format(result.distanceMeters / 1000.0)
-                        } else "${result.distanceMeters}m"
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "약 ${(result.durationSeconds + 59) / 60}분",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(distance, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text(
-                            when (result.mode) {
-                                PlanMode.Car -> "카카오 자동차 길찾기 · 교통상황에 따라 달라질 수 있습니다."
-                                PlanMode.Walk -> "카카오 도보 경로"
-                                PlanMode.Bicycle -> "카카오 자전거 경로"
-                                PlanMode.Transit -> ""
-                            },
-                            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                         if (result.mode == PlanMode.Car) {
-                            val summary = listOfNotNull(
-                                result.tollWon?.let { "통행요금 ${"%,d".format(it)}원" },
-                                trafficSummary(result.roads),
-                            )
-                            if (summary.isNotEmpty()) {
+                            DriveRoutePanel(result, Modifier.weight(1f))
+                        } else {
+                            val distance = if (result.distanceMeters >= 1000) {
+                                "%.1fkm".format(result.distanceMeters / 1000.0)
+                            } else "${result.distanceMeters}m"
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 Text(
-                                    summary.joinToString(" · "),
-                                    Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
+                                    "약 ${(result.durationSeconds + 59) / 60}분",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
                                 )
+                                Text(distance, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (result.drive != null) DriveStartButton(result)
-                            if (result.guides.size > 2) DriveGuideList(result.guides, Modifier.weight(1f))
+                            Text(
+                                if (result.mode == PlanMode.Walk) "카카오 도보 경로" else "카카오 자전거 경로",
+                                Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                     is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었습니다.")

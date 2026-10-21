@@ -48,6 +48,8 @@ data class RidePlan(
     val destLat: Double = 0.0,
     val destLng: Double = 0.0,
     val destName: String = "",
+    /** 택시로 가면 나오는 요금(원) */
+    val taxiWon: Int? = null,
 )
 
 /** 소통 상태 색: 1 정체(빨강) 2 지체(주황) 3 서행(노랑) 4 원활(초록), 사고(6)는 진한 빨강, 모르면 기본 파랑 */
@@ -200,7 +202,7 @@ class TripController(
             }
             showDriveRoute(o, LatLng(d.lat, d.lng), route, fit = true)
             ridePlan.value = Load.Ok(
-                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name),
+                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name, route.taxiWon),
             )
         }
     }
