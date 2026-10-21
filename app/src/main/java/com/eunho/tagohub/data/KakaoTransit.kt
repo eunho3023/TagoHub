@@ -166,10 +166,43 @@ object KakaoWalk {
     }
 }
 
+/** 회전 안내 한 곳: [distanceFromPrev] 는 직전 안내 지점부터의 거리(m). 모두 더하면 경로 전체 거리와 같음 */
+data class DriveGuide(
+    val name: String,
+    val guidance: String,
+    val distanceFromPrev: Int,
+    /** 1 좌회전, 2 우회전, 12 고속도로 입구 …, 100 출발지, 101 목적지 */
+    val type: Int,
+    val lat: Double,
+    val lng: Double,
+) {
+    val isStart: Boolean get() = type == TYPE_START
+    val isDestination: Boolean get() = type == TYPE_DESTINATION
+
+    companion object {
+        const val TYPE_START = 100
+        const val TYPE_DESTINATION = 101
+    }
+}
+
+/** 도로 한 구간: [trafficState] 0 알 수 없음, 1 정체, 2 지체, 3 서행, 4 원활, 6 사고 */
+data class DriveRoad(
+    val name: String,
+    val distance: Int,
+    val duration: Int,
+    val trafficState: Int,
+    val points: List<LatLng>,
+)
+
 data class KakaoDriveRoute(
     val distanceMeters: Int,
     val durationSeconds: Int,
     val points: List<LatLng>,
+    /** 통행요금(원). 하이패스 할인은 반영하지 않음(요청에서 car_hipass=false) */
+    val tollWon: Int? = null,
+    val taxiWon: Int? = null,
+    val guides: List<DriveGuide> = emptyList(),
+    val roads: List<DriveRoad> = emptyList(),
 )
 
 object KakaoDrive {
@@ -187,23 +220,56 @@ object KakaoDrive {
             ?: return "INVALID_RESPONSE" to null
         val duration = summary["duration"]?.toString()?.toDoubleOrNull()?.toInt()
             ?: return "INVALID_RESPONSE" to null
+        val fare = summary["fare"] as? Map<*, *>
+
         val points = ArrayList<LatLng>()
+        val roads = ArrayList<DriveRoad>()
+        val guides = ArrayList<DriveGuide>()
         val sections = route["sections"] as? List<*> ?: emptyList<Any?>()
         sections.forEach sectionLoop@{ section ->
-            val roads = (section as? Map<*, *>)?.get("roads") as? List<*> ?: return@sectionLoop
-            roads.forEach roadLoop@{ road ->
-                val vertexes = (road as? Map<*, *>)?.get("vertexes") as? List<*> ?: return@roadLoop
+            val sec = section as? Map<*, *> ?: return@sectionLoop
+            (sec["roads"] as? List<*>)?.forEach roadLoop@{ road ->
+                val r = road as? Map<*, *> ?: return@roadLoop
+                val vertexes = r["vertexes"] as? List<*> ?: return@roadLoop
+                val roadPoints = ArrayList<LatLng>()
                 vertexes.chunked(2).forEach pointLoop@{ pair ->
                     val lng = pair.getOrNull(0)?.toString()?.toDoubleOrNull() ?: return@pointLoop
                     val lat = pair.getOrNull(1)?.toString()?.toDoubleOrNull() ?: return@pointLoop
                     if (lat in -90.0..90.0 && lng in -180.0..180.0) {
                         val point = LatLng(lat, lng)
+                        if (roadPoints.lastOrNull() != point) roadPoints += point
                         if (points.lastOrNull() != point) points += point
                     }
                 }
+                roads += DriveRoad(
+                    name = r["name"]?.toString().orEmpty(),
+                    distance = r["distance"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
+                    duration = r["duration"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
+                    trafficState = r["traffic_state"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
+                    points = roadPoints,
+                )
+            }
+            (sec["guides"] as? List<*>)?.forEach guideLoop@{ guide ->
+                val g = guide as? Map<*, *> ?: return@guideLoop
+                val x = g["x"]?.toString()?.toDoubleOrNull() ?: return@guideLoop
+                val y = g["y"]?.toString()?.toDoubleOrNull() ?: return@guideLoop
+                guides += DriveGuide(
+                    name = g["name"]?.toString().orEmpty(),
+                    guidance = g["guidance"]?.toString().orEmpty(),
+                    distanceFromPrev = g["distance"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
+                    type = g["type"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
+                    lat = y,
+                    lng = x,
+                )
             }
         }
         if (points.size < 2) return "INVALID_RESPONSE" to null
-        return "OK" to KakaoDriveRoute(distance, duration, points)
+        return "OK" to KakaoDriveRoute(
+            distance, duration, points,
+            tollWon = fare?.get("toll")?.toString()?.toDoubleOrNull()?.toInt(),
+            taxiWon = fare?.get("taxi")?.toString()?.toDoubleOrNull()?.toInt(),
+            guides = guides,
+            roads = roads,
+        )
     }
 }

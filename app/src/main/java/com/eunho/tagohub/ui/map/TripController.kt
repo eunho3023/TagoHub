@@ -35,7 +35,57 @@ enum class PlanMode(val label: String) { Transit("대중교통"), Car("자동차
 /** 고른 경로의 실시간 정보 */
 data class TripLive(val first: List<BusArrival>, val transfer: List<BusArrival>)
 
-data class RidePlan(val mode: PlanMode, val distanceMeters: Int, val durationSeconds: Int)
+data class RidePlan(
+    val mode: PlanMode,
+    val distanceMeters: Int,
+    val durationSeconds: Int,
+    /** 자동차 경로만: 통행요금(원), 회전 안내, 도로 구간별 소통 상태 */
+    val tollWon: Int? = null,
+    val guides: List<com.eunho.tagohub.data.DriveGuide> = emptyList(),
+    val roads: List<com.eunho.tagohub.data.DriveRoad> = emptyList(),
+)
+
+/** 소통 상태 색: 1 정체(빨강) 2 지체(주황) 3 서행(노랑) 4 원활(초록), 사고(6)는 진한 빨강, 모르면 기본 파랑 */
+internal fun trafficColor(state: Int): Int = when (state) {
+    1 -> 0xFFE53935.toInt()
+    2 -> 0xFFF57C00.toInt()
+    3 -> 0xFFFBC02D.toInt()
+    4 -> 0xFF2E9B57.toInt()
+    6 -> 0xFF8E0000.toInt()
+    else -> 0xFF3D5BAB.toInt()
+}
+
+/** 이어지는 도로 중 소통 색이 같은 것끼리 한 줄로 묶어 지도에 그릴 선을 만든다 */
+internal fun trafficSegments(roads: List<com.eunho.tagohub.data.DriveRoad>): List<TripSegment> {
+    val out = ArrayList<TripSegment>()
+    var color = 0
+    var pts = ArrayList<com.eunho.tagohub.data.LatLng>()
+    for (r in roads) {
+        if (r.points.size < 2) continue
+        val c = trafficColor(r.trafficState)
+        if (pts.isNotEmpty() && c != color) {
+            out += TripSegment(pts, color, false)
+            // 색이 바뀌는 곳이 끊겨 보이지 않게 이전 선의 마지막 점에서 이어 그림
+            pts = arrayListOf(pts.last())
+        }
+        color = c
+        pts.addAll(r.points)
+    }
+    if (pts.size >= 2) out += TripSegment(pts, color, false)
+    return out
+}
+
+/** "정체 3.2km · 서행 12.1km" (없으면 null) */
+internal fun trafficSummary(roads: List<com.eunho.tagohub.data.DriveRoad>): String? {
+    if (roads.isEmpty()) return null
+    val heavy = roads.filter { it.trafficState == 1 || it.trafficState == 2 || it.trafficState == 6 }.sumOf { it.distance }
+    val slow = roads.filter { it.trafficState == 3 }.sumOf { it.distance }
+    fun km(m: Int) = "%.1fkm".format(m / 1000.0)
+    return when {
+        heavy == 0 && slow == 0 -> "정체 없음"
+        else -> listOfNotNull(if (heavy > 0) "정체 ${km(heavy)}" else null, if (slow > 0) "서행 ${km(slow)}" else null).joinToString(" · ")
+    }
+}
 
 /**
  * 버스 길찾기 (전주시 시내버스).
@@ -135,11 +185,11 @@ class TripController(
                 return@launch
             }
             canvas()?.setTrip(
-                listOf(TripSegment(route.points, 0xFF3D5BAB.toInt(), false)),
+                trafficSegments(route.roads).ifEmpty { listOf(TripSegment(route.points, 0xFF3D5BAB.toInt(), false)) },
                 listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)),
             )
             canvas()?.fitTo(route.points)
-            ridePlan.value = Load.Ok(RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds))
+            ridePlan.value = Load.Ok(RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads))
         }
     }
 

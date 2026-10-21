@@ -1739,6 +1739,28 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
+/** 자동차 경로의 회전 안내 목록: "양재역 방면으로 우회전" + 직전 안내부터의 거리 */
+@Composable
+private fun DriveGuideList(guides: List<com.eunho.tagohub.data.DriveGuide>, modifier: Modifier = Modifier) {
+    val steps = guides.filter { !it.isStart }
+    androidx.compose.foundation.lazy.LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
+        items(steps.size) { i ->
+            val g = steps[i]
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${i + 1}", Modifier.width(26.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (g.isDestination) "목적지" else g.guidance,
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (g.isDestination) FontWeight.Bold else FontWeight.Normal,
+                )
+                Text(com.eunho.tagohub.data.NavText.short(g.distanceFromPrev.toDouble()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalDivider()
+        }
+    }
+}
+
 @Composable
 private fun PlanList(t: TripController) {
     val plans by t.plans.collectAsStateWithLifecycle()
@@ -1802,6 +1824,21 @@ private fun PlanList(t: TripController) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (result.mode == PlanMode.Car) {
+                            val summary = listOfNotNull(
+                                result.tollWon?.let { "통행요금 ${"%,d".format(it)}원" },
+                                trafficSummary(result.roads),
+                            )
+                            if (summary.isNotEmpty()) {
+                                Text(
+                                    summary.joinToString(" · "),
+                                    Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            if (result.guides.size > 2) DriveGuideList(result.guides, Modifier.weight(1f))
+                        }
                     }
                     is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었습니다.")
                 }
