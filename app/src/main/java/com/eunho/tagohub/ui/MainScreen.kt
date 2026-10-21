@@ -234,7 +234,7 @@ private fun NoticesDialog(onClose: () -> Unit) {
             androidx.compose.foundation.lazy.LazyColumn {
                 val l = list
                 when {
-                    l == null -> item { Text("불러오는 중…") }
+                    l == null -> item { }
                     l.isEmpty() -> item { Text("공지사항이 없습니다. (인터넷 연결을 확인하세요)") }
                     else -> items(l.size) { i ->
                         val n = l[i]

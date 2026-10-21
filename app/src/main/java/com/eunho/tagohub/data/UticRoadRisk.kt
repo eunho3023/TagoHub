@@ -54,6 +54,7 @@ class UticRoadRiskRepository(
     private val key: String = BuildConfig.UTIC_API_KEY.trim(),
 ) {
     suspend fun roadRisks(): List<UticRoadRisk> {
+        OverlaySnapshot.get("ov_utic_road_risk.json") { UticRoadRiskParser.parse(it) }?.let { return it }
         if (key.isBlank()) throw IOException("local.properties에 UTIC_API_KEY를 설정하세요.")
         val request = Request.Builder().url(UticFeeds.roadRisks.url(key)).build()
         return UticHttp.get(request).let(UticRoadRiskParser::parse)

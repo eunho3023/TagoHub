@@ -27,3 +27,13 @@
 ## 시험
 
     python pipeline/test_build_data.py     # 가짜·실제 응답으로 해석·저장·압축까지 (인터넷 없이)
+
+## 지도 레이어 정보 저장본 (돌발·재난·CCTV 목록)
+
+`.github/workflows/overlays.yml` 이 **10분마다** `pipeline/build_overlays.py` 를 돌려 공공 API(UTIC·ITS)에서 전국 데이터를 받아
+`ov_*.gz` 파일로 Release `data-latest` 에 올린다. 앱은 지도를 움직일 때 공공 API 대신 이 파일을 읽고(`OverlaySnapshot`),
+파일이 없거나 30분 넘게 오래됐으면 예전처럼 API 를 직접 부른다.
+
+- 필요: 저장소 Settings → Secrets and variables → Actions 에 `UTIC_API_KEY`, `ITS_API_KEY` 추가 (local.properties 와 같은 값)
+- 로컬 시험: `python pipeline/build_overlays.py` (키는 local.properties 에서 읽음) → `pipeline/out_overlays/`
+- 실시간 도착정보·영상은 저장본으로 못 만든다 (도착정보는 API, 영상은 `tools/cctv_proxy.py` 중계)

@@ -331,8 +331,12 @@ class ItsRoadRepository(
     private val key: String = BuildConfig.ITS_API_KEY.trim(),
 ) {
     suspend fun features(layer: String, south: Double, west: Double, north: Double, east: Double): List<ItsRoadFeature> {
-        requireKey()
         validateBounds(south, west, north, east)
+        // 집 PC 가 전국 단위로 받아 둔 저장본이 있으면 그 중 지도 범위만 (공공 API 를 직접 부르지 않음)
+        snapshotFeatures(layer)?.let { all ->
+            return all.filter { it.lat in south..north && it.lng in west..east }
+        }
+        requireKey()
         val request = when (layer) {
             "its_events" -> request("eventInfo", south, west, north, east) {
                 addQueryParameter("type", "all")
@@ -362,6 +366,13 @@ class ItsRoadRepository(
                 else -> emptyList()
             }
         }
+    }
+
+    private suspend fun snapshotFeatures(layer: String): List<ItsRoadFeature>? = when (layer) {
+        "its_events" -> OverlaySnapshot.get("ov_its_events.xml") { ItsRoadParser.events(it) }
+        "its_disasters" -> OverlaySnapshot.get("ov_its_disasters.xml") { ItsRoadParser.disasters(it) }
+        "its_safe_driving" -> OverlaySnapshot.get("ov_its_safe_driving.xml") { ItsRoadParser.safeDriving(it) }
+        else -> null
     }
 
     suspend fun traffic(south: Double, west: Double, north: Double, east: Double): List<ItsTrafficRow> {

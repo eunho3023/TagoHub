@@ -136,12 +136,14 @@ def make_handler(key: str, limiter: RateLimiter):
                 return self._send(502, b"upstream unreachable")
             with up:
                 ctype = up.headers.get("Content-Type", "application/octet-stream")
-                is_list = target.split("?")[0].lower().endswith(".m3u8") or any(s in ctype.lower() for s in PLAYLIST_TYPES)
+                # 공공 CCTV 는 302 로 실제 .m3u8 주소(포트 8081 등)로 넘겨서, 상대 주소는 넘어간 뒤의 주소 기준으로 풀어야 함
+                final = up.geturl()
+                is_list = final.split("?")[0].lower().endswith(".m3u8") or any(s in ctype.lower() for s in PLAYLIST_TYPES)
                 if is_list:
                     data = up.read(MAX_PLAYLIST_BYTES)
                     text = data.decode("utf-8", errors="replace")
                     if text.lstrip().startswith("#EXTM3U"):
-                        body = rewrite_playlist(text, target, key).encode("utf-8")
+                        body = rewrite_playlist(text, final, key).encode("utf-8")
                         return self._send(200, body, "application/vnd.apple.mpegurl")
                     return self._send(200, data, ctype)
                 # 조각·일반 파일: 받는 대로 흘려보냄 (길이를 모르면 연결을 닫아 끝을 알림)

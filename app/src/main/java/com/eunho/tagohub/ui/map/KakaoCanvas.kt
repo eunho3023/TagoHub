@@ -524,7 +524,7 @@ class KakaoCanvas(
         val a = routeArgs ?: return
         val color = a.color ?: return
         val lines: List<Pair<List<LatLng>, Boolean>> = if ((a.parts?.size ?: 0) >= 2) {
-            val d = 4.0 * density * metersPerPx()
+            val d = ROUTE_LINE_WIDTH_DP * 0.9 * density * metersPerPx()  // 상·하행 두 줄이 굵어진 만큼 더 띄움
             a.parts!!.mapIndexed { i, p -> PathMath.offsetMeters(p, d) to (a.strong == null || a.strong == i) }
         } else {
             listOf((a.shape?.takeIf { it.size >= 2 } ?: a.stops.map { LatLng(it.lat, it.lng) }) to true)
@@ -532,7 +532,7 @@ class KakaoCanvas(
         for ((pts, strong) in lines) {
             if (pts.size < 2) continue
             val c = if (strong) color else (color and 0x00FFFFFF) or (0x5A shl 24)
-            val style = RouteLineStyle.from(5f, c, 1.5f, if (strong) Color.WHITE else 0x78FFFFFF,
+            val style = RouteLineStyle.from(ROUTE_LINE_WIDTH_DP, c, 2f, if (strong) Color.WHITE else 0x78FFFFFF,
                 RouteLinePattern.from(icons.arrowPattern(), 70f))
             add(layer, pts, RouteLineStyles.from(style))?.let { routeLines += it }
         }
@@ -781,6 +781,8 @@ class KakaoCanvas(
         // 안드로이드 공식 MapOverlay: 로드뷰 라인·지형·자전거도로·스카이뷰 하이브리드 (교통정보는 카카오와 협의해야 쓸 수 있음)
         val OVERLAY_IDS = listOf("bicycle_road" to com.kakao.vectormap.MapOverlay.BICYCLE_ROAD, "hill_shading" to com.kakao.vectormap.MapOverlay.HILLSHADING)
         private const val ROUTE_LAYER = "routeLines"
+        /** 노선도 선 굵기 (dp). 예전 5 → 8 */
+        private const val ROUTE_LINE_WIDTH_DP = 8f
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
