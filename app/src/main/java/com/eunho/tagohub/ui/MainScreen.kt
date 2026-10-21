@@ -3,6 +3,8 @@ package com.eunho.tagohub.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
@@ -43,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -108,59 +111,58 @@ fun MainScreen() {
             androidx.compose.material3.ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
             ) {
+              // 가로 화면은 세로가 짧아서(약 340dp) 9개 항목이 안 들어감 → 두 줄로 나눠 한눈에 보이게
+              val compact = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 480
+              fun pick(k: ModeJump.Kind) { panel = k; scope.launch { drawerState.close() } }
+              val transit = listOf(
+                  Triple("기차", Icons.Filled.Train, ModeJump.Kind.Train),
+                  Triple("고속·시외버스", Icons.Filled.DirectionsBus, ModeJump.Kind.Coach),
+                  Triple("항공", Icons.Filled.Flight, ModeJump.Kind.Air),
+              )
+              val traffic = listOf(
+                  Triple("실시간 교통상황", Icons.Filled.Traffic, ModeJump.Kind.Utic),
+                  Triple("도로 정보", Icons.Filled.Info, ModeJump.Kind.ItsRoad),
+                  Triple("고속도로 정보", Icons.Filled.DirectionsCar, ModeJump.Kind.Expressway),
+                  Triple("도로날씨", Icons.Filled.Info, ModeJump.Kind.RoadWeather),
+              )
               Column(Modifier.verticalScroll(rememberScrollState())) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 18.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(horizontal = 18.dp, vertical = 20.dp),
-                ) {
-                    Text("TAGOHUB", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(6.dp))
-                    Text("이동 정보를 한곳에서", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
-                    Text("대중교통 · 철도 · 도로", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 3.dp))
+                if (compact) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            CompactDrawerLabel("대중교통")
+                            transit.forEach { (label, icon, kind) -> CompactDrawerItem(label, icon, panel == kind) { pick(kind) } }
+                            CompactDrawerLabel("기타")
+                            CompactDrawerItem("공지사항", Icons.Filled.Info, false) { showNotices = true; scope.launch { drawerState.close() } }
+                            CompactDrawerItem("앱 제보", Icons.Filled.Email, false) { showReport = true; scope.launch { drawerState.close() } }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            CompactDrawerLabel("교통 정보")
+                            traffic.forEach { (label, icon, kind) -> CompactDrawerItem(label, icon, panel == kind) { pick(kind) } }
+                        }
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 18.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 18.dp, vertical = 20.dp),
+                    ) {
+                        Text("TAGOHUB", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        Text("이동 정보를 한곳에서", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                        Text("대중교통 · 철도 · 도로", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 3.dp))
+                    }
+                    DrawerSectionLabel("대중교통")
+                    transit.forEach { (label, icon, kind) -> DrawerItem(label, icon, panel == kind) { pick(kind) } }
+                    DrawerSectionLabel("교통 정보")
+                    traffic.forEach { (label, icon, kind) -> DrawerItem(label, icon, panel == kind) { pick(kind) } }
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    DrawerItem("공지사항", Icons.Filled.Info, false) { showNotices = true; scope.launch { drawerState.close() } }
+                    DrawerItem("앱 제보", Icons.Filled.Email, false) { showReport = true; scope.launch { drawerState.close() } }
                 }
-                DrawerSectionLabel("대중교통")
-                DrawerItem("기차", Icons.Filled.Train, panel == ModeJump.Kind.Train) {
-                    panel = ModeJump.Kind.Train; scope.launch { drawerState.close() }
-                }
-                DrawerItem("고속·시외버스", Icons.Filled.DirectionsBus, panel == ModeJump.Kind.Coach) {
-                    panel = ModeJump.Kind.Coach; scope.launch { drawerState.close() }
-                }
-                DrawerItem("항공", Icons.Filled.Flight, panel == ModeJump.Kind.Air) {
-                    panel = ModeJump.Kind.Air; scope.launch { drawerState.close() }
-                }
-                DrawerSectionLabel("교통 정보")
-                DrawerItem("실시간 교통상황", Icons.Filled.Traffic, panel == ModeJump.Kind.Utic) {
-                    panel = ModeJump.Kind.Utic; scope.launch { drawerState.close() }
-                }
-                DrawerItem("도로 정보", Icons.Filled.Info, panel == ModeJump.Kind.ItsRoad) {
-                    panel = ModeJump.Kind.ItsRoad; scope.launch { drawerState.close() }
-                }
-                DrawerItem("고속도로 정보", Icons.Filled.DirectionsCar, panel == ModeJump.Kind.Expressway) {
-                    panel = ModeJump.Kind.Expressway; scope.launch { drawerState.close() }
-                }
-                DrawerItem("도로날씨", Icons.Filled.Info, panel == ModeJump.Kind.RoadWeather) {
-                    panel = ModeJump.Kind.RoadWeather; scope.launch { drawerState.close() }
-                }
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                androidx.compose.material3.NavigationDrawerItem(
-                    label = { Text("공지사항") },
-                    icon = { Icon(Icons.Filled.Info, contentDescription = null) },
-                    selected = false,
-                    onClick = { showNotices = true; scope.launch { drawerState.close() } },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
-                androidx.compose.material3.NavigationDrawerItem(
-                    label = { Text("앱 제보") },
-                    icon = { Icon(Icons.Filled.Email, contentDescription = null) },
-                    selected = false,
-                    onClick = { showReport = true; scope.launch { drawerState.close() } },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
               }
             }
         },
@@ -213,6 +215,33 @@ fun MainScreen() {
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }
+}
+
+/** 가로 화면용 작은 항목 (높이 40dp) */
+@Composable
+private fun CompactDrawerItem(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        modifier = Modifier.fillMaxWidth().height(40.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(label, Modifier.padding(start = 10.dp), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun CompactDrawerLabel(label: String) {
+    Text(
+        label,
+        Modifier.padding(start = 10.dp, top = 8.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = FontWeight.SemiBold,
+    )
 }
 
 @Composable

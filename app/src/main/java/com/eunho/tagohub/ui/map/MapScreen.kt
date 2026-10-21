@@ -94,6 +94,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Construction
@@ -765,11 +766,17 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
             shape = RoundedCornerShape(20.dp),
             tonalElevation = 6.dp,
         ) {
+            // 가로 화면은 세로가 짧아서 아래 버튼이 잘렸음 → 전체화면·닫기를 맨 위로 올리고, 내용은 스크롤, 영상 높이는 화면에 맞춤
+            val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
             Column(
-                Modifier.padding(18.dp),
+                Modifier.verticalScroll(rememberScrollState()).padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(cctv.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(cctv.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { fullscreen = true }) { Icon(Icons.Filled.Fullscreen, contentDescription = "전체화면") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
+                }
                 Text(
                     "${if (cctv.roadType == "ex") "고속도로" else "국도"} · ${cctv.format ?: "실시간 영상"}" +
                         (cctv.resolution?.let { " · $it" } ?: ""),
@@ -785,7 +792,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                                 setBackgroundColor(android.graphics.Color.BLACK)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(220.dp),
+                        modifier = Modifier.fillMaxWidth().height(minOf(220, (screenH * 0.5).toInt()).dp),
                     )
                 }
                 playbackError?.let {
