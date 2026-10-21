@@ -81,4 +81,20 @@ class RegionalBusTest {
     fun failureCodeThrows() {
         RegionalMappers.xmlRows("<tableInfo><resultCode>300</resultCode><resultMsg>FAIL</resultMsg></tableInfo>", "울산")
     }
+
+    /** 실제 광주 응답 모양 (RESPONSE 로 한 겹 더 감싸짐) */
+    @Test
+    fun gwangjuRealResponseShape() {
+        val json = """{"RESPONSE":{"RESULT":{"RESULT_MSG":"정상적으로 처리되었습니다.","RESULT_CODE":"SUCCESS"},"ARRIVE_LIST":{"ITEM":[{"ARRIVE":"","LINE_ID":5,"LINE_NAME":"첨단09","SHORT_LINE_NAME":"첨단09","BUS_ID":"772165","METRO_FLAG":null,"CURR_STOP_ID":2367,"BUSSTOP_NAME":"북성중","REMAIN_MIN":1,"REMAIN_STOP":1,"DIR_START":"무등산국립공원(증심사)","DIR_END":"첨단","LOW_BUS":"1","ARRIVE_FLAG":1,"LINE_KIND":1}]}}}"""
+        val a = RegionalMappers.gwangju(RegionalMappers.gwangjuRows(json)).single()
+        assertEquals("첨단09", a.routeNo)
+        assertEquals("첨단", a.towards)
+        assertEquals("북성중", a.atStop)
+        assertEquals(60, a.arrSeconds)
+    }
+
+    @Test(expected = java.io.IOException::class)
+    fun gwangjuNestedErrorIsNotSilentlyEmpty() {
+        RegionalMappers.gwangjuRows("""{"RESPONSE":{"RESULT":{"RESULT_CODE":"ERROR","RESULT_MSG":"잘못된 요청"}}}""")
+    }
 }
