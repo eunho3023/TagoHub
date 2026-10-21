@@ -44,16 +44,6 @@ class KlidBusRepository(
         return regions
     }
 
-    fun resolveRegion(cityName: String): KlidBusRegion? {
-        val candidates = regions()
-        val normalized = normalize(cityName)
-        candidates.firstOrNull { normalize(it.name) == normalized }?.let { return it }
-        return candidates.filter {
-            val region = normalize(it.name)
-            region.endsWith(normalized) || normalized.endsWith(region)
-        }.singleOrNull()
-    }
-
     /**
      * 법정동 코드(10자리)로 초정밀 버스 제공 지역 찾기: 시군구(앞 5자리+00000) → 시도(앞 2자리+00000000) 순으로 1건만 물어봄.
      * mst_info 는 stdgCd 가 필수라 지역 코드 없이 전체 목록을 받으려 하면 HTTP 400. 제공 안 하는 지역은 K3(데이터 없음) → null.
@@ -112,8 +102,6 @@ class KlidBusRepository(
             "rtm_loc_info" -> "rteId"
             else -> throw IllegalArgumentException("지원하지 않는 KLID API: $endpoint")
         }
-
-    private fun normalize(value: String): String = value.filterNot(Char::isWhitespace)
 
     private companion object {
         const val BASE_URL = "https://apis.data.go.kr/B551982/rte/"

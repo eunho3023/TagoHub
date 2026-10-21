@@ -148,10 +148,6 @@ class TagoRepository(private val api: TagoApi) {
         null
     }
 
-    suspend fun busCityPlaces(q: String) = run {
-        search(busCityList().map { Place(it.code, it.name) }, q)
-    }
-
     /** 정류소명·정류소번호·노선번호 통합 검색 (병렬) */
     suspend fun searchBus(cityCode: String, q: String) = run {
         coroutineScope {

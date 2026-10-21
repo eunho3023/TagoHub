@@ -1489,19 +1489,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     // ───────────────────────── 버스 검색 ─────────────────────────
 
-    suspend fun cityPlaces(q: String) = repo.busCityPlaces(q)
-
-    /** 직접 지역을 바꿀 때 (자동 판별 대신). 지도를 크게 옮기면 다시 자동으로 돌아간다 */
-    fun setBusCity(p: Place) {
-        val c = City(p.id, p.name)
-        busCity.value = c
-        autoCity.value = c
-        cityAt = lastView?.let { it.first to it.second }
-        prefs.edit().putString("cityCode", p.id).putString("cityName", p.name).apply()
-        busResult.value = Load.Idle
-        syncKlidBuses()
-    }
-
     /**
      * 정류소명·정류소번호·노선번호 전국 통합 검색.
      * - 정류장: 내장 DB(전국 227,059곳)에서 바로 → API 호출 없음
@@ -1888,11 +1875,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         lastBox?.let { box -> if (lastLevel >= 2 && busLayer) loadStopsInView(box, immediate = true) }
         trainLines = emptySet()
         trainJob?.cancel()
-        updateTrainLines()
-    }
-
-    fun toggleTrains() {
-        trainsOn.value = !trainsOn.value
         updateTrainLines()
     }
 

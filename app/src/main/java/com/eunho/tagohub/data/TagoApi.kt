@@ -68,28 +68,10 @@ interface TagoApi {
         @Query("numOfRows") rows: Int,
     ): String
 
-    @GET("BusLcInfoInqireService/getRouteAcctoSpcifySttnAccesBusLcInfo")
-    suspend fun busLocationsNearStop(
-        @Query("cityCode") cityCode: String,
-        @Query("routeId") routeId: String,
-        @Query("nodeId") nodeId: String,
-        @Query("pageNo") page: Int,
-        @Query("numOfRows") rows: Int,
-    ): String
-
     @GET("ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList")
     suspend fun busArrivals(
         @Query("cityCode") cityCode: String,
         @Query("nodeId") nodeId: String,
-        @Query("pageNo") page: Int,
-        @Query("numOfRows") rows: Int,
-    ): String
-
-    @GET("ArvlInfoInqireService/getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList")
-    suspend fun busArrivalsForRoute(
-        @Query("cityCode") cityCode: String,
-        @Query("nodeId") nodeId: String,
-        @Query("routeId") routeId: String,
         @Query("pageNo") page: Int,
         @Query("numOfRows") rows: Int,
     ): String

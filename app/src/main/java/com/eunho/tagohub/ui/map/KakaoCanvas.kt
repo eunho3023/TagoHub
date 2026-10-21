@@ -792,7 +792,6 @@ class KakaoCanvas(
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
-        private val UTIC_RED = 0xFFD32F2F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()
         private val UTIC_BLUE = 0xFF1976D2.toInt()
         private val ITS_CCTV_COLOR = 0xFF673AB7.toInt()

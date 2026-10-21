@@ -52,21 +52,6 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         ) { it.getString(0) }.firstOrNull()
     }
 
-    /** 이 좌표 근처(반경 m) 전주시 버스 정류장 (전주시 API 로 길찾기할 수 있는 정류장), 가까운 순 */
-    fun jeonjuNear(lat: Double, lng: Double, radiusM: Double, limit: Int): List<Pair<BusStop, Double>> {
-        val dLat = radiusM / 111_000.0
-        val dLng = radiusM / 90_000.0
-        return query(
-            """SELECT id, name, lat, lng, no, city FROM stops
-               WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND id LIKE 'JUB%'""",
-            arrayOf(lat - dLat, lat + dLat, lng - dLng, lng + dLng).map { it.toString() }.toTypedArray(),
-        ) { it.toStop() }
-            .map { it to com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat!!, it.lng!!) }
-            .filter { it.second <= radiusM }
-            .sortedBy { it.second }
-            .take(limit)
-    }
-
     /**
      * 같은 자리의 다른 시군 정류장 (30m 안, 도시코드가 다른 것, 시군마다 가장 가까운 하나).
      * 시군 경계 근처 정류장은 시군마다 따로 등록돼 있어서(예: 전주 BYC ↔ 김제 BYC, 1m)

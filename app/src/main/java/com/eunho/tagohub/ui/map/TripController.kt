@@ -304,77 +304,6 @@ class TripController(
     /** 노선 ID → 도시코드 (TAGO 노선의 정류장 목록·도착을 받을 때) */
     private val routeCity = HashMap<String, String>()
 
-    /**
-     * 출발·도착 근처 정류장들로 경로 계산 (모든 지역).
-     * 노선·정류장 순서는 지역별 출처(앱 안 데이터 → 휴대폰 저장 → 지역 API/TAGO), 전주 정류장끼리는 전주시 환승 검색도 함께.
-     */
-    private suspend fun computePlans(db: StopDb, origins: List<Pair<BusStop, Double>>, dests: List<Pair<BusStop, Double>>): List<TripPlan> = coroutineScope {
-        // 출발 정류장 도착정보 (첫 버스 대기시간 + 지금 다니는 노선)
-        val arrivalsJob = origins.take(3).map { (st, _) ->
-            async { st.nodeId to ((com.eunho.tagohub.ui.bus.arrivalsFor(repo, st) as? TagoResult.Success)?.data.orEmpty()) }
-        }
-        // 출발·도착 정류장을 지나는 전체 노선
-        val fromThroughJob = origins.take(4).map { (st, _) ->
-            async { (com.eunho.tagohub.ui.bus.stopRoutesFor(repo, st) as? TagoResult.Success)?.data.orEmpty().map { it to st.cityCode } }
-        }
-        val toThroughJob = dests.take(4).map { (st, _) ->
-            async { (com.eunho.tagohub.ui.bus.stopRoutesFor(repo, st) as? TagoResult.Success)?.data.orEmpty().map { it to st.cityCode } }
-        }
-        // 전주시 환승 검색 (전주 정류장끼리, 가까운 출발 2곳 × 도착 2곳)
-        val apiJob = origins.filter { Jeonju.isJeonju(it.first.nodeId) }.take(2).flatMap { (os, ow) ->
-            dests.filter { Jeonju.isJeonju(it.first.nodeId) }.take(2).map { (ds, dw) ->
-                async { Triple(os to ow, ds to dw, (Graph.jeonju.transfers(os.nodeId, ds.nodeId) as? TagoResult.Success)?.data.orEmpty()) }
-            }
-        }
-        val arrivals = arrivalsJob.awaitAll().toMap()
-        val fromThrough = fromThroughJob.awaitAll().flatten()
-        val toThrough = toThroughJob.awaitAll().flatten()
-        val api = apiJob.awaitAll()
-
-        val routeNos = HashMap<String, String>()
-        (fromThrough + toThrough).forEach { (r, city) ->
-            routeNos[r.routeId] = r.routeNo
-            routeCity.putIfAbsent(r.routeId, r.cityCode.ifBlank { city })
-        }
-        arrivals.values.flatten().forEach { routeNos.putIfAbsent(it.routeId, it.routeNo) }
-        api.flatMap { it.third }.forEach {
-            routeNos.putIfAbsent(Jeonju.tago(it.startId), it.startNo)
-            routeNos.putIfAbsent(Jeonju.tago(it.finId), it.finNo)
-        }
-        val fromIds = (fromThrough.map { it.first.routeId } + arrivals.values.flatten().map { it.routeId }).distinct().take(30)
-        val toIds = toThrough.map { it.first.routeId }.distinct().take(30)
-        val apiIds = api.flatMap { it.third }.flatMap { listOf(Jeonju.tago(it.startId), Jeonju.tago(it.finId)) }.distinct().take(20)
-
-        // 노선별 정류장 순서 (좌표 포함) → 거리 계산 가능한 노선
-        val ids = (fromIds + toIds + apiIds).distinct()
-        val lines = ids.map { id ->
-            async {
-                val city = routeCity[id] ?: origins.first().first.cityCode
-                id to com.eunho.tagohub.ui.bus.routeStopsFor(repo, id, city)
-            }
-        }.awaitAll().filter { it.second.size >= 2 }.associate { (id, stops) -> id to TripPlanner.Line(id, routeNos[id] ?: id, stops) }
-        val fromLines = fromIds.mapNotNull { lines[it] }
-        val toLines = toIds.mapNotNull { lines[it] }
-
-        val direct = TripPlanner.directs(origins, dests, fromLines)
-        val nearest = withContext(Dispatchers.Default) { TripPlanner.nearestTransfers(origins, dests, fromLines, toLines) }
-        val fromApi = api.flatMap { (o2, d2, opts) ->
-            TripPlanner.fromTransfers(o2.first, d2.first, o2.second, d2.second, opts, lines) { id -> db.byId(id)?.name }
-        }
-        // 첫 버스 실시간 대기시간 반영
-        (direct + nearest + fromApi).map { p ->
-            val wait = arrivals[p.origin.nodeId]?.filter { it.routeId == p.legs[0].routeId }?.mapNotNull { it.arrSeconds }?.minOrNull()
-            p.copy(firstWaitSec = wait)
-        }
-    }
-
-    /** 출발지·도착지 근처 정류장 (모든 지역). 정류장을 직접 골랐으면 그 정류장을 맨 앞에 */
-    private fun nearStops(db: StopDb, p: PlanPoint, radius: Double): List<Pair<BusStop, Double>> {
-        val picked = p.stopId?.let { db.byId(it) }
-        val near = db.near(p.lat, p.lng, radius, 6)
-        return (listOfNotNull(picked?.let { it to 0.0 }) + near).distinctBy { it.first.nodeId }.take(6)
-    }
-
     fun select(p: TripPlan?) {
         selected.value = p
         liveJob?.cancel()
@@ -514,8 +443,6 @@ class TripController(
     }
 
     companion object {
-        /** 출발지·도착지 근처 정류장 찾는 범위: 경로가 안 나오면 넓힘 */
-        val RADII = listOf(600.0, 1200.0, 2000.0)
         val LEG_COLORS = listOf(0xFF2E8B57.toInt(), 0xFF3D5BAB.toInt())
         val WALK = 0xFF7A8494.toInt()
         val MARK_START = 0xFF1A73E8.toInt()

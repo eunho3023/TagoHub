@@ -36,45 +36,6 @@ class MarkerBitmaps(private val density: Float) {
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
-    /** 버스 정류장 표지판: 짧은 기둥(아래 끝 = 정류장 위치) + 둥근 사각 표지판 + 흰 버스. anchor (0.5, 1) */
-    fun stopSign(color: Int, scale: Float, highlight: Boolean): Bitmap {
-        val sign = 15f * scale
-        val pole = 6f * scale
-        val pad = 2f * scale
-        val b = bmp(sign + pad * 2, sign + pole + pad)
-        val c = Canvas(b)
-        val d = density * scale
-        val cx = b.width / 2f
-        val bottom = b.height.toFloat()
-        val size = 15f * d
-        val top = bottom - 6f * d - size
-        // 기둥
-        stroke.color = Color.rgb(85, 90, 98)
-        stroke.strokeWidth = 2f * d
-        stroke.strokeCap = Paint.Cap.ROUND
-        c.drawLine(cx, bottom - 1f * d, cx, bottom - 6f * d, stroke)
-        // 표지판
-        val r = RectF(cx - size / 2, top, cx + size / 2, top + size)
-        fill.color = color
-        c.drawRoundRect(r, 3.5f * d, 3.5f * d, fill)
-        stroke.color = Color.WHITE
-        stroke.strokeWidth = (if (highlight) 2.5f else 1.5f) * d
-        c.drawRoundRect(r, 3.5f * d, 3.5f * d, stroke)
-        // 버스 그림
-        val bw = size * 0.6f
-        val bh = size * 0.48f
-        val bx = cx - bw / 2
-        val by = top + size * 0.2f
-        fill.color = Color.WHITE
-        c.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 2f * d, 2f * d, fill)
-        fill.color = color
-        c.drawRect(RectF(bx + bw * 0.16f, by + bh * 0.18f, bx + bw * 0.84f, by + bh * 0.5f), fill)
-        fill.color = Color.WHITE
-        c.drawCircle(bx + bw * 0.27f, by + bh + 0.4f * d, 1.5f * d, fill)
-        c.drawCircle(bx + bw * 0.73f, by + bh + 0.4f * d, 1.5f * d, fill)
-        return forKakao(b)
-    }
-
     /** 지하철역: 흰 사각형 + 노선색 테두리. anchor (0.5, 0.5) */
     fun station(ring: Int, scale: Float, highlight: Boolean): Bitmap {
         val half = 6f * scale
