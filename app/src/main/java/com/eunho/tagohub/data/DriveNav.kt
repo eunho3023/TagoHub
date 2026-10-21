@@ -136,6 +136,37 @@ class NavRoute(
         return out
     }
 
+    /**
+     * [progress] 미터 지점 이후에 남은 도로 구간들. 지나온 도로는 빼고, 지금 달리는 도로는 현재 위치부터로 잘라
+     * 지도에서 지나간 경로가 지워지게 한다.
+     */
+    fun remainingRoads(progress: Double): List<DriveRoad> {
+        val out = ArrayList<DriveRoad>()
+        for (i in roads.indices) {
+            if (roadEnd[i] <= progress) continue
+            val r = roads[i]
+            if (roadStart[i] >= progress || r.points.size < 2) { out += r; continue }
+            // 지금 달리는 도로: 점마다 도로 안의 위치를 구해 지나온 점을 자름
+            val along = DoubleArray(r.points.size)
+            for (k in 1 until r.points.size) along[k] = along[k - 1] + Geo.meters(r.points[k - 1].lat, r.points[k - 1].lng, r.points[k].lat, r.points[k].lng)
+            val total = along.last().takeIf { it > 0 } ?: 1.0
+            val span = roadEnd[i] - roadStart[i]
+            val kept = ArrayList<LatLng>()
+            kept += pointAt(progress)
+            for (k in r.points.indices) if (roadStart[i] + along[k] / total * span > progress) kept += r.points[k]
+            if (kept.size < 2) kept += r.points.last()
+            out += r.copy(points = kept)
+        }
+        return out
+    }
+
+    /** [progress] 이후 남은 경로선 (도로 구간 정보가 없을 때 지나온 부분을 지우는 데 씀) */
+    fun remainingPoints(progress: Double): List<LatLng> {
+        if (points.size < 2) return points
+        val seg = segmentAt(progress)
+        return listOf(pointAt(progress)) + points.subList(seg + 1, points.size)
+    }
+
     data class Projection(val segment: Int, val distance: Double, val along: Double)
 
     companion object {

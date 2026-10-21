@@ -174,6 +174,13 @@ class TripController(
         if (fit) canvas()?.fitTo(route.points)
     }
 
+    /** 안내 중: 지나온 경로는 지우고 [progress] 미터 지점부터 남은 경로만 소통 색으로 그림 (화면은 옮기지 않음) */
+    fun showDriveRemaining(nav: com.eunho.tagohub.data.NavRoute, progress: Double, dest: LatLng) {
+        val roads = nav.remainingRoads(progress)
+        val segments = trafficSegments(roads).ifEmpty { listOf(TripSegment(nav.remainingPoints(progress), 0xFF3D5BAB.toInt(), false)) }
+        canvas()?.setTrip(segments, listOf(TripMark(dest.lat, dest.lng, "도", MARK_END)))
+    }
+
     private fun drive() {
         val d = dest.value ?: return
         val o = origin.value?.let { LatLng(it.lat, it.lng) } ?: me() ?: center()

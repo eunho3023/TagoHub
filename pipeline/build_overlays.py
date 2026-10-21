@@ -11,9 +11,10 @@
   ov_its_safe_driving.xml    ITS 주의운전구간
   ov_its_cctv_ex.xml         ITS CCTV 목록 (고속도로)
   ov_its_cctv_its.xml        ITS CCTV 목록 (국도)
+  ov_safety_zones.json       단속카메라·어린이 보호구역 (공공데이터포털 표준데이터 2종을 합쳐 점 목록만: [종류코드,이름,위도,경도,제한속도]) — 12시간마다만 새로 만듦
   ov_utic_safety.json        UTIC 교통안전정보 (16MB 엑셀 묶음을 미리 풀어 점 목록만: [분류,id,설명,주소,위도,경도]) — 12시간마다만 새로 만듦
 
-키: 환경변수 UTIC_API_KEY, ITS_API_KEY (없으면 저장소 루트 local.properties 에서 읽음).
+키: 환경변수 UTIC_API_KEY, ITS_API_KEY, TAGO_SERVICE_KEY(공공데이터포털 키: 안전구간용) (없으면 저장소 루트 local.properties 에서 읽음).
 한 항목이 실패하면 그 파일만 새로 만들지 않고(= 올리지 않고) 나머지는 그대로 진행한다. 앱은 오래된 파일을 쓰지 않는다.
 """
 import datetime
@@ -177,6 +178,79 @@ def build_safety(utic_key: str) -> bytes:
     return json.dumps(points, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
+ZONES_NAME = "ov_safety_zones.json"
+ZONE_API = "https://api.data.go.kr/openapi/"
+# 공공데이터포털 [활용신청] 을 해야 키가 통함: 전국무인교통단속카메라표준데이터, 전국어린이보호구역표준데이터
+CAMERA_ENDPOINT = "tn_pubr_public_unmanned_traffic_camera_api"
+CHILD_ENDPOINT = "tn_pubr_public_child_prtc_zn_api"
+
+
+def _num(v):
+    try:
+        return float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def zone_kind_of_camera(item: dict) -> str:
+    """단속구분(regltSe) 문구로 종류 코드: 구간단속 section / 과속 speed / 신호 signal / 그 밖 cam"""
+    text = str(item.get("regltSe") or "")
+    if "구간" in text:
+        return "section"
+    if "과속" in text:
+        return "speed"
+    if "신호" in text:
+        return "signal"
+    return "cam"
+
+
+def zone_rows(camera_items, child_items) -> list:
+    """표준데이터 응답 항목들 → 앱이 읽는 점 목록 [[종류코드,이름,위도,경도,제한속도|None], ...] (좌표가 이상한 것은 뺌)"""
+    rows = []
+    for it in camera_items:
+        lat, lng = _num(it.get("latitude")), _num(it.get("longitude"))
+        if lat is None or lng is None or not (33 <= lat <= 39.5 and 124 <= lng <= 132):
+            continue
+        lim = _num(it.get("lmttVe"))
+        lim = int(lim) if lim and 10 <= lim <= 130 else None
+        name = (it.get("itlpc") or it.get("rdnmadr") or it.get("lnmadr") or "").strip()
+        rows.append([zone_kind_of_camera(it), name, lat, lng, lim])
+    for it in child_items:
+        lat, lng = _num(it.get("latitude")), _num(it.get("longitude"))
+        if lat is None or lng is None or not (33 <= lat <= 39.5 and 124 <= lng <= 132):
+            continue
+        if str(it.get("chldPrtnZonYn") or "Y").strip().upper() == "N":
+            continue  # 지정 해제된 곳
+        rows.append(["child", (it.get("trgetFcltyNm") or "").strip(), lat, lng, None])
+    return rows
+
+
+def fetch_standard(endpoint: str, key: str, page_size: int = 1000) -> list:
+    """공공데이터포털 표준데이터 API 의 모든 쪽을 받아 항목 목록으로"""
+    items, page, total = [], 1, None
+    while True:
+        q = urllib.parse.urlencode({"serviceKey": key, "pageNo": page, "numOfRows": page_size, "type": "json"}, safe="")
+        data = json.loads(fetch(f"{ZONE_API}{endpoint}?{q}", timeout=90).decode("utf-8"))
+        body = (data.get("response") or {}).get("body") or {}
+        got = body.get("items") or []
+        if isinstance(got, dict):
+            got = got.get("item") or []
+        if isinstance(got, dict):
+            got = [got]
+        items.extend(got)
+        total = int(body.get("totalCount") or 0) if total is None else total
+        if not got or len(items) >= total or page >= 200:
+            return items
+        page += 1
+
+
+def build_zones(key: str) -> bytes:
+    rows = zone_rows(fetch_standard(CAMERA_ENDPOINT, key), fetch_standard(CHILD_ENDPOINT, key))
+    if not rows:
+        raise ValueError("안전구간 점이 하나도 없음")
+    return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
 def main() -> int:
     os.makedirs(OUT, exist_ok=True)
     utic_key, its_key = get_key("UTIC_API_KEY"), get_key("ITS_API_KEY")
@@ -218,6 +292,18 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001
             failed += 1
             print(f"FAIL {SAFETY_NAME}: {str(e).replace(utic_key, '***')}", file=sys.stderr)
+    data_key = get_key("TAGO_SERVICE_KEY")
+    if data_key and time.time() - updated.get(ZONES_NAME, 0) > SAFETY_EVERY_SEC:
+        try:
+            body = build_zones(data_key)
+            with open(os.path.join(OUT, ZONES_NAME + ".gz"), "wb") as f:
+                f.write(gzip.compress(body, 9))
+            updated[ZONES_NAME] = int(time.time())
+            ok += 1
+            print(f"OK   {ZONES_NAME}  {len(body):,} bytes")
+        except Exception as e:  # noqa: BLE001 - 활용신청 전이면 여기로 옴 (403): 앱은 이 알림만 없이 안내
+            failed += 1
+            print(f"FAIL {ZONES_NAME}: {str(e).replace(data_key, '***')}", file=sys.stderr)
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump({"updated": updated, "generated": int(time.time())}, f)
     print(f"완료: 성공 {ok}, 실패 {failed}")

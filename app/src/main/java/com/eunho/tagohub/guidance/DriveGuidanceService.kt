@@ -30,6 +30,11 @@ import com.eunho.tagohub.data.NavEngine
 import com.eunho.tagohub.data.NavRoute
 import com.eunho.tagohub.data.NavText
 import com.eunho.tagohub.data.RouteSimulator
+import com.eunho.tagohub.data.SafetyZone
+import com.eunho.tagohub.data.SafetyZones
+import com.eunho.tagohub.data.ZoneTracker
+import com.eunho.tagohub.data.matchRoute
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -148,6 +153,14 @@ class DriveGuidanceService : Service() {
         routeVersion++
         engine = NavEngine(nav)
         DriveGuidance.route.value = route
+        // 이 경로 위의 단속카메라·어린이 보호구역 (목록은 한 번만 읽고, 경로가 바뀌면 다시 맞춤)
+        val loaded = zoneData
+        if (loaded != null) tracker = ZoneTracker(matchRoute(nav, loaded))
+        else scope.launch(Dispatchers.Default) {
+            val zones = SafetyZones.load()
+            zoneData = zones
+            currentNav?.let { tracker = ZoneTracker(matchRoute(it, zones)) }
+        }
     }
 
     /** 모의주행 루프: [SIM_TICK_MS] 마다 가상 위치를 만들어 [handleLocation] 에 넣음 */
@@ -187,6 +200,9 @@ class DriveGuidanceService : Service() {
         }
     }
 
+    @Volatile private var zoneData: List<SafetyZone>? = null
+    @Volatile private var tracker: ZoneTracker? = null
+
     private fun handleLocation(loc: Location) {
         val eng = engine ?: return
         // 오차가 너무 큰 위치는 안내에 쓰지 않음 (터널 입구 등)
@@ -197,9 +213,13 @@ class DriveGuidanceService : Service() {
             speedMps = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0,
             accuracyM = if (loc.hasAccuracy()) loc.accuracy.toDouble() else 0.0,
         )
-        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude)
+        val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6 else 0.0
+        val zone = if (st.offRoute || st.arrived) null else tracker?.update(st.progressMeters, speedKmh)
+        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, speedKmh.roundToInt(), zone?.takeIf { it.next != null })
         val v = voice
-        st.speak.forEach { v?.speak(it) }
+        // 회전 안내와 안전 지점 안내가 동시에 나오면 한 번에 이어서 말함 (따로 말하면 앞 말이 끊김)
+        val lines = st.speak + zone?.speak.orEmpty()
+        if (lines.isNotEmpty()) v?.speak(lines.joinToString(" "))
         if (v != null && v.ready && !v.koreanAvailable && !noted) {
             noted = true
             DriveGuidance.note.value = "이 기기에 한국어 음성이 없어 소리 없이 안내합니다. 설정 > 음성 출력에서 한국어 음성을 설치하세요."

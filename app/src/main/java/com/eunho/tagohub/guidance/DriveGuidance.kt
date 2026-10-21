@@ -18,7 +18,14 @@ import java.util.TimeZone
  * 서비스가 위치를 받아 엔진을 돌리고 결과를 여기에 올리면, 화면은 보기만 한다.
  */
 object DriveGuidance {
-    data class Info(val state: NavState, val lat: Double, val lng: Double)
+    /** [speedKmh] 는 지금 속도, [zone] 은 앞에 있는 단속카메라·어린이 보호구역 정보(없으면 null) */
+    data class Info(
+        val state: NavState,
+        val lat: Double,
+        val lng: Double,
+        val speedKmh: Int = 0,
+        val zone: com.eunho.tagohub.data.ZoneStatus? = null,
+    )
 
     /** 안내 중인지 */
     val active = MutableStateFlow(false)

@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Paid
@@ -61,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,7 +80,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.eunho.tagohub.core.Geo
 import com.eunho.tagohub.data.DriveGuide
+import com.eunho.tagohub.data.NavRoute
+import com.eunho.tagohub.data.ZoneKind
+import com.eunho.tagohub.data.ZoneStatus
+import kotlinx.coroutines.delay
 import com.eunho.tagohub.data.LatLng
 import com.eunho.tagohub.data.NavText
 import com.eunho.tagohub.data.TurnKind
@@ -115,13 +124,34 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
     val note by DriveGuidance.note.collectAsStateWithLifecycle()
     val simulating by DriveGuidance.simulating.collectAsStateWithLifecycle()
 
-    // 지도가 내 위치를 따라감
-    LaunchedEffect(info?.lat, info?.lng) { info?.let { vm.setMe(it.lat, it.lng, center = true) } }
-    // 재탐색 등으로 경로가 바뀌면 지도에 다시 그림(화면은 옮기지 않음)
-    LaunchedEffect(route) {
-        val r = route ?: return@LaunchedEffect
-        val here = info?.let { LatLng(it.lat, it.lng) } ?: r.points.first()
-        vm.trip.showDriveRoute(here, DriveGuidance.destination ?: r.points.last(), r, fit = false)
+    val nav = remember(route) { route?.let { NavRoute.from(it) } }
+    // 지도가 내 위치(GPS)를 따라감: 진행 방향 앞쪽을 더 보여주고, 빠를수록 넓게. 손으로 움직이면 멈춤
+    val lastPos = remember { arrayOfNulls<Pair<Double, Double>>(1) }
+    var bearing by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(info?.lat, info?.lng) {
+        val i = info ?: return@LaunchedEffect
+        val last = lastPos[0]
+        // 8m 이상 움직였을 때만 방향을 새로 구함 (멈춰 있을 때 GPS 흔들림으로 방향이 돌지 않게)
+        if (last == null || Geo.meters(last.first, last.second, i.lat, i.lng) >= 8.0) {
+            if (last != null) bearing = Geo.bearing(last.first, last.second, i.lat, i.lng)
+            lastPos[0] = i.lat to i.lng
+        }
+        vm.followMe(i.lat, i.lng, i.speedKmh, bearing)
+    }
+    // 지나온 경로는 지도에서 지우고 남은 경로만 그림 (재탐색으로 경로가 바뀌어도 새 경로로)
+    val latest = rememberUpdatedState(info)
+    LaunchedEffect(nav) {
+        val n = nav ?: return@LaunchedEffect
+        var drawn = -1
+        while (true) {
+            val progress = latest.value?.state?.progressMeters ?: 0.0
+            val bucket = (progress / 25.0).toInt()
+            if (bucket != drawn) {
+                drawn = bucket
+                vm.trip.showDriveRemaining(n, progress, DriveGuidance.destination ?: n.points.last())
+            }
+            delay(700)
+        }
     }
     if (!active) return
 
@@ -158,19 +188,28 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
                 }
                 else -> StatusBanner("경로 안내 중")
             }
+            info?.zone?.takeIf { it.next != null && it.distance <= 1500.0 }?.let { ZoneCard(it) }
             if (simulating) NoteChip("모의주행 중 · 실제 위치가 아닙니다", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
             note?.let { NoteChip(it, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer) }
         }
 
         // ── 오른쪽: 남은 길 소통 막대 ──
         if (route != null && st != null) {
-            val route0 = remember(route) { com.eunho.tagohub.data.NavRoute.from(route!!) }
-            val spans = remember(route0, st.progressMeters.toInt() / 100) { route0.trafficSpans(st.progressMeters) }
+            val spans = remember(nav, st.progressMeters.toInt() / 100) { nav?.trafficSpans(st.progressMeters).orEmpty() }
             TrafficBar(
                 spans,
                 Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).fillMaxHeight(0.36f),
             )
         }
+
+        // ── 왼쪽 아래: 현재 속도와 (앞에 카메라가 있으면) 제한속도 ──
+        val zone = info?.zone
+        val limit = zone?.next?.zone?.limitKmh?.takeIf { zone.next.zone.kind.isCamera && zone.distance <= 1500.0 }
+        SpeedGauge(
+            speedKmh = info?.speedKmh ?: 0,
+            limitKmh = limit,
+            modifier = Modifier.align(Alignment.BottomStart).windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, bottom = 88.dp),
+        )
 
         // ── 아래: 도착 시각·남은 거리 바 ──
         Surface(
@@ -214,6 +253,55 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             confirmButton = { TextButton(onClick = { confirmEnd = false; DriveGuidance.stop(context) }) { Text("안내 종료") } },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("계속 안내") } },
         )
+    }
+}
+
+/** 현재 속도(동그라미)와, 앞 단속카메라의 제한속도(빨간 테두리). 제한을 넘으면 속도가 빨갛게 */
+@Composable
+private fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier) {
+    val over = limitKmh != null && speedKmh > limitKmh + 3
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp, modifier = Modifier.size(64.dp)) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text("$speedKmh", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if (over) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurface)
+                Text("km/h", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (limitKmh != null) {
+            Box(
+                Modifier.size(48.dp).background(Color.White, CircleShape).border(5.dp, Color(0xFFD32F2F), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text("$limitKmh", color = Color.Black, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+/** 앞의 단속카메라·어린이 보호구역: "과속단속카메라 · 500m" (제한속도를 넘으면 빨갛게) */
+@Composable
+private fun ZoneCard(z: ZoneStatus) {
+    val rz = z.next ?: return
+    val child = rz.zone.kind == ZoneKind.ChildZone
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (z.overspeed) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surface,
+        shadowElevation = 6.dp,
+        modifier = Modifier.widthIn(max = 320.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (child) Icons.Filled.ChildCare else Icons.Filled.CameraAlt,
+                contentDescription = null,
+                tint = if (z.overspeed) Color.White else Color(0xFFE08A00),
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${rz.zone.kind.label} · ${NavText.short(z.distance)}" + (rz.zone.limitKmh?.let { " · 제한 $it" } ?: ""),
+                color = if (z.overspeed) Color.White else MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 

@@ -72,6 +72,12 @@ interface MapCanvas {
     /** 배율은 그대로, 아래 패널(화면의 panelFrac)에 가리지 않는 자리 가운데에 오도록 이동 */
     fun centerOn(lat: Double, lng: Double, panelFrac: Float)
 
+    /**
+     * 경로 안내 중 내 위치를 따라감: 화면 가운데를 [lat],[lng] 에서 [bearingDeg] 방향으로 [aheadM] 미터 앞에 두어
+     * 차가 화면 아래쪽에 보이게 한다. 배율은 [zoom] 으로 맞춘다.
+     */
+    fun follow(lat: Double, lng: Double, zoom: Int, bearingDeg: Double?, aheadM: Double) {}
+
     /** 정류소·역이 보이는 배율까지 확대하며 이동 */
     fun focus(lat: Double, lng: Double)
     fun setBase(type: BaseMap)
