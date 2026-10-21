@@ -31,6 +31,10 @@ android {
         )
         buildConfigField("String", "KRIC_SUBWAY_KEY", "\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
         buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
+        // 한국도로공사 고속도로 공공데이터(data.ex.co.kr) 인증키
+        buildConfigField("String", "EX_API_KEY", "\"${localProps.getProperty("EX_API_KEY", "")}\"")
+        // 기상청 CCTV 기반 도로날씨 인증키 (공공데이터포털 RoadWthrInfoService)
+        buildConfigField("String", "KMA_ROAD_KEY", "\"${localProps.getProperty("KMA_ROAD_KEY", "")}\"")
         buildConfigField("String", "ITS_API_KEY", "\"${localProps.getProperty("ITS_API_KEY", "")}\"")
         // CCTV 영상 중계 서버 (집 PC, tools/cctv_proxy.py). 비워 두면 원래 영상 주소로 직접 재생
         buildConfigField("String", "CCTV_PROXY_URL", "\"${localProps.getProperty("CCTV_PROXY_URL", "")}\"")

@@ -109,6 +109,12 @@ data class TrainView(
 enum class MapMode { Bus, Subway, Transit }
 
 class MapViewModel(app: Application) : AndroidViewModel(app) {
+    init {
+        // 정체 구간을 지도에 찍을 VDS 위치 파일 (assets/ex_vds.json)
+        com.eunho.tagohub.data.ExMapLayers.vdsJson = {
+            app.assets.open("ex_vds.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }
+    }
     private val repo = Graph.repo
     private val seoul = Graph.seoul
     private val uticIncidentsRepo = UticIncidentRepository()
@@ -1489,19 +1495,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     // ───────────────────────── 버스 검색 ─────────────────────────
 
-    suspend fun cityPlaces(q: String) = repo.busCityPlaces(q)
-
-    /** 직접 지역을 바꿀 때 (자동 판별 대신). 지도를 크게 옮기면 다시 자동으로 돌아간다 */
-    fun setBusCity(p: Place) {
-        val c = City(p.id, p.name)
-        busCity.value = c
-        autoCity.value = c
-        cityAt = lastView?.let { it.first to it.second }
-        prefs.edit().putString("cityCode", p.id).putString("cityName", p.name).apply()
-        busResult.value = Load.Idle
-        syncKlidBuses()
-    }
-
     /**
      * 정류소명·정류소번호·노선번호 전국 통합 검색.
      * - 정류장: 내장 DB(전국 227,059곳)에서 바로 → API 호출 없음
@@ -1891,11 +1884,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         updateTrainLines()
     }
 
-    fun toggleTrains() {
-        trainsOn.value = !trainsOn.value
-        updateTrainLines()
-    }
-
     // ───────────────────────── 화면이 떠 있는 동안의 루프 ─────────────────────────
 
     /** TAGO 실시간 버스 서비스 지역 (도시 목록에 없는 지역은 정류장 위치만 제공) */
@@ -2224,6 +2212,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "its_dangerous_cars",
             "its_vds",
             "its_ice_sections",
+            "ex_rest",
+            "ex_toll",
+            "ex_ic",
+            "ex_vms",
+            "ex_congest",
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

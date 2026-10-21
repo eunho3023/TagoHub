@@ -129,7 +129,8 @@ object RegionalMappers {
     /** 광주: JSON {"RESULT":{...},"BUSSTOP_LIST":[...]} */
     fun gwangjuRows(body: String): List<Row> {
         val root = MiniJson.parse(body) as? Map<*, *> ?: throw IOException("광주 버스 API 응답 형식이 올바르지 않습니다.")
-        val result = root["RESULT"] as? Map<*, *>
+        // 실제 응답: {"RESPONSE":{"RESULT":{...},"ARRIVE_LIST":{"ITEM":[...]}}} (가이드 샘플은 RESULT 가 바로 위에 있음)
+        val result = ((root["RESPONSE"] as? Map<*, *>)?.get("RESULT") ?: root["RESULT"]) as? Map<*, *>
         val code = result?.get("RESULT_CODE")?.toString()
         if (code != null && code != "SUCCESS") {
             throw IOException("광주 버스 API 오류 $code: ${result["RESULT_MSG"] ?: ""}")

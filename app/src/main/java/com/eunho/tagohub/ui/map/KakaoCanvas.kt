@@ -383,6 +383,11 @@ class KakaoCanvas(
                     "its_vms" -> icons.letterBadge(0xFF1565C0.toInt(), "전")
                     "its_vds" -> icons.letterBadge(0xFF546E7A.toInt(), "D")
                     "its_ice_sections" -> icons.letterBadge(0xFF00ACC1.toInt(), "빙")
+                    "ex_rest" -> icons.letterBadge(0xFF2E7D32.toInt(), "휴")
+                    "ex_toll" -> icons.letterBadge(0xFF1565C0.toInt(), "톨")
+                    "ex_ic" -> icons.letterBadge(0xFF6D4C41.toInt(), "IC")
+                    "ex_vms" -> icons.letterBadge(0xFFEF6C00.toInt(), "전광")
+                    "ex_congest" -> icons.letterBadge(0xFFD32F2F.toInt(), "정체")
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))
@@ -788,7 +793,6 @@ class KakaoCanvas(
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
-        private val UTIC_RED = 0xFFD32F2F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()
         private val UTIC_BLUE = 0xFF1976D2.toInt()
         private val ITS_CCTV_COLOR = 0xFF673AB7.toInt()
