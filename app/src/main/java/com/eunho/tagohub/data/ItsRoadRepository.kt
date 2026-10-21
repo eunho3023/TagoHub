@@ -332,6 +332,10 @@ class ItsRoadRepository(
 ) {
     suspend fun features(layer: String, south: Double, west: Double, north: Double, east: Double): List<ItsRoadFeature> {
         validateBounds(south, west, north, east)
+        // 한국도로공사 위치 데이터(휴게소·영업소·IC·전광표지판): 전국 목록을 받아 지도 범위만
+        if (layer in ExMapLayers.IDS) {
+            return ExMapLayers.features(layer).filter { it.lat in south..north && it.lng in west..east }
+        }
         // 집 PC 가 전국 단위로 받아 둔 저장본이 있으면 그 중 지도 범위만 (공공 API 를 직접 부르지 않음)
         snapshotFeatures(layer)?.let { all ->
             return all.filter { it.lat in south..north && it.lng in west..east }

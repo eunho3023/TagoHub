@@ -383,6 +383,10 @@ class KakaoCanvas(
                     "its_vms" -> icons.letterBadge(0xFF1565C0.toInt(), "전")
                     "its_vds" -> icons.letterBadge(0xFF546E7A.toInt(), "D")
                     "its_ice_sections" -> icons.letterBadge(0xFF00ACC1.toInt(), "빙")
+                    "ex_rest" -> icons.letterBadge(0xFF2E7D32.toInt(), "휴")
+                    "ex_toll" -> icons.letterBadge(0xFF1565C0.toInt(), "톨")
+                    "ex_ic" -> icons.letterBadge(0xFF6D4C41.toInt(), "IC")
+                    "ex_vms" -> icons.letterBadge(0xFFEF6C00.toInt(), "전광")
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))
