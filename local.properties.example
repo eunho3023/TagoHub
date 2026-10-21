@@ -1,10 +1,34 @@
-# 이 파일을 local.properties 로 복사(또는 내용 추가)하고 키를 넣으세요.
+# 이 파일을 local.properties 로 복사(또는 내용 추가)하고 키를 넣으세요. local.properties 는 git 에 올라가지 않습니다.
+# 이 예제 파일에는 절대 실제 키를 적지 마세요 (저장소가 공개라서 기록에 그대로 남습니다).
+#
 # 공공데이터포털의 Encoding 키(%2F, %2B 포함)와 Decoding 키 모두 사용 가능합니다.
+# 주의: Decoding 키에 = 같은 글자가 있으면 이 파일(자바 properties 형식)에서는 \= 로 저장될 수 있습니다. 앱은 올바르게 읽습니다.
+
+# 공공데이터포털 — 국토교통부 TAGO(버스·기차·지하철·항공) 및 지역 버스·공항 API 공통 (서비스마다 활용신청 필요)
 TAGO_SERVICE_KEY=여기에_서비스키
-KRIC_SUBWAY_KEY=$2a$10$wQ2fCVx8Cy1fx2TlFwa0IucyazBGMYbmAtyHlCv6zWVnoqQa2zIi2
+# 초정밀 버스(KLID). 비우면 TAGO_SERVICE_KEY 를 대신 씀
+KLID_BUS_KEY=
+
+# 한국철도공사 KRIC (지하철 노선·시간표)
+KRIC_SUBWAY_KEY=KRIC_인증키
+# UTIC 개방데이터 (돌발·도로위험·교통안전) — 키에 등록한 IP 에서만 되는 것으로 보임
 UTIC_API_KEY=UTIC_개방데이터_인증키
+# 국토교통부 ITS 오픈API (CCTV·돌발·재난·가변속도·전광표지 등)
 ITS_API_KEY=ITS_오픈API_CCTV_인증키
+# 한국도로공사 고속도로 공공데이터 (data.ex.co.kr)
+EX_API_KEY=한국도로공사_인증키
+# 기상청 CCTV 기반 도로날씨 (공공데이터포털 RoadWthrInfoService 활용신청 필요)
+KMA_ROAD_KEY=기상청_도로날씨_인증키
+# 서울 열린데이터광장 실시간 지하철
 SEOUL_SUBWAY_KEY=서울_실시간지하철_인증키
+
+# 카카오 개발자 사이트
 KAKAO_NATIVE_KEY=카카오_네이티브_앱_키
 KAKAO_REST_KEY=카카오_REST_API_키
+
+# CCTV 영상 중계 서버 (tools/cctv_proxy.py). 둘 다 비우면 원래 영상 주소로 직접 재생
+CCTV_PROXY_URL=
+CCTV_PROXY_KEY=
+
+# 정류장·노선 데이터 안내 파일 (GitHub Release data-latest). 레이어 저장본(ov_*)도 같은 폴더에서 읽음
 DATA_MANIFEST_URL=https://github.com/eunho3023/TagoHub/releases/download/data-latest/manifest.json
