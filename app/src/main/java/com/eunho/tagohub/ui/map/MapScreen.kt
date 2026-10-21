@@ -82,6 +82,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -587,6 +589,12 @@ private fun MapInfoDialog(title: String, body: String, period: List<String>, sou
     )
 }
 
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -618,11 +626,67 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
         onDispose { player.removeListener(listener); player.release() }
     }
 
+    var fullscreen by rememberSaveable(cctv.id) { mutableStateOf(false) }
+    // 전체화면이면 화면을 가로로 돌리고(센서에 따라 좌우), 닫거나 나가면 원래대로
+    DisposableEffect(fullscreen) {
+        val activity = context.findActivity()
+        if (fullscreen) activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose { if (fullscreen) activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    }
+
     Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        onDismissRequest = { if (fullscreen) fullscreen = false else onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Surface(
+        if (fullscreen) {
+            // 상태표시줄·내비게이션 바를 숨겨 영상만 꽉 차게
+            val view = androidx.compose.ui.platform.LocalView.current
+            SideEffect {
+                val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window ?: return@SideEffect
+                androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
+                    systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                }
+            }
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                key(cctv.id) {
+                    AndroidView(
+                        factory = { viewContext ->
+                            androidx.media3.ui.PlayerView(viewContext).apply {
+                                this.player = player
+                                useController = false
+                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Row(
+                    Modifier.align(Alignment.TopStart).fillMaxWidth().background(Color(0x66000000)).padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        cctv.name,
+                        Modifier.weight(1f).padding(start = 8.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    TextButton(onClick = { fullscreen = false }) { Text("전체화면 종료", color = Color.White) }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "닫기", tint = Color.White) }
+                }
+                playbackError?.let {
+                    Text(
+                        it,
+                        Modifier.align(Alignment.BottomCenter).background(Color(0x99000000)).padding(8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White,
+                    )
+                }
+            }
+        } else Surface(
             modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 480.dp),
             shape = RoundedCornerShape(20.dp),
             tonalElevation = 6.dp,
@@ -682,6 +746,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                             }
                         },
                     ) { Text("외부 플레이어") }
+                    TextButton(onClick = { fullscreen = true }) { Text("전체화면") }
                     TextButton(onClick = onDismiss) { Text("닫기") }
                 }
             }
