@@ -89,7 +89,7 @@ class ItsCctvRepository(
             listOf("ex", "its").map { type ->
                 async {
                     // 집 PC 가 전국 CCTV 목록을 받아 둔 저장본이 있으면 그 중 지도 범위만 (공공 API 를 직접 부르지 않음)
-                    OverlaySnapshot.get("ov_its_cctv_$type.xml") { ItsCctvParser.parse(it, type) }?.let { all ->
+                    OverlaySnapshot.get("ov_its_cctv_$type.xml", staleOkSec = CCTV_STALE_OK_SEC) { ItsCctvParser.parse(it, type) }?.let { all ->
                         return@async all.filter { it.lat in south..north && it.lng in west..east }
                     }
                     if (key.isBlank()) throw IOException("local.properties에 ITS_API_KEY를 설정하세요.")
@@ -118,5 +118,7 @@ class ItsCctvRepository(
 
     private companion object {
         const val MAX_CCTVS = 500
+        /** CCTV 위치 목록은 거의 안 바뀌어서 일주일 된 저장본도 먼저 보여주고 뒤에서 새로 받음 */
+        const val CCTV_STALE_OK_SEC = 7 * 24 * 3600L
     }
 }
