@@ -43,6 +43,11 @@ data class RidePlan(
     val tollWon: Int? = null,
     val guides: List<com.eunho.tagohub.data.DriveGuide> = emptyList(),
     val roads: List<com.eunho.tagohub.data.DriveRoad> = emptyList(),
+    /** 안내 시작에 쓰는 경로 원본과 목적지 */
+    val drive: com.eunho.tagohub.data.KakaoDriveRoute? = null,
+    val destLat: Double = 0.0,
+    val destLng: Double = 0.0,
+    val destName: String = "",
 )
 
 /** 소통 상태 색: 1 정체(빨강) 2 지체(주황) 3 서행(노랑) 4 원활(초록), 사고(6)는 진한 빨강, 모르면 기본 파랑 */
@@ -158,6 +163,15 @@ class TripController(
         }
     }
 
+    /** 자동차 경로를 소통 색으로 지도에 그림. 안내 중 재탐색으로 경로가 바뀔 때도 씀([fit]=false 면 화면을 옮기지 않음) */
+    fun showDriveRoute(origin: LatLng, dest: LatLng, route: com.eunho.tagohub.data.KakaoDriveRoute, fit: Boolean) {
+        canvas()?.setTrip(
+            trafficSegments(route.roads).ifEmpty { listOf(TripSegment(route.points, 0xFF3D5BAB.toInt(), false)) },
+            listOf(TripMark(origin.lat, origin.lng, "출", MARK_START), TripMark(dest.lat, dest.lng, "도", MARK_END)),
+        )
+        if (fit) canvas()?.fitTo(route.points)
+    }
+
     private fun drive() {
         val d = dest.value ?: return
         val o = origin.value?.let { LatLng(it.lat, it.lng) } ?: me() ?: center()
@@ -184,12 +198,10 @@ class TripController(
                 )
                 return@launch
             }
-            canvas()?.setTrip(
-                trafficSegments(route.roads).ifEmpty { listOf(TripSegment(route.points, 0xFF3D5BAB.toInt(), false)) },
-                listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)),
+            showDriveRoute(o, LatLng(d.lat, d.lng), route, fit = true)
+            ridePlan.value = Load.Ok(
+                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name),
             )
-            canvas()?.fitTo(route.points)
-            ridePlan.value = Load.Ok(RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads))
         }
     }
 

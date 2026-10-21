@@ -1,0 +1,78 @@
+package com.eunho.tagohub.guidance
+
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
+import com.eunho.tagohub.data.KakaoDriveRoute
+import com.eunho.tagohub.data.LatLng
+import com.eunho.tagohub.data.NavState
+import com.eunho.tagohub.data.NavText
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
+
+/**
+ * 경로 안내의 공유 상태. 화면(지도 위 배너)과 포그라운드 서비스([DriveGuidanceService])가 이 객체로 만난다.
+ * 서비스가 위치를 받아 엔진을 돌리고 결과를 여기에 올리면, 화면은 보기만 한다.
+ */
+object DriveGuidance {
+    data class Info(val state: NavState, val lat: Double, val lng: Double)
+
+    /** 안내 중인지 */
+    val active = MutableStateFlow(false)
+
+    /** 가장 최근 안내 상태 (안내 중이 아니면 null) */
+    val info = MutableStateFlow<Info?>(null)
+
+    /** 지금 따라가는 경로. 재탐색하면 새 경로로 바뀌어 화면이 지도에 다시 그림 */
+    val route = MutableStateFlow<KakaoDriveRoute?>(null)
+
+    /** 음성 안내 켜기·끄기 (끄면 화면·알림 안내만) */
+    val voiceOn = MutableStateFlow(true)
+
+    /** 사용자에게 보여줄 알림 문구 (예: 한국어 음성이 없어 소리 없이 안내) */
+    val note = MutableStateFlow<String?>(null)
+
+    @Volatile var destination: LatLng? = null
+        internal set
+
+    @Volatile var destinationName: String = ""
+        internal set
+
+    /** 안내 시작. 화면이 보이는 상태에서 불러야 위치 서비스를 시작할 수 있음 */
+    fun start(context: Context, route: KakaoDriveRoute, dest: LatLng, destName: String) {
+        this.route.value = route
+        destination = dest
+        destinationName = destName
+        note.value = null
+        active.value = true
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, DriveGuidanceService::class.java).setAction(DriveGuidanceService.ACTION_START),
+        )
+    }
+
+    fun stop(context: Context) {
+        context.stopService(Intent(context, DriveGuidanceService::class.java))
+        active.value = false
+    }
+}
+
+/** 알림·배너에 보여줄 한 줄 문구 (순수 함수라 테스트할 수 있음) */
+object GuidanceText {
+    fun title(st: NavState): String = when {
+        st.arrived -> "목적지에 도착했습니다"
+        st.offRoute -> "경로를 다시 찾는 중"
+        st.nextGuide == null -> "경로 안내 중"
+        st.nextGuide.isDestination -> "${NavText.short(st.distanceToNext)} 앞 목적지"
+        else -> "${NavText.short(st.distanceToNext)} 앞 · ${st.nextGuide.guidance}"
+    }
+
+    /** "남은 42.0km · 약 55분 · 도착 18:20" */
+    fun detail(st: NavState, nowMs: Long, tz: TimeZone = TimeZone.getDefault()): String =
+        "남은 ${NavText.short(st.remainingMeters)} · 약 ${(st.remainingSeconds + 59) / 60}분 · 도착 ${eta(nowMs, st.remainingSeconds, tz)}"
+
+    fun eta(nowMs: Long, seconds: Int, tz: TimeZone = TimeZone.getDefault()): String =
+        SimpleDateFormat("HH:mm", Locale.KOREA).apply { timeZone = tz }.format(nowMs + seconds * 1000L)
+}

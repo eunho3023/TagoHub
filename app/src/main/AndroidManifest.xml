@@ -6,6 +6,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 경로 안내: 화면이 꺼져도 위치를 받는 포그라운드 서비스(안드로이드 14부터 유형 권한 필요)와 그 알림 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- 안드로이드 11 이상에서 기기의 음성 합성(TTS) 엔진(삼성·구글 등)을 찾으려면 필요 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -25,5 +37,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 경로 안내(GPS + 음성). 안내를 시작한 동안만 켜지고 알림에 표시됨 -->
+        <service
+            android:name=".guidance.DriveGuidanceService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 </manifest>
