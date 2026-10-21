@@ -5,6 +5,7 @@ import com.eunho.tagohub.data.KakaoDrive
 import com.eunho.tagohub.data.NavRoute
 import com.eunho.tagohub.data.SafetyZone
 import com.eunho.tagohub.data.SafetyZoneSnapshot
+import com.eunho.tagohub.data.ZoneGroup
 import com.eunho.tagohub.data.ZoneKind
 import com.eunho.tagohub.data.ZoneTracker
 import com.eunho.tagohub.data.matchRoute
@@ -156,5 +157,49 @@ class SafetyZonesTest {
         assertEquals(1000.0, Geo.meters(37.5, 127.0, la, ln), 5.0)
         assertEquals(45.0, Geo.bearing(37.5, 127.0, la, ln), 0.5)
         assertNotNull(Geo.offset(37.5, 127.0, 0.0, 0.0))
+    }
+
+    @Test
+    fun csvLinesParseAndNamesMayContainCommas() {
+        val z = SafetyZoneSnapshot.parseLines(
+            sequenceOf("bump,37.50000,127.00000,,가파로67번길", "child,37.51000,127.01000,,역삼초등학교, 병설유치원", "xxx,37.5,127.0,,이상한 종류", "child,10.0,127.0,,범위 밖", "bump,abc,127.0,,숫자 아님", "child,37.5"),
+        )
+        assertEquals(2, z.size)
+        assertEquals(ZoneKind.SpeedBump, z[0].kind)
+        assertEquals(ZoneGroup.Bump, z[0].kind.group)
+        assertEquals("역삼초등학교, 병설유치원", z[1].name)
+        assertEquals(ZoneGroup.Protect, z[1].kind.group)
+        assertFalse(z[0].kind.isCamera)
+    }
+
+    @Test
+    fun speedBumpsAnnounceOnceAndDoNotMergeWithChildZones() {
+        val r = route()
+        val on = matchRoute(r, listOf(zoneAt(r, 7_000.0, ZoneKind.SpeedBump), zoneAt(r, 7_030.0, ZoneKind.ChildZone)))
+        assertEquals(2, on.size) // 종류 묶음이 달라 합치지 않음
+        val bump = on.first { it.zone.kind == ZoneKind.SpeedBump }
+        val t = ZoneTracker(listOf(bump))
+        assertTrue(t.update(bump.along - 300, 40.0).speak.isEmpty())
+        val s = t.update(bump.along - 190, 40.0).speak
+        assertEquals(1, s.size)
+        assertTrue(s[0], "과속방지턱" in s[0])
+        assertTrue(t.update(bump.along - 100, 40.0).speak.isEmpty())
+    }
+
+    /** 앱에 넣은 실제 파일(assets/safety_zones.csv)을 읽어 실제 경로에 맞춰 봄 */
+    @Test
+    fun bundledAssetLoadsAndMatchesTheRealRoute() {
+        val f = listOf("src/main/assets/safety_zones.csv", "app/src/main/assets/safety_zones.csv").map { File(it) }.first { it.exists() }
+        val zones = f.bufferedReader(Charsets.UTF_8).use { SafetyZoneSnapshot.parseLines(it.lineSequence()) }
+        assertTrue("점 수 ${zones.size}", zones.size > 90_000)
+        assertTrue(zones.count { it.kind == ZoneKind.SpeedBump } > 50_000)
+        assertTrue(zones.count { it.kind == ZoneKind.ChildZone } > 10_000)
+        val r = route()
+        val t0 = System.nanoTime()
+        val on = matchRoute(r, zones)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        println("강남→대전 경로 위 안전 지점: ${on.size}곳 (${on.groupingBy { it.zone.kind }.eachCount()}), $ms ms")
+        assertTrue("너무 오래 걸림: ${ms}ms", ms < 8_000)
+        assertTrue(on.zipWithNext().all { (a, b) -> a.along <= b.along })
     }
 }

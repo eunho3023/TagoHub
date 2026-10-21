@@ -44,6 +44,9 @@ import androidx.compose.material.icons.filled.TurnRight
 import androidx.compose.material.icons.filled.TurnSlightLeft
 import androidx.compose.material.icons.filled.TurnSlightRight
 import androidx.compose.material.icons.filled.UTurnLeft
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -83,7 +86,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Geo
 import com.eunho.tagohub.data.DriveGuide
 import com.eunho.tagohub.data.NavRoute
-import com.eunho.tagohub.data.ZoneKind
+import com.eunho.tagohub.data.ZoneGroup
 import com.eunho.tagohub.data.ZoneStatus
 import kotlinx.coroutines.delay
 import com.eunho.tagohub.data.LatLng
@@ -280,7 +283,6 @@ private fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modif
 @Composable
 private fun ZoneCard(z: ZoneStatus) {
     val rz = z.next ?: return
-    val child = rz.zone.kind == ZoneKind.ChildZone
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = if (z.overspeed) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surface,
@@ -289,7 +291,11 @@ private fun ZoneCard(z: ZoneStatus) {
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                if (child) Icons.Filled.ChildCare else Icons.Filled.CameraAlt,
+                when (rz.zone.kind.group) {
+                    ZoneGroup.Protect -> Icons.Filled.ChildCare
+                    ZoneGroup.Bump -> Icons.Filled.Warning
+                    ZoneGroup.Camera -> Icons.Filled.CameraAlt
+                },
                 contentDescription = null,
                 tint = if (z.overspeed) Color.White else Color(0xFFE08A00),
                 modifier = Modifier.size(24.dp),
@@ -386,8 +392,9 @@ private fun GuidanceSettingsSheet(onDismiss: () -> Unit, onEnd: () -> Unit) {
     val volume by DriveGuidance.voiceVolume.collectAsStateWithLifecycle()
     val simulating by DriveGuidance.simulating.collectAsStateWithLifecycle()
     val simFactor by DriveGuidance.simFactor.collectAsStateWithLifecycle()
+    val groups by DriveGuidance.zoneGroups.collectAsStateWithLifecycle()
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("안내 설정", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (voiceOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, contentDescription = null)
@@ -398,6 +405,15 @@ private fun GuidanceSettingsSheet(onDismiss: () -> Unit, onEnd: () -> Unit) {
             Column {
                 Text("안내음성 크기", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Slider(value = volume, onValueChange = { DriveGuidance.voiceVolume.value = it }, enabled = voiceOn)
+            }
+            HorizontalDivider()
+            Text("안내받을 항목", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            val context = LocalContext.current
+            ZoneGroup.entries.forEach { g ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(g.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(checked = g in groups, onCheckedChange = { DriveGuidance.setZoneGroup(context, g, it) })
+                }
             }
             if (simulating) {
                 HorizontalDivider()

@@ -30,6 +30,7 @@ import com.eunho.tagohub.data.NavEngine
 import com.eunho.tagohub.data.NavRoute
 import com.eunho.tagohub.data.NavText
 import com.eunho.tagohub.data.RouteSimulator
+import com.eunho.tagohub.data.RouteZone
 import com.eunho.tagohub.data.SafetyZone
 import com.eunho.tagohub.data.SafetyZones
 import com.eunho.tagohub.data.ZoneTracker
@@ -122,6 +123,7 @@ class DriveGuidanceService : Service() {
             }
         }
         scope.launch { DriveGuidance.voiceVolume.collect { v -> voice?.volume = v } }
+        scope.launch { DriveGuidance.zoneGroups.collect { rebuildTracker() } }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock =pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tagohub:guidance").apply { acquire(MAX_SESSION_MS) }
 
@@ -155,12 +157,18 @@ class DriveGuidanceService : Service() {
         DriveGuidance.route.value = route
         // 이 경로 위의 단속카메라·어린이 보호구역 (목록은 한 번만 읽고, 경로가 바뀌면 다시 맞춤)
         val loaded = zoneData
-        if (loaded != null) tracker = ZoneTracker(matchRoute(nav, loaded))
+        if (loaded != null) { matched = matchRoute(nav, loaded); rebuildTracker() }
         else scope.launch(Dispatchers.Default) {
-            val zones = SafetyZones.load()
+            val zones = SafetyZones.load(applicationContext)
             zoneData = zones
-            currentNav?.let { tracker = ZoneTracker(matchRoute(it, zones)) }
+            currentNav?.let { matched = matchRoute(it, zones); rebuildTracker() }
         }
+    }
+
+    /** 경로 위 안전 지점 중 설정에서 켜 둔 종류만 알림 대상으로 */
+    private fun rebuildTracker() {
+        val on = DriveGuidance.zoneGroups.value
+        tracker = ZoneTracker(matched.filter { it.zone.kind.group in on })
     }
 
     /** 모의주행 루프: [SIM_TICK_MS] 마다 가상 위치를 만들어 [handleLocation] 에 넣음 */
@@ -202,6 +210,7 @@ class DriveGuidanceService : Service() {
 
     @Volatile private var zoneData: List<SafetyZone>? = null
     @Volatile private var tracker: ZoneTracker? = null
+    @Volatile private var matched: List<RouteZone> = emptyList()
 
     private fun handleLocation(loc: Location) {
         val eng = engine ?: return

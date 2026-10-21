@@ -39,6 +39,25 @@ object DriveGuidance {
     /** 음성 안내 켜기·끄기 (끄면 화면·알림 안내만) */
     val voiceOn = MutableStateFlow(true)
 
+    /** 안내받을 안전 지점 종류 (설정에서 켜고 끔, 기기에 저장) */
+    val zoneGroups = MutableStateFlow(com.eunho.tagohub.data.ZoneGroup.entries.toSet())
+
+    private const val PREFS = "drive_guidance"
+    private const val KEY_OFF_GROUPS = "off_groups"
+
+    /** 앱을 켤 때 저장해 둔 설정을 읽음 */
+    fun loadPrefs(context: Context) {
+        val off = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_OFF_GROUPS, emptySet()).orEmpty()
+        zoneGroups.value = com.eunho.tagohub.data.ZoneGroup.entries.filter { it.name !in off }.toSet()
+    }
+
+    fun setZoneGroup(context: Context, group: com.eunho.tagohub.data.ZoneGroup, on: Boolean) {
+        val next = if (on) zoneGroups.value + group else zoneGroups.value - group
+        zoneGroups.value = next
+        val off = com.eunho.tagohub.data.ZoneGroup.entries.filter { it !in next }.map { it.name }.toSet()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(KEY_OFF_GROUPS, off).apply()
+    }
+
     /** 안내음성 크기 0.0~1.0 */
     val voiceVolume = MutableStateFlow(1f)
 

@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
         // 잘 안 바뀌는 정보(노선 모양·정류장 순서·노선 정보 등)를 저장해 두는 곳
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())
         com.eunho.tagohub.data.OverlaySnapshot.init(filesDir)
+        com.eunho.tagohub.guidance.DriveGuidance.loadPrefs(applicationContext)
         setContent { TagoTheme { MainScreen() } }
     }
 

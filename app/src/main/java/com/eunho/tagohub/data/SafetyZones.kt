@@ -2,6 +2,8 @@ package com.eunho.tagohub.data
 
 import com.eunho.tagohub.core.MiniJson
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -12,16 +14,28 @@ enum class ZoneKind(val label: String, val code: String) {
     SectionCamera("구간단속", "section"),
     SignalCamera("신호위반 단속카메라", "signal"),
     OtherCamera("단속카메라", "cam"),
-    ChildZone("어린이 보호구역", "child");
+    ChildZone("어린이 보호구역", "child"),
+    SpeedBump("과속방지턱", "bump");
 
-    val isCamera: Boolean get() = this != ChildZone
+    val isCamera: Boolean get() = group == ZoneGroup.Camera
+
+    /** 설정 화면에서 켜고 끄는 단위 */
+    val group: ZoneGroup
+        get() = when (this) {
+            ChildZone -> ZoneGroup.Protect
+            SpeedBump -> ZoneGroup.Bump
+            else -> ZoneGroup.Camera
+        }
 
     companion object {
         fun of(code: String): ZoneKind? = entries.firstOrNull { it.code == code }
     }
 }
 
-/** 단속카메라·어린이 보호구역 한 곳. [limitKmh] 는 제한속도(모르면 null) */
+/** 안내 설정에서 묶어 켜고 끄는 종류 */
+enum class ZoneGroup(val label: String) { Camera("단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱") }
+
+/** 단속카메라·어린이 보호구역·과속방지턱 한 곳. [limitKmh] 는 제한속도(모르면 null) */
 data class SafetyZone(val kind: ZoneKind, val name: String, val lat: Double, val lng: Double, val limitKmh: Int?)
 
 /**
@@ -44,14 +58,44 @@ object SafetyZoneSnapshot {
             SafetyZone(kind, f[1]?.toString().orEmpty(), lat, lng, limit)
         }
     }
+
+    /**
+     * 앱에 함께 들어 있는 점 목록(assets/safety_zones.csv, pipeline/build_static_zones.py 가 만듦):
+     * 한 줄에 한 곳 "종류코드,위도,경도,제한속도,이름". 이름에 쉼표가 있어도 마지막 칸이라 괜찮다.
+     */
+    fun parseLines(lines: Sequence<String>): List<SafetyZone> {
+        val out = ArrayList<SafetyZone>()
+        for (line in lines) {
+            val f = line.split(',', limit = 5)
+            if (f.size < 3) continue
+            val kind = ZoneKind.of(f[0]) ?: continue
+            val lat = f[1].toDoubleOrNull() ?: continue
+            val lng = f[2].toDoubleOrNull() ?: continue
+            if (lat !in 33.0..39.5 || lng !in 124.0..132.0) continue
+            out += SafetyZone(kind, f.getOrNull(4).orEmpty(), lat, lng, f.getOrNull(3)?.toIntOrNull()?.takeIf { it in 10..130 })
+        }
+        return out
+    }
 }
 
 object SafetyZones {
-    /** 저장본에서 읽음. 아직 없으면(수집 전) 빈 목록 — 안내는 그대로 되고 이 알림만 없다 */
-    suspend fun load(): List<SafetyZone> =
-        runCatching {
+    const val STATIC_ASSET = "safety_zones.csv"
+
+    /**
+     * 앱에 든 점 목록(과속방지턱·어린이 보호구역) + 수집해 올려 둔 점 목록(단속카메라 등, 아직 없으면 빈 목록).
+     * 어느 쪽이 없어도 안내는 그대로 되고 그 알림만 빠진다.
+     */
+    suspend fun load(context: android.content.Context): List<SafetyZone> = withContext(Dispatchers.IO) {
+        val fixed = runCatching {
+            context.applicationContext.assets.open(STATIC_ASSET).bufferedReader(Charsets.UTF_8).use { r ->
+                SafetyZoneSnapshot.parseLines(r.lineSequence())
+            }
+        }.getOrDefault(emptyList())
+        val live = runCatching {
             OverlaySnapshot.get(SafetyZoneSnapshot.NAME, maxAgeSec = 3 * 24 * 3600L, staleOkSec = 30 * 24 * 3600L) { SafetyZoneSnapshot.parse(it) }
         }.getOrNull().orEmpty()
+        fixed + live
+    }
 }
 
 /** 경로 위에 있는 안전 지점: [along] 은 출발점부터의 거리(m) */
@@ -86,7 +130,7 @@ fun matchRoute(route: NavRoute, zones: List<SafetyZone>, maxOffM: Double = 30.0)
     found.sortBy { it.along }
     val out = ArrayList<RouteZone>()
     for (rz in found) {
-        val dup = out.lastOrNull { it.zone.kind.isCamera == rz.zone.kind.isCamera && abs(it.along - rz.along) < MERGE_M }
+        val dup = out.lastOrNull { it.zone.kind.group == rz.zone.kind.group && abs(it.along - rz.along) < MERGE_M }
         if (dup == null) out += rz
         else if (dup.zone.limitKmh == null && rz.zone.limitKmh != null) out[out.indexOf(dup)] = RouteZone(rz.zone, dup.along)
     }
@@ -125,6 +169,7 @@ class ZoneTracker(private val zones: List<RouteZone>) {
 
     private fun leads(kind: ZoneKind, speedKmh: Double): IntArray = when {
         kind == ZoneKind.ChildZone -> intArrayOf(400)
+        kind == ZoneKind.SpeedBump -> intArrayOf(200)
         speedKmh >= 70 -> intArrayOf(1000, 400)
         else -> intArrayOf(500, 200)
     }
@@ -137,6 +182,7 @@ class ZoneTracker(private val zones: List<RouteZone>) {
             ZoneKind.SpeedCamera -> "$lead 과속단속카메라가 있습니다." + (z.limitKmh?.let { " 제한속도 ${it}킬로미터." } ?: "")
             ZoneKind.SignalCamera -> "$lead 신호위반 단속카메라가 있습니다."
             ZoneKind.OtherCamera -> "$lead 단속카메라가 있습니다."
+            ZoneKind.SpeedBump -> "$lead 과속방지턱이 있습니다."
         }
     }
 
