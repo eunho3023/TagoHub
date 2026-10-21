@@ -120,10 +120,7 @@ fun MainScreen() {
                   Triple("항공", Icons.Filled.Flight, ModeJump.Kind.Air),
               )
               val traffic = listOf(
-                  Triple("실시간 교통상황", Icons.Filled.Traffic, ModeJump.Kind.Utic),
-                  Triple("도로 정보", Icons.Filled.Info, ModeJump.Kind.ItsRoad),
-                  Triple("고속도로 정보", Icons.Filled.DirectionsCar, ModeJump.Kind.Expressway),
-                  Triple("도로날씨", Icons.Filled.Info, ModeJump.Kind.RoadWeather),
+                  Triple("도로 정보", Icons.Filled.Traffic, ModeJump.Kind.Road),
               )
               Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (compact) {
@@ -202,10 +199,7 @@ fun MainScreen() {
                             ModeJump.Kind.Train -> TrainScreen()
                             ModeJump.Kind.Coach -> CoachScreen()
                             ModeJump.Kind.Air -> AirScreen()
-                            ModeJump.Kind.Utic -> UticTrafficScreen()
-                            ModeJump.Kind.ItsRoad -> ItsRoadScreen(mapVm)
-                            ModeJump.Kind.Expressway -> ExpresswayScreen()
-                            ModeJump.Kind.RoadWeather -> RoadWeatherScreen()
+                            ModeJump.Kind.Road -> RoadInfoScreen(mapVm)
                         }
                     }
                 }

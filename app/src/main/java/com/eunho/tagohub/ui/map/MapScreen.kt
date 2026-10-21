@@ -444,7 +444,8 @@ fun MapScreen(
 }
 
 private data class MapLayerOption(
-    val id: String,
+    /** 한 항목이 여러 출처의 레이어를 함께 켜고 끔 (예: 돌발 = UTIC + ITS) */
+    val ids: List<String>,
     val title: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
 )
@@ -466,25 +467,17 @@ private fun MapLayerSheet(
     onDismiss: () -> Unit,
 ) {
     val layers = listOf(
-        MapLayerOption("its_cctv", "CCTV", Icons.Filled.Videocam),
-        MapLayerOption("utic_incidents", "돌발정보", Icons.Filled.Warning),
-        MapLayerOption("its_events", "도로돌발", Icons.Filled.Construction),
-        MapLayerOption("utic_road_risk", "도로위험", Icons.Filled.Report),
-        MapLayerOption("utic_safety", "교통안전", Icons.Filled.Shield),
-        MapLayerOption("its_disasters", "재난정보", Icons.Filled.Tsunami),
-        MapLayerOption("its_vsl", "가변속도", Icons.Filled.Speed),
-        MapLayerOption("its_vms", "전광표지", Icons.Filled.Campaign),
-        MapLayerOption("its_safe_driving", "주의운전", Icons.Filled.Traffic),
-        MapLayerOption("its_dangerous_cars", "위험물사고", Icons.Filled.Dangerous),
-        MapLayerOption("its_vds", "VDS", Icons.Filled.Sensors),
-        MapLayerOption("its_ice_sections", "결빙구간", Icons.Filled.AcUnit),
-        MapLayerOption("ex_rest", "휴게소", Icons.Filled.Place),
-        MapLayerOption("ex_toll", "영업소", Icons.Filled.Traffic),
-        MapLayerOption("ex_ic", "IC·JCT", Icons.Filled.Directions),
-        MapLayerOption("ex_congest", "정체구간", Icons.Filled.Traffic),
-        MapLayerOption("ex_vms", "전광판", Icons.Filled.Campaign),
-        MapLayerOption("bicycle_road", "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),
-        MapLayerOption("hill_shading", "지형도", Icons.Filled.Terrain),
+        MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
+        MapLayerOption(listOf("utic_incidents", "its_events", "its_dangerous_cars"), "돌발·사고", Icons.Filled.Warning),
+        MapLayerOption(listOf("utic_road_risk", "its_safe_driving", "its_disasters"), "위험·재난", Icons.Filled.Report),
+        MapLayerOption(listOf("utic_safety"), "교통안전", Icons.Filled.Shield),
+        MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
+        MapLayerOption(listOf("its_vms", "its_vsl", "ex_vms"), "전광판", Icons.Filled.Campaign),
+        MapLayerOption(listOf("ex_rest"), "휴게소", Icons.Filled.Place),
+        MapLayerOption(listOf("ex_toll", "ex_ic"), "영업소·IC", Icons.Filled.Directions),
+        MapLayerOption(listOf("its_ice_sections"), "결빙구간", Icons.Filled.AcUnit),
+        MapLayerOption(listOf("bicycle_road"), "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),
+        MapLayerOption(listOf("hill_shading"), "지형도", Icons.Filled.Terrain),
     )
     val anyLoading = uticLoading || uticRiskLoading || uticSafetyLoading || itsCctvLoading || loadingLayers.isNotEmpty()
     val blue = Color(0xFF3B8CFF)
@@ -545,9 +538,12 @@ private fun MapLayerSheet(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 layers.forEach { option ->
-                    val on = option.id in overlays
+                    val on = option.ids.any { it in overlays }
                     Column(
-                        Modifier.weight(1f).clickable { onToggle(option.id) },
+                        Modifier.weight(1f).clickable {
+                            // 켜져 있으면 전부 끄고, 아니면 전부 켬 (하나씩 뒤집되 이미 원하는 상태인 것은 건드리지 않음)
+                            option.ids.forEach { id -> if ((id in overlays) == on) onToggle(id) }
+                        },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
@@ -1743,6 +1739,28 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
+/** 자동차 경로의 회전 안내 목록: "양재역 방면으로 우회전" + 직전 안내부터의 거리 */
+@Composable
+private fun DriveGuideList(guides: List<com.eunho.tagohub.data.DriveGuide>, modifier: Modifier = Modifier) {
+    val steps = guides.filter { !it.isStart }
+    androidx.compose.foundation.lazy.LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
+        items(steps.size) { i ->
+            val g = steps[i]
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${i + 1}", Modifier.width(26.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (g.isDestination) "목적지" else g.guidance,
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (g.isDestination) FontWeight.Bold else FontWeight.Normal,
+                )
+                Text(com.eunho.tagohub.data.NavText.short(g.distanceFromPrev.toDouble()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalDivider()
+        }
+    }
+}
+
 @Composable
 private fun PlanList(t: TripController) {
     val plans by t.plans.collectAsStateWithLifecycle()
@@ -1806,6 +1824,21 @@ private fun PlanList(t: TripController) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (result.mode == PlanMode.Car) {
+                            val summary = listOfNotNull(
+                                result.tollWon?.let { "통행요금 ${"%,d".format(it)}원" },
+                                trafficSummary(result.roads),
+                            )
+                            if (summary.isNotEmpty()) {
+                                Text(
+                                    summary.joinToString(" · "),
+                                    Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            if (result.guides.size > 2) DriveGuideList(result.guides, Modifier.weight(1f))
+                        }
                     }
                     is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었습니다.")
                 }

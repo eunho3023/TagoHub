@@ -189,7 +189,7 @@ object KakaoExtra {
                 .addQueryParameter("car_fuel", "GASOLINE")
                 .addQueryParameter("car_hipass", "false")
                 .addQueryParameter("alternatives", "false")
-                .addQueryParameter("road_details", "false")
+                .addQueryParameter("road_details", "true")
                 .build()
             client.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK $key").build()).execute().use { response ->
                 val body = response.body?.string().orEmpty()
