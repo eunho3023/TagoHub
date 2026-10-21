@@ -144,25 +144,74 @@ object ExMapLayers {
     const val TOLL = "ex_toll"
     const val IC = "ex_ic"
     const val VMS = "ex_vms"
-    val IDS = listOf(REST, TOLL, IC, VMS)
+    const val CONGEST = "ex_congest"
+    val IDS = listOf(REST, TOLL, IC, VMS, CONGEST)
 
-    private const val CACHE_MS = 10 * 60_000L
+    /** VDS(차량 검지기) 위치 파일 assets/ex_vds.json 내용을 읽는 방법. 앱 시작 때 지정 (pipeline/build_ex_vds.py 가 만듦) */
+    @Volatile var vdsJson: (() -> String)? = null
+    private var vdsCache: Map<String, Pair<Double, Double>>? = null
+
+    /** 위치 목록은 10분, 실시간 정보(전광판 문구·정체)는 짧게 */
+    private fun cacheMs(layer: String) = when (layer) {
+        VMS -> 3 * 60_000L
+        CONGEST -> 2 * 60_000L
+        else -> 10 * 60_000L
+    }
     private val cache = HashMap<String, Pair<Long, List<ItsRoadFeature>>>()
 
     /** 큰 목록(수백~천 건)이라 10분 동안 메모리에 둠 */
     suspend fun features(layer: String, repo: ExRepository = ExRepository()): List<ItsRoadFeature> {
         val now = System.currentTimeMillis()
-        synchronized(cache) { cache[layer]?.takeIf { now - it.first < CACHE_MS }?.let { return it.second } }
+        synchronized(cache) { cache[layer]?.takeIf { now - it.first < cacheMs(layer) }?.let { return it.second } }
         val list = when (layer) {
             REST -> rest(repo.all("/openapi/locationinfo/locationinfoRest"))
             TOLL -> toll(repo.all("/openapi/locationinfo/locationinfoUnit"))
             IC -> ic(repo.all("/openapi/locationinfo/locationinfoIc"))
             VMS -> vms(repo.all("/openapi/vms/vmsMessageSrch"))
+            CONGEST -> congest(repo.all("/openapi/odtraffic/trafficAmountByCongest"), vdsCoords())
             else -> emptyList()
         }
         synchronized(cache) { cache[layer] = now to list }
         return list
     }
+
+    /** {"VDS ID": [위도, 경도, "노선"]} → 아이디별 좌표 */
+    private fun vdsCoords(): Map<String, Pair<Double, Double>> {
+        vdsCache?.let { return it }
+        val text = vdsJson?.invoke() ?: return emptyMap()
+        return parseVds(text).also { vdsCache = it }
+    }
+
+    fun parseVds(json: String): Map<String, Pair<Double, Double>> =
+        (MiniJson.parse(json) as? Map<*, *>).orEmpty().mapNotNull { (k, v) ->
+            val l = v as? List<*> ?: return@mapNotNull null
+            val la = l.getOrNull(0)?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+            val lo = l.getOrNull(1)?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+            k.toString() to (la to lo)
+        }.toMap()
+
+    /**
+     * 실시간 정체 구간: API 는 정체(등급 3)인 구간만 주고 좌표가 없어서 VDS ID 로 위치를 찾음. 위치를 모르는 VDS 는 건너뜀.
+     * 같은 구간(콘존)이 여러 VDS 로 오면 가장 느린 것 하나만.
+     */
+    fun congest(rows: List<Map<String, String>>, coords: Map<String, Pair<Double, Double>>): List<ItsRoadFeature> =
+        rows.groupBy { it["conzoneId"] ?: it["vdsId"] }.values.mapNotNull { group ->
+            val r = group.minByOrNull { it["speed"]?.toDoubleOrNull() ?: Double.MAX_VALUE } ?: return@mapNotNull null
+            val pos = coords[r["vdsId"]] ?: return@mapNotNull null
+            val hh = r["stdHour"]?.takeIf { it.length >= 4 }?.let { "${it.take(2)}:${it.substring(2, 4)} 기준" }
+            ItsRoadFeature(
+                id = "$CONGEST:${r["conzoneId"] ?: r["vdsId"]}",
+                layer = CONGEST,
+                title = listOfNotNull(r["routeName"], r["conzoneName"]).joinToString(" ") + " 정체",
+                details = listOfNotNull(
+                    r["speed"]?.let { "속도 ${it}km/h" },
+                    r["updownTypeCode"]?.let { d -> if (d == "S") "기점 방향" else "종점 방향" },
+                    hh,
+                ).joinToString("\n"),
+                lat = pos.first,
+                lng = pos.second,
+            )
+        }
 
     private fun lat(v: String?) = v?.toDoubleOrNull()?.takeIf { it in 30.0..40.0 }
     private fun lng(v: String?) = v?.toDoubleOrNull()?.takeIf { it in 123.0..133.0 }

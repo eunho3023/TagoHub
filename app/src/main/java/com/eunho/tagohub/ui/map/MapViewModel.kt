@@ -109,6 +109,12 @@ data class TrainView(
 enum class MapMode { Bus, Subway, Transit }
 
 class MapViewModel(app: Application) : AndroidViewModel(app) {
+    init {
+        // 정체 구간을 지도에 찍을 VDS 위치 파일 (assets/ex_vds.json)
+        com.eunho.tagohub.data.ExMapLayers.vdsJson = {
+            app.assets.open("ex_vds.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }
+    }
     private val repo = Graph.repo
     private val seoul = Graph.seoul
     private val uticIncidentsRepo = UticIncidentRepository()
@@ -2210,6 +2216,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "ex_toll",
             "ex_ic",
             "ex_vms",
+            "ex_congest",
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

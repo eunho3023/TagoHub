@@ -70,4 +70,29 @@ class ExApiTest {
         // 좌표가 이상하거나 없으면 건너뜀
         assertTrue(ExMapLayers.toll(listOf(mapOf("unitName" to "x", "xValue" to "0", "yValue" to "0"), mapOf("unitName" to "y"))).isEmpty())
     }
+
+    @Test
+    fun restDetailParsersUseRealFieldShapes() {
+        val gasRows = listOf(
+            mapOf("serviceAreaName" to "서울만남(부산)주유소", "oilCompany" to "AD", "gasolinePrice" to "1,864원", "diselPrice" to "1,853원", "lpgPrice" to "1,232원", "lpgYn" to "Y", "telNo" to "02-573-7430"),
+            mapOf("serviceAreaName" to "죽전(서울)주유소", "oilCompany" to "SK", "gasolinePrice" to "1,900원", "lpgYn" to "N", "lpgPrice" to "0원"),
+        )
+        val g = com.eunho.tagohub.data.ExRestParser.gas(gasRows, "서울만남(부산)휴게소")!!
+        assertEquals("1,864원", g.gasoline)
+        assertEquals("1,232원", g.lpg)
+        // LPG 를 안 파는 곳은 LPG 가격을 보여주지 않음
+        assertEquals(null, com.eunho.tagohub.data.ExRestParser.gas(gasRows, "죽전(서울)휴게소")!!.lpg)
+        assertEquals(null, com.eunho.tagohub.data.ExRestParser.gas(gasRows, "없는곳휴게소"))
+
+        val conv = listOf(mapOf("psName" to "수유실"), mapOf("psName" to "ATM"), mapOf("psName" to "수유실"))
+        assertEquals(listOf("수유실", "ATM"), com.eunho.tagohub.data.ExRestParser.facilities(conv))
+        val foods = com.eunho.tagohub.data.ExRestParser.foods(
+            listOf(
+                mapOf("foodNm" to "순두부찌개", "foodCost" to "9500", "recommendyn" to "N", "bestfoodyn" to "N"),
+                mapOf("foodNm" to "유부우동", "foodCost" to "7500", "recommendyn" to "Y", "bestfoodyn" to "N"),
+            ),
+        )
+        assertEquals("유부우동", foods.first().name)  // 추천 메뉴가 앞
+        assertTrue(foods.first().recommended)
+    }
 }

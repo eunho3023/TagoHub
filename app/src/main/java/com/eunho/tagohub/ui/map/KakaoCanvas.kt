@@ -387,6 +387,7 @@ class KakaoCanvas(
                     "ex_toll" -> icons.letterBadge(0xFF1565C0.toInt(), "톨")
                     "ex_ic" -> icons.letterBadge(0xFF6D4C41.toInt(), "IC")
                     "ex_vms" -> icons.letterBadge(0xFFEF6C00.toInt(), "전광")
+                    "ex_congest" -> icons.letterBadge(0xFFD32F2F.toInt(), "정체")
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))

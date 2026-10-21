@@ -402,7 +402,10 @@ fun MapScreen(
     selectedItsCctv?.let { cctv ->
         ItsCctvDialog(cctv = cctv, onDismiss = vm::dismissItsCctv)
     }
-    selectedItsRoadFeature?.let { feature ->
+    selectedItsRoadFeature?.takeIf { it.layer == com.eunho.tagohub.data.ExMapLayers.REST }?.let { feature ->
+        RestAreaDialog(feature, vm::dismissItsRoadFeature)
+    }
+    selectedItsRoadFeature?.takeIf { it.layer != com.eunho.tagohub.data.ExMapLayers.REST }?.let { feature ->
         val lines = feature.details.lines().filter { it.isNotBlank() }
         val period = lines.filter { Regex("""\d{4}-\d{2}-\d{2}""").containsMatchIn(it) }
         MapInfoDialog(
@@ -477,6 +480,7 @@ private fun MapLayerSheet(
         MapLayerOption("ex_rest", "휴게소", Icons.Filled.Place),
         MapLayerOption("ex_toll", "영업소", Icons.Filled.Traffic),
         MapLayerOption("ex_ic", "IC·JCT", Icons.Filled.Directions),
+        MapLayerOption("ex_congest", "정체구간", Icons.Filled.Traffic),
         MapLayerOption("ex_vms", "전광판", Icons.Filled.Campaign),
         MapLayerOption("bicycle_road", "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),
         MapLayerOption("hill_shading", "지형도", Icons.Filled.Terrain),
@@ -574,6 +578,70 @@ private fun MapLayerSheet(
     }
 }
 
+/** 휴게소 마커 상세: 열면서 주유 가격·편의시설·입점 브랜드·대표 메뉴를 받아 보여줌 */
+@Composable
+private fun RestAreaDialog(feature: com.eunho.tagohub.data.ItsRoadFeature, onDismiss: () -> Unit) {
+    val code = feature.id.substringAfter(':')
+    val repo = remember { com.eunho.tagohub.data.ExRestRepository() }
+    val detail by produceState<com.eunho.tagohub.data.ExRestDetail?>(null, feature.id) {
+        value = runCatching { repo.detail(code, feature.title) }.getOrNull()
+            ?: com.eunho.tagohub.data.ExRestDetail(null, emptyList(), emptyList(), emptyList())
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(12.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text(feature.title, fontWeight = FontWeight.Bold) },
+        text = {
+            val d = detail
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (feature.details.isNotBlank()) {
+                    Text(feature.details, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                when {
+                    d == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    d.isEmpty -> Text("등록된 상세 정보가 없습니다.", style = MaterialTheme.typography.bodyMedium)
+                    else -> {
+                        d.gas?.let { g ->
+                            RestSection("주유 가격" + (g.company?.let { " · $it" } ?: "")) {
+                                listOfNotNull(g.gasoline?.let { "휘발유 $it" }, g.diesel?.let { "경유 $it" }, g.lpg?.let { "LPG $it" })
+                                    .forEach { Text(it, style = MaterialTheme.typography.bodyLarge) }
+                                g.tel?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                        }
+                        if (d.facilities.isNotEmpty()) {
+                            RestSection("편의시설") { Text(d.facilities.joinToString(" · "), style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        if (d.brands.isNotEmpty()) {
+                            RestSection("입점 매장") { Text(d.brands.joinToString(" · "), style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        if (d.foods.isNotEmpty()) {
+                            RestSection("메뉴") {
+                                d.foods.forEach { f ->
+                                    Row {
+                                        Text((if (f.recommended) "★ " else "") + f.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                        f.price?.let { Text(it + "원", style = MaterialTheme.typography.bodyMedium) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text("한국도로공사 제공", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("확인", color = Color(0xFF3B8CFF)) } },
+    )
+}
+
+@Composable
+private fun RestSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = Color(0xFF3B8CFF))
+        content()
+    }
+}
+
 /** 지도 위 정보(마커)를 눌렀을 때: 제목 / 본문 / 기간 / 제공처 / 확인 */
 @Composable
 private fun MapInfoDialog(title: String, body: String, period: List<String>, source: String, onDismiss: () -> Unit) {
@@ -638,20 +706,23 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
         onDispose { if (fullscreen) activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
 
-    Dialog(
-        onDismissRequest = { if (fullscreen) fullscreen = false else onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        if (fullscreen) {
-            // 상태표시줄·내비게이션 바를 숨겨 영상만 꽉 차게
-            val view = androidx.compose.ui.platform.LocalView.current
-            SideEffect {
-                val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window ?: return@SideEffect
-                androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
-                    systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    if (fullscreen) {
+        // 전체화면은 별도 창(Dialog)이 아니라 화면 위에 직접 덮는다: 창 크기가 회전 전 값으로 남아 영상이 밀리던 문제
+        BackHandler { fullscreen = false }
+        val activity = context.findActivity()
+        DisposableEffect(Unit) {
+            val window = activity?.window
+            val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
+            controller?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            // 노치(카메라 구멍)가 있는 기기에서 가로로 돌렸을 때 옆이 검게 비지 않게
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                window?.attributes = window?.attributes?.apply {
+                    layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 }
             }
+            onDispose { controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+        }
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 key(cctv.id) {
                     AndroidView(
@@ -690,7 +761,11 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                     )
                 }
             }
-        } else Surface(
+    } else Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
             modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 480.dp),
             shape = RoundedCornerShape(20.dp),
             tonalElevation = 6.dp,
