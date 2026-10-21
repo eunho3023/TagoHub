@@ -51,7 +51,7 @@ fun ExpresswayScreen() {
     val context = LocalContext.current
     val apis = remember {
         runCatching {
-            context.assets.open("ex_catalog.json").bufferedReader(Charsets.UTF_8).use { ExCatalog.parse(it.readText()) }
+            context.assets.open("ex_catalog.json").bufferedReader(Charsets.UTF_8).use { ExCatalog.parse(it.readText()).filter { api -> api.id in ExCatalog.CURATED_IDS } }
         }.getOrDefault(emptyList())
     }
     var service by rememberSaveable { mutableStateOf<String?>(null) }
@@ -78,7 +78,7 @@ fun ExpresswayScreen() {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     Text(
-                        "한국도로공사 고속도로 공공데이터 ${apis.size}개를 직접 조회합니다.",
+                        "한국도로공사 고속도로 공공데이터 ${apis.size}개를 조회합니다. (통행요금·통행시간·정체·공사·휴게소·주유 가격 등)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
