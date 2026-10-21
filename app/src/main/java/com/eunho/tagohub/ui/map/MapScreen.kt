@@ -409,7 +409,7 @@ fun MapScreen(
             title = feature.title,
             body = (lines - period.toSet()).joinToString("\n").ifBlank { "ITS에서 제공한 도로 정보입니다." },
             period = period,
-            source = if (feature.layer.startsWith("ex_")) "한국도로공사 제공" else "국토교통부 제공",
+            source = "국토교통부 제공",
             onDismiss = vm::dismissItsRoadFeature,
         )
     }
@@ -474,10 +474,6 @@ private fun MapLayerSheet(
         MapLayerOption("its_dangerous_cars", "위험물사고", Icons.Filled.Dangerous),
         MapLayerOption("its_vds", "VDS", Icons.Filled.Sensors),
         MapLayerOption("its_ice_sections", "결빙구간", Icons.Filled.AcUnit),
-        MapLayerOption("ex_rest", "휴게소", Icons.Filled.Place),
-        MapLayerOption("ex_toll", "영업소", Icons.Filled.Traffic),
-        MapLayerOption("ex_ic", "IC·JCT", Icons.Filled.Directions),
-        MapLayerOption("ex_vms", "전광판", Icons.Filled.Campaign),
         MapLayerOption("bicycle_road", "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),
         MapLayerOption("hill_shading", "지형도", Icons.Filled.Terrain),
     )
