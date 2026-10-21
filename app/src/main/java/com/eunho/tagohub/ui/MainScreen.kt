@@ -132,6 +132,9 @@ fun MainScreen() {
                 DrawerItem("고속도로 정보", Icons.Filled.DirectionsCar, panel == ModeJump.Kind.Expressway) {
                     panel = ModeJump.Kind.Expressway; scope.launch { drawerState.close() }
                 }
+                DrawerItem("도로날씨", Icons.Filled.Info, panel == ModeJump.Kind.RoadWeather) {
+                    panel = ModeJump.Kind.RoadWeather; scope.launch { drawerState.close() }
+                }
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 androidx.compose.material3.NavigationDrawerItem(
@@ -189,6 +192,7 @@ fun MainScreen() {
                             ModeJump.Kind.Utic -> UticTrafficScreen()
                             ModeJump.Kind.ItsRoad -> ItsRoadScreen(mapVm)
                             ModeJump.Kind.Expressway -> ExpresswayScreen()
+                            ModeJump.Kind.RoadWeather -> RoadWeatherScreen()
                         }
                     }
                 }
