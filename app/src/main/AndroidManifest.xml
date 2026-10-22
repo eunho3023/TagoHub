@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- 안드로이드 11 이상에서 기기의 음성 합성(TTS) 엔진(삼성·구글 등)을 찾으려면 필요 -->
     <queries>
@@ -41,6 +42,12 @@
         <!-- 경로 안내(GPS + 음성). 안내를 시작한 동안만 켜지고 알림에 표시됨 -->
         <service
             android:name=".guidance.DriveGuidanceService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- 하차 알림(GPS + 음성·진동). 켜 둔 동안만 동작하고 알림에 표시됨. 앱을 닫아도 계속됨 -->
+        <service
+            android:name=".guidance.AlightService"
             android:exported="false"
             android:foregroundServiceType="location" />
     </application>
