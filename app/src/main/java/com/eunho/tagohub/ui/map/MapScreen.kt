@@ -371,7 +371,8 @@ fun MapScreen(
                 Icon(Icons.Filled.Refresh, contentDescription = "지도 정보 새로고침")
             }
             SmallFloatingActionButton(onClick = {
-                if (hasLocationPermission(context)) locate()
+                if (guiding && vm.recenterGuidance()) Unit
+                else if (hasLocationPermission(context)) locate()
                 else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             }) { Icon(Icons.Filled.MyLocation, contentDescription = "내 위치") }
             // 기차·고속시외·항공·제보·공지사항은 왼쪽 메뉴(☰)로

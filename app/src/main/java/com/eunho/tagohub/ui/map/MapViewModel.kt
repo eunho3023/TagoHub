@@ -1668,10 +1668,26 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (com.eunho.tagohub.guidance.DriveGuidance.active.value) following.value = false
     }
 
+    /** 안내 중 마지막으로 구한 진행 방향 (내 위치 버튼으로 돌아올 때 앞쪽을 더 보여주려고) */
+    private var lastBearing: Double? = null
+
+    /**
+     * 안내 중 내 위치 버튼: 지도를 안내 중인 차 위치(모의주행이면 가상 위치)로 되돌리고 다시 따라가게 함.
+     * 안내 중이 아니면 false (일반 내 위치 이동은 호출한 쪽이 처리).
+     */
+    fun recenterGuidance(): Boolean {
+        val i = com.eunho.tagohub.guidance.DriveGuidance.info.value ?: return false
+        if (!com.eunho.tagohub.guidance.DriveGuidance.active.value) return false
+        following.value = true
+        followMe(i.lat, i.lng, i.speedKmh, lastBearing)
+        return true
+    }
+
     /** 안내 중: 내 위치 표시를 옮기고, 따라가는 중이면 지도도 속도에 맞는 배율로 따라감 */
     fun followMe(lat: Double, lng: Double, speedKmh: Int, bearingDeg: Double?) {
         me = lat to lng
         canvas?.setMe(lat, lng)
+        if (bearingDeg != null) lastBearing = bearingDeg
         if (!following.value) return
         val zoom = when {
             speedKmh >= 80 -> 15
