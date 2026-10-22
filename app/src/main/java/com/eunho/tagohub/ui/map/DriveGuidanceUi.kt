@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -108,12 +111,17 @@ import com.eunho.tagohub.ui.theme.LocalDarkTheme
 /** 안내 화면은 전광판 느낌: 숫자는 고정폭 글꼴, 포인트는 앰버. 밝기는 고른 화면 모드(라이트·다크·시스템)를 그대로 따른다. */
 private val Mono = com.eunho.tagohub.ui.theme.NumberFont
 
-/** 포인트색: 밝은 화면에서는 진한 호박색, 어두운 화면에서는 밝은 앰버 */
-@Composable
-private fun accent(): Color = MaterialTheme.colorScheme.secondary
+/** 내비 앱 느낌의 색. 안내 배너는 낮에는 파랑, 어두운 화면에서는 남색. 아래 바는 어두운 회색, 길안내 버튼은 남색+파랑 */
+private val NaviBlue = Color(0xFF2F5BFF)
+private val NaviNavy = Color(0xFF14224D)
+private val NaviButton = Color(0xFF3A63D8)
+private val BarDark = Color(0xFF23272E)
 
 @Composable
-private fun arriveColor(): Color = if (LocalDarkTheme.current) BoardColor.ArriveDark else BoardColor.ArriveLight
+private fun bannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0E2A55) else NaviBlue
+
+@Composable
+private fun subBannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0A1F42) else Color(0xFF1B2F8F)
 
 internal fun TurnKind.icon(): ImageVector = when (this) {
     TurnKind.Left -> Icons.Filled.TurnLeft
@@ -224,7 +232,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             val spans = remember(nav, st.progressMeters.toInt() / 100) { nav?.trafficSpans(st.progressMeters).orEmpty() }
             TrafficBar(
                 spans,
-                accent(),
+                NaviBlue,
                 Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).fillMaxHeight(0.36f),
             )
         }
@@ -239,37 +247,43 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
         )
 
         // ── 아래: 도착 시각·남은 거리 바 ──
+        // 어두운 회색 바: 목적지 이름 아래에 큰 도착 시각과 남은 거리, 오른쪽 ⋮ (내비 앱처럼)
         Surface(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
             shadowElevation = 12.dp,
-            color = MaterialTheme.colorScheme.surface,
+            color = BarDark,
+            contentColor = Color.White,
         ) {
             Row(
                 Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     if (st != null) {
                         Text(
-                            GuidanceText.etaLabel(System.currentTimeMillis(), st.remainingSeconds),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontFamily = Mono,
-                            fontWeight = FontWeight.Bold,
-                            color = arriveColor(),
-                        )
-                        Text(
-                            "${NavText.short(st.remainingMeters)} · ${GuidanceText.duration(st.remainingSeconds)} · ${DriveGuidance.destinationName.ifBlank { "목적지" }}",
+                            "${GuidanceText.duration(st.remainingSeconds)} · ${DriveGuidance.destinationName.ifBlank { "목적지" }}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color.White.copy(alpha = 0.85f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                            Text(
+                                GuidanceText.etaLabel(System.currentTimeMillis(), st.remainingSeconds),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Black,
+                            )
+                            Text(
+                                NavText.short(st.remainingMeters),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Black,
+                            )
+                        }
                     } else {
                         Text("위치를 찾는 중…", style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "안내 설정") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "안내 설정", tint = Color.White) }
             }
         }
     }
@@ -377,19 +391,19 @@ private fun ZoneCard(z: ZoneStatus) {
 private fun TurnBanner(guide: DriveGuide, meters: Double) {
     val kind = TurnKind.of(guide)
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(2.dp, accent()),
+        shape = RoundedCornerShape(14.dp),
+        color = bannerColor(),
         shadowElevation = 8.dp,
+        modifier = Modifier.widthIn(min = 240.dp, max = 330.dp),
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(kind.icon(), contentDescription = null, tint = accent(), modifier = Modifier.size(56.dp))
-            Spacer(Modifier.width(12.dp))
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(kind.icon(), contentDescription = null, tint = Color.White, modifier = Modifier.size(60.dp))
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(NavText.short(meters), color = accent(), fontFamily = Mono, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+                Text(NavText.short(meters), color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold)
                 Text(
                     if (guide.isDestination) "목적지" else TurnKind.text(guide),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Color.White.copy(alpha = 0.92f),
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -401,13 +415,11 @@ private fun TurnBanner(guide: DriveGuide, meters: Double) {
 
 @Composable
 private fun AfterBanner(guide: DriveGuide, meters: Double) {
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 6.dp, modifier = Modifier.widthIn(max = 260.dp)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("이어서", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.width(8.dp))
-            Icon(TurnKind.of(guide).icon(), contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(NavText.short(meters), color = MaterialTheme.colorScheme.onSurface, fontFamily = Mono, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+    Surface(shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp), color = subBannerColor(), shadowElevation = 6.dp, modifier = Modifier.widthIn(min = 150.dp, max = 200.dp)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(TurnKind.of(guide).icon(), contentDescription = "이어서", tint = Color.White, modifier = Modifier.size(32.dp))
+            Spacer(Modifier.width(14.dp))
+            Text(NavText.short(meters), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
         }
     }
 }
@@ -416,14 +428,13 @@ private fun AfterBanner(guide: DriveGuide, meters: Double) {
 private fun StatusBanner(text: String, warn: Boolean = false) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (warn) BoardColor.AmberFill else MaterialTheme.colorScheme.surface,
-        border = if (warn) null else BorderStroke(2.dp, accent()),
+        color = if (warn) BoardColor.AmberFill else bannerColor(),
         shadowElevation = 8.dp,
     ) {
         Text(
             text,
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
-            color = if (warn) BoardColor.OnAmber else MaterialTheme.colorScheme.onSurface,
+            color = if (warn) BoardColor.OnAmber else Color.White,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -523,46 +534,56 @@ internal fun DriveRoutePanel(plan: RidePlan, option: DriveOption, onOption: (Dri
         // 길찾기 옵션: 추천 · 최단거리 · 무료도로 · 고속도로 제외
         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(DriveOption.entries) { o ->
-                FilterChip(selected = option == o, onClick = { onOption(o) }, label = { Text(o.label) })
+                FilterChip(
+                    selected = option == o,
+                    onClick = { onOption(o) },
+                    label = { Text(o.label) },
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = NaviButton, selectedLabelColor = Color.White),
+                )
             }
         }
+        // 머리글: 큰 소요시간, 아래에 거리 · 통행료 · 택시 (내비 앱 경로 목록처럼)
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(GuidanceText.duration(plan.durationSeconds), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(10.dp))
-                Text(NavText.short(plan.distanceMeters.toDouble()), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp))
-            }
+            Text(GuidanceText.duration(plan.durationSeconds), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
             val toll = plan.tollWon
             val fare = buildList {
-                add(if (toll != null && toll > 0) "통행료 ${"%,d".format(toll)}원" else "통행료 무료")
-                plan.taxiWon?.takeIf { it > 0 }?.let { add("택시 ${"%,d".format(it)}원") }
+                add(NavText.short(plan.distanceMeters.toDouble()))
+                add(if (toll != null && toll > 0) "통행료 ${"%,d".format(toll)}원" else "통행료 없음")
+                plan.taxiWon?.takeIf { it > 0 }?.let { add("택시 약 ${"%,d".format(it)}원") }
             }
-            Text(fare.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(fare.joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             trafficSummary(plan.roads)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         HorizontalDivider()
         val steps = remember(plan.guides) { driveSteps(plan.guides) }
+        // 왼쪽에 경로를 따라 내려가는 세로선, 출발·도착은 속이 빈 점
+        val lineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
         LazyColumn(Modifier.weight(1f, fill = true), contentPadding = PaddingValues(vertical = 4.dp)) {
-            items(steps) { s ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(s.kind.icon(), contentDescription = null, modifier = Modifier.size(22.dp))
+            itemsIndexed(steps) { i, s ->
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(36.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Box(Modifier.width(4.dp).fillMaxHeight().background(lineColor))
+                        if (i == steps.lastIndex) {
+                            Box(Modifier.size(14.dp).background(MaterialTheme.colorScheme.surface, CircleShape).border(3.dp, lineColor, CircleShape))
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
+                    Icon(s.kind.icon(), contentDescription = null, modifier = Modifier.size(26.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
                         Text(
                             if (s.kind == TurnKind.Destination) plan.destName.ifBlank { "목적지" } else s.text,
                             style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (s.kind == TurnKind.Destination) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (s.kind == TurnKind.Destination || s.kind == TurnKind.Start) FontWeight.Black else FontWeight.Normal,
                         )
                         if (s.distanceAfterMeters > 0) {
                             Text(NavText.short(s.distanceAfterMeters.toDouble()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    Spacer(Modifier.width(16.dp))
                 }
+                HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
-        HorizontalDivider()
         DriveStartBar(plan)
     }
 }
@@ -596,18 +617,28 @@ private fun DriveStartBar(plan: RidePlan) {
         }
         if (need.isEmpty()) start() else { pending = start; launcher.launch(need.toTypedArray()) }
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    // 화면 아래에 붙은 두 버튼: 왼쪽 남색 [모의주행], 오른쪽 넓은 파랑 [안내시작] (내비 앱처럼)
+    Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
         if (active) {
-            OutlinedButton(onClick = { DriveGuidance.stop(context) }, modifier = Modifier.weight(1f).height(48.dp)) { Text("안내 종료") }
+            Button(
+                onClick = { DriveGuidance.stop(context) },
+                modifier = Modifier.weight(1f).height(56.dp),
+                shape = RoundedCornerShape(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BoardColor.Danger, contentColor = Color.White),
+            ) { Text("안내 종료", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
         } else {
-            OutlinedButton(
+            Button(
                 onClick = { begin(true) },
-                modifier = Modifier.weight(1f).height(48.dp),
-            ) { Text("모의주행") }
+                modifier = Modifier.weight(1f).height(56.dp),
+                shape = RoundedCornerShape(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = NaviNavy, contentColor = Color.White),
+            ) { Text("모의주행", fontSize = 18.sp) }
             Button(
                 onClick = { begin(false) },
-                modifier = Modifier.weight(1f).height(48.dp),
-            ) { Text("안내시작", fontWeight = FontWeight.Bold) }
+                modifier = Modifier.weight(2f).height(56.dp),
+                shape = RoundedCornerShape(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = NaviButton, contentColor = Color.White),
+            ) { Text("안내시작", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
         }
     }
 }

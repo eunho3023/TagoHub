@@ -6,6 +6,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.Icon
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -70,18 +78,29 @@ fun TimetablePane(
     LaunchedEffect(c) { c.ensureGrades() }
 
     Column(Modifier.fillMaxSize()) {
-        OdSelector(
-            dep, arr, accent, "출발", "도착",
-            onDep = { picking = true },
-            onArr = { picking = false },
-            onSwap = c::swap,
-        )
+        // 화면 제목 머리띠 바로 아래로 이어지는 같은 색 띠 안에 출발·도착 (철도 예매 앱처럼)
+        Surface(color = accent, contentColor = Color.White) {
+            Column(Modifier.padding(bottom = 12.dp)) {
+                OdSelector(
+                    dep, arr, accent, "출발", "도착",
+                    onDep = { picking = true },
+                    onArr = { picking = false },
+                    onSwap = c::swap,
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         DateStrip(date, c::setDate)
         (grades as? Load.Ok)?.value?.takeIf { it.isNotEmpty() }?.let { list ->
             GradeStrip(list, grade, accent, gradeAllLabel, c::setGrade)
         }
         Spacer(Modifier.height(4.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("출발 빠른 순", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         TripList(trips, accent, idleText, onRetry = c::search)
     }
@@ -113,7 +132,7 @@ fun TripList(state: Load<List<Trip>>, accent: Color, idleText: String, onRetry: 
         val next = remember(trips) { trips.indexOfFirst { t -> t.dep?.isBefore(now) == false } }
         val listState = rememberLazyListState()
         LaunchedEffect(trips) { if (next > 0) listState.scrollToItem(next) }
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
             itemsIndexed(trips) { i, t ->
                 TripRow(t, accent, past = t.dep?.isBefore(now) == true, next = i == next)
             }
@@ -122,8 +141,8 @@ fun TripList(state: Load<List<Trip>>, accent: Color, idleText: String, onRetry: 
 }
 
 /**
- * 운행편 카드: 출발 시각 ─●━━━● 도착 시각 (가운데 선은 소요시간), 아래에 차종 배지·편명과 운임.
- * 모드 색 하나로 선과 배지를 칠해 노선도처럼 읽힌다.
+ * 운행편 카드(철도 예매 앱처럼): 위에 차종 배지·편명, 가운데 큰 출발 시각 → 도착 시각과 역 이름,
+ * 아래에 소요시간 칩. 오른쪽은 세로 줄로 나눠 요금을 보여준다.
  */
 @Composable
 fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
@@ -131,54 +150,70 @@ fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
     Surface(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .padding(top = 6.dp)
             .alpha(if (past) 0.4f else 1f),
-        shape = RoundedCornerShape(14.dp),
-        color = if (next) accent.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(if (next) 2.dp else 1.dp, if (next) accent else MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface,
+        border = if (next) BorderStroke(2.dp, accent) else null,
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    t.dep?.let(TagoTime::hm) ?: "--:--",
-                    style = MaterialTheme.typography.headlineSmall.merge(Tnum),
-                    fontWeight = FontWeight.Black,
-                )
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(Fmt.duration(t.dep, t.arr) ?: " ", style = MaterialTheme.typography.labelSmall, color = variant)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(9.dp).border(2.dp, accent, CircleShape))
-                        Box(Modifier.weight(1f).height(3.dp).background(accent))
-                        Box(Modifier.size(9.dp).background(accent, CircleShape))
-                    }
-                }
-                val dayShift = if (t.dep != null && t.arr != null) ChronoUnit.DAYS.between(t.dep.toLocalDate(), t.arr.toLocalDate()) else 0
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        t.arr?.let(TagoTime::hm) ?: "--:--",
-                        style = MaterialTheme.typography.headlineSmall.merge(Tnum),
-                        fontWeight = FontWeight.Black,
-                    )
-                    if (dayShift > 0) Text("+${dayShift}일", style = MaterialTheme.typography.labelSmall, color = variant)
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Column(Modifier.weight(1f).padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (t.kind.isNotBlank()) Pill(t.kind, accent)
-                    t.number?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = variant) }
+                    t.number?.let { Text(it, style = MaterialTheme.typography.bodyLarge.merge(Tnum), fontWeight = FontWeight.Black) }
                     if (next) Text("다음 출발", style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.Black)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    if (t.prices.isEmpty()) {
-                        Text("요금 정보 없음", style = MaterialTheme.typography.bodySmall, color = variant)
-                    } else {
-                        t.prices.forEach { (label, won) ->
-                            Text(
-                                if (t.prices.size > 1) "$label ${Fmt.won(won)}" else Fmt.won(won),
-                                style = MaterialTheme.typography.titleSmall.merge(Tnum),
-                                fontWeight = FontWeight.Black,
-                            )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Column {
+                        Text(
+                            t.dep?.let(TagoTime::hm) ?: "--:--",
+                            style = MaterialTheme.typography.headlineMedium.merge(Tnum),
+                            fontWeight = FontWeight.Black,
+                        )
+                        Text(t.depName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "에서",
+                        tint = variant,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp).size(20.dp),
+                    )
+                    val dayShift = if (t.dep != null && t.arr != null) ChronoUnit.DAYS.between(t.dep.toLocalDate(), t.arr.toLocalDate()) else 0
+                    Column {
+                        Text(
+                            (t.arr?.let(TagoTime::hm) ?: "--:--") + if (dayShift > 0) " +${dayShift}일" else "",
+                            style = MaterialTheme.typography.headlineMedium.merge(Tnum),
+                            fontWeight = FontWeight.Black,
+                        )
+                        Text(t.arrName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Fmt.duration(t.dep, t.arr)?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "$it 소요",
+                        Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = variant,
+                    )
+                }
+            }
+            VerticalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Column(
+                Modifier.widthIn(min = 120.dp).padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.End,
+            ) {
+                if (t.prices.isEmpty()) {
+                    Text("요금 정보 없음", style = MaterialTheme.typography.bodySmall, color = variant)
+                } else {
+                    t.prices.forEach { (label, won) ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (t.prices.size > 1) Text(label, style = MaterialTheme.typography.bodySmall, color = variant)
+                            Text(Fmt.won(won), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Black)
                         }
                     }
                 }
