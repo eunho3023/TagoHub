@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())
         com.eunho.tagohub.data.OverlaySnapshot.init(filesDir)
         com.eunho.tagohub.guidance.DriveGuidance.loadPrefs(applicationContext)
+        com.eunho.tagohub.ui.theme.ThemeSettings.load(applicationContext)
         setContent { TagoTheme { MainScreen() } }
     }
 

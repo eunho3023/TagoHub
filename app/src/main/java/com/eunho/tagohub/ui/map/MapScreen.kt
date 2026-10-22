@@ -38,7 +38,6 @@ import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -190,7 +189,7 @@ fun MapScreen(
 ) {
     LaunchedEffect(mapMode) { vm.configure(mapMode) }
     val context = LocalContext.current
-    val dark = isSystemInDarkTheme()
+    val dark = com.eunho.tagohub.ui.theme.LocalDarkTheme.current
     val scope = rememberCoroutineScope()
 
     val mode by vm.mode.collectAsStateWithLifecycle()
