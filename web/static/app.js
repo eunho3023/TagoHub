@@ -76,12 +76,89 @@ function applyTheme() {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 applyTheme();
 
-/* ───────── 지도 ───────── */
-const map = L.map('map', { zoomControl: true }).setView([36.35, 127.8], 7);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
-const layers = { stops: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map), buses: L.layerGroup().addTo(map), pin: L.layerGroup().addTo(map), me: L.layerGroup().addTo(map) };
-const mkIcon = (cls, html = '') => L.divIcon({ className: '', html: `<div class="mk ${cls}">${html}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] });
-const clearLayer = (n) => layers[n].clearLayers();
+/* ───────── 지도 (OpenStreetMap 또는 카카오맵: 같은 짧은 인터페이스 M 뒤에 둠) ───────── */
+const LAYERS = ['stops', 'route', 'buses', 'pin', 'me'];
+let M = null;
+
+function leafletEngine() {
+  const map = L.map('map', { zoomControl: true }).setView([36.35, 127.8], 7);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+  const layers = Object.fromEntries(LAYERS.map((n) => [n, L.layerGroup().addTo(map)]));
+  const icon = (cls) => L.divIcon({ className: '', html: `<div class="mk ${cls}"></div>`, iconSize: [22, 22], iconAnchor: [11, 11] });
+  return {
+    name: 'OpenStreetMap',
+    setView: (lat, lng, z) => map.setView([lat, lng], z),
+    fitBounds: (pts, pad = 40, maxZoom) => map.fitBounds(L.latLngBounds(pts), { padding: [pad, pad], maxZoom }),
+    marker(layer, lat, lng, cls, o = {}) {
+      const m = L.marker([lat, lng], { icon: icon(cls) }).addTo(layers[layer]);
+      if (o.tip) m.bindTooltip(o.tip);
+      if (o.onClick) m.on('click', o.onClick);
+    },
+    line: (layer, pts, o) => L.polyline(pts, { color: o.color, weight: o.weight, opacity: o.opacity ?? 0.9, dashArray: o.dash ? '2 8' : null }).addTo(layers[layer]),
+    clear: (layer) => layers[layer].clearLayers(),
+    refresh: () => map.invalidateSize(),
+  };
+}
+
+function kakaoEngine() {
+  const kk = window.kakao.maps;
+  const map = new kk.Map($('#map'), { center: new kk.LatLng(36.35, 127.8), level: 13 });
+  map.addControl(new kk.ZoomControl(), kk.ControlPosition.RIGHT);
+  const store = Object.fromEntries(LAYERS.map((n) => [n, []]));
+  const level = (z) => Math.max(1, Math.min(14, 19 - z)); // Leaflet 확대(16) ≈ 카카오 레벨(3)
+  return {
+    name: '카카오맵',
+    setView(lat, lng, z) { map.setCenter(new kk.LatLng(lat, lng)); map.setLevel(level(z)); },
+    fitBounds(pts, pad = 40, maxZoom) {
+      const b = new kk.LatLngBounds();
+      pts.forEach((p) => b.extend(new kk.LatLng(p[0], p[1])));
+      map.setBounds(b, pad, pad, pad, pad);
+      if (maxZoom && map.getLevel() < level(maxZoom)) map.setLevel(level(maxZoom));
+    },
+    marker(layer, lat, lng, cls, o = {}) {
+      const el = document.createElement('div');
+      el.className = 'mk ' + cls;
+      if (o.tip) el.title = o.tip;
+      if (o.onClick) { el.style.cursor = 'pointer'; el.addEventListener('click', o.onClick); }
+      const ov = new kk.CustomOverlay({ position: new kk.LatLng(lat, lng), content: el, xAnchor: 0.5, yAnchor: 0.5, clickable: !!o.onClick, zIndex: 3 });
+      ov.setMap(map);
+      store[layer].push(ov);
+    },
+    line(layer, pts, o) {
+      const pl = new kk.Polyline({ path: pts.map((p) => new kk.LatLng(p[0], p[1])), strokeWeight: o.weight, strokeColor: o.color, strokeOpacity: o.opacity ?? 0.9, strokeStyle: o.dash ? 'shortdot' : 'solid' });
+      pl.setMap(map);
+      store[layer].push(pl);
+    },
+    clear(layer) { store[layer].forEach((x) => x.setMap(null)); store[layer] = []; },
+    refresh: () => map.relayout(),
+  };
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('스크립트를 불러오지 못했습니다'));
+    document.head.appendChild(s);
+  });
+}
+
+/** 설정에 카카오 JavaScript 키가 있고 사용자가 OpenStreetMap 을 고르지 않았으면 카카오맵, 아니면(또는 실패하면) OpenStreetMap */
+async function initMap() {
+  let cfg = {};
+  try { cfg = await api('/api/config'); } catch (e) { /* 서버 설정을 못 읽어도 지도는 띄움 */ }
+  S.cfg = cfg;
+  const want = localStorage.getItem('mapEngine') || 'auto';
+  if (cfg.kakaoJs && want !== 'osm') {
+    try {
+      await loadScript(`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(cfg.kakaoJs)}&autoload=false`);
+      await new Promise((ok) => window.kakao.maps.load(ok));
+      M = kakaoEngine();
+      return;
+    } catch (e) { toast('카카오맵을 못 불러와 OpenStreetMap 으로 열었어요 (JavaScript 키·도메인 등록 확인)'); }
+  }
+  M = leafletEngine();
+}
+const clearLayer = (n) => M.clear(n);
 
 /* ───────── 상태 ───────── */
 const S = { nav: [], timers: [], here: null, favs: JSON.parse(localStorage.getItem('favs') || '[]'), plan: { o: null, d: null, mode: 'transit', option: 'recommend' } };
@@ -127,7 +204,7 @@ function locate() {
       (p) => {
         S.here = { lat: p.coords.latitude, lng: p.coords.longitude };
         clearLayer('me');
-        L.marker([S.here.lat, S.here.lng], { icon: mkIcon('me') }).addTo(layers.me);
+        M.marker('me', S.here.lat, S.here.lng, 'me');
         resolve(S.here);
       },
       () => reject(new Error('위치를 알 수 없습니다. 브라우저의 위치 권한을 허용하세요.')),
@@ -144,8 +221,8 @@ function bindStops(root = screen) {
 }
 function showStopsOnMap(stops) {
   clearLayer('stops');
-  stops.forEach((s) => L.marker([s.lat, s.lng], { icon: mkIcon('stop') }).on('click', () => go('stop', s)).bindTooltip(s.name).addTo(layers.stops));
-  if (stops.length) map.fitBounds(L.latLngBounds(stops.map((s) => [s.lat, s.lng])), { padding: [40, 40], maxZoom: 17 });
+  stops.forEach((s) => M.marker('stops', s.lat, s.lng, 'stop', { tip: s.name, onClick: () => go('stop', s) }));
+  if (stops.length) M.fitBounds(stops.map((s) => [s.lat, s.lng]), 40, 17);
 }
 
 /* ───────── 화면들 ───────── */
@@ -204,8 +281,8 @@ VIEWS.search = async function (q) {
 
 VIEWS.place = async function (p) {
   clearLayer('pin');
-  L.marker([p.lat, p.lng], { icon: mkIcon('pin') }).addTo(layers.pin);
-  map.setView([p.lat, p.lng], 16);
+  M.marker('pin', p.lat, p.lng, 'pin');
+  M.setView(p.lat, p.lng, 16);
   screen.innerHTML = backBtn() + `<div class="pad" style="padding-top:8px"><h1 class="h1" style="font-size:22px">${esc(p.name)}</h1><div class="sub">${esc(p.address || '')}${p.phone ? ' · ' + esc(p.phone) : ''}</div>
     <div style="display:flex;gap:8px;margin-top:14px"><button class="btn line" id="dep">여기서 출발</button><button class="btn" id="arr">여기로 도착</button></div>
     <div class="label">가까운 정류장</div></div><div id="near">${loading()}</div>`;
@@ -217,7 +294,7 @@ VIEWS.place = async function (p) {
     $('#near').innerHTML = r.stops.length ? `<div class="list">${r.stops.slice(0, 12).map(stopItem).join('')}</div>` : '<div class="note">500m 안에 정류장이 없습니다.</div>';
     bindStops($('#near'));
     showStopsOnMap(r.stops.slice(0, 30));
-    L.marker([p.lat, p.lng], { icon: mkIcon('pin') }).addTo(layers.pin);
+    M.marker('pin', p.lat, p.lng, 'pin');
   } catch (e) { $('#near').innerHTML = errBox(e); }
 };
 
@@ -226,7 +303,7 @@ VIEWS.nearby = async function () {
   bindBack();
   try {
     const here = await locate();
-    map.setView([here.lat, here.lng], 16);
+    M.setView(here.lat, here.lng, 16);
     const r = await api('/api/stops/near', { lat: here.lat, lng: here.lng, r: 500 });
     $('#near').innerHTML = r.stops.length ? `<div class="list">${r.stops.map(stopItem).join('')}</div>` : '<div class="note">500m 안에 정류장이 없습니다.</div>';
     bindStops($('#near'));
@@ -258,7 +335,7 @@ VIEWS.stop = function (s) {
     <div id="note"></div><div id="rows" class="list">${loading()}</div>`;
   bindBack();
   clearLayer('pin');
-  if (s.lat) { L.marker([s.lat, s.lng], { icon: mkIcon('stop') }).addTo(layers.pin); map.setView([s.lat, s.lng], 17); }
+  if (s.lat) { M.marker('pin', s.lat, s.lng, 'stop'); M.setView(s.lat, s.lng, 17); }
   $('#fav').addEventListener('click', () => { toggleFav(s); $('#fav').textContent = isFav(s.id) ? '★' : '☆'; });
   let data = null, got = 0, routes = [];
   const draw = () => {
@@ -313,8 +390,8 @@ VIEWS.route = async function (p) {
     $('#rf').addEventListener('click', () => load(false));
     clearLayer('route'); clearLayer('buses');
     const pts = r.stops.filter((s) => s.lat).map((s) => [s.lat, s.lng]);
-    if (pts.length > 1) { L.polyline(pts, { color, weight: 5, opacity: .85 }).addTo(layers.route); if (first) map.fitBounds(pts, { padding: [40, 40] }); }
-    r.buses.filter((b) => b.lat).forEach((b) => L.marker([b.lat, b.lng], { icon: mkIcon('bus') }).bindTooltip(b.vehicleNo || '버스').addTo(layers.buses));
+    if (pts.length > 1) { M.line('route', pts, { color, weight: 5, opacity: 0.85 }); if (first) M.fitBounds(pts, 40); }
+    r.buses.filter((b) => b.lat).forEach((b) => M.marker('buses', b.lat, b.lng, 'bus', { tip: b.vehicleNo || '버스' }));
     const f = $('.st.focus'); if (f && first) f.scrollIntoView({ block: 'center' });
   };
   await load(true);
@@ -339,7 +416,7 @@ VIEWS.station = function (st) {
   screen.innerHTML = backBtn() + `<div class="band" style="background:var(--c-subway)"><div class="row"><div class="title" style="font-size:34px">${esc(st.name)}</div><span class="legs">${st.lines.map((l) => lineBadge(l, true)).join('')}</span><span style="flex:1"></span><button id="rf" aria-label="새로고침">↻</button></div>
     <div class="meta">실시간 도착 · 20초마다 갱신 <span id="upd"></span></div></div><div id="rows">${loading()}</div>`;
   bindBack();
-  if (st.lat) { clearLayer('pin'); L.marker([st.lat, st.lng], { icon: mkIcon('pin') }).addTo(layers.pin); map.setView([st.lat, st.lng], 16); }
+  if (st.lat) { clearLayer('pin'); M.marker('pin', st.lat, st.lng, 'pin'); M.setView(st.lat, st.lng, 16); }
   let data = null, got = 0;
   const draw = () => {
     if (!data) return;
@@ -366,34 +443,135 @@ VIEWS.station = function (st) {
 
 /* 기차·항공 시간표 */
 const KINDS = {
-  train: { title: '기차', color: 'var(--c-train)', list: '/api/train/stations', key: 'stations', trips: '/api/train/trips', tkey: 'trips', place: '출발역·도착역' },
+  train: { title: '기차', color: 'var(--c-train)', list: '/api/train/stations', key: 'stations', trips: '/api/train/trips', tkey: 'trips', place: '출발역·도착역', train: true },
   air: { title: '항공', color: 'var(--c-air)', list: '/api/air/airports', key: 'airports', trips: '/api/air/flights', tkey: 'flights', place: '출발 공항·도착 공항' },
 };
+
+/* 가나다순 묶음 머리글 (ㄲ→ㄱ 처럼 쌍자음은 합침) */
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const CHO_BASE = { 'ㄲ': 'ㄱ', 'ㄸ': 'ㄷ', 'ㅃ': 'ㅂ', 'ㅆ': 'ㅅ', 'ㅉ': 'ㅈ' };
+function initial(name) {
+  const c = String(name || '').charCodeAt(0);
+  if (c >= 0xac00 && c <= 0xd7a3) { const j = CHO[Math.floor((c - 0xac00) / 588)]; return CHO_BASE[j] || j; }
+  return '#';
+}
+
+/* 역·공항 고르는 창: 가나다순 / 지역별 */
+function pickPlace(places, title, onPick) {
+  const hasRegion = places.some((p) => p.city);
+  let mode = 'abc', q = '';
+  const back = document.createElement('div');
+  back.className = 'sheet-back';
+  back.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sh-head"><b>${esc(title)}</b><button class="sh-x" aria-label="닫기">✕</button></div>
+    ${hasRegion ? '<div class="chips" style="padding-top:2px"><button class="chip on" data-m="abc">가나다순</button><button class="chip" data-m="region">지역별</button></div>' : ''}
+    <div style="padding:6px 16px"><div class="search">${svg('search')}<input class="sh-q" placeholder="이름으로 좁히기" aria-label="이름으로 좁히기" autocomplete="off"></div></div><div class="sh-body"></div></div>`;
+  document.body.appendChild(back);
+  const body = back.querySelector('.sh-body');
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { back.remove(); document.removeEventListener('keydown', onKey); };
+  document.addEventListener('keydown', onKey);
+  const btn = (p) => `<button class="item" data-id="${esc(p.id)}"><span class="grow"><div class="name">${esc(p.name)}</div></span>${p.city ? `<span class="sm">${esc(p.city)}</span>` : ''}</button>`;
+  const draw = () => {
+    const list = places.filter((p) => !q || p.name.includes(q));
+    if (!list.length) { body.innerHTML = '<div class="note">일치하는 곳이 없습니다.</div>'; return; }
+    if (mode === 'abc') {
+      const groups = new Map();
+      [...list].sort((a, b) => a.name.localeCompare(b.name, 'ko')).forEach((p) => { const k = initial(p.name); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
+      body.innerHTML = `<div class="sh-idx">${[...groups.keys()].map((k) => `<button data-jump="${esc(k)}">${esc(k)}</button>`).join('')}</div>` +
+        [...groups].map(([k, ps]) => `<div class="sh-grp" data-g="${esc(k)}">${esc(k)}</div><div class="list">${ps.map(btn).join('')}</div>`).join('');
+    } else {
+      const groups = new Map();
+      [...list].sort((a, b) => (a.cityCode || 99) - (b.cityCode || 99) || a.name.localeCompare(b.name, 'ko')).forEach((p) => { const k = p.city || '기타'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
+      body.innerHTML = [...groups].map(([k, ps]) => `<details ${q || groups.size === 1 ? 'open' : ''}><summary>${esc(k)} <span class="sm">${ps.length}개</span></summary><div class="list">${ps.map((p) => btn({ ...p, city: '' })).join('')}</div></details>`).join('');
+    }
+  };
+  back.addEventListener('click', (e) => {
+    if (e.target === back || e.target.closest('.sh-x')) return close();
+    const m = e.target.closest('[data-m]');
+    if (m) { mode = m.dataset.m; back.querySelectorAll('[data-m]').forEach((c) => c.classList.toggle('on', c === m)); draw(); return; }
+    const j = e.target.closest('[data-jump]');
+    if (j) { body.querySelector(`[data-g="${j.dataset.jump}"]`)?.scrollIntoView({ block: 'start' }); return; }
+    const it = e.target.closest('[data-id]');
+    if (it) { const p = places.find((x) => String(x.id) === it.dataset.id); close(); if (p) onPick(p); }
+  });
+  back.querySelector('.sh-q').addEventListener('input', (e) => { q = e.target.value.trim(); draw(); });
+  draw();
+  back.querySelector('.sh-q').focus();
+}
+
+const clockKey = () => { const n = new Date(); const p = (x) => String(x).padStart(2, '0'); return `${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}${p(n.getHours())}${p(n.getMinutes())}`; };
+
 function timetable(kind) {
   const K = KINDS[kind];
   screen.innerHTML = `<div class="band" style="background:${K.color}"><div class="row"><div class="title">${K.title}</div></div><div class="meta">${K.place}과 날짜를 고르세요 (국토교통부 시간표)</div></div>
-    <div class="form-row pad" style="padding-top:6px"><div class="fld"><label for="dep">출발</label><input id="dep" list="dl" placeholder="이름 입력" autocomplete="off"></div>
+    <div class="form-row pad" style="padding-top:6px"><div class="fld"><label for="dep">출발 <button type="button" class="lnk" data-pick="dep">목록에서 고르기</button></label><input id="dep" list="dl" placeholder="이름 입력" autocomplete="off"></div>
       <button class="btn line" id="sw" style="margin-bottom:10px" aria-label="바꾸기">⇄</button>
-      <div class="fld"><label for="arr">도착</label><input id="arr" list="dl" placeholder="이름 입력" autocomplete="off"></div></div>
+      <div class="fld"><label for="arr">도착 <button type="button" class="lnk" data-pick="arr">목록에서 고르기</button></label><input id="arr" list="dl" placeholder="이름 입력" autocomplete="off"></div></div>
     <div class="form-row pad"><div class="fld"><label for="date">날짜</label><input id="date" type="date" value="${today()}"></div><button class="btn" id="go" style="margin-bottom:10px">조회</button></div>
     <datalist id="dl"></datalist><div id="res"></div>`;
   let places = [];
   api(K.list).then((r) => { places = r[K.key]; $('#dl').innerHTML = places.map((p) => `<option value="${esc(p.name)}"></option>`).join(''); }).catch((e) => { $('#res').innerHTML = errBox(e); });
   const idOf = (n) => places.find((p) => p.name === n.trim())?.id;
+  $$('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+    if (!places.length) return;
+    const inp = $('#' + b.dataset.pick);
+    pickPlace(places, b.dataset.pick === 'dep' ? '출발 고르기' : '도착 고르기', (p) => { inp.value = p.name; });
+  }));
   $('#sw').addEventListener('click', () => { const a = $('#dep').value; $('#dep').value = $('#arr').value; $('#arr').value = a; });
+
+  let legs = [];       // 화면에 그려진 열차들 (정차역 버튼이 번호로 찾음)
+  const stopsOf = {};  // 이미 찾은 정차역
+  const stopsBtn = (t) => { if (!K.train) return ''; legs.push(t); return `<button type="button" class="lnk" data-stops="${legs.length - 1}">정차역 보기</button><div class="stops" id="stops${legs.length - 1}" hidden></div>`; };
+  const tripCard = (t, i, next, nowKey) => `<div class="trip ${t.dep < nowKey ? 'past' : ''} ${i === next ? 'next' : ''}" style="--tc:${K.color}">
+        <div class="top"><span class="t num">${hhmm(t.dep)}</span><span class="mid"><span>${esc(durText(t.dep, t.arr))}</span><span class="ln"><i></i><b></b><i></i></span></span><span class="t num">${hhmm(t.arr)}</span></div>
+        <div class="bot"><span><span class="kind">${esc(t.kind || '')}</span><span class="sub">${esc(t.no)}</span>${i === next ? ' <b style="color:var(--accent);font-size:11px">다음 출발</b>' : ''}</span><span class="fare">${esc(won(t.fare))}</span></div>${stopsBtn(t)}</div>`;
+  const itinCard = (r, nowKey) => `<div class="trip ${r.dep < nowKey ? 'past' : ''}" style="--tc:${K.color}">
+        <div class="top"><span class="t num">${hhmm(r.dep)}</span><span class="mid"><span>${esc(durText(r.dep, r.arr))} · 환승 1회</span><span class="ln"><i></i><b></b><i></i></span></span><span class="t num">${hhmm(r.arr)}</span></div>
+        ${r.legs.map((t, n) => `<div class="leg"><div class="bot"><span><span class="kind">${esc(t.kind || '')}</span><span class="sub">${esc(t.no)} · ${esc(t.depName)} ${hhmm(t.dep)} → ${esc(t.arrName)} ${hhmm(t.arr)}</span></span><span class="fare">${esc(won(t.fare))}</span></div>${stopsBtn(t)}</div>${n === 0 ? `<div class="xfer">${esc(r.hub)}에서 ${r.wait}분 기다려 갈아타기</div>` : ''}`).join('')}
+        <div class="bot" style="margin-top:6px"><span class="sub">합계</span><span class="fare">${esc(won(r.fare))}</span></div></div>`;
+
+  const showTransfers = async (box, p, nowKey, why) => {
+    box.innerHTML = loading('환승 경로를 찾는 중… (주요 환승역을 모두 확인해서 10~20초 걸려요)');
+    try {
+      const r = await api('/api/train/transfers', p);
+      box.innerHTML = (why ? `<div class="note">${esc(why)}</div>` : '') + (r.itineraries.length ? `<div class="sec-title">환승해서 가기 <span class="sm">(갈아타는 시간 10분 이상 · 1회 환승만)</span></div>` + r.itineraries.map((x) => itinCard(x, nowKey)).join('')
+        : '<div class="note">환승 1회로 갈 수 있는 열차를 찾지 못했습니다. (2회 이상 환승이 필요하거나 이 날짜에 운행이 없을 수 있어요)</div>');
+    } catch (e) { box.innerHTML = errBox(e); }
+  };
+
   $('#go').addEventListener('click', async () => {
     const dep = idOf($('#dep').value), arr = idOf($('#arr').value);
     if (!dep || !arr) { $('#res').innerHTML = '<div class="note err">목록에 있는 이름을 골라 주세요.</div>'; return; }
+    if (dep === arr) { $('#res').innerHTML = '<div class="note err">출발과 도착이 같습니다.</div>'; return; }
     $('#res').innerHTML = loading();
+    const p = { dep, arr, date: $('#date').value };
+    legs = [];
     try {
-      const r = await api(K.trips, { dep, arr, date: $('#date').value });
-      const rows = r[K.tkey];
-      const now = new Date(); const nowKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-      const next = rows.findIndex((t) => t.dep >= nowKey);
-      $('#res').innerHTML = rows.length ? rows.map((t, i) => `<div class="trip ${t.dep < nowKey ? 'past' : ''} ${i === next ? 'next' : ''}" style="--tc:${K.color}">
-        <div class="top"><span class="t num">${hhmm(t.dep)}</span><span class="mid"><span>${esc(durText(t.dep, t.arr))}</span><span class="ln"><i></i><b></b><i></i></span></span><span class="t num">${hhmm(t.arr)}</span></div>
-        <div class="bot"><span><span class="kind">${esc(t.kind || '')}</span><span class="sub">${esc(t.no)}</span>${i === next ? ' <b style="color:var(--accent);font-size:11px">다음 출발</b>' : ''}</span><span class="fare">${esc(won(t.fare))}</span></div></div>`).join('') : '<div class="note">해당 날짜에 운행편이 없습니다.</div>';
+      const r = await api(K.trips, p);
+      const trips = r[K.tkey];
+      const nowKey = clockKey();
+      const next = trips.findIndex((t) => t.dep >= nowKey);
+      $('#res').innerHTML = (trips.length ? trips.map((t, i) => tripCard(t, i, next, nowKey)).join('') : '<div class="note">해당 날짜에 직통 운행편이 없습니다.</div>') + (K.train ? '<div id="xfer"></div>' : '');
+      if (K.train) {
+        const box = $('#xfer');
+        if (!trips.length) showTransfers(box, p, nowKey, '직통이 없어서 환승 경로를 찾아봤어요.');
+        else { box.innerHTML = '<div class="pad"><button class="btn line" id="xb" type="button">환승해서 가는 방법도 보기</button></div>'; $('#xb').addEventListener('click', () => showTransfers(box, p, nowKey)); }
+      }
     } catch (e) { $('#res').innerHTML = errBox(e); }
+  });
+
+  $('#res').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-stops]'); if (!b) return;
+    const i = +b.dataset.stops, box = $('#stops' + i), t = legs[i];
+    if (!box.hidden) { box.hidden = true; return; }
+    box.hidden = false;
+    const k = `${t.depId}|${t.arrId}|${t.no}|${$('#date').value}`;
+    if (!stopsOf[k]) {
+      box.innerHTML = loading('정차역을 찾는 중… (처음 한 번은 1분쯤 걸릴 수 있어요)');
+      try { stopsOf[k] = await api('/api/train/stops', { dep: t.depId, arr: t.arrId, date: $('#date').value, no: t.no }); } catch (er) { box.innerHTML = errBox(er); return; }
+    }
+    const r = stopsOf[k];
+    box.innerHTML = r.stops?.length ? r.stops.map((s, n) => `<div class="stp ${n === 0 || n === r.stops.length - 1 ? 'end' : ''}"><i></i><span class="grow">${esc(s.name)}</span><span class="num">${hhmm(s.time)}</span></div>`).join('') + '<div class="sm" style="margin-top:4px">국토교통부 시간표를 구간별로 맞춰 본 결과예요. 실제 정차와 다를 수 있어요.</div>' : `<div class="note">${esc(r.message || '정차역 정보를 찾지 못했습니다.')}</div>`;
   });
 }
 VIEWS.train = () => timetable('train');
@@ -433,8 +611,8 @@ VIEWS.plan = function () {
     if (!P.o || !P.d) { $('#res').innerHTML = '<div class="note err">출발과 도착을 검색 결과에서 골라 주세요.</div>'; return; }
     $('#res').innerHTML = loading('경로를 찾는 중…');
     clearLayer('route'); clearLayer('pin');
-    [P.o, P.d].forEach((p, i) => L.marker([p.lat, p.lng], { icon: mkIcon(i ? 'pin' : 'me') }).addTo(layers.pin));
-    map.fitBounds([[P.o.lat, P.o.lng], [P.d.lat, P.d.lng]], { padding: [60, 60] });
+    [P.o, P.d].forEach((p, i) => M.marker('pin', p.lat, p.lng, i ? 'pin' : 'me'));
+    M.fitBounds([[P.o.lat, P.o.lng], [P.d.lat, P.d.lng]], 60);
     try {
       const q = { olat: P.o.lat, olng: P.o.lng, dlat: P.d.lat, dlng: P.d.lng };
       if (P.mode === 'car') renderCar(await api('/api/route/car', { ...q, option: P.option })); else renderTransit(await api('/api/route/transit', q));
@@ -447,7 +625,7 @@ const TRAFFIC = { 1: '#E53935', 2: '#F57C00', 3: '#FBC02D', 4: '#2E9B57', 6: '#8
 function renderCar(r) {
   if (!r.found) { $('#res').innerHTML = `<div class="note err">${esc(r.message || '경로를 찾지 못했습니다.')}</div>`; return; }
   const s = r.summary;
-  r.roads.forEach((road) => { if (road.points.length > 1) L.polyline(road.points, { color: TRAFFIC[road.state] || '#3D5BAB', weight: 6, opacity: .9 }).addTo(layers.route); });
+  r.roads.forEach((road) => { if (road.points.length > 1) M.line('route', road.points, { color: TRAFFIC[road.state] || '#3D5BAB', weight: 6 }); });
   const fare = [s.toll ? '통행료 ' + won(s.toll) : '통행료 무료', s.taxi ? '택시 ' + won(s.taxi) : ''].filter(Boolean).join(' · ');
   const heavy = r.roads.filter((x) => [1, 2, 6].includes(x.state)).reduce((a, x) => a + (x.distance || 0), 0);
   $('#res').innerHTML = `<div class="sum"><div class="big num">${esc(mins(s.duration))}</div><div class="sub">${esc(km(s.distance))} · ${esc(fare)}</div><div class="sub">${heavy ? '정체 ' + esc(km(heavy)) : '정체 없음'}</div></div>
@@ -457,7 +635,7 @@ function renderTransit(r) {
   if (!r.routes.length) { $('#res').innerHTML = `<div class="note err">${esc({ STARTNODES_NULL: '출발지 근처에 대중교통이 없습니다.', ENDNODES_NULL: '도착지 근처에 대중교통이 없습니다.', NO_RESULTS: '대중교통 경로를 찾지 못했습니다.', EQUAL_POINTS: '출발지와 도착지가 같습니다.' }[r.status] || '경로를 찾지 못했습니다. (' + esc(r.status || '') + ')')}</div>`; return; }
   const draw = (rt) => {
     clearLayer('route');
-    rt.steps.forEach((st, i) => { if (st.points.length > 1) L.polyline(st.points, st.type === 'WALKING' ? { color: '#7A8494', weight: 4, dashArray: '2 8' } : { color: st.type === 'SUBWAY' ? '#4B5563' : '#1F7A4A', weight: 6, opacity: .9 }).addTo(layers.route); });
+    rt.steps.forEach((st, i) => { if (st.points.length > 1) M.line('route', st.points, st.type === 'WALKING' ? { color: '#7A8494', weight: 4, dash: true } : { color: st.type === 'SUBWAY' ? '#4B5563' : '#1F7A4A', weight: 6 }); });
   };
   $('#res').innerHTML = `<div class="list">${r.routes.map((rt, i) => `<button class="item" data-r="${i}" style="align-items:flex-start"><span class="grow"><div class="name num" style="font-size:20px">${esc(mins(rt.totalTime))} <span class="sub" style="font-size:12px;font-weight:500">${esc(rt.fare ? won(rt.fare) : '')} · 환승 ${rt.transfers ?? 0}회</span></div>
     <div class="legs">${rt.steps.map((st) => st.type === 'WALKING' ? `<span class="w">걷기 ${esc(Math.max(1, Math.round((st.time || 0) / 60)))}분</span>` : `<span class="badge" style="background:${st.type === 'SUBWAY' ? 'var(--c-subway)' : routeColor((st.vehicles[0] || {}).type)};height:26px;min-width:44px">${esc((st.vehicles[0] || {}).name || (st.type === 'SUBWAY' ? '지하철' : '버스'))}</span>`).join('<span class="w">›</span>')}</div>
@@ -472,9 +650,13 @@ VIEWS.more = async function () {
     <button class="item" id="goair" style="margin:14px -16px 0;width:calc(100% + 32px)"><span style="color:var(--accent)">${svg('plane').replace('<svg', '<svg width="22" height="22"')}</span><span class="grow"><div class="name">항공</div><div class="sm">국내선 운항 시간표</div></span></button>
     <div class="label">화면 모드</div><div class="chips" style="padding:0">${[['system', '시스템'], ['light', '라이트'], ['dark', '다크']].map(([k, l]) => `<button class="chip ${pref === k ? 'on' : ''}" data-theme="${k}">${l}</button>`).join('')}</div>
     <div class="sub" style="margin-top:6px">시스템을 고르면 기기의 라이트·다크 설정을 따라 바뀝니다.</div>
+    <div class="label">지도</div><div class="chips" style="padding:0">${[['auto', '자동'], ['osm', 'OpenStreetMap']].map(([k, l]) => `<button class="chip ${(localStorage.getItem('mapEngine') || 'auto') === k ? 'on' : ''}" data-engine="${k}">${l}</button>`).join('')}</div>
+    <div class="sub" style="margin-top:6px">지금 지도: ${esc(M.name)}${S.cfg?.kakaoJs ? '' : ' · 카카오맵을 쓰려면 local.properties 에 KAKAO_JS_KEY 를 넣으세요'}</div>
+    <div class="sub" style="margin-top:6px">카카오 개발자 사이트의 JavaScript SDK 도메인에 <b>${esc(location.origin)}</b> 를 (포트까지 똑같이) 등록해야 합니다. 지도가 비어 보이면 이 주소를 확인하세요.</div>
     <div class="label">서버 상태</div><div id="cfg" class="sub">확인 중…</div>
     <div class="label">안내</div><div class="sub">이 웹 버전은 조회용입니다. GPS 경로 안내·하차 알림·위젯은 안드로이드 앱에서만 됩니다. 버스 도착은 국토교통부 실시간 서비스 지역만, 지하철 실시간은 서울·수도권만 지원합니다.</div></div>`;
   $('#goair').addEventListener('click', () => go('air'));
+  $$('[data-engine]').forEach((b) => b.addEventListener('click', () => { localStorage.setItem('mapEngine', b.dataset.engine); location.reload(); }));
   $$('[data-theme]').forEach((b) => b.addEventListener('click', () => { localStorage.setItem('theme', b.dataset.theme); applyTheme(); $$('[data-theme]').forEach((x) => x.classList.toggle('on', x === b)); }));
   try {
     const c = await api('/api/config');
@@ -483,4 +665,4 @@ VIEWS.more = async function () {
   } catch (e) { $('#cfg').textContent = e.message; }
 };
 
-go('home');
+initMap().then(() => go('home'));

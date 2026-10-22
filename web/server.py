@@ -432,7 +432,7 @@ def train_stations() -> list:
 
         def one(c):
             try:
-                return [{"id": x.get("nodeid"), "name": x.get("nodename"), "city": c.get("cityname")}
+                return [{"id": x.get("nodeid"), "name": x.get("nodename"), "city": c.get("cityname"), "cityCode": to_int(c.get("citycode"))}
                         for x in tago_all("TrainInfo/GetCtyAcctoTrainSttnList", cityCode=c.get("citycode"))]
             except ApiError:
                 return []
@@ -451,9 +451,136 @@ def train_stations() -> list:
 def train_trips(dep: str, arr: str, date: str) -> list:
     items = tago_all("TrainInfo/GetStrtpntAlocFndTrainInfo", rows=300, max_pages=3, depPlaceId=dep, arrPlaceId=arr, depPlandTime=date.replace("-", ""))
     out = [{"kind": x.get("traingradename"), "no": str(x.get("trainno", "")), "dep": str(x.get("depplandtime", "")), "arr": str(x.get("arrplandtime", "")),
-            "fare": to_int(x.get("adultcharge")), "depName": x.get("depplacename"), "arrName": x.get("arrplacename")} for x in items]
+            "fare": to_int(x.get("adultcharge")), "depName": x.get("depplacename"), "arrName": x.get("arrplacename"), "depId": dep, "arrId": arr} for x in items]
     out.sort(key=lambda r: r["dep"])
     return out
+
+
+def train_trips_cached(dep: str, arr: str, date: str) -> list:
+    """구간 조회를 잠시 기억 (환승·정차역 탐색이 같은 구간을 여러 번 부르므로)"""
+    return cached(f"trips:{dep}:{arr}:{date}", 600, lambda: train_trips(dep, arr, date))
+
+
+# ── 환승 ──
+# 환승역 후보: 노선이 갈라지거나 만나는 큰 역. 이름이 목록에 없으면 건너뜀.
+TRANSFER_HUBS = ["서울", "용산", "영등포", "수원", "평택", "천안아산", "오송", "조치원", "대전", "서대전", "김천구미", "동대구", "신경주",
+                 "울산(통도사)", "부산", "밀양", "마산", "익산", "정읍", "광주송정", "목포", "순천", "여수EXPO", "행신", "청량리", "원주", "제천", "영주", "강릉"]
+MIN_TRANSFER_MIN = 10
+
+
+def to_minutes(t: str):
+    """'202610221530' → 분 단위 숫자 (비교·차이 계산용). 형식이 이상하면 None"""
+    try:
+        return int(dt.datetime.strptime(str(t)[:12], "%Y%m%d%H%M").timestamp() // 60)
+    except ValueError:
+        return None
+
+
+def combine_transfers(first: list, second: list, hub: str, min_wait: int = MIN_TRANSFER_MIN) -> list:
+    """첫 구간(출발→환승역)과 둘째 구간(환승역→도착)을 이어 붙임.
+    첫 구간마다 '환승 시간을 지키면서 가장 빨리 도착하는' 둘째 구간 하나만 짝지음."""
+    out = []
+    seconds = [(to_minutes(b["dep"]), b) for b in second]
+    seconds = sorted((m, b) for m, b in seconds if m is not None)
+    for a in first:
+        a_arr = to_minutes(a["arr"])
+        if a_arr is None:
+            continue
+        best = None
+        for m, b in seconds:
+            if m < a_arr + min_wait:
+                continue
+            b_arr = to_minutes(b["arr"])
+            if b_arr is None:
+                continue
+            if best is None or b_arr < best[1]:
+                best = (b, b_arr, m - a_arr)
+        if best:
+            b, _, wait = best
+            out.append({"hub": hub, "wait": wait, "dep": a["dep"], "arr": b["arr"], "legs": [a, b],
+                        "fare": (a["fare"] or 0) + (b["fare"] or 0) or None})
+    return out
+
+
+def train_transfers(dep: str, arr: str, date: str, limit: int = 15) -> list:
+    stations = train_stations()
+    by_name = {s["name"]: s["id"] for s in stations}
+    hubs = [(n, by_name[n]) for n in TRANSFER_HUBS if n in by_name and by_name[n] not in (dep, arr)]
+
+    def leg(pair):
+        try:
+            return train_trips_cached(*pair, date)
+        except ApiError:
+            return []
+
+    jobs = [(dep, hid) for _, hid in hubs] + [(hid, arr) for _, hid in hubs]
+    with ThreadPoolExecutor(8) as ex:
+        results = list(ex.map(leg, jobs))
+    n = len(hubs)
+    found = []
+    for i, (name, _) in enumerate(hubs):
+        if results[i] and results[n + i]:
+            found += combine_transfers(results[i], results[n + i], name)
+    found.sort(key=lambda r: (r["arr"], r["dep"]))
+    # 같은 열차 조합은 하나만 (가장 빨리 도착하는 환승역)
+    seen, out = set(), []
+    for r in found:
+        k = (r["legs"][0]["no"], r["legs"][0]["dep"])
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(r)
+    out.sort(key=lambda r: r["dep"])
+    # 도착이 너무 늦은 것(가장 빠른 도착보다 2시간 넘게 늦음)은 뺌
+    best = min((to_minutes(r["arr"]) or 10**9 for r in out), default=None)
+    out = [r for r in out if best is not None and (to_minutes(r["arr"]) or 10**9) <= best + 120]
+    return out[:limit] if len(out) <= limit else _spread(out, limit)
+
+
+def _spread(items: list, limit: int) -> list:
+    """너무 많으면 하루에 고르게 퍼지도록 일정 간격으로 고름"""
+    step = len(items) / limit
+    return [items[int(i * step)] for i in range(limit)]
+
+
+# ── 정차역 ──
+# TAGO 에는 '열차별 정차역' 조회가 없어서, 출발역에서 각 역까지의 구간 시간표를 모아 같은 열차번호가 나오는 역을 정차역으로 봅니다.
+
+def stop_scan(dep: str, date: str) -> dict:
+    """출발역에서 모든 역까지 조회 → {열차번호: [(도착시각, 역이름), ...]}. 첫 조회는 수십 초 걸리지만 이후엔 기억함."""
+    def load():
+        stations = [s for s in train_stations() if s["id"] != dep]
+        errors = []
+
+        def one(s):
+            try:
+                return s["name"], train_trips_cached(dep, s["id"], date)
+            except ApiError as e:
+                errors.append(str(e))
+                return s["name"], []
+
+        with ThreadPoolExecutor(16) as ex:
+            results = list(ex.map(one, stations))
+        if len(errors) > max(10, len(stations) // 5):
+            raise ApiError("정차역을 찾는 중 TAGO 호출이 계속 실패했습니다: " + errors[0])
+        by_no: dict = {}
+        for name, trips in results:
+            for t in trips:
+                by_no.setdefault(t["no"], []).append((t["arr"], name))
+        return by_no
+    return cached(f"stopscan:{dep}:{date}", 1800, load)
+
+
+def train_stops(dep: str, arr: str, date: str, no: str) -> dict:
+    """한 열차의 정차역 (출발역~도착역, 시각순)"""
+    trips = [t for t in train_trips_cached(dep, arr, date) if t["no"] == no]
+    if not trips:
+        return {"stops": [], "message": "이 열차의 시간표를 찾지 못했습니다."}
+    t = trips[0]
+    scan = stop_scan(dep, date)
+    mid = sorted((a, n) for a, n in scan.get(no, []) if t["dep"] < a < t["arr"])
+    stops = [{"name": t["depName"], "time": t["dep"]}] + [{"name": n, "time": a} for a, n in mid] + [{"name": t["arrName"], "time": t["arr"]}]
+    return {"stops": stops}
 
 
 def airports() -> list:
@@ -578,7 +705,9 @@ def route(path: str, q: dict):
         return v
 
     if path == "/api/config":
-        return {"tago": bool(key("TAGO_SERVICE_KEY")), "kakao": bool(key("KAKAO_REST_KEY")), "seoul": bool(key("SEOUL_SUBWAY_KEY")), "db": db_status}
+        # 카카오 JavaScript 키는 브라우저가 지도를 불러올 때 어차피 주소에 들어가는 공개용 키 (등록한 도메인에서만 동작)
+        return {"tago": bool(key("TAGO_SERVICE_KEY")), "kakao": bool(key("KAKAO_REST_KEY")), "seoul": bool(key("SEOUL_SUBWAY_KEY")),
+                "kakaoJs": key("KAKAO_JS_KEY"), "db": db_status}
     if path == "/api/place":
         return {"places": place_search(g("q"), to_float(g("lat")), to_float(g("lng")))}
     if path == "/api/stops/near":
@@ -603,6 +732,10 @@ def route(path: str, q: dict):
         return {"stations": train_stations()}
     if path == "/api/train/trips":
         return {"trips": train_trips(g("dep"), g("arr"), g("date", today()))}
+    if path == "/api/train/transfers":
+        return {"itineraries": train_transfers(g("dep"), g("arr"), g("date", today()))}
+    if path == "/api/train/stops":
+        return train_stops(g("dep"), g("arr"), g("date", today()), g("no"))
     if path == "/api/air/airports":
         return {"airports": airports()}
     if path == "/api/air/flights":

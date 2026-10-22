@@ -86,11 +86,69 @@ class Kakao(unittest.TestCase):
         self.assertEqual(s.OPTIONS["shortest"], {"priority": "DISTANCE"})
 
 
+def trip(no, dep, arr, fare=1000, kind="KTX", dn="A", an="B"):
+    return {"kind": kind, "no": no, "dep": dep, "arr": arr, "fare": fare, "depName": dn, "arrName": an, "depId": dn, "arrId": an}
+
+
+class TrainTransfer(unittest.TestCase):
+    def test_transfer_needs_the_minimum_wait_and_takes_the_earliest_arrival(self):
+        first = [trip("1", "202610230800", "202610230900")]
+        second = [trip("2", "202610230905", "202610231000"),   # 5분 뒤 → 못 탐
+                  trip("3", "202610230910", "202610231100"),   # 10분 뒤 → 탐
+                  trip("4", "202610230930", "202610231030")]   # 더 늦게 출발해도 더 빨리 도착
+        r = s.combine_transfers(first, second, "대전")
+        self.assertEqual(len(r), 1)
+        self.assertEqual(r[0]["legs"][1]["no"], "4")
+        self.assertEqual(r[0]["wait"], 30)
+        self.assertEqual(r[0]["fare"], 2000)
+        self.assertEqual((r[0]["dep"], r[0]["arr"], r[0]["hub"]), ("202610230800", "202610231030", "대전"))
+
+    def test_no_connection_means_no_itinerary(self):
+        r = s.combine_transfers([trip("1", "202610230800", "202610231200")], [trip("2", "202610230900", "202610231000")], "대전")
+        self.assertEqual(r, [])
+
+    def test_transfers_skip_hubs_with_no_trains_and_dedupe_the_same_first_train(self):
+        stations = [{"id": "S", "name": "강릉"}, {"id": "E", "name": "목포"}, {"id": "H1", "name": "서울"}, {"id": "H2", "name": "대전"}]
+        legs = {("S", "H1"): [trip("1", "202610230800", "202610230900")], ("H1", "E"): [trip("2", "202610231000", "202610231300")],
+                ("S", "H2"): [trip("1", "202610230800", "202610230830")], ("H2", "E"): [trip("3", "202610231000", "202610231200")]}
+        with mock.patch.object(s, "train_stations", return_value=stations), \
+                mock.patch.object(s, "train_trips_cached", side_effect=lambda a, b, d: legs.get((a, b), [])):
+            r = s.train_transfers("S", "E", "2026-10-23")
+        self.assertEqual(len(r), 1)                       # 같은 첫 열차는 하나만
+        self.assertEqual(r[0]["hub"], "대전")             # 더 빨리 도착하는 환승역
+        self.assertEqual(r[0]["legs"][1]["no"], "3")
+
+    def test_minutes_parsing_rejects_garbage(self):
+        self.assertIsNone(s.to_minutes(""))
+        self.assertEqual(s.to_minutes("202610230910") - s.to_minutes("202610230800"), 70)
+
+
+class TrainStops(unittest.TestCase):
+    def test_stops_are_the_stations_the_same_train_reaches_before_the_destination_in_time_order(self):
+        t = trip("101", "202610230800", "202610231000", dn="서울", an="부산")
+        scan = {"101": [("202610230930", "동대구"), ("202610230845", "대전"), ("202610231000", "부산"), ("202610231100", "마산")],
+                "202": [("202610230850", "수원")]}
+        with mock.patch.object(s, "train_trips_cached", return_value=[t]), mock.patch.object(s, "stop_scan", return_value=scan):
+            r = s.train_stops("D", "A", "2026-10-23", "101")
+        self.assertEqual([x["name"] for x in r["stops"]], ["서울", "대전", "동대구", "부산"])   # 부산 이후(마산)·다른 열차(수원) 제외
+
+    def test_unknown_train_number_explains_itself(self):
+        with mock.patch.object(s, "train_trips_cached", return_value=[]):
+            r = s.train_stops("D", "A", "2026-10-23", "999")
+        self.assertEqual(r["stops"], [])
+        self.assertTrue(r["message"])
+
+
 class Routing(unittest.TestCase):
     def test_unknown_api_path_is_a_404_style_error(self):
         with self.assertRaises(s.ApiError) as ctx:
             s.route("/api/nope", {})
         self.assertEqual(ctx.exception.status, 404)
+
+    def test_train_transfer_and_stop_routes_exist(self):
+        with mock.patch.object(s, "train_transfers", return_value=[]), mock.patch.object(s, "train_stops", return_value={"stops": []}):
+            self.assertEqual(s.route("/api/train/transfers", {"dep": ["a"], "arr": ["b"]}), {"itineraries": []})
+            self.assertEqual(s.route("/api/train/stops", {"dep": ["a"], "arr": ["b"], "no": ["1"]}), {"stops": []})
 
     def test_missing_coordinates_are_a_400(self):
         with self.assertRaises(s.ApiError) as ctx:
