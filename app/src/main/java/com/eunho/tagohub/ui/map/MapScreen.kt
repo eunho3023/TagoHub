@@ -345,6 +345,7 @@ fun MapScreen(
             )
             itsRoadLabels.filterKeys { it in overlays }.forEach { (id, label) ->
             }
+            AlightStatusCard()
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
 
@@ -1262,6 +1263,13 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val busesAt = remember(buses) {
                 { s: RouteStop -> buses.filter { b -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId } }
             }
+            // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
+            list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${s.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    AlightButton(com.eunho.tagohub.guidance.AlightAlert.Target(s.name, s.lat!!, s.lng!!, false, d.routeNo))
+                }
+            }
             val listState = rememberLazyListState()
             LaunchedEffect(list) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
@@ -2076,6 +2084,18 @@ private fun PlanDetail(t: TripController, p: TripPlan) {
                 StepRow(Icons.Filled.Place, color,
                     if (leg.stops > 0) "${leg.stops}정류장 이동" else if (leg.meters > 0) "약 ${"%.1f".format(leg.meters / 1000)}km 이동" else "이동",
                     "${leg.alightName}${if (leg.subway) "역" else ""} 하차")
+            }
+            item {
+                // 내릴 곳 좌표: 구간이 직접 주거나, 없으면 정류장 DB 에서
+                val alight = remember(leg) {
+                    val la = leg.alightLat
+                    val ln = leg.alightLng
+                    if (la != null && ln != null) com.eunho.tagohub.guidance.AlightAlert.Target(leg.alightName, la, ln, leg.subway, leg.routeNo)
+                    else com.eunho.tagohub.data.StopDb.peek()?.byId(leg.alightStopId)?.let { s ->
+                        if (s.lat != null && s.lng != null) com.eunho.tagohub.guidance.AlightAlert.Target(leg.alightName, s.lat, s.lng, leg.subway, leg.routeNo) else null
+                    }
+                }
+                alight?.let { AlightButton(it, Modifier.padding(start = 58.dp, bottom = 6.dp)) }
             }
         }
         item {
