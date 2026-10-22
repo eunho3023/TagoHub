@@ -81,6 +81,7 @@ import com.eunho.tagohub.ui.common.ScreenTitle
 import com.eunho.tagohub.ui.common.SearchBox
 import com.eunho.tagohub.ui.common.SectionHeader
 import com.eunho.tagohub.ui.common.Tnum
+import com.eunho.tagohub.ui.theme.BoardColor
 import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
@@ -147,18 +148,30 @@ internal fun StopRouteItem(row: StopRouteRow, elapsedSec: Int = 0, dirLabel: Str
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 굵은 노선번호 배지(노선 종류 색)
+        Box(
+            Modifier
+                .widthIn(min = 56.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(busRouteColor(row.routeType))
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(row.routeNo, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, maxLines = 1)
+        }
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            // 노선 종류 배지 + 노선번호(기점-종점)
+            // 노선 종류 + 기점-종점
             Row(verticalAlignment = Alignment.CenterVertically) {
                 row.routeType?.let { t ->
-                    Pill(t.removeSuffix("버스"), busRouteColor(t))
+                    Text(t.removeSuffix("버스"), style = MaterialTheme.typography.labelMedium, color = busRouteColor(t), fontWeight = FontWeight.Black)
                     Spacer(Modifier.width(6.dp))
                 }
-                val ends = listOfNotNull(row.startName, row.endName).joinToString("-")
+                val ends = listOfNotNull(row.startName, row.endName).joinToString(" → ")
                 Text(
-                    row.routeNo + if (ends.isNotEmpty()) "($ends)" else "",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    ends.ifEmpty { row.routeNo },
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -179,7 +192,7 @@ internal fun StopRouteItem(row: StopRouteRow, elapsedSec: Int = 0, dirLabel: Str
             if (first == null) {
                 Text(if (row.ended) "운행종료" else "도착 정보 없음", style = MaterialTheme.typography.bodyMedium, color = variant)
             } else {
-                Text(arrivalLine(first, elapsedSec), style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = soon, fontWeight = FontWeight.Medium)
+                Text(arrivalLine(first, elapsedSec), style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = soon, fontWeight = FontWeight.Black)
                 Text(
                     second?.let { arrivalLine(it, elapsedSec) } ?: "정보없음",
                     style = MaterialTheme.typography.bodyLarge.merge(Tnum),
@@ -258,39 +271,41 @@ internal fun TimelineRow(
     ) {
         Box(
             Modifier
-                .width(28.dp)
+                .width(34.dp)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center,
         ) {
-            // 노선 띠: 첫/끝 정류소에서는 반쪽만
+            // 노선 띠(노선도처럼 굵게): 첫/끝 정류소에서는 반쪽만
             Column(Modifier.fillMaxHeight()) {
                 Box(
                     Modifier
-                        .width(4.dp)
+                        .width(8.dp)
                         .weight(1f)
                         .background(if (isFirst) Color.Transparent else color)
                 )
                 Box(
                     Modifier
-                        .width(4.dp)
+                        .width(8.dp)
                         .weight(1f)
                         .background(if (isLast) Color.Transparent else color)
                 )
             }
             if (buses.isNotEmpty()) {
+                // 버스가 있는 정류소: 앰버 원에 버스 아이콘
                 Box(
                     Modifier
-                        .size(24.dp)
+                        .size(30.dp)
                         .clip(CircleShape)
-                        .background(color),
+                        .background(BoardColor.AmberFill)
+                        .border(3.dp, color, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.DirectionsBus, contentDescription = "버스", tint = Color.White, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Filled.DirectionsBus, contentDescription = "버스", tint = BoardColor.OnAmber, modifier = Modifier.size(16.dp))
                 }
             } else {
                 Box(
                     Modifier
-                        .size(12.dp)
+                        .size(18.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surface)
                         .border(3.dp, color, CircleShape)
@@ -305,7 +320,7 @@ internal fun TimelineRow(
             Text(
                 s.name,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (focused || buses.isNotEmpty()) FontWeight.Black else FontWeight.Medium,
             )
             val sub = listOfNotNull(times, s.nodeNo).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
