@@ -182,7 +182,7 @@ class NavRoute(
  * 모든 안내가 갖고 있는 한국어 문구로 판별한다 ("좌회전", "오른쪽에 고속도로 입구", "12시 방향" 등).
  */
 enum class TurnKind {
-    Start, Destination, Left, Right, UTurn, SlightLeft, SlightRight, Straight, HighwayEnter, HighwayExit, Toll;
+    Start, Destination, Waypoint, Left, Right, UTurn, SlightLeft, SlightRight, Straight, HighwayEnter, HighwayExit, Toll;
 
     /** 안내할 만한 "동작"인지: 교차로를 직진으로 지나가는 것은 안내하지 않는다(내비 앱도 다음 회전만 보여줌) */
     val isManeuver: Boolean get() = this != Straight && this != Start
@@ -193,6 +193,7 @@ enum class TurnKind {
         fun of(g: DriveGuide): TurnKind {
             if (g.isStart) return Start
             if (g.isDestination) return Destination
+            if (g.isWaypoint) return Waypoint
             val t = g.guidance
             return when {
                 "유턴" in t || "U턴" in t || "u턴" in t -> UTurn
@@ -219,6 +220,7 @@ enum class TurnKind {
         /** 말하거나 배너에 쓸 문구: "12시 방향" 같은 시계 표현은 읽기 어려워 풀어 쓴다 */
         fun text(g: DriveGuide): String {
             if (g.isDestination) return "목적지"
+            if (g.isWaypoint) return "경유지"
             if (!clock.containsMatchIn(g.guidance)) return g.guidance
             val phrase = when (of(g)) {
                 SlightLeft -> "왼쪽 방향"
@@ -230,6 +232,17 @@ enum class TurnKind {
             }
             return if (g.name.isNotBlank()) "${g.name}에서 $phrase" else phrase
         }
+    }
+}
+
+/** 경유지를 지나갔는지: 안내 중 차가 경유지 [PASSED_M] 안에 들어오면 지난 것으로 보고 뺌 (재탐색 때 이미 지난 경유지로 되돌아가지 않게) */
+object ViaTracker {
+    const val PASSED_M = 80.0
+
+    fun remaining(vias: List<LatLng>, lat: Double, lng: Double): List<LatLng> {
+        if (vias.isEmpty()) return vias
+        // 순서대로 지나가므로 맨 앞 경유지만 확인 (앞의 것을 지나야 다음 것)
+        return if (com.eunho.tagohub.core.Geo.meters(lat, lng, vias.first().lat, vias.first().lng) <= PASSED_M) vias.drop(1) else vias
     }
 }
 
@@ -390,6 +403,7 @@ class NavEngine(private val route: NavRoute) {
         val g = route.guides[index]
         val lead = NavText.distance(distance)
         if (g.isDestination) return "$lead 앞이 목적지입니다."
+        if (g.isWaypoint) return "$lead 앞이 경유지입니다."
         var text = "$lead 앞, ${TurnKind.text(g)}"
         // 바로 이어지는 동작(200m 안)은 함께 알려줌
         if (afterIndex != null) {

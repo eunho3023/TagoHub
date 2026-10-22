@@ -175,7 +175,7 @@ object KakaoExtra {
     }
 
     /** Kakao Mobility car route; uses the Kakao REST key and the same origin/destination coordinates. */
-    suspend fun drive(a: LatLng, b: LatLng, option: DriveOption = DriveOption.Recommend): Pair<String, KakaoDriveRoute?> = withContext(Dispatchers.IO) {
+    suspend fun drive(a: LatLng, b: LatLng, option: DriveOption = DriveOption.Recommend, vias: List<LatLng> = emptyList()): Pair<String, KakaoDriveRoute?> = withContext(Dispatchers.IO) {
         val key = key()
         if (key.isEmpty()) return@withContext "NO_KEY" to null
         runCatching {
@@ -189,6 +189,7 @@ object KakaoExtra {
                 .addQueryParameter("car_hipass", "false")
                 .addQueryParameter("alternatives", "false")
                 .addQueryParameter("road_details", "true")
+                .apply { KakaoDrive.waypointsParam(vias)?.let { addQueryParameter("waypoints", it) } }
                 .apply { option.query().forEach { (k, v) -> addQueryParameter(k, v) } }
                 .build()
             client.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK $key").build()).execute().use { response ->

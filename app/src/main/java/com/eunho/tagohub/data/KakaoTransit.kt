@@ -178,10 +178,13 @@ data class DriveGuide(
 ) {
     val isStart: Boolean get() = type == TYPE_START
     val isDestination: Boolean get() = type == TYPE_DESTINATION
+    val isWaypoint: Boolean get() = type == TYPE_WAYPOINT
 
     companion object {
         const val TYPE_START = 100
         const val TYPE_DESTINATION = 101
+        /** 경유지 도착 안내 (경유지를 넣어 길찾기를 했을 때 각 구간의 끝) */
+        const val TYPE_WAYPOINT = 1000
     }
 }
 
@@ -223,6 +226,13 @@ data class KakaoDriveRoute(
 )
 
 object KakaoDrive {
+    /** 카카오 길찾기 경유지는 최대 5개 */
+    const val MAX_WAYPOINTS = 5
+
+    /** waypoints 요청값: "경도,위도|경도,위도" (없으면 null) */
+    fun waypointsParam(vias: List<LatLng>): String? =
+        vias.take(MAX_WAYPOINTS).takeIf { it.isNotEmpty() }?.joinToString("|") { "${it.lng},${it.lat}" }
+
     fun parse(body: String): Pair<String, KakaoDriveRoute?> {
         val root = runCatching { com.eunho.tagohub.core.MiniJson.parse(body) }.getOrNull() as? Map<*, *>
             ?: return "INVALID_RESPONSE" to null
@@ -243,7 +253,7 @@ object KakaoDrive {
         val roads = ArrayList<DriveRoad>()
         val guides = ArrayList<DriveGuide>()
         val sections = route["sections"] as? List<*> ?: emptyList<Any?>()
-        sections.forEach sectionLoop@{ section ->
+        sections.forEachIndexed sectionLoop@{ sectionIndex, section ->
             val sec = section as? Map<*, *> ?: return@sectionLoop
             (sec["roads"] as? List<*>)?.forEach roadLoop@{ road ->
                 val r = road as? Map<*, *> ?: return@roadLoop
@@ -270,11 +280,14 @@ object KakaoDrive {
                 val g = guide as? Map<*, *> ?: return@guideLoop
                 val x = g["x"]?.toString()?.toDoubleOrNull() ?: return@guideLoop
                 val y = g["y"]?.toString()?.toDoubleOrNull() ?: return@guideLoop
+                val type = g["type"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0
+                // 경유지가 있으면 구간마다 응답이 따로 오는데, 둘째 구간부터 시작점 안내(출발지)가 다시 나옴 → 중간에 출발이 끼지 않게 뺌
+                if (sectionIndex > 0 && type == DriveGuide.TYPE_START) return@guideLoop
                 guides += DriveGuide(
                     name = g["name"]?.toString().orEmpty(),
                     guidance = g["guidance"]?.toString().orEmpty(),
                     distanceFromPrev = g["distance"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
-                    type = g["type"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0,
+                    type = type,
                     lat = y,
                     lng = x,
                 )

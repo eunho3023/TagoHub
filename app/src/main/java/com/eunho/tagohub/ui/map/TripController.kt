@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 /** 길찾기 출발지·도착지 (장소 또는 정류장) */
 data class PlanPoint(val name: String, val sub: String?, val lat: Double, val lng: Double, val stopId: String? = null)
 
-enum class PlanField { Origin, Dest }
+enum class PlanField { Origin, Dest, Via }
 enum class PlanMode(val label: String) { Transit("대중교통"), Car("자동차"), Walk("도보"), Bicycle("자전거") }
 
 /** 고른 경로의 실시간 정보 */
@@ -52,6 +52,8 @@ data class RidePlan(
     val taxiWon: Int? = null,
     /** 이 경로를 찾을 때 쓴 옵션 (안내 중 재탐색도 같은 옵션으로) */
     val option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend,
+    /** 이 경로가 거치는 경유지 (안내 시작·재탐색에 그대로 넘김) */
+    val vias: List<LatLng> = emptyList(),
 )
 
 /** 소통 상태 색: 1 정체(빨강) 2 지체(주황) 3 서행(노랑) 4 원활(초록), 사고(6)는 진한 빨강, 모르면 기본 파랑 */
@@ -122,6 +124,23 @@ class TripController(
     val sort = MutableStateFlow(PlanSort.Fast)
     /** 경유지 (카카오 길찾기로 출발→경유, 경유→도착을 이어 붙임) */
     val via = MutableStateFlow<PlanPoint?>(null)
+
+    /** 자동차 길찾기 경유지 (카카오 길찾기 waypoints, 최대 5개). 순서대로 거침 */
+    val carVias = MutableStateFlow<List<PlanPoint>>(emptyList())
+
+    fun addCarVia(p: PlanPoint) {
+        if (carVias.value.size >= com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS) {
+            note.value = "경유지는 ${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS}개까지 넣을 수 있습니다."
+            return
+        }
+        carVias.value = carVias.value + p
+        if (dest.value != null) { mode.value = PlanMode.Car; drive() }
+    }
+
+    fun removeCarVia(index: Int) {
+        carVias.value = carVias.value.filterIndexed { i, _ -> i != index }
+        if (dest.value != null && mode.value == PlanMode.Car) drive()
+    }
     val plans = MutableStateFlow<Load<List<TripPlan>>>(Load.Idle)
     val selected = MutableStateFlow<TripPlan?>(null)
     val live = MutableStateFlow<TripLive?>(null)
@@ -180,6 +199,7 @@ class TripController(
         results.value = Load.Idle
         plans.value = Load.Idle
         via.value = null
+        carVias.value = emptyList()
         selected.value = null
         live.value = null
         mode.value = PlanMode.Transit
@@ -199,19 +219,19 @@ class TripController(
     }
 
     /** 자동차 경로를 소통 색으로 지도에 그림. 안내 중 재탐색으로 경로가 바뀔 때도 씀([fit]=false 면 화면을 옮기지 않음) */
-    fun showDriveRoute(origin: LatLng, dest: LatLng, route: com.eunho.tagohub.data.KakaoDriveRoute, fit: Boolean) {
+    fun showDriveRoute(origin: LatLng, dest: LatLng, route: com.eunho.tagohub.data.KakaoDriveRoute, fit: Boolean, vias: List<LatLng> = emptyList()) {
         canvas()?.setTrip(
             trafficSegments(route.roads).ifEmpty { listOf(TripSegment(route.points, 0xFF3D5BAB.toInt(), false)) },
-            listOf(TripMark(origin.lat, origin.lng, "출", MARK_START), TripMark(dest.lat, dest.lng, "도", MARK_END)),
+            listOf(TripMark(origin.lat, origin.lng, "출", MARK_START)) + vias.map { TripMark(it.lat, it.lng, "경", MARK_TRANSFER) } + TripMark(dest.lat, dest.lng, "도", MARK_END),
         )
         if (fit) canvas()?.fitTo(route.points)
     }
 
     /** 안내 중: 지나온 경로는 지우고 [progress] 미터 지점부터 남은 경로만 소통 색으로 그림 (화면은 옮기지 않음) */
-    fun showDriveRemaining(nav: com.eunho.tagohub.data.NavRoute, progress: Double, dest: LatLng) {
+    fun showDriveRemaining(nav: com.eunho.tagohub.data.NavRoute, progress: Double, dest: LatLng, vias: List<LatLng> = emptyList()) {
         val roads = nav.remainingRoads(progress)
         val segments = trafficSegments(roads).ifEmpty { listOf(TripSegment(nav.remainingPoints(progress), 0xFF3D5BAB.toInt(), false)) }
-        canvas()?.setTrip(segments, listOf(TripMark(dest.lat, dest.lng, "도", MARK_END)))
+        canvas()?.setTrip(segments, vias.map { TripMark(it.lat, it.lng, "경", MARK_TRANSFER) } + TripMark(dest.lat, dest.lng, "도", MARK_END))
     }
 
     private fun drive() {
@@ -229,7 +249,8 @@ class TripController(
                 ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
                 return@launch
             }
-            val (status, route) = tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng), driveOption.value) }
+            val viaLatLngs = carVias.value.map { LatLng(it.lat, it.lng) }
+            val (status, route) = tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng), driveOption.value, viaLatLngs) }
             if (route == null) {
                 ridePlan.value = Load.Fail(
                     when {
@@ -240,9 +261,9 @@ class TripController(
                 )
                 return@launch
             }
-            showDriveRoute(o, LatLng(d.lat, d.lng), route, fit = true)
+            showDriveRoute(o, LatLng(d.lat, d.lng), route, fit = true, vias = viaLatLngs)
             ridePlan.value = Load.Ok(
-                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name, route.taxiWon, driveOption.value),
+                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name, route.taxiWon, driveOption.value, viaLatLngs),
             )
         }
     }
@@ -328,13 +349,19 @@ class TripController(
             results.value = Load.Idle
             return
         }
+        if (editing.value == PlanField.Via && p != null) {
+            editing.value = null
+            results.value = Load.Idle
+            addCarVia(p)
+            return
+        }
         rideJob?.cancel()
         mode.value = PlanMode.Transit
         ridePlan.value = Load.Idle
         when (editing.value) {
             PlanField.Origin -> origin.value = p
             PlanField.Dest -> dest.value = p
-            null -> Unit
+            PlanField.Via, null -> Unit
         }
         editing.value = null
         results.value = Load.Idle

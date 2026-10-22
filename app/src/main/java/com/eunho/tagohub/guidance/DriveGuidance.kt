@@ -98,6 +98,10 @@ object DriveGuidance {
     @Volatile var destinationName: String = ""
         internal set
 
+    /** 아직 안 지난 경유지 (재탐색할 때도 이 경유지들을 거치게). 서비스가 지나갈 때마다 줄임 */
+    @Volatile var vias: List<LatLng> = emptyList()
+        internal set
+
     /** 길찾기 옵션: 길을 벗어나 재탐색할 때도 같은 옵션을 씀 (무료도로로 가다 유료도로로 안내하지 않게) */
     @Volatile var option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend
         internal set
@@ -110,8 +114,10 @@ object DriveGuidance {
         destName: String,
         simulate: Boolean = false,
         option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend,
+        vias: List<LatLng> = emptyList(),
     ) {
         this.route.value = route
+        this.vias = vias
         this.option = option
         simulating.value = simulate
         destination = dest
@@ -128,6 +134,7 @@ object DriveGuidance {
         context.stopService(Intent(context, DriveGuidanceService::class.java))
         active.value = false
         simulating.value = false
+        vias = emptyList()
     }
 }
 
