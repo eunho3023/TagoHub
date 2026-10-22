@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eunho.tagohub.ui.coach.CoachScreen
 import com.eunho.tagohub.ui.home.AppTab
@@ -70,7 +72,8 @@ fun MainScreen() {
     }
     fun openMap(mode: MapMode) { mapMode = mode; dest = Dest.Map }
     fun onTab(tab: AppTab) = when (tab) {
-        AppTab.Home -> dest = Dest.Home
+        // "지도" 탭은 바로 지도 화면으로 (더보기를 거치지 않음). 홈은 지도에서 ☰ 나 뒤로 가기로
+        AppTab.Home -> openMap(MapMode.Transit)
         AppTab.Bus -> openMap(MapMode.Bus)
         AppTab.Subway -> openMap(MapMode.Subway)
         AppTab.Train -> { returnTo = Dest.Home; dest = Dest.Train }
@@ -78,11 +81,11 @@ fun MainScreen() {
     }
 
     LaunchedEffect(Unit) {
-        // 지도의 ☰ 는 더보기를 엶 (신호를 먼저 비워야 다음에 다시 전달됨)
+        // 지도의 ☰ 는 홈(교통수단 타일·자주 가는 곳)을 엶 (신호를 먼저 비워야 다음에 다시 전달됨)
         ModeJump.drawer.collect {
             if (it) {
                 ModeJump.drawer.value = false
-                open(Dest.More)
+                dest = Dest.Home
             }
         }
     }
@@ -108,7 +111,22 @@ fun MainScreen() {
         )
     }
 
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+    // 아래 탭은 모든 화면에 붙어 있음. 경로 안내 중에는 지도를 넓게 쓰려고, 키보드가 올라오면 가리지 않으려고 숨김
+    val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
+    val keyboardUp = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val activeTab = when (dest) {
+        Dest.Home -> AppTab.Home
+        Dest.Map -> when (mapMode) {
+            MapMode.Bus -> AppTab.Bus
+            MapMode.Subway -> AppTab.Subway
+            MapMode.Transit -> AppTab.Home
+        }
+        Dest.Train -> AppTab.Train
+        Dest.Coach, Dest.Air, Dest.Road, Dest.More -> AppTab.More
+    }
+
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+    Box(Modifier.weight(1f)) {
         MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
         if (dest != Dest.Map) {
             // 지도 위를 덮는 화면: 뒤의 지도가 터치를 받지 않게 막음
@@ -119,37 +137,35 @@ fun MainScreen() {
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
             ) {
                 when (dest) {
-                    Dest.Home -> Column(Modifier.fillMaxSize()) {
-                        Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
-                            HomeScreen(
-                                vm = mapVm,
-                                onSearch = { openMap(MapMode.Transit); mapVm.requestSearchFocus() },
-                                onOpenMap = ::openMap,
-                                onOpenPage = { k -> open(k.dest()) },
-                                onGoTo = { place ->
-                                    openMap(MapMode.Transit)
-                                    mapVm.openPlanner()
-                                    mapVm.trip.goTo(place)
-                                },
-                                onFavorite = { f -> openMap(MapMode.Transit); mapVm.openFavorite(f) },
-                            )
-                        }
-                        com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Home, ::onTab)
+                    Dest.Home -> Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
+                        HomeScreen(
+                            vm = mapVm,
+                            onSearch = { openMap(MapMode.Transit); mapVm.requestSearchFocus() },
+                            onOpenMap = ::openMap,
+                            onOpenPage = { k -> open(k.dest()) },
+                            onGoTo = { place ->
+                                openMap(MapMode.Transit)
+                                mapVm.openPlanner()
+                                mapVm.trip.goTo(place)
+                            },
+                            onFavorite = { f -> openMap(MapMode.Transit); mapVm.openFavorite(f) },
+                        )
                     }
-                    Dest.Train -> PageScaffold(ModeJump.Kind.Train, AppTab.Train, ::onTab) { TrainScreen() }
-                    Dest.Coach -> PageScaffold(ModeJump.Kind.Coach, AppTab.More, ::onTab) { CoachScreen() }
-                    Dest.Air -> PageScaffold(ModeJump.Kind.Air, AppTab.More, ::onTab) { AirScreen() }
-                    Dest.Road -> PageScaffold(ModeJump.Kind.Road, AppTab.More, ::onTab) { RoadInfoScreen(mapVm) }
+                    Dest.Train -> PageScaffold(ModeJump.Kind.Train) { TrainScreen() }
+                    Dest.Coach -> PageScaffold(ModeJump.Kind.Coach) { CoachScreen() }
+                    Dest.Air -> PageScaffold(ModeJump.Kind.Air) { AirScreen() }
+                    Dest.Road -> PageScaffold(ModeJump.Kind.Road) { RoadInfoScreen(mapVm) }
                     Dest.More -> MorePage(
                         onOpen = { k -> open(k.dest()) },
                         onNotices = { showNotices = true },
                         onReport = { showReport = true },
-                        onTab = ::onTab,
                     )
                     Dest.Map -> Unit
                 }
             }
         }
+    }
+    if (!guiding && !keyboardUp) com.eunho.tagohub.ui.home.AppBottomNav(activeTab, ::onTab)
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }

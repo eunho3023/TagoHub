@@ -59,14 +59,12 @@ fun pageColor(kind: ModeJump.Kind, dark: Boolean): Color = when (kind) {
 }
 
 /**
- * 모드색 머리띠가 위에 있고 아래에 탭이 있는 한 화면. 노선도(Line Map) 방식 화면의 틀:
+ * 모드색 머리띠가 위에 있는 한 화면 (아래 탭은 MainScreen 이 모든 화면에 공통으로 붙임). 노선도(Line Map) 방식 화면의 틀:
  * 머리띠에는 큰 제목(예: 기차), 본문은 [content].
  */
 @Composable
 fun PageScaffold(
     kind: ModeJump.Kind,
-    tab: AppTab,
-    onTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -78,7 +76,6 @@ fun PageScaffold(
             }
         }
         Box(Modifier.weight(1f)) { content() }
-        AppBottomNav(tab, onTab)
     }
 }
 
@@ -88,7 +85,6 @@ fun MorePage(
     onOpen: (ModeJump.Kind) -> Unit,
     onNotices: () -> Unit,
     onReport: () -> Unit,
-    onTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
@@ -116,7 +112,6 @@ fun MorePage(
                 MoreRow("앱 제보", Icons.Outlined.Email, onReport)
             }
         }
-        AppBottomNav(AppTab.More, onTab)
     }
 }
 
