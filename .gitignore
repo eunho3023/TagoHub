@@ -26,3 +26,7 @@ pipeline/out_overlays/
 /keystore.properties
 *.jks
 *.keystore
+
+# 웹 버전: 받아 둔 정류장 DB, 파이썬 캐시
+/web/data/
+__pycache__/
