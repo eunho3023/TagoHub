@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +58,9 @@ import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.timetable.AirScreen
 import com.eunho.tagohub.ui.timetable.TrainScreen
 import com.eunho.tagohub.ui.map.ItsRoadScreen
+import com.eunho.tagohub.ui.theme.ThemeMode
+import com.eunho.tagohub.ui.theme.ThemeSettings
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * 한 화면: 지도(버스·지하철) 위에 기차·고속시외·항공을 패널로 띄움 (아래 탭 없음).
@@ -135,6 +139,8 @@ fun MainScreen() {
                         Column(Modifier.weight(1f)) {
                             CompactDrawerLabel("교통 정보")
                             traffic.forEach { (label, icon, kind) -> CompactDrawerItem(label, icon, panel == kind) { pick(kind) } }
+                            CompactDrawerLabel("화면 모드")
+                            ThemeModePicker(Modifier.padding(horizontal = 10.dp))
                         }
                     }
                 } else {
@@ -159,6 +165,8 @@ fun MainScreen() {
                     androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     DrawerItem("공지사항", Icons.Filled.Info, false) { showNotices = true; scope.launch { drawerState.close() } }
                     DrawerItem("앱 제보", Icons.Filled.Email, false) { showReport = true; scope.launch { drawerState.close() } }
+                    DrawerSectionLabel("화면 모드")
+                    ThemeModePicker(Modifier.padding(horizontal = 28.dp, vertical = 4.dp))
                 }
               }
             }
@@ -209,6 +217,24 @@ fun MainScreen() {
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }
+}
+
+/** 화면 모드 고르기: 시스템(기본) · 라이트 · 다크. 고르면 바로 적용되고 기기에 저장됨 */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemeModePicker(modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val mode by ThemeSettings.mode.collectAsStateWithLifecycle()
+    androidx.compose.material3.SingleChoiceSegmentedButtonRow(modifier.fillMaxWidth()) {
+        ThemeMode.entries.forEachIndexed { i, m ->
+            SegmentedButton(
+                selected = mode == m,
+                onClick = { ThemeSettings.set(context, m) },
+                shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
+                label = { Text(m.label, maxLines = 1) },
+            )
+        }
+    }
 }
 
 /** 가로 화면용 작은 항목 (높이 40dp) */
