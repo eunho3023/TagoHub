@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Geo
 import com.eunho.tagohub.data.DriveGuide
+import com.eunho.tagohub.data.DriveOption
 import com.eunho.tagohub.data.NavRoute
 import com.eunho.tagohub.data.ZoneGroup
 import com.eunho.tagohub.data.ZoneStatus
@@ -439,8 +441,14 @@ private fun GuidanceSettingsSheet(onDismiss: () -> Unit, onEnd: () -> Unit) {
  * 이미 안내 중이면 버튼 자리에 [안내 종료].
  */
 @Composable
-internal fun DriveRoutePanel(plan: RidePlan, modifier: Modifier = Modifier) {
+internal fun DriveRoutePanel(plan: RidePlan, option: DriveOption, onOption: (DriveOption) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth()) {
+        // 길찾기 옵션: 추천 · 최단거리 · 무료도로 · 고속도로 제외
+        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(DriveOption.entries) { o ->
+                FilterChip(selected = option == o, onClick = { onOption(o) }, label = { Text(o.label) })
+            }
+        }
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(GuidanceText.duration(plan.durationSeconds), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -498,7 +506,7 @@ private fun DriveStartBar(plan: RidePlan) {
     /** [simulate] 이 true 면 모의주행(GPS 대신 가상 위치). 둘 다 같은 권한이 필요(위치 유형 서비스를 올리기 때문) */
     fun begin(simulate: Boolean) {
         val route = plan.drive ?: return
-        val start = { DriveGuidance.start(context, route, LatLng(plan.destLat, plan.destLng), plan.destName, simulate) }
+        val start = { DriveGuidance.start(context, route, LatLng(plan.destLat, plan.destLng), plan.destName, simulate, plan.option) }
         val need = buildList {
             if (!hasLocationPermission(context)) {
                 add(Manifest.permission.ACCESS_FINE_LOCATION)

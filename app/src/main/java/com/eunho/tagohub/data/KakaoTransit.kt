@@ -185,6 +185,23 @@ data class DriveGuide(
     }
 }
 
+/**
+ * 자동차 길찾기 옵션 (카카오 모빌리티 priority·avoid). 응답 확인: 강남→대전 기준
+ * 추천 153.2km 9,269초 8,500원 / 최단거리 150.7km 10,003초 6,800원 / 무료도로 178.6km 12,593초 0원 / 고속도로 제외 164.4km 13,949초 0원
+ */
+enum class DriveOption(val label: String, val priority: String, val avoid: String?) {
+    Recommend("추천", "RECOMMEND", null),
+    Shortest("최단거리", "DISTANCE", null),
+    NoToll("무료도로", "RECOMMEND", "toll"),
+    NoMotorway("고속도로 제외", "RECOMMEND", "motorway");
+
+    /** 요청에 붙일 priority·avoid 값 (avoid 는 없으면 생략) */
+    fun query(): List<Pair<String, String>> = buildList {
+        add("priority" to priority)
+        avoid?.let { add("avoid" to it) }
+    }
+}
+
 /** 도로 한 구간: [trafficState] 0 알 수 없음, 1 정체, 2 지체, 3 서행, 4 원활, 6 사고 */
 data class DriveRoad(
     val name: String,

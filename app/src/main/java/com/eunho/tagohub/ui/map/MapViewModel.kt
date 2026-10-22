@@ -837,6 +837,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 고른 곳을 출발(asOrigin) 또는 도착으로 → 길찾기 (도착이 정해지면 바로 검색) */
+    /** 지도에서 고른 곳을 집/회사로 저장 */
+    fun saveHomeWork(kind: com.eunho.tagohub.data.SavedKind) {
+        val p = picked.value ?: return
+        trip.homeWork.set(kind, com.eunho.tagohub.data.SavedPlace(p.name, p.lat, p.lng))
+        banner.value = "${kind.label}으로 저장했습니다: ${p.name}"
+    }
+
     fun usePicked(asOrigin: Boolean) {
         val p = picked.value ?: return
         setTripEndpoint(PlanPoint(p.name, p.sub, p.lat, p.lng), asOrigin)
@@ -945,6 +952,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         me = { me?.let { LatLng(it.first, it.second) } },
         center = { lastView?.let { LatLng(it.first, it.second) } },
         busy = busy,
+        homeWork = com.eunho.tagohub.data.HomeWorkStore(prefs),
     )
     val stations = StationDetailController(viewModelScope, repo, seoul)
     private var index: StationIndex? = null

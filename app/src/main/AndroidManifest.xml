@@ -39,6 +39,18 @@
             </intent-filter>
         </activity>
 
+        <!-- 홈 화면 위젯: 즐겨찾기 정류장의 버스 도착 -->
+        <receiver
+            android:name=".widget.StopWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/stop_widget_info" />
+        </receiver>
+
         <!-- 경로 안내(GPS + 음성). 안내를 시작한 동안만 켜지고 알림에 표시됨 -->
         <service
             android:name=".guidance.DriveGuidanceService"
