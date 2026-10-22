@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +50,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoTime
+import com.eunho.tagohub.data.StopTime
+import com.eunho.tagohub.data.TrainTransfer
 import com.eunho.tagohub.data.Trip
 import com.eunho.tagohub.ui.common.DateStrip
 import com.eunho.tagohub.ui.common.GradeStrip
@@ -73,6 +78,7 @@ fun TimetablePane(
     val grades by c.grades.collectAsStateWithLifecycle()
     val grade by c.grade.collectAsStateWithLifecycle()
     val trips by c.trips.collectAsStateWithLifecycle()
+    val stopsMap by c.stops.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<Boolean?>(null) } // true 출발, false 도착
 
     LaunchedEffect(c) { c.ensureGrades() }
@@ -102,7 +108,13 @@ fun TimetablePane(
             Text("출발 빠른 순", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        TripList(trips, accent, idleText, onRetry = c::search)
+        TripList(
+            trips, accent, idleText, onRetry = c::search,
+            stops = stopsMap,
+            stopsKey = c::stopsKey,
+            onStops = if (c.supportsStops) c::toggleStops else null,
+            footer = if (c.supportsTransfer) ({ TransferFooter(c, accent) }) else null,
+        )
     }
 
     picking?.let { isDep ->
@@ -114,17 +126,29 @@ fun TimetablePane(
                 picking = null
             },
             loader = c.placeLoader,
+            browse = c.browseLoader != null,
         )
     }
 }
 
 /** 출발 안내판 형태의 운행편 목록. 이미 떠난 편은 흐리게, 다음 편으로 자동 스크롤. */
 @Composable
-fun TripList(state: Load<List<Trip>>, accent: Color, idleText: String, onRetry: () -> Unit) {
+fun TripList(
+    state: Load<List<Trip>>,
+    accent: Color,
+    idleText: String,
+    onRetry: () -> Unit,
+    /** 기차: 정차역을 펼친 열차들 */
+    stops: Map<String, Load<List<StopTime>>> = emptyMap(),
+    stopsKey: (Trip) -> String = { "" },
+    onStops: ((Trip) -> Unit)? = null,
+    /** 기차: 목록 아래에 붙는 환승 경로. 있으면 운행편이 하나도 없어도 목록 화면을 보여줌 */
+    footer: (@Composable () -> Unit)? = null,
+) {
     LoadView(
         state,
         onRetry = onRetry,
-        isEmpty = { it.isEmpty() },
+        isEmpty = { it.isEmpty() && footer == null },
         emptyText = "해당 날짜에 운행편이 없습니다.",
         idle = { MessageBox(idleText) },
     ) { trips ->
@@ -133,9 +157,14 @@ fun TripList(state: Load<List<Trip>>, accent: Color, idleText: String, onRetry: 
         val listState = rememberLazyListState()
         LaunchedEffect(trips) { if (next > 0) listState.scrollToItem(next) }
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
+            if (trips.isEmpty()) item { MessageBox("해당 날짜에 직통 운행편이 없습니다.") }
             itemsIndexed(trips) { i, t ->
-                TripRow(t, accent, past = t.dep?.isBefore(now) == true, next = i == next)
+                Column {
+                    TripRow(t, accent, past = t.dep?.isBefore(now) == true, next = i == next)
+                    if (onStops != null) StopsSection(stops[stopsKey(t)], accent) { onStops(t) }
+                }
             }
+            if (footer != null) item { footer() }
         }
     }
 }
@@ -216,6 +245,118 @@ fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
                             Text(Fmt.won(won), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Black)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** 열차 카드 아래 "정차역 보기": 누르면 그 열차가 서는 역을 시각과 함께 펼침 (국토교통부 시간표를 구간별로 맞춰 본 추정) */
+@Composable
+private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: () -> Unit) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            TextButton(onClick = onToggle, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 2.dp)) {
+                Text(if (open == null) "정차역 보기" else "정차역 닫기", color = accent, fontWeight = FontWeight.Bold)
+            }
+            when (open) {
+                null, is Load.Idle -> Unit
+                is Load.Loading -> Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("정차역을 찾는 중… 처음 한 번은 1분쯤 걸릴 수 있어요", style = MaterialTheme.typography.bodySmall, color = variant)
+                }
+                is Load.Fail -> Text(open.message, Modifier.padding(bottom = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                is Load.Ok -> Column(Modifier.padding(bottom = 10.dp)) {
+                    open.value.forEachIndexed { i, s ->
+                        val end = i == 0 || i == open.value.lastIndex
+                        Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(9.dp).clip(CircleShape)
+                                    .background(if (end) accent else MaterialTheme.colorScheme.surface)
+                                    .border(2.dp, accent, CircleShape),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(s.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = if (end) FontWeight.Black else FontWeight.Normal)
+                            Text(s.time?.let(TagoTime::hm) ?: "--:--", style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = variant)
+                        }
+                    }
+                    Text("국토교통부 시간표를 구간별로 맞춰 본 결과예요. 실제 정차와 다를 수 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
+                }
+            }
+        }
+    }
+}
+
+/** 기차 목록 아래: 환승해서 가는 방법 (직통이 없으면 자동으로 찾고, 있으면 버튼) */
+@Composable
+private fun TransferFooter(c: TimetableController, accent: Color) {
+    val state by c.transfers.collectAsStateWithLifecycle()
+    val stopsMap by c.stops.collectAsStateWithLifecycle()
+    val trips by c.trips.collectAsStateWithLifecycle()
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        when (val s = state) {
+            is Load.Idle -> if ((trips as? Load.Ok)?.value?.isNotEmpty() == true) {
+                OutlinedButton(onClick = c::loadTransfers, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) { Text("환승해서 가는 방법도 보기") }
+            }
+            is Load.Loading -> Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("환승 경로를 찾는 중… (주요 환승역을 확인해서 몇 초 걸려요)", style = MaterialTheme.typography.bodyMedium, color = variant)
+            }
+            is Load.Fail -> Column(Modifier.padding(16.dp)) {
+                Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = c::loadTransfers) { Text("다시 시도") }
+            }
+            is Load.Ok -> if (s.value.isEmpty()) {
+                MessageBox("환승 1회로 갈 수 있는 열차를 찾지 못했습니다. 2회 이상 환승이 필요하거나 그날 운행이 없을 수 있어요.")
+            } else {
+                Text("환승해서 가기  ·  갈아타는 시간 ${com.eunho.tagohub.data.TrainTransfers.MIN_WAIT_MIN}분 이상, 1회 환승만", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                s.value.forEach { t -> TransferCard(t, accent, stopsMap, c) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransferCard(t: TrainTransfer, accent: Color, stopsMap: Map<String, Load<List<StopTime>>>, c: TimetableController) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(Modifier.fillMaxWidth().padding(top = 6.dp), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(top = 12.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(t.dep?.let(TagoTime::hm) ?: "--:--", style = MaterialTheme.typography.headlineSmall.merge(Tnum), fontWeight = FontWeight.Black)
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "에서", tint = variant, modifier = Modifier.size(18.dp))
+                Text(t.arr?.let(TagoTime::hm) ?: "--:--", style = MaterialTheme.typography.headlineSmall.merge(Tnum), fontWeight = FontWeight.Black)
+                Spacer(Modifier.weight(1f))
+                Fmt.duration(t.dep, t.arr)?.let { Text("$it 소요", style = MaterialTheme.typography.bodySmall, color = variant) }
+            }
+            t.legs.forEachIndexed { i, leg ->
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (leg.kind.isNotBlank()) Pill(leg.kind, accent)
+                        leg.number?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.Black) }
+                        Spacer(Modifier.weight(1f))
+                        leg.prices.firstOrNull()?.let { Text(Fmt.won(it.second), style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.Bold) }
+                    }
+                    Text(
+                        "${leg.depName} ${leg.dep?.let(TagoTime::hm) ?: "--:--"}  →  ${leg.arrName} ${leg.arr?.let(TagoTime::hm) ?: "--:--"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (c.supportsStops) StopsSection(stopsMap[c.stopsKey(leg)], accent) { c.toggleStops(leg) }
+                if (i == 0) {
+                    Text(
+                        "${t.hub}에서 ${t.waitMinutes}분 기다려 갈아타기",
+                        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 16.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            t.fare?.let {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    Text("합계", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = variant)
+                    Text(Fmt.won(it), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Black)
                 }
             }
         }

@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -51,9 +53,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.eunho.tagohub.data.PlaceGroups
+import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -352,8 +357,11 @@ fun PlacePickerSheet(
     onDismiss: () -> Unit,
     onPick: (Place) -> Unit,
     loader: suspend (String) -> TagoResult<List<Place>>,
+    /** 기차역처럼 목록이 길 때: 검색어가 없으면 가나다순 / 지역별로 묶어 보여줌 */
+    browse: Boolean = false,
 ) {
     var query by remember { mutableStateOf("") }
+    var byRegion by remember { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<Load<List<Place>>>(Load.Loading) }
     LaunchedEffect(query, retry) {
@@ -373,12 +381,22 @@ fun PlacePickerSheet(
                 fontWeight = FontWeight.Bold,
             )
             SearchBox(query, { query = it }, "이름으로 찾기", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            if (browse && query.isEmpty()) {
+                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !byRegion, onClick = { byRegion = false }, label = { Text("가나다순") })
+                    FilterChip(selected = byRegion, onClick = { byRegion = true }, label = { Text("지역별") })
+                }
+            }
             LoadView(
                 state,
                 onRetry = { retry++ },
                 isEmpty = { it.isEmpty() },
                 emptyText = "일치하는 항목이 없습니다.",
             ) { list ->
+                if (browse && query.isEmpty()) {
+                    GroupedPlaceList(list, byRegion, onPick)
+                    return@LoadView
+                }
                 LazyColumn {
                     items(list) { p ->
                         ListItem(
@@ -391,6 +409,48 @@ fun PlacePickerSheet(
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
+                }
+            }
+        }
+    }
+}
+
+/** 가나다순(초성 머리글) 또는 지역별(시·도) 머리글로 묶은 목록. 위의 머리글 버튼을 누르면 그 자리로 이동 */
+@Composable
+private fun GroupedPlaceList(list: List<Place>, byRegion: Boolean, onPick: (Place) -> Unit) {
+    val groups = remember(list, byRegion) { if (byRegion) PlaceGroups.byRegion(list) else PlaceGroups.byInitial(list) }
+    // 각 묶음 머리글이 목록에서 몇 번째 칸인지
+    val starts = remember(groups) {
+        var at = 0
+        groups.map { (_, places) -> at.also { at += 1 + places.size } }
+    }
+    val state = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    Column {
+        LazyRow(contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            itemsIndexed(groups) { i, g ->
+                TextButton(onClick = { scope.launch { state.animateScrollToItem(starts[i]) } }) {
+                    Text(if (byRegion) g.first.take(2) else g.first, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        LazyColumn(state = state) {
+            groups.forEach { (name, places) ->
+                item(key = "group-$name") {
+                    Text(
+                        if (byRegion) "$name  ${places.size}" else name,
+                        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 20.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+                items(places, key = { it.id }) { p ->
+                    ListItem(
+                        headlineContent = { Text(p.name) },
+                        supportingContent = if (!byRegion && p.sub != null) { { Text(p.sub) } } else null,
+                        modifier = Modifier.clickable { onPick(p) },
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
         }

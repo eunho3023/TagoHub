@@ -91,6 +91,9 @@ data class Trip(
     val arr: LocalDateTime?,
     /** (라벨, 요금). 0원은 "정보 없음"으로 보고 제외 */
     val prices: List<Pair<String, Int>>,
+    /** 기차: 조회한 출발·도착역 ID (정차역·환승 찾기에 씀) */
+    val depId: String? = null,
+    val arrId: String? = null,
 )
 
 // ── 고속버스 실시간 도착 ───────────────────────────────────

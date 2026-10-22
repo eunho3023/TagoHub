@@ -23,6 +23,9 @@ class TrainViewModel : ViewModel() {
         placeLoader = { q -> repo.trainStationPlaces(q) },
         gradeLoader = { repo.trainKinds() },
         tripLoader = { d, a, date, g -> repo.trainTrips(d.id, a.id, date, g?.id) },
+        browseLoader = { repo.trainStationsAll() },
+        transferLoader = { d, a, date -> repo.trainTransfers(d.id, a.id, date) },
+        stopsLoader = { t, date -> repo.trainStops(t, date) },
     )
 }
 
@@ -64,7 +67,7 @@ fun TrainScreen(vm: TrainViewModel = viewModel()) {
             vm.table, ModeColor.Train,
             pickerNoun = "역",
             gradeAllLabel = "전체 차종",
-            idleText = "출발역과 도착역을 고르면 시간표가 표시됩니다.\n처음 한 번은 전국 역 목록을 받느라 몇 초 걸립니다.",
+            idleText = "출발역과 도착역을 고르면 시간표가 표시됩니다. 직통이 없으면 환승 경로를 찾고, 열차마다 정차역을 볼 수 있습니다.\n처음 한 번은 전국 역 목록을 받느라 몇 초 걸립니다.",
         )
     }
 }

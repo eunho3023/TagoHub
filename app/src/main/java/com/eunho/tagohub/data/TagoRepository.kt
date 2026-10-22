@@ -280,7 +280,53 @@ class TagoRepository(private val api: TagoApi) {
 
     suspend fun trainTrips(dep: String, arr: String, date: LocalDate, grade: String?) = run {
         all(listOf(300, 100), 5) { p, n -> api.trainTrips(dep, arr, TagoTime.ymd(date), grade, p, n) }
-            .map(Mappers::trainTrip).sortedBy { it.dep ?: LocalDateTime.MAX }
+            .map(Mappers::trainTrip).map { it.copy(depId = dep, arrId = arr) }.sortedBy { it.dep ?: LocalDateTime.MAX }
+    }
+
+    /** 전국 역 전체 (가나다순·지역별로 고르는 화면용) */
+    suspend fun trainStationsAll() = run { trainStationList() }
+
+    /** 한 구간(출발역→도착역)의 그날 직통 열차. 환승·정차역 찾기가 같은 구간을 되풀이해 부르므로 기억해 둔다 */
+    private suspend fun trainLeg(dep: String, arr: String, date: LocalDate): List<Trip> = cached("trainLeg:$dep:$arr:$date") {
+        all(listOf(300, 100), 5) { p, n -> api.trainTrips(dep, arr, TagoTime.ymd(date), null, p, n) }
+            .map(Mappers::trainTrip).map { it.copy(depId = dep, arrId = arr) }.sortedBy { it.dep ?: LocalDateTime.MAX }
+    }
+
+    /** 직통이 없을 때: 주요 환승역을 거치는 환승 1회 경로 (환승역마다 두 구간을 조회해 이어 붙임) */
+    suspend fun trainTransfers(dep: String, arr: String, date: LocalDate): TagoResult<List<TrainTransfer>> = run {
+        val stations = trainStationList()
+        val hubs = TrainTransfers.HUBS.mapNotNull { n -> stations.firstOrNull { it.name == n && it.id != dep && it.id != arr } }
+        val results = coroutineScope {
+            hubs.map { h -> async { attempt { TrainTransfers.combine(trainLeg(dep, h.id, date), trainLeg(h.id, arr, date), h.name) } } }.awaitAll()
+        }
+        if (results.isNotEmpty() && results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
+        TrainTransfers.select(results.mapNotNull { it.getOrNull() }.flatten())
+    }
+
+    /**
+     * 출발역에서 모든 역까지 직통을 조회해 열차번호별로 도착 시각을 모음. 처음 한 번은 수십 초 걸리고(동시 4개씩 호출),
+     * 같은 출발역·날짜는 기억해 둔다. 국토교통부에는 열차별 정차역 조회가 없어서 이렇게 추정한다.
+     */
+    private suspend fun trainStopScan(dep: String, date: LocalDate): Map<String, List<Pair<LocalDateTime, String>>> = cached("trainScan:$dep:$date") {
+        val stations = trainStationList().filter { it.id != dep }
+        val results = coroutineScope { stations.map { s -> async { s.name to attempt { trainLeg(dep, s.id, date) } } }.awaitAll() }
+        val failed = results.count { it.second.isFailure }
+        if (failed > maxOf(10, stations.size / 5)) throw results.first { it.second.isFailure }.second.exceptionOrNull()!!
+        val byNumber = HashMap<String, MutableList<Pair<LocalDateTime, String>>>()
+        results.forEach { (name, r) ->
+            r.getOrNull()?.forEach { t ->
+                val no = t.number
+                val at = t.arr
+                if (no != null && at != null) byNumber.getOrPut(no) { ArrayList() } += at to name
+            }
+        }
+        byNumber
+    }
+
+    /** 한 열차의 정차역 (출발역~도착역, 시각순) */
+    suspend fun trainStops(trip: Trip, date: LocalDate): TagoResult<List<StopTime>> = run {
+        val dep = trip.depId ?: error("출발역을 알 수 없습니다.")
+        TrainStops.between(trainStopScan(dep, date), trip)
     }
 
     // ───────────────────────── 항공 ─────────────────────────

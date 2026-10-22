@@ -5,6 +5,8 @@ import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.data.Grade
 import com.eunho.tagohub.data.Place
+import com.eunho.tagohub.data.StopTime
+import com.eunho.tagohub.data.TrainTransfer
 import com.eunho.tagohub.data.Trip
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,7 +23,15 @@ class TimetableController(
     val placeLoader: suspend (String) -> TagoResult<List<Place>>,
     private val gradeLoader: (suspend () -> TagoResult<List<Grade>>)?,
     private val tripLoader: suspend (dep: Place, arr: Place, date: LocalDate, grade: Grade?) -> TagoResult<List<Trip>>,
+    /** 기차만: 모든 역 목록 (가나다순·지역별로 고르기) */
+    val browseLoader: (suspend () -> TagoResult<List<Place>>)? = null,
+    /** 기차만: 환승 1회 경로 */
+    private val transferLoader: (suspend (dep: Place, arr: Place, date: LocalDate) -> TagoResult<List<TrainTransfer>>)? = null,
+    /** 기차만: 열차별 정차역 */
+    private val stopsLoader: (suspend (trip: Trip, date: LocalDate) -> TagoResult<List<StopTime>>)? = null,
 ) {
+    val supportsTransfer: Boolean get() = transferLoader != null
+    val supportsStops: Boolean get() = stopsLoader != null
     val dep = MutableStateFlow<Place?>(null)
     val arr = MutableStateFlow<Place?>(null)
     val date = MutableStateFlow(LocalDate.now())
@@ -29,7 +39,41 @@ class TimetableController(
     val grade = MutableStateFlow<Grade?>(null)
     val trips = MutableStateFlow<Load<List<Trip>>>(Load.Idle)
 
+    /** 환승 경로 (직통이 없으면 자동으로, 있으면 버튼을 눌렀을 때) */
+    val transfers = MutableStateFlow<Load<List<TrainTransfer>>>(Load.Idle)
+
+    /** 정차역을 펼친 열차: 키 → 정차역 (키는 [stopsKey]) */
+    val stops = MutableStateFlow<Map<String, Load<List<StopTime>>>>(emptyMap())
+
     private var job: Job? = null
+    private var transferJob: Job? = null
+
+    fun stopsKey(t: Trip): String = "${t.depId}|${t.arrId}|${t.number}|${t.dep}"
+
+    fun toggleStops(t: Trip) {
+        val loader = stopsLoader ?: return
+        val key = stopsKey(t)
+        if (stops.value.containsKey(key)) {
+            stops.value = stops.value - key
+            return
+        }
+        stops.value = stops.value + (key to Load.Loading)
+        scope.launch {
+            val r = loader(t, date.value).toLoad()
+            if (stops.value.containsKey(key)) stops.value = stops.value + (key to r)
+        }
+    }
+
+    fun loadTransfers() {
+        val loader = transferLoader ?: return
+        val d = dep.value ?: return
+        val a = arr.value ?: return
+        transferJob?.cancel()
+        transferJob = scope.launch {
+            transfers.value = Load.Loading
+            transfers.value = loader(d, a, date.value).toLoad()
+        }
+    }
 
     fun ensureGrades() {
         val loader = gradeLoader ?: return
@@ -68,13 +112,19 @@ class TimetableController(
         val d = dep.value ?: return
         val a = arr.value ?: return
         job?.cancel()
+        transferJob?.cancel()
+        transfers.value = Load.Idle
+        stops.value = emptyMap()
         if (d.id == a.id) {
             trips.value = Load.Fail("출발지와 도착지가 같습니다.")
             return
         }
         job = scope.launch {
             trips.value = Load.Loading
-            trips.value = tripLoader(d, a, date.value, grade.value).toLoad()
+            val r = tripLoader(d, a, date.value, grade.value).toLoad()
+            trips.value = r
+            // 직통이 하나도 없으면 환승 경로를 바로 찾아 줌
+            if (r is Load.Ok && r.value.isEmpty() && grade.value == null) loadTransfers()
         }
     }
 }
