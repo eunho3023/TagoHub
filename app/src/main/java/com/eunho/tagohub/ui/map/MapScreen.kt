@@ -1251,6 +1251,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             onRefresh = vm::refreshNow,
         )
         r?.let { RouteInfoCard(it) }
+        r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
         val dir by d.dir.collectAsStateWithLifecycle()
         LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류소 정보가 없습니다.") { all ->
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
@@ -1715,6 +1716,7 @@ private fun HomeWorkChips(t: TripController) {
                 }
             }
         }
+        if (saved.home != null && saved.work != null) CommuteReminderChip()
         if (saved.home != null || saved.work != null) {
             Text("길게 누르면 변경", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

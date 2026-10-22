@@ -33,7 +33,7 @@ enum class ZoneKind(val label: String, val code: String) {
 }
 
 /** 안내 설정에서 묶어 켜고 끄는 종류 */
-enum class ZoneGroup(val label: String) { Camera("단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱") }
+enum class ZoneGroup(val label: String) { Camera("단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱"), Rest("다음 휴게소") }
 
 /** 단속카메라·어린이 보호구역·과속방지턱 한 곳. [limitKmh] 는 제한속도(모르면 null) */
 data class SafetyZone(val kind: ZoneKind, val name: String, val lat: Double, val lng: Double, val limitKmh: Int?)
@@ -116,15 +116,7 @@ fun matchRoute(route: NavRoute, zones: List<SafetyZone>, maxOffM: Double = 30.0)
     val found = ArrayList<RouteZone>()
     for (z in zones) {
         if (z.lat < minLat || z.lat > maxLat || z.lng < minLng || z.lng > maxLng) continue
-        var best: NavRoute.Projection? = null
-        for (i in 0 until pts.size - 1) {
-            val a = pts[i]
-            val b = pts[i + 1]
-            if (z.lat < min(a.lat, b.lat) - pad || z.lat > max(a.lat, b.lat) + pad) continue
-            if (z.lng < min(a.lng, b.lng) - pad || z.lng > max(a.lng, b.lng) + pad) continue
-            val p = route.project(z.lat, z.lng, i)
-            if (p.distance <= maxOffM && (best == null || p.distance < best.distance)) best = p
-        }
+        val best = route.snap(z.lat, z.lng, maxOffM, pad)
         if (best != null) found += RouteZone(z, best.along)
     }
     found.sortBy { it.along }
@@ -135,6 +127,23 @@ fun matchRoute(route: NavRoute, zones: List<SafetyZone>, maxOffM: Double = 30.0)
         else if (dup.zone.limitKmh == null && rz.zone.limitKmh != null) out[out.indexOf(dup)] = RouteZone(rz.zone, dup.along)
     }
     return out
+}
+
+/**
+ * 좌표를 경로 위로 내린 가장 가까운 지점 ([maxOffM] 미터 안에 없으면 null).
+ * 선분마다 정확히 재기 전에 [pad] 도 안의 것만 거른다 (약 65m).
+ */
+internal fun NavRoute.snap(lat: Double, lng: Double, maxOffM: Double, pad: Double = 0.0006): NavRoute.Projection? {
+    var best: NavRoute.Projection? = null
+    for (i in 0 until points.size - 1) {
+        val a = points[i]
+        val b = points[i + 1]
+        if (lat < min(a.lat, b.lat) - pad || lat > max(a.lat, b.lat) + pad) continue
+        if (lng < min(a.lng, b.lng) - pad || lng > max(a.lng, b.lng) + pad) continue
+        val p = project(lat, lng, i)
+        if (p.distance <= maxOffM && (best == null || p.distance < best.distance)) best = p
+    }
+    return best
 }
 
 private const val MERGE_M = 150.0

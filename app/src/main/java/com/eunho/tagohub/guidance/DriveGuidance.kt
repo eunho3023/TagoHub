@@ -25,6 +25,8 @@ object DriveGuidance {
         val lng: Double,
         val speedKmh: Int = 0,
         val zone: com.eunho.tagohub.data.ZoneStatus? = null,
+        /** 앞에 있는 휴게소 (고속도로가 아니거나 설정에서 끄면 null) */
+        val rest: com.eunho.tagohub.data.RestStatus? = null,
     )
 
     /** 안내 중인지 */
@@ -56,6 +58,23 @@ object DriveGuidance {
         zoneGroups.value = next
         val off = com.eunho.tagohub.data.ZoneGroup.entries.filter { it !in next }.map { it.name }.toSet()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(KEY_OFF_GROUPS, off).apply()
+    }
+
+    /** 안내 중 찾은 더 빠른 경로 제안: [savedSeconds] 만큼 줄어듦. 화면에서 [accept]/[dismissSuggestion] */
+    data class Suggestion(val route: KakaoDriveRoute, val savedSeconds: Int)
+
+    val suggestion = MutableStateFlow<Suggestion?>(null)
+
+    /** 사용자가 받아들인 제안 (서비스가 이 경로로 바꾸고 비움) */
+    val accepted = MutableStateFlow<Suggestion?>(null)
+
+    fun acceptSuggestion() {
+        accepted.value = suggestion.value
+        suggestion.value = null
+    }
+
+    fun dismissSuggestion() {
+        suggestion.value = null
     }
 
     /** 안내음성 크기 0.0~1.0 */

@@ -88,7 +88,9 @@ class NavRoute(
         val len2 = bx * bx + by * by
         val t = if (len2 > 0) ((px * bx + py * by) / len2).coerceIn(0.0, 1.0) else 0.0
         val dist = hypot(px - t * bx, py - t * by)
-        return Projection(i, dist, cum[i] + t * (cum[i + 1] - cum[i]))
+        // 진행 방향의 왼쪽이면 양수: (선분 방향) x (점까지) 의 부호
+        val side = if (len2 > 0) (bx * py - by * px) / kotlin.math.sqrt(len2) else 0.0
+        return Projection(i, dist, cum[i] + t * (cum[i + 1] - cum[i]), side)
     }
 
     /** 경로 위 [meters] 미터 지점의 좌표(범위 밖이면 양 끝으로 맞춤) */
@@ -167,7 +169,8 @@ class NavRoute(
         return listOf(pointAt(progress)) + points.subList(seg + 1, points.size)
     }
 
-    data class Projection(val segment: Int, val distance: Double, val along: Double)
+    /** [side]: 경로 진행 방향의 왼쪽으로 떨어져 있으면 +, 오른쪽이면 - (미터) */
+    data class Projection(val segment: Int, val distance: Double, val along: Double, val side: Double = 0.0)
 
     companion object {
         fun from(r: KakaoDriveRoute) = NavRoute(r.points, r.guides, r.roads, r.distanceMeters, r.durationSeconds)
