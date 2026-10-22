@@ -1911,6 +1911,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 새로고침: 열린 패널·실시간 열차·주변 정류소를 바로 다시 받는다 */
     fun refreshNow() {
+        selected.value?.resetLive()
         refreshTick.value++
         lastFetch = null
         lastBox?.let { box -> if (lastLevel >= 2 && busLayer) loadStopsInView(box, immediate = true) }

@@ -64,7 +64,7 @@ internal fun outsideService(first: String?, last: String?, nowMin: Int): Boolean
 /** 화면 스택. 각 목적지가 자기 상태를 들고 있어 뒤로 가도 다시 그릴 수 있다. */
 sealed class BusDest {
     /** preset: 지도에서 이미 합쳐진 같은 자리의 다른 시군 정류장 */
-    class Stop(val stop: BusStop, preset: List<BusStop>? = null) : BusDest() {
+    class Stop(val stop: BusStop, private val preset: List<BusStop>? = null) : BusDest() {
         /** 같은 자리의 다른 시군 정류장 (패널 머리에 번호를 함께 표시) */
         val others = MutableStateFlow(preset.orEmpty())
         /** 다음 정류장 이름 = "○○ 방면" */
@@ -84,6 +84,24 @@ sealed class BusDest {
         /** 경유노선은 바뀌지 않으니 한 번만 받는다 (새로고침이 빨라짐) */
         internal var lastRoutes: List<BusRoute>? = null
         internal var emptyStreak = 0
+
+        /** 서버가 마지막으로 준 도착 목록 (새로고침해도 안 비움: 직전과 같은 정보인지 알아보는 데 씀) */
+        internal var lastServer: List<BusArrival>? = null
+
+        /**
+         * 도착정보 위에 띄울 안내: 새로고침이 실패해 이전 정보를 보여주는 중이거나, 서버가 준 정보가 직전과 똑같을 때.
+         * (정상이면 null) — "초만 움직이고 위치가 안 바뀐다" 같은 경우에 왜 그런지 화면에서 알 수 있게
+         */
+        val note = MutableStateFlow<String?>(null)
+
+        /** 새로고침을 누르면 처음 열 때와 같게 다시 받도록 실시간 정보 기억을 비움 (경유노선은 안 바뀌어서 그대로) */
+        fun resetLive() {
+            lastArrivals = null
+            emptyStreak = 0
+            compArrivals.clear()
+            entries = null
+            companions = preset
+        }
     }
 
     class Route(
@@ -344,9 +362,14 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
 
     when (arr) {
         is TagoResult.Success -> {
+            // 서버가 직전과 똑같은 정보를 주면(버스 위치는 30~60초마다 바뀜) 그렇다고 알림
+            val unchanged = d.lastServer != null && arr.data == d.lastServer
+            d.lastServer = arr.data
+            d.note.value = if (unchanged && arr.data.isNotEmpty()) "정보가 직전과 같아요 · 버스 위치는 30~60초마다 바뀝니다" else null
             if (arr.data.isNotEmpty() || d.emptyStreak >= 1 || d.lastArrivals.isNullOrEmpty()) {
                 d.lastArrivals = arr.data
-                d.updated.value = LocalTime.now()
+                // 서버 정보가 그대로면 "받은 시각"을 그대로 둠: 새로고침할 때마다 시각을 지금으로 바꾸면 남은 초가 도로 늘어나 보임
+                if (!unchanged || d.updated.value == null) d.updated.value = LocalTime.now()
             }
             d.emptyStreak = if (arr.data.isEmpty()) d.emptyStreak + 1 else 0
         }
@@ -355,6 +378,8 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
                 d.rows.value = Load.Fail(arr.message)
                 return
             }
+            // 실패했는데 이전 정보를 계속 보여주면 초만 줄어드는 것처럼 보이므로 이유를 알림
+            d.note.value = "새로고침 실패 · 이전 정보를 보여주는 중 (${arr.message.take(60)})"
         }
     }
     // 같은 자리의 다른 시군 정류장 (번호를 함께 보여주고, 그 정류장에 서는 버스도 같은 목록에)

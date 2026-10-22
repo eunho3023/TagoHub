@@ -1089,6 +1089,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val rows by d.rows.collectAsStateWithLifecycle()
     val updated by d.updated.collectAsStateWithLifecycle()
+    val liveNote by d.note.collectAsStateWithLifecycle()
     val others by d.others.collectAsStateWithLifecycle()
     val direction by d.direction.collectAsStateWithLifecycle()
     // 같은 자리 다른 시군 정류장까지 번호를 모두: "30690 · 3110313"
@@ -1131,6 +1132,9 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                 Text("${it.hhmm()} 갱신", Modifier.align(Alignment.CenterVertically),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        liveNote?.let {
+            Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         val tt = timetable
