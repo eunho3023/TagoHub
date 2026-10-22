@@ -21,3 +21,8 @@ pipeline/out_overlays/
 # KRIC 가이드 PDF (인증키가 적혀 있어서 저장소에 올리지 않음)
 /subwayRouteInfo.pdf
 /subwayTimetable.pdf
+
+# 배포용 서명 키와 비밀번호 (절대 올리지 않음)
+/keystore.properties
+*.jks
+*.keystore

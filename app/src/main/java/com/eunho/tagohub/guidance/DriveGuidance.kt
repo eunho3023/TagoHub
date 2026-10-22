@@ -79,9 +79,21 @@ object DriveGuidance {
     @Volatile var destinationName: String = ""
         internal set
 
+    /** 길찾기 옵션: 길을 벗어나 재탐색할 때도 같은 옵션을 씀 (무료도로로 가다 유료도로로 안내하지 않게) */
+    @Volatile var option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend
+        internal set
+
     /** 안내 시작. 화면이 보이는 상태에서 불러야 위치 서비스를 시작할 수 있음 */
-    fun start(context: Context, route: KakaoDriveRoute, dest: LatLng, destName: String, simulate: Boolean = false) {
+    fun start(
+        context: Context,
+        route: KakaoDriveRoute,
+        dest: LatLng,
+        destName: String,
+        simulate: Boolean = false,
+        option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend,
+    ) {
         this.route.value = route
+        this.option = option
         simulating.value = simulate
         destination = dest
         destinationName = destName

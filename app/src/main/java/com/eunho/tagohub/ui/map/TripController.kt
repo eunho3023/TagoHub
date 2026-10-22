@@ -50,6 +50,8 @@ data class RidePlan(
     val destName: String = "",
     /** 택시로 가면 나오는 요금(원) */
     val taxiWon: Int? = null,
+    /** 이 경로를 찾을 때 쓴 옵션 (안내 중 재탐색도 같은 옵션으로) */
+    val option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend,
 )
 
 /** 소통 상태 색: 1 정체(빨강) 2 지체(주황) 3 서행(노랑) 4 원활(초록), 사고(6)는 진한 빨강, 모르면 기본 파랑 */
@@ -109,6 +111,8 @@ class TripController(
     /** 지금 지도 중심 */
     private val center: () -> LatLng?,
     private val busy: MutableStateFlow<Int>,
+    /** 집·회사 (휴대폰에 저장) */
+    val homeWork: com.eunho.tagohub.data.HomeWorkStore,
 ) {
     val origin = MutableStateFlow<PlanPoint?>(null)
     val dest = MutableStateFlow<PlanPoint?>(null)
@@ -123,7 +127,35 @@ class TripController(
     val live = MutableStateFlow<TripLive?>(null)
     val mode = MutableStateFlow(PlanMode.Transit)
     val ridePlan = MutableStateFlow<Load<RidePlan>>(Load.Idle)
+
+    /** 자동차 길찾기 옵션 (추천·최단거리·무료도로·고속도로 제외) */
+    val driveOption = MutableStateFlow(com.eunho.tagohub.data.DriveOption.Recommend)
+
+    fun selectDriveOption(option: com.eunho.tagohub.data.DriveOption) {
+        if (driveOption.value == option) return
+        driveOption.value = option
+        if (mode.value == PlanMode.Car) drive()
+    }
     val note = MutableStateFlow<String?>(null)
+
+    /** 값이 있으면 지금 검색해서 고르는 장소를 길찾기 대신 집/회사로 저장한다 ("집 설정" 칩) */
+    val saving = MutableStateFlow<com.eunho.tagohub.data.SavedKind?>(null)
+
+    /** 집/회사로 한 번에: 출발은 지금 위치(또는 정해 둔 출발지), 도착은 저장한 곳으로 대중교통 길찾기 */
+    fun goTo(place: com.eunho.tagohub.data.SavedPlace) {
+        saving.value = null
+        editing.value = null
+        results.value = Load.Idle
+        dest.value = PlanPoint(place.name, null, place.lat, place.lng)
+        plan()
+    }
+
+    /** 집/회사 장소 검색 시작 (고른 곳은 길찾기 대신 저장됨) */
+    fun startSaving(kind: com.eunho.tagohub.data.SavedKind) {
+        editing.value = PlanField.Dest
+        results.value = Load.Idle
+        saving.value = kind
+    }
 
     private var searchJob: Job? = null
     private var planJob: Job? = null
@@ -140,6 +172,7 @@ class TripController(
     }
 
     fun reset() {
+        saving.value = null
         searchJob?.cancel(); planJob?.cancel(); liveJob?.cancel(); rideJob?.cancel()
         origin.value = null
         dest.value = null
@@ -196,7 +229,7 @@ class TripController(
                 ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
                 return@launch
             }
-            val (status, route) = tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng)) }
+            val (status, route) = tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng), driveOption.value) }
             if (route == null) {
                 ridePlan.value = Load.Fail(
                     when {
@@ -209,7 +242,7 @@ class TripController(
             }
             showDriveRoute(o, LatLng(d.lat, d.lng), route, fit = true)
             ridePlan.value = Load.Ok(
-                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name, route.taxiWon),
+                RidePlan(PlanMode.Car, route.distanceMeters, route.durationSeconds, route.tollWon, route.guides, route.roads, route, d.lat, d.lng, d.name, route.taxiWon, driveOption.value),
             )
         }
     }
@@ -256,6 +289,7 @@ class TripController(
     )
 
     fun edit(field: PlanField?) {
+        if (field == null || saving.value != null) saving.value = null
         editing.value = field
         results.value = Load.Idle
     }
@@ -285,6 +319,15 @@ class TripController(
     }
 
     fun pick(p: PlanPoint?) {
+        val kind = saving.value
+        if (kind != null && p != null) {
+            // 집/회사 저장 중: 길찾기는 하지 않고 저장만
+            homeWork.set(kind, com.eunho.tagohub.data.SavedPlace(p.name, p.lat, p.lng))
+            saving.value = null
+            editing.value = null
+            results.value = Load.Idle
+            return
+        }
         rideJob?.cancel()
         mode.value = PlanMode.Transit
         ridePlan.value = Load.Idle

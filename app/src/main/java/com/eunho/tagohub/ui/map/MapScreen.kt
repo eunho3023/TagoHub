@@ -67,6 +67,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Train
@@ -871,6 +874,10 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 OutlinedButton(onClick = vm::usePickedAsVia, modifier = Modifier.weight(1f)) { Text("경유지로") }
                 Button(onClick = { vm.usePicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("여기로 도착") }
             }
+            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
+                TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Work) }) { Text("회사로 저장") }
+            }
             // 주변 찾기 (카카오 카테고리로 장소 검색)
             androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->
@@ -1646,6 +1653,7 @@ private fun PlannerPanel(vm: MapViewModel) {
             onSwitch = { t.select(null) },
         )
         if (selected == null) {
+            if (editing == null) HomeWorkChips(t)
             Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     PlanPointField("출발", origin?.name ?: "내 위치", active = editing == PlanField.Origin) { t.edit(PlanField.Origin) }
@@ -1662,6 +1670,45 @@ private fun PlannerPanel(vm: MapViewModel) {
             editing != null -> PlanSearch(t, editing!!)
             selected != null -> PlanDetail(t, selected!!)
             else -> PlanList(t)
+        }
+    }
+}
+
+/**
+ * 집·회사 한 번 길찾기 칩: 누르면 그곳으로 가는 길찾기, 길게 누르면 다시 설정. 아직 없으면 "집 설정".
+ * 지금 시각에 갈 가능성이 큰 쪽(아침 회사·저녁 집)을 앞에 둔다.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun HomeWorkChips(t: TripController) {
+    val saved by t.homeWork.state.collectAsStateWithLifecycle()
+    val first = remember { com.eunho.tagohub.data.HomeWork.suggested(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) }
+    val order = listOf(first, com.eunho.tagohub.data.SavedKind.entries.first { it != first })
+    Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        order.forEach { kind ->
+            val place = saved[kind]
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = ModeColor.Bus.copy(alpha = if (place != null && kind == first) 0.18f else 0.08f),
+                modifier = Modifier.combinedClickable(
+                    onClick = { if (place != null) t.goTo(place) else t.startSaving(kind) },
+                    onLongClick = { t.startSaving(kind) },
+                ),
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (kind == com.eunho.tagohub.data.SavedKind.Home) Icons.Filled.Home else Icons.Filled.Work, contentDescription = null, tint = ModeColor.Bus, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (place != null) "${kind.label}으로" else "${kind.label} 설정",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = ModeColor.Bus,
+                    )
+                }
+            }
+        }
+        if (saved.home != null || saved.work != null) {
+            Text("길게 누르면 변경", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1690,6 +1737,7 @@ private fun PlanPointField(label: String, value: String, active: Boolean, placeh
 @Composable
 private fun PlanSearch(t: TripController, field: PlanField) {
     val results by t.results.collectAsStateWithLifecycle()
+    val saving by t.saving.collectAsStateWithLifecycle()
     var q by rememberSaveable(field) { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         SearchBox(
@@ -1698,7 +1746,8 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                 q = it
                 t.search(it)
             },
-            if (field == PlanField.Dest) "목적지 (카카오 장소 검색)" else "출발지 (카카오 장소 검색)",
+            saving?.let { "${it.label}으로 저장할 장소 (카카오 장소 검색)" }
+                ?: if (field == PlanField.Dest) "목적지 (카카오 장소 검색)" else "출발지 (카카오 장소 검색)",
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             onSearch = { t.search(q) },
         )
@@ -1785,7 +1834,8 @@ private fun PlanList(t: TripController) {
                     is Load.Ok -> {
                         val result = route.value
                         if (result.mode == PlanMode.Car) {
-                            DriveRoutePanel(result, Modifier.weight(1f))
+                            val driveOption by t.driveOption.collectAsStateWithLifecycle()
+                            DriveRoutePanel(result, driveOption, t::selectDriveOption, Modifier.weight(1f))
                         } else {
                             val distance = if (result.distanceMeters >= 1000) {
                                 "%.1fkm".format(result.distanceMeters / 1000.0)

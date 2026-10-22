@@ -253,7 +253,7 @@ class DriveGuidanceService : Service() {
         lastRerouteAt = now
         rerouteCount++
         scope.launch {
-            val (status, route) = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest)
+            val (status, route) = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest, DriveGuidance.option)
             rerouting = false
             if (route != null) {
                 install(route)
