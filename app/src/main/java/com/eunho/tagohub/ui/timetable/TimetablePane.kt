@@ -284,7 +284,7 @@ private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: (
                 null, is Load.Idle -> Unit
                 is Load.Loading -> Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("정차역을 찾는 중… 처음 한 번은 1분쯤 걸릴 수 있어요", style = MaterialTheme.typography.bodySmall, color = variant)
+                    Text("정차역을 찾는 중…", style = MaterialTheme.typography.bodySmall, color = variant)
                 }
                 is Load.Fail -> Text(open.message, Modifier.padding(bottom = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 is Load.Ok -> Column(Modifier.padding(bottom = 10.dp)) {
@@ -301,7 +301,7 @@ private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: (
                             Text(s.time?.let(TagoTime::hm) ?: "--:--", style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = variant)
                         }
                     }
-                    Text("국토교통부 시간표를 구간별로 맞춰 본 결과예요. 실제 정차와 다를 수 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
+                    Text("한국철도공사 열차시간표 기준이에요. 시각은 출발(종착역은 도착)이고, 운행 요일에 따라 다를 수 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
                 }
             }
         }

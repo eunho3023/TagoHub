@@ -259,6 +259,8 @@ class TagoRepository(private val api: TagoApi) {
     /** 시·도 17곳의 역 목록을 병렬로 받아 전국 역 검색을 만든다 (최초 1회) */
     private suspend fun trainStationList(): List<Place> {
         trainStationCache?.let { return it }
+        // 미리 만들어 둔 역 목록(assets)이 있으면 그걸 씀: 앱을 켤 때마다 국토교통부에서 받아오지 않음
+        TrainStationGeo.places().takeIf { it.isNotEmpty() }?.let { trainStationCache = it; return it }
         val cities = all(listOf(100)) { p, n -> api.trainCities(p, n) }.map(Mappers::city)
         val results = coroutineScope {
             cities.map { c ->
@@ -296,7 +298,14 @@ class TagoRepository(private val api: TagoApi) {
     /** 직통이 없을 때: 주요 환승역을 거치는 환승 1회 경로 (환승역마다 두 구간을 조회해 이어 붙임) */
     suspend fun trainTransfers(dep: String, arr: String, date: LocalDate): TagoResult<List<TrainTransfer>> = run {
         val stations = trainStationList()
-        val hubs = TrainTransfers.HUBS.mapNotNull { n -> stations.firstOrNull { it.name == n && it.id != dep && it.id != arr } }
+        // 시간표로 "출발역 다음에 서고 도착역 앞에 서는" 역만 골라 조회 (정해 둔 29곳 × 2 → 보통 10곳 안쪽).
+        // 이어지는 역이 없으면 조회 없이 바로 없음. 시간표에 출발·도착역이 없을 때만 정해 둔 환승역을 씀.
+        val depName = stations.firstOrNull { it.id == dep }?.name
+        val arrName = stations.firstOrNull { it.id == arr }?.name
+        val names = if (depName != null && arrName != null) TrainTimetable.hubsBetween(depName, arrName) else null
+        val hubs = (names ?: TrainTransfers.HUBS).mapNotNull { n ->
+            stations.firstOrNull { TrainTimetable.norm(it.name) == TrainTimetable.norm(n) && it.id != dep && it.id != arr }
+        }
         val results = coroutineScope {
             hubs.map { h -> async { attempt { TrainTransfers.combine(trainLeg(dep, h.id, date), trainLeg(h.id, arr, date), h.name) } } }.awaitAll()
         }
@@ -331,6 +340,8 @@ class TagoRepository(private val api: TagoApi) {
 
     /** 한 열차의 정차역 (출발역~도착역, 시각순) */
     suspend fun trainStops(trip: Trip, date: LocalDate): TagoResult<List<StopTime>> = run {
+        // 열차시간표 파일에 있으면 인터넷 없이 바로 (없는 열차만 아래처럼 국토교통부 구간 조회로 추정)
+        TrainTimetable.stopsFor(trip)?.let { return@run it }
         val dep = trip.depId ?: error("출발역을 알 수 없습니다.")
         TrainStops.between(trainStopScan(dep, trip.arrId ?: error("도착역을 알 수 없습니다."), date), trip)
     }
