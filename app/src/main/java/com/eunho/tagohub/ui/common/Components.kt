@@ -401,7 +401,7 @@ fun PlacePickerSheet(
                     items(list) { p ->
                         ListItem(
                             headlineContent = { Text(p.name) },
-                            supportingContent = if (p.sub != null) { { Text(p.sub) } } else null,
+                            supportingContent = if (p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
                             trailingContent = {
                                 Text(p.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             },
@@ -447,7 +447,7 @@ private fun GroupedPlaceList(list: List<Place>, byRegion: Boolean, onPick: (Plac
                 items(places, key = { it.id }) { p ->
                     ListItem(
                         headlineContent = { Text(p.name) },
-                        supportingContent = if (!byRegion && p.sub != null) { { Text(p.sub) } } else null,
+                        supportingContent = if (!byRegion && p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
                         modifier = Modifier.clickable { onPick(p) },
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

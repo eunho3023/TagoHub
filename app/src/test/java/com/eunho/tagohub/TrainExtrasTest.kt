@@ -102,13 +102,24 @@ class TrainExtrasTest {
     }
 
     @Test
+    fun chungcheongGyeongsangAndJeollaAreSplitIntoNorthAndSouthShortNames() {
+        listOf(
+            "충청북도" to "충북", "충청남도" to "충남", "경상북도" to "경북", "경상남도" to "경남",
+            "전북특별자치도" to "전북", "전라북도" to "전북", "전라남도" to "전남",
+            "서울특별시" to "서울특별시", "경기도" to "경기도",
+        ).forEach { (long, short) -> assertEquals(long, short, PlaceGroups.shortRegion(long)) }
+        val g = PlaceGroups.byRegion(listOf(Place("1", "청주", "충청북도"), Place("2", "천안", "충청남도"), Place("3", "대구", "경상북도"), Place("4", "부산", "경상남도"), Place("5", "전주", "전북특별자치도"), Place("6", "목포", "전라남도")))
+        assertEquals(listOf("충북", "충남", "전북", "전남", "경북", "경남"), g.map { it.first })
+    }
+
+    @Test
     fun regionsComeInTheUsualOrderAndUnknownLast() {
         val places = listOf(
             Place("1", "대전", "대전광역시"), Place("2", "서울", "서울특별시"), Place("3", "수원", "경기도"),
             Place("4", "전주", "전북특별자치도"), Place("5", "광주송정", "광주광역시"), Place("6", "어딘가", null), Place("7", "강릉", "강원특별자치도"),
         )
         assertEquals(
-            listOf("서울특별시", "광주광역시", "대전광역시", "경기도", "강원특별자치도", "전북특별자치도", "기타"),
+            listOf("서울특별시", "광주광역시", "대전광역시", "경기도", "강원특별자치도", "전북", "기타"),
             PlaceGroups.byRegion(places).map { it.first },
         )
     }

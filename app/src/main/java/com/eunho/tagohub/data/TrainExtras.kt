@@ -101,8 +101,19 @@ object PlaceGroups {
     private fun rank(region: String): Int =
         REGIONS.indexOfFirst { names -> names.any { region.startsWith(it) } }.let { if (it < 0) REGIONS.size else it }
 
+    /** 화면에 보여줄 시·도 이름: 충청·경상·전라는 남북을 구분해 충북·충남·경북·경남·전북·전남으로 짧게 (나머지는 그대로) */
+    fun shortRegion(name: String): String = when {
+        name.startsWith("충청북") || name.startsWith("충북") -> "충북"
+        name.startsWith("충청남") || name.startsWith("충남") -> "충남"
+        name.startsWith("경상북") || name.startsWith("경북") -> "경북"
+        name.startsWith("경상남") || name.startsWith("경남") -> "경남"
+        name.startsWith("전라북") || name.startsWith("전북") -> "전북"
+        name.startsWith("전라남") || name.startsWith("전남") -> "전남"
+        else -> name
+    }
+
     fun byRegion(list: List<Place>): List<Pair<String, List<Place>>> =
-        list.groupBy { it.sub?.takeIf(String::isNotBlank) ?: "기타" }
+        list.groupBy { it.sub?.takeIf(String::isNotBlank)?.let(::shortRegion) ?: "기타" }
             .toList().sortedWith(compareBy({ rank(it.first) }, { it.first }))
             .map { (k, v) -> k to v.sortedBy { it.name } }
 }
