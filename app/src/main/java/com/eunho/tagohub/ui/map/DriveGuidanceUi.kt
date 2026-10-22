@@ -105,7 +105,7 @@ import com.eunho.tagohub.ui.theme.BoardColor
 import com.eunho.tagohub.ui.theme.LocalDarkTheme
 
 /** 안내 화면은 전광판 느낌: 숫자는 고정폭 글꼴, 포인트는 앰버. 밝기는 고른 화면 모드(라이트·다크·시스템)를 그대로 따른다. */
-private val Mono = FontFamily.Monospace
+private val Mono = com.eunho.tagohub.ui.theme.NumberFont
 
 /** 포인트색: 밝은 화면에서는 진한 호박색, 어두운 화면에서는 밝은 앰버 */
 @Composable
@@ -314,11 +314,11 @@ private fun SuggestionCard(s: DriveGuidance.Suggestion) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("더 빠른 경로가 있어요", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = NaviBlue)
+                Text("더 빠른 경로가 있어요", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                 Text("${GuidanceText.duration(s.savedSeconds)} 단축", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = { DriveGuidance.dismissSuggestion() }) { Text("무시") }
-            Button(onClick = { DriveGuidance.acceptSuggestion() }, colors = ButtonDefaults.buttonColors(containerColor = NaviBlue, contentColor = Color.White)) { Text("경로 변경") }
+            Button(onClick = { DriveGuidance.acceptSuggestion() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) { Text("경로 변경") }
         }
     }
 }

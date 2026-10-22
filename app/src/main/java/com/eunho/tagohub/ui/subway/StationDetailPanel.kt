@@ -3,6 +3,7 @@
 package com.eunho.tagohub.ui.subway
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Load
@@ -98,32 +101,27 @@ fun StationDetailPanel(
 
     LaunchedEffect(d, refreshKey) { c.runArrivals(d) }
 
+    val dark = com.eunho.tagohub.ui.theme.LocalDarkTheme.current
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .width(5.dp)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(color)
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stationName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        lines.forEach { Pill(it, subwayLineColor(it)) }
+        // 머리띠(노선도 방식): 지하철 색 바탕에 큰 역 이름과 호선 원형 배지
+        Surface(color = if (dark) Color(0xFF556070) else Color(0xFF4B5563), contentColor = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stationName, fontSize = 34.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.7).sp, color = Color.White)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            lines.forEach { LineBadge(it) }
+                        }
                     }
-                }
-                if (operatorLabel.isNotBlank()) {
                     Text(
-                        operatorLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        listOf(operatorLabel.takeIf { it.isNotBlank() }, if (d.realtime) "실시간 도착 · 20초마다 갱신" else null).filterNotNull().joinToString(" · ").ifBlank { "역 정보" },
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기", tint = Color.White) }
             }
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
         }
         LazyRow(
             Modifier.fillMaxWidth(),
@@ -152,9 +150,20 @@ fun StationDetailPanel(
                 }
             }
         }
-        TabRow(selectedTabIndex = tab.ordinal, contentColor = color) {
+        TabRow(
+            selectedTabIndex = tab.ordinal,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            indicator = { pos ->
+                androidx.compose.material3.TabRowDefaults.SecondaryIndicator(
+                    Modifier.tabIndicatorOffset(pos[tab.ordinal]),
+                    height = 3.dp,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+            },
+        ) {
             StationTab.entries.forEach { t ->
-                Tab(selected = tab == t, onClick = { c.setTab(d, t) }, text = { Text(t.label, maxLines = 1) })
+                Tab(selected = tab == t, onClick = { c.setTab(d, t) }, text = { Text(t.label, maxLines = 1, fontWeight = if (tab == t) FontWeight.Black else FontWeight.Medium) })
             }
         }
         when (tab) {
@@ -358,6 +367,16 @@ private fun arrivalMain(a: SubwayArrival, now: LocalDateTime): String {
     return if (left < 60) "곧 도착" else "${(left + 59) / 60}분 후"
 }
 
+/** 호선 원형 배지: "2호선" → 초록 원 안에 2, 숫자가 없는 노선은 앞 두 글자 */
+@Composable
+private fun LineBadge(line: String, size: androidx.compose.ui.unit.Dp = 28.dp) {
+    val label = Regex("""^(\d+)호선""").find(line)?.groupValues?.get(1) ?: line.replace("선", "").take(2)
+    Box(
+        Modifier.size(size).clip(CircleShape).background(subwayLineColor(line)).border(2.dp, Color.White, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, fontSize = if (label.length > 1) 11.sp else 14.sp, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1) }
+}
+
 @Composable
 private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Unit)? = null) {
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -368,6 +387,11 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val lineName = Regex("""\d+호선|[가-힣]+선""").find(a.lineText)?.value
+        if (lineName != null) {
+            LineBadge(lineName, 34.dp)
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 a.lineText.ifBlank { a.dest?.let { "${it}행" } ?: "" } + if (onClick != null) "  ›" else "",
@@ -386,7 +410,13 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
-            Text(arrivalMain(a, now), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Bold)
+            val main = arrivalMain(a, now)
+            Text(
+                main,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = if (main.startsWith("곧")) (if (com.eunho.tagohub.ui.theme.LocalDarkTheme.current) com.eunho.tagohub.ui.theme.BoardColor.ArriveDark else com.eunho.tagohub.ui.theme.BoardColor.ArriveLight) else MaterialTheme.colorScheme.onSurface,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (a.express) Pill("급행", Color(0xFFD7262E), filled = false)
                 if (a.last) Pill("막차", ModeColor.Subway, filled = false)

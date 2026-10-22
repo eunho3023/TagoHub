@@ -258,39 +258,41 @@ internal fun TimelineRow(
     ) {
         Box(
             Modifier
-                .width(28.dp)
+                .width(34.dp)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center,
         ) {
-            // 노선 띠: 첫/끝 정류소에서는 반쪽만
+            // 노선 띠(노선도처럼 굵게): 첫/끝 정류소에서는 반쪽만
             Column(Modifier.fillMaxHeight()) {
                 Box(
                     Modifier
-                        .width(4.dp)
+                        .width(8.dp)
                         .weight(1f)
                         .background(if (isFirst) Color.Transparent else color)
                 )
                 Box(
                     Modifier
-                        .width(4.dp)
+                        .width(8.dp)
                         .weight(1f)
                         .background(if (isLast) Color.Transparent else color)
                 )
             }
             if (buses.isNotEmpty()) {
+                // 버스가 있는 정류소: 큰 앰버 점 (어두운 아이콘)
                 Box(
                     Modifier
-                        .size(24.dp)
+                        .size(28.dp)
                         .clip(CircleShape)
-                        .background(color),
+                        .background(Color(0xFFFFB224))
+                        .border(3.dp, color, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.DirectionsBus, contentDescription = "버스", tint = Color.White, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Filled.DirectionsBus, contentDescription = "버스", tint = Color(0xFF0E1318), modifier = Modifier.size(14.dp))
                 }
             } else {
                 Box(
                     Modifier
-                        .size(12.dp)
+                        .size(16.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surface)
                         .border(3.dp, color, CircleShape)
@@ -305,13 +307,13 @@ internal fun TimelineRow(
             Text(
                 s.name,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (focused || buses.isNotEmpty()) FontWeight.Black else FontWeight.Medium,
             )
             val sub = listOfNotNull(times, s.nodeNo).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
             buses.forEach { b ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(b.vehicleNo ?: "운행 중", style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.Bold)
+                    Text(b.vehicleNo ?: "운행 중", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                     if (b.lowFloor == true) Pill("저상", color, filled = false)
                 }
             }
