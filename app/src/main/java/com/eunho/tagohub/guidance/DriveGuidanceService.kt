@@ -296,7 +296,9 @@ class DriveGuidanceService : Service() {
         val zone = if (st.offRoute || st.arrived) null else tracker?.update(st.progressMeters, speedKmh)
         val restOn = ZoneGroup.Rest in DriveGuidance.zoneGroups.value
         val rest = if (st.offRoute || st.arrived || !restOn) null else restTracker?.update(st.progressMeters, st.remainingMeters)
-        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, speedKmh.roundToInt(), zone?.takeIf { it.next != null }, rest)
+        // 모의주행은 배속만큼 빨리 달리는 것이므로 화면 속도도 그만큼 (1배속 100 → 5배속 500 …)
+        val shownKmh = if (DriveGuidance.simulating.value) speedKmh * DriveGuidance.simFactor.value else speedKmh
+        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, shownKmh.roundToInt(), zone?.takeIf { it.next != null }, rest)
         val v = voice
         // 회전 안내와 안전 지점 안내가 동시에 나오면 한 번에 이어서 말함 (따로 말하면 앞 말이 끊김)
         val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak)

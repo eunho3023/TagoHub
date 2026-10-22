@@ -150,6 +150,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
     val simulating by DriveGuidance.simulating.collectAsStateWithLifecycle()
 
     val nav = remember(route) { route?.let { NavRoute.from(it) } }
+    LaunchedEffect(active) { if (active) vm.following.value = true }
     // 지도가 내 위치(GPS)를 따라감: 진행 방향 앞쪽을 더 보여주고, 빠를수록 넓게. 손으로 움직이면 멈춤
     val lastPos = remember { arrayOfNulls<Pair<Double, Double>>(1) }
     var bearing by remember { mutableStateOf<Double?>(null) }
