@@ -64,6 +64,9 @@ import com.eunho.tagohub.ui.common.Tnum
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
+/** 목록을 열지 않고 바로 고를 수 있는 추천 칸 (예: 내 위치에서 가까운 역과 거리) */
+data class QuickPick(val place: com.eunho.tagohub.data.Place, val label: String)
+
 @Composable
 fun TimetablePane(
     c: TimetableController,
@@ -71,6 +74,7 @@ fun TimetablePane(
     pickerNoun: String,
     gradeAllLabel: String,
     idleText: String,
+    quickPicks: List<QuickPick> = emptyList(),
 ) {
     val dep by c.dep.collectAsStateWithLifecycle()
     val arr by c.arr.collectAsStateWithLifecycle()
@@ -93,6 +97,22 @@ fun TimetablePane(
                     onArr = { picking = false },
                     onSwap = c::swap,
                 )
+            }
+        }
+        if (quickPicks.isNotEmpty()) {
+            // 가까운 역: 누르면 출발역(아직 없으면) → 도착역 순서로 채움
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                item { Text("가까운 역", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                itemsIndexed(quickPicks) { _, q ->
+                    androidx.compose.material3.AssistChip(
+                        onClick = { if (dep == null) c.setDep(q.place) else c.setArr(q.place) },
+                        label = { Text("${q.place.name} · ${q.label}") },
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))

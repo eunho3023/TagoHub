@@ -267,7 +267,8 @@ class TagoRepository(private val api: TagoApi) {
         }
         val ok = results.mapNotNull { it.getOrNull() }
         if (ok.isEmpty()) throw results.firstNotNullOf { it.exceptionOrNull() }
-        val list = ok.flatten().filter { it.id.isNotBlank() }.distinctBy { it.id }.sortedBy { it.name }
+        // 어느 열차도 서지 않는 역(폐지·휴지)은 고를 필요가 없으므로 뺌
+        val list = ok.flatten().filter { it.id.isNotBlank() && !TrainStationGeo.isUnserved(it.id) }.distinctBy { it.id }.sortedBy { it.name }
         if (results.all { it.isSuccess }) trainStationCache = list // 일부 실패 시 다음에 다시 시도
         return list
     }
@@ -307,8 +308,13 @@ class TagoRepository(private val api: TagoApi) {
      * 출발역에서 모든 역까지 직통을 조회해 열차번호별로 도착 시각을 모음. 처음 한 번은 수십 초 걸리고(동시 4개씩 호출),
      * 같은 출발역·날짜는 기억해 둔다. 국토교통부에는 열차별 정차역 조회가 없어서 이렇게 추정한다.
      */
-    private suspend fun trainStopScan(dep: String, date: LocalDate): Map<String, List<Pair<LocalDateTime, String>>> = cached("trainScan:$dep:$date") {
-        val stations = trainStationList().filter { it.id != dep }
+    private suspend fun trainStopScan(dep: String, arr: String, date: LocalDate): Map<String, List<Pair<LocalDateTime, String>>> = cached("trainScan:$dep:$arr:$date") {
+        val all = trainStationList()
+        // 출발~도착 길목에 있는 역만 조회 (전국 349곳 → 수십 곳): TAGO 하루 호출 한도를 아끼고 빨라짐
+        val from = all.firstOrNull { it.id == dep }
+        val to = all.firstOrNull { it.id == arr }
+        val others = all.filter { it.id != dep }
+        val stations = if (from != null && to != null) TrainStationGeo.corridor(others, from, to) else others
         val results = coroutineScope { stations.map { s -> async { s.name to attempt { trainLeg(dep, s.id, date) } } }.awaitAll() }
         val failed = results.count { it.second.isFailure }
         if (failed > maxOf(10, stations.size / 5)) throw results.first { it.second.isFailure }.second.exceptionOrNull()!!
@@ -326,7 +332,7 @@ class TagoRepository(private val api: TagoApi) {
     /** 한 열차의 정차역 (출발역~도착역, 시각순) */
     suspend fun trainStops(trip: Trip, date: LocalDate): TagoResult<List<StopTime>> = run {
         val dep = trip.depId ?: error("출발역을 알 수 없습니다.")
-        TrainStops.between(trainStopScan(dep, date), trip)
+        TrainStops.between(trainStopScan(dep, trip.arrId ?: error("도착역을 알 수 없습니다."), date), trip)
     }
 
     // ───────────────────────── 항공 ─────────────────────────
