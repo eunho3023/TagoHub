@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Paid
 import androidx.compose.material.icons.filled.Route
@@ -104,7 +105,7 @@ import com.eunho.tagohub.ui.theme.BoardColor
 import com.eunho.tagohub.ui.theme.LocalDarkTheme
 
 /** 안내 화면은 전광판 느낌: 숫자는 고정폭 글꼴, 포인트는 앰버. 밝기는 고른 화면 모드(라이트·다크·시스템)를 그대로 따른다. */
-private val Mono = FontFamily.Monospace
+private val Mono = com.eunho.tagohub.ui.theme.NumberFont
 
 /** 포인트색: 밝은 화면에서는 진한 호박색, 어두운 화면에서는 밝은 앰버 */
 @Composable
@@ -167,6 +168,12 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             delay(700)
         }
     }
+    // 안내 중에는 화면이 저절로 꺼지지 않게 (운전 중 지도를 계속 봐야 함)
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(active) {
+        view.keepScreenOn = active
+        onDispose { view.keepScreenOn = false }
+    }
     if (!active) return
 
     val context = LocalContext.current
@@ -203,6 +210,9 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
                 else -> StatusBanner("경로 안내 중")
             }
             info?.zone?.takeIf { it.next != null && it.distance <= 1500.0 }?.let { ZoneCard(it) }
+            info?.rest?.let { RestCard(it) }
+            val suggestion by DriveGuidance.suggestion.collectAsStateWithLifecycle()
+            suggestion?.let { SuggestionCard(it) }
             if (simulating) NoteChip("모의주행 중 · 실제 위치가 아닙니다", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
             note?.let { NoteChip(it, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer) }
         }
@@ -298,6 +308,33 @@ private fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modif
     }
 }
 
+/** 더 빠른 경로 제안: "더 빠른 경로 · 12분 단축 (거리 +3.2km)" [변경] [무시] */
+@Composable
+private fun SuggestionCard(s: DriveGuidance.Suggestion) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("더 빠른 경로가 있어요", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                Text("${GuidanceText.duration(s.savedSeconds)} 단축", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = { DriveGuidance.dismissSuggestion() }) { Text("무시") }
+            Button(onClick = { DriveGuidance.acceptSuggestion() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.onSecondary)) { Text("경로 변경") }
+        }
+    }
+}
+
+/** 다음 휴게소: "다음 휴게소 서울만남휴게소 · 12.3km" */
+@Composable
+private fun RestCard(r: com.eunho.tagohub.data.RestStatus) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, modifier = Modifier.widthIn(max = 320.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.LocalCafe, contentDescription = null, tint = Color(0xFF2E9B57), modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("다음 ${r.name} · ${NavText.short(r.distance)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
 /** 앞의 단속카메라·어린이 보호구역: "과속단속카메라 · 500m" (제한속도를 넘으면 빨갛게) */
 @Composable
 private fun ZoneCard(z: ZoneStatus) {
@@ -314,7 +351,7 @@ private fun ZoneCard(z: ZoneStatus) {
                 when (rz.zone.kind.group) {
                     ZoneGroup.Protect -> Icons.Filled.ChildCare
                     ZoneGroup.Bump -> Icons.Filled.Warning
-                    ZoneGroup.Camera -> Icons.Filled.CameraAlt
+                    ZoneGroup.Camera, ZoneGroup.Rest -> Icons.Filled.CameraAlt
                 },
                 contentDescription = null,
                 tint = ink,

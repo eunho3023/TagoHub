@@ -30,7 +30,13 @@ import com.eunho.tagohub.data.NavEngine
 import com.eunho.tagohub.data.NavRoute
 import com.eunho.tagohub.data.NavText
 import com.eunho.tagohub.data.RouteSimulator
+import com.eunho.tagohub.data.ExMapLayers
+import com.eunho.tagohub.data.ItsRoadFeature
+import com.eunho.tagohub.data.RestAhead
+import com.eunho.tagohub.data.RouteCompare
+import com.eunho.tagohub.data.RestTracker
 import com.eunho.tagohub.data.RouteZone
+import com.eunho.tagohub.data.ZoneGroup
 import com.eunho.tagohub.data.SafetyZone
 import com.eunho.tagohub.data.SafetyZones
 import com.eunho.tagohub.data.ZoneTracker
@@ -44,6 +50,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 경로 안내 포그라운드 서비스: 화면이 꺼져도 GPS 를 받아 안내한다.
@@ -123,6 +130,19 @@ class DriveGuidanceService : Service() {
             }
         }
         scope.launch { DriveGuidance.voiceVolume.collect { v -> voice?.volume = v } }
+        DriveGuidance.suggestion.value = null
+        DriveGuidance.accepted.value = null
+        scope.launch {
+            // 제안을 받아들이면 그 경로로 바꿈
+            DriveGuidance.accepted.collect { s ->
+                if (s != null) {
+                    DriveGuidance.accepted.value = null
+                    install(s.route)
+                    voice?.speak("새 경로로 안내합니다.")
+                }
+            }
+        }
+        scope.launch { suggestLoop() }
         scope.launch { DriveGuidance.zoneGroups.collect { rebuildTracker() } }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock =pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tagohub:guidance").apply { acquire(MAX_SESSION_MS) }
@@ -156,12 +176,21 @@ class DriveGuidanceService : Service() {
         engine = NavEngine(nav)
         DriveGuidance.route.value = route
         // 이 경로 위의 단속카메라·어린이 보호구역 (목록은 한 번만 읽고, 경로가 바뀌면 다시 맞춤)
+        loadRest(nav)
         val loaded = zoneData
         if (loaded != null) { matched = matchRoute(nav, loaded); rebuildTracker() }
         else scope.launch(Dispatchers.Default) {
             val zones = SafetyZones.load(applicationContext)
             zoneData = zones
             currentNav?.let { matched = matchRoute(it, zones); rebuildTracker() }
+        }
+    }
+
+    /** 경로 위 휴게소를 한 번 받아(한국도로공사, 10분 캐시) 이 경로에 맞춤. 키가 없거나 실패하면 이 안내만 없음 */
+    private fun loadRest(nav: NavRoute) {
+        scope.launch(Dispatchers.Default) {
+            val features = restFeatures ?: runCatching { ExMapLayers.features(ExMapLayers.REST) }.getOrNull()?.also { restFeatures = it }.orEmpty()
+            if (currentNav === nav) restTracker = RestTracker(RestAhead.match(nav, features))
         }
     }
 
@@ -211,8 +240,48 @@ class DriveGuidanceService : Service() {
     @Volatile private var zoneData: List<SafetyZone>? = null
     @Volatile private var tracker: ZoneTracker? = null
     @Volatile private var matched: List<RouteZone> = emptyList()
+    @Volatile private var restFeatures: List<ItsRoadFeature>? = null
+    @Volatile private var restTracker: RestTracker? = null
+    @Volatile private var lastLat = 0.0
+    @Volatile private var lastLng = 0.0
+    private var lastSuggestAt = 0L
+
+    /**
+     * 안내 중 가끔 지금 위치에서 새 경로를 받아 보고, 실제로 다른 길이면서 충분히 빠르면 제안한다.
+     * 한 번 제안한 뒤에는 10분 쉼. 받아들이지 않으면 1분 뒤 사라짐.
+     */
+    private suspend fun suggestLoop() {
+        delay(SUGGEST_FIRST_MS)
+        while (true) {
+            runCatching { trySuggest() }.onFailure { Log.w(TAG, "더 빠른 경로 확인 실패: ${it.message}") }
+            delay(SUGGEST_EVERY_MS)
+        }
+    }
+
+    private suspend fun trySuggest() {
+        val nav = currentNav ?: return
+        val st = DriveGuidance.info.value?.state ?: return
+        val now = SystemClock.elapsedRealtime()
+        if (st.offRoute || st.arrived || rerouting || DriveGuidance.suggestion.value != null) return
+        if (st.remainingMeters < RouteCompare.MIN_REMAINING_M) return
+        if (lastSuggestAt != 0L && now - lastSuggestAt < SUGGEST_COOLDOWN_MS) return
+        val dest = DriveGuidance.destination ?: return
+        val (_, fresh) = KakaoExtra.drive(LatLng(lastLat, lastLng), dest, DriveGuidance.option)
+        fresh ?: return
+        val div = withContext(Dispatchers.Default) { RouteCompare.divergence(nav, fresh.points) }
+        val saved = RouteCompare.savedSeconds(nav.remainingSeconds(st.progressMeters), fresh.durationSeconds, div) ?: return
+        lastSuggestAt = now
+        DriveGuidance.suggestion.value = DriveGuidance.Suggestion(fresh, saved)
+        voice?.speak("더 빠른 경로가 있습니다. 약 ${(saved + 59) / 60}분 단축됩니다. 화면에서 선택하세요.")
+        scope.launch {
+            delay(SUGGEST_SHOW_MS)
+            if (DriveGuidance.suggestion.value?.route === fresh) DriveGuidance.suggestion.value = null
+        }
+    }
 
     private fun handleLocation(loc: Location) {
+        lastLat = loc.latitude
+        lastLng = loc.longitude
         val eng = engine ?: return
         // 오차가 너무 큰 위치는 안내에 쓰지 않음 (터널 입구 등)
         if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) return
@@ -224,10 +293,12 @@ class DriveGuidanceService : Service() {
         )
         val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6 else 0.0
         val zone = if (st.offRoute || st.arrived) null else tracker?.update(st.progressMeters, speedKmh)
-        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, speedKmh.roundToInt(), zone?.takeIf { it.next != null })
+        val restOn = ZoneGroup.Rest in DriveGuidance.zoneGroups.value
+        val rest = if (st.offRoute || st.arrived || !restOn) null else restTracker?.update(st.progressMeters, st.remainingMeters)
+        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, speedKmh.roundToInt(), zone?.takeIf { it.next != null }, rest)
         val v = voice
         // 회전 안내와 안전 지점 안내가 동시에 나오면 한 번에 이어서 말함 (따로 말하면 앞 말이 끊김)
-        val lines = st.speak + zone?.speak.orEmpty()
+        val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak)
         if (lines.isNotEmpty()) v?.speak(lines.joinToString(" "))
         if (v != null && v.ready && !v.koreanAvailable && !noted) {
             noted = true
@@ -328,6 +399,8 @@ class DriveGuidanceService : Service() {
         DriveGuidance.simulating.value = false
         DriveGuidance.info.value = null
         DriveGuidance.route.value = null
+        DriveGuidance.suggestion.value = null
+        DriveGuidance.accepted.value = null
         super.onDestroy()
     }
 
@@ -342,6 +415,10 @@ class DriveGuidanceService : Service() {
         private const val MAX_REROUTES = 20
         private const val ARRIVAL_STOP_DELAY_MS = 8_000L
         private const val SIM_TICK_MS = 200L
+        private const val SUGGEST_FIRST_MS = 90_000L
+        private const val SUGGEST_EVERY_MS = 150_000L
+        private const val SUGGEST_COOLDOWN_MS = 10 * 60_000L
+        private const val SUGGEST_SHOW_MS = 60_000L
         private const val DEVIATE_MS = 6_000L
         private const val DEVIATE_OFFSET_M = 300.0
         /** 안내가 끝나지 않아도 여기서 멈춤(배터리 보호): 6시간 */

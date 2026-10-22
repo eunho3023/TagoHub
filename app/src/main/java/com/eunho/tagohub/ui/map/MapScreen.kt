@@ -135,6 +135,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -1037,6 +1038,52 @@ private fun PanelHeader(
     }
 }
 
+/**
+ * 버스 노선 머리띠(노선도 방식): 노선 색 바탕에 굵은 노선번호와 종류 알약, 아래에 "기점 → 종점 · 배차 · 운행 중".
+ * 닫기·즐겨찾기·새로고침은 흰 아이콘으로 오른쪽에.
+ */
+@Composable
+private fun RouteBandHeader(
+    routeNo: String,
+    type: String?,
+    line: String,
+    detail: String,
+    color: Color,
+    onClose: () -> Unit,
+    switchLabel: String?,
+    onSwitch: () -> Unit,
+    favorite: Boolean,
+    onFavorite: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Surface(color = color, contentColor = Color.White, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(routeNo, fontSize = 34.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.7).sp, color = Color.White)
+                type?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.width(10.dp))
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color.White.copy(alpha = 0.2f)) {
+                        Text(it.removeSuffix("버스"), Modifier.padding(horizontal = 10.dp, vertical = 3.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, color = Color.White, fontWeight = FontWeight.Bold) }
+                IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침", tint = Color.White) }
+                IconButton(onClick = onFavorite) {
+                    Icon(
+                        if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (favorite) "즐겨찾기에서 빼기" else "즐겨찾기에 넣기",
+                        tint = if (favorite) Color(0xFFFFD54F) else Color.White,
+                    )
+                }
+                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기", tint = Color.White) }
+            }
+            if (line.isNotBlank()) Text(line, fontSize = 13.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            if (detail.isNotBlank()) Text(detail, fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 @Composable
 private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
@@ -1234,15 +1281,17 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val color = busRouteColor(d.routeType ?: r?.routeType)
 
     PanelSurface {
-        PanelHeader(
-            title = listOfNotNull(r?.startName, r?.endName).joinToString(" ↔ ").ifEmpty { "${d.routeNo}번" },
-            subtitle = "운행 중 ${buses.size}대" + (updated?.let { ", ${it.hhmm()} 위치, 10초마다 갱신" } ?: ""),
+        RouteBandHeader(
+            routeNo = d.routeNo,
+            type = d.routeType ?: r?.routeType,
+            line = listOfNotNull(r?.startName, r?.endName).joinToString(" → "),
+            detail = listOfNotNull(
+                r?.interval?.let { "배차 ${it}분" },
+                "운행 중 ${buses.size}대",
+                updated?.let { "${it.hhmm()} 갱신" },
+            ).joinToString(" · "),
             color = color,
             onClose = vm::closePanel,
-            leading = {
-                Pill(d.routeNo, color)
-                Spacer(Modifier.width(8.dp))
-            },
             switchLabel = if (hasStop) "정류소" else null,
             onSwitch = { vm.openPanel(MapPanel.Stop) },
             favorite = favs.any { it.kind == Favorite.Kind.Route && it.id == d.routeId },
@@ -1250,6 +1299,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             onRefresh = vm::refreshNow,
         )
         r?.let { RouteInfoCard(it) }
+        r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
         val dir by d.dir.collectAsStateWithLifecycle()
         LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류소 정보가 없습니다.") { all ->
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
@@ -1352,6 +1402,16 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     val names by vm.cityNames.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
+    val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) {
+        // 홈 화면의 검색창에서 왔으면 바로 입력할 수 있게 (화면이 뜬 뒤에)
+        vm.searchFocus.collect { n ->
+            if (n > 0) {
+                kotlinx.coroutines.delay(350)
+                runCatching { searchFocus.requestFocus() }
+            }
+        }
+    }
 
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
         Column {
@@ -1372,6 +1432,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                         searched = query
                         vm.searchBus(query)
                     },
+                    focusRequester = searchFocus,
                 )
                 IconButton(onClick = {
                     query = ""
@@ -1714,6 +1775,7 @@ private fun HomeWorkChips(t: TripController) {
                 }
             }
         }
+        if (saved.home != null && saved.work != null) CommuteReminderChip()
         if (saved.home != null || saved.work != null) {
             Text("길게 누르면 변경", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
