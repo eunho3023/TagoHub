@@ -58,6 +58,7 @@ import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.timetable.AirScreen
 import com.eunho.tagohub.ui.timetable.TrainScreen
 import com.eunho.tagohub.ui.map.ItsRoadScreen
+import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.ThemeMode
 import com.eunho.tagohub.ui.theme.ThemeSettings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -158,9 +159,9 @@ fun MainScreen() {
                         Text("대중교통 · 철도 · 도로", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 3.dp))
                     }
                     DrawerSectionLabel("대중교통")
-                    transit.forEach { (label, icon, kind) -> DrawerItem(label, icon, panel == kind) { pick(kind) } }
+                    ModeTiles(transit, panel) { pick(it) }
                     DrawerSectionLabel("교통 정보")
-                    traffic.forEach { (label, icon, kind) -> DrawerItem(label, icon, panel == kind) { pick(kind) } }
+                    ModeTiles(traffic, panel) { pick(it) }
                     Spacer(Modifier.height(8.dp))
                     androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     DrawerItem("공지사항", Icons.Filled.Info, false) { showNotices = true; scope.launch { drawerState.close() } }
@@ -217,6 +218,45 @@ fun MainScreen() {
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }
+}
+
+/** 교통수단 타일 (2열). 수단마다 고유한 색으로 칠해 한눈에 구분. 지금 열린 화면은 흰 테두리로 표시 */
+@Composable
+private fun ModeTiles(
+    items: List<Triple<String, ImageVector, ModeJump.Kind>>,
+    selected: ModeJump.Kind?,
+    onPick: (ModeJump.Kind) -> Unit,
+) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEach { (label, icon, kind) ->
+                    val on = selected == kind
+                    Surface(
+                        onClick = { onPick(kind) },
+                        modifier = Modifier.weight(1f).height(76.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = modeTileColor(kind),
+                        contentColor = Color.White,
+                        border = if (on) androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface) else null,
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+                            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black, maxLines = 1)
+                        }
+                    }
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+private fun modeTileColor(kind: ModeJump.Kind): Color = when (kind) {
+    ModeJump.Kind.Train -> ModeColor.Train
+    ModeJump.Kind.Coach -> ModeColor.Coach
+    ModeJump.Kind.Air -> ModeColor.Air
+    ModeJump.Kind.Road -> ModeColor.Map
 }
 
 /** 화면 모드 고르기: 시스템(기본) · 라이트 · 다크. 고르면 바로 적용되고 기기에 저장됨 */

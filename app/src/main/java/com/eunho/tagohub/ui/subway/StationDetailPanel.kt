@@ -67,10 +67,14 @@ import com.eunho.tagohub.data.SeoulLines
 import com.eunho.tagohub.data.SubwayArrival
 import com.eunho.tagohub.data.SubwayDeparture
 import com.eunho.tagohub.data.SubwayStation
+import com.eunho.tagohub.ui.common.LineBadge
 import com.eunho.tagohub.ui.common.LoadView
 import com.eunho.tagohub.ui.common.MessageBox
+import com.eunho.tagohub.ui.common.lineBadgeLabel
 import com.eunho.tagohub.ui.common.Pill
 import com.eunho.tagohub.ui.common.Tnum
+import com.eunho.tagohub.ui.theme.BoardColor
+import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.subwayLineColor
 import java.time.Duration
@@ -99,31 +103,22 @@ fun StationDetailPanel(
     LaunchedEffect(d, refreshKey) { c.runArrivals(d) }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .width(5.dp)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(color)
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stationName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        lines.forEach { Pill(it, subwayLineColor(it)) }
+        // 머리띠: 지하철 색에 역 이름과 호선 원형 배지(환승역은 여러 개)
+        Surface(color = ModeColor.Subway, contentColor = Color.White) {
+            Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stationName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            lines.forEach { LineBadge(lineBadgeLabel(it), subwayLineColor(it), size = 28.dp, ring = true) }
+                        }
+                    }
+                    if (operatorLabel.isNotBlank()) {
+                        Text(operatorLabel, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.88f))
                     }
                 }
-                if (operatorLabel.isNotBlank()) {
-                    Text(
-                        operatorLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
         }
         LazyRow(
             Modifier.fillMaxWidth(),
@@ -297,8 +292,10 @@ private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick
                     list.groupBy { it.lineId }.forEach { (lineId, rows) ->
                         val name = SeoulLines.byId[lineId]?.apiName ?: lineId
                         item(key = "h$lineId") {
-                            Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp)) {
-                                Pill(name, subwayLineColor(name))
+                            Row(Modifier.padding(start = 16.dp, top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                LineBadge(lineBadgeLabel(name), subwayLineColor(name), size = 26.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
                             }
                         }
                         rows.groupBy { it.upDown.ifBlank { "방향 정보 없음" } }.forEach { (direction, directionRows) ->
@@ -368,10 +365,17 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 호선 원형 배지 (노선도처럼)
+        val lineName = SeoulLines.byId[a.lineId]?.apiName
+        if (lineName != null) {
+            LineBadge(lineBadgeLabel(lineName), subwayLineColor(lineName), size = 36.dp)
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 a.lineText.ifBlank { a.dest?.let { "${it}행" } ?: "" } + if (onClick != null) "  ›" else "",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -386,7 +390,15 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
-            Text(arrivalMain(a, now), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Bold)
+            val main = arrivalMain(a, now)
+            Text(
+                main,
+                style = MaterialTheme.typography.titleLarge.merge(Tnum),
+                fontWeight = FontWeight.Black,
+                color = if (main == "곧 도착") {
+                    if (LocalDarkTheme.current) BoardColor.ArriveDark else BoardColor.ArriveLight
+                } else MaterialTheme.colorScheme.onSurface,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (a.express) Pill("급행", Color(0xFFD7262E), filled = false)
                 if (a.last) Pill("막차", ModeColor.Subway, filled = false)
