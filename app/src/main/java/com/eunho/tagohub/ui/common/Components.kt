@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -61,7 +63,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
@@ -76,7 +80,7 @@ import java.util.Locale
 /** 시각·요금 숫자는 고정폭 숫자로 정렬 */
 val Tnum = TextStyle(fontFeatureSettings = "tnum")
 
-/** 화면 제목. 왼쪽 세로 띠가 교통수단 색 — 역 안내판의 노선 띠를 닮게. */
+/** 화면 제목. 교통수단 색의 머리띠에 흰 굵은 글씨 — 노선도 안내판처럼 한눈에 어느 교통수단인지 보이게. */
 @Composable
 fun ScreenTitle(
     title: String,
@@ -85,44 +89,64 @@ fun ScreenTitle(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = if (onBack == null) 16.dp else 4.dp, end = 8.dp, top = 10.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (onBack != null) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
-        }
-        Box(
+    Surface(color = color, contentColor = Color.White) {
+        Row(
             Modifier
-                .width(5.dp)
-                .height(if (subtitle == null) 24.dp else 40.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(color)
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitle.isNullOrBlank()) {
+                .fillMaxWidth()
+                .padding(start = if (onBack == null) 16.dp else 4.dp, end = 8.dp, top = 14.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
+            }
+            Column(Modifier.weight(1f)) {
                 Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.88f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+            actions()
         }
-        actions()
     }
 }
+
+/** 호선·노선 원형 배지 (지하철 노선도의 숫자 원). 환승역은 여러 개를 나란히 */
+@Composable
+fun LineBadge(label: String, color: Color, size: Dp = 32.dp, ring: Boolean = false, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(color)
+            .then(if (ring) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = Color.White,
+            fontWeight = FontWeight.Black,
+            fontSize = if (label.length > 1) (size.value * 0.34f).sp else (size.value * 0.5f).sp,
+            maxLines = 1,
+        )
+    }
+}
+
+/** "2호선" → "2", "신분당선" → "신분" 처럼 배지 안에 들어갈 짧은 글자 */
+fun lineBadgeLabel(name: String): String =
+    Regex("""^(\d{1,2})호선""").find(name)?.groupValues?.get(1)
+        ?: name.removePrefix("수도권").removePrefix("서울").replace("선", "").replace("도시철도", "").trim().take(2).ifEmpty { name.take(1) }
 
 @Composable
 fun SearchBox(
