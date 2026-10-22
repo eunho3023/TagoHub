@@ -876,9 +876,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val p = picked.value ?: return
         clearBusSearch()
         panel.value = MapPanel.Plan
-        trip.via.value = PlanPoint(p.name, p.sub, p.lat, p.lng)
+        val point = PlanPoint(p.name, p.sub, p.lat, p.lng)
+        if (trip.mode.value == PlanMode.Car) {
+            trip.addCarVia(point)   // 자동차 길찾기는 경유지를 여러 개 (카카오 길찾기 waypoints)
+        } else {
+            trip.via.value = point
+            if (trip.dest.value != null) trip.plan()
+        }
         closePick()
-        if (trip.dest.value != null) trip.plan()
     }
 
     fun closePick() {

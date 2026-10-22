@@ -1816,7 +1816,11 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                 t.search(it)
             },
             saving?.let { "${it.label}으로 저장할 장소 (카카오 장소 검색)" }
-                ?: if (field == PlanField.Dest) "목적지 (카카오 장소 검색)" else "출발지 (카카오 장소 검색)",
+                ?: when (field) {
+                    PlanField.Dest -> "목적지 (카카오 장소 검색)"
+                    PlanField.Via -> "경유지 (카카오 장소 검색)"
+                    PlanField.Origin -> "출발지 (카카오 장소 검색)"
+                },
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             onSearch = { t.search(q) },
         )
@@ -1896,6 +1900,7 @@ private fun PlanList(t: TripController) {
                     )
                 }
             }
+            if (mode == PlanMode.Car) CarViaBar(t)
             if (mode != PlanMode.Transit) {
                 when (val route = ridePlan) {
                     is Load.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 12.dp))
@@ -1933,7 +1938,7 @@ private fun PlanList(t: TripController) {
                 }
             }
         }
-        via?.let { v ->
+        via?.takeIf { mode == PlanMode.Transit }?.let { v ->
             Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("경유  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { t.via.value = null; t.plan() }) { Text("경유 빼기") }
@@ -1970,6 +1975,23 @@ private fun PlanList(t: TripController) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** 자동차 길찾기 경유지: 순서대로 나열하고 하나씩 뺄 수 있음. 최대 5개 (카카오 길찾기 waypoints) */
+@Composable
+private fun CarViaBar(t: TripController) {
+    val vias by t.carVias.collectAsStateWithLifecycle()
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        vias.forEachIndexed { i, v ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("경유 ${i + 1}  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                TextButton(onClick = { t.removeCarVia(i) }) { Text("빼기") }
+            }
+        }
+        if (vias.size < com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS) {
+            TextButton(onClick = { t.edit(PlanField.Via) }) { Text(if (vias.isEmpty()) "경유지 추가" else "경유지 더 추가 (${vias.size}/${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS})") }
         }
     }
 }

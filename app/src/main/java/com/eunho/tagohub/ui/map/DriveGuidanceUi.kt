@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.TurnLeft
@@ -124,6 +125,7 @@ internal fun TurnKind.icon(): ImageVector = when (this) {
     TurnKind.HighwayEnter, TurnKind.HighwayExit -> Icons.Filled.Route
     TurnKind.Toll -> Icons.Filled.Paid
     TurnKind.Destination -> Icons.Filled.Flag
+    TurnKind.Waypoint -> Icons.Filled.Place
 }
 
 /**
@@ -163,7 +165,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             val bucket = (progress / 25.0).toInt()
             if (bucket != drawn) {
                 drawn = bucket
-                vm.trip.showDriveRemaining(n, progress, DriveGuidance.destination ?: n.points.last())
+                vm.trip.showDriveRemaining(n, progress, DriveGuidance.destination ?: n.points.last(), DriveGuidance.vias)
             }
             delay(700)
         }
@@ -581,7 +583,7 @@ private fun DriveStartBar(plan: RidePlan) {
     /** [simulate] 이 true 면 모의주행(GPS 대신 가상 위치). 둘 다 같은 권한이 필요(위치 유형 서비스를 올리기 때문) */
     fun begin(simulate: Boolean) {
         val route = plan.drive ?: return
-        val start = { DriveGuidance.start(context, route, LatLng(plan.destLat, plan.destLng), plan.destName, simulate, plan.option) }
+        val start = { DriveGuidance.start(context, route, LatLng(plan.destLat, plan.destLng), plan.destName, simulate, plan.option, plan.vias) }
         val need = buildList {
             if (!hasLocationPermission(context)) {
                 add(Manifest.permission.ACCESS_FINE_LOCATION)

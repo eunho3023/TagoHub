@@ -266,7 +266,7 @@ class DriveGuidanceService : Service() {
         if (st.remainingMeters < RouteCompare.MIN_REMAINING_M) return
         if (lastSuggestAt != 0L && now - lastSuggestAt < SUGGEST_COOLDOWN_MS) return
         val dest = DriveGuidance.destination ?: return
-        val (_, fresh) = KakaoExtra.drive(LatLng(lastLat, lastLng), dest, DriveGuidance.option)
+        val (_, fresh) = KakaoExtra.drive(LatLng(lastLat, lastLng), dest, DriveGuidance.option, DriveGuidance.vias)
         fresh ?: return
         val div = withContext(Dispatchers.Default) { RouteCompare.divergence(nav, fresh.points) }
         val saved = RouteCompare.savedSeconds(nav.remainingSeconds(st.progressMeters), fresh.durationSeconds, div) ?: return
@@ -282,6 +282,7 @@ class DriveGuidanceService : Service() {
     private fun handleLocation(loc: Location) {
         lastLat = loc.latitude
         lastLng = loc.longitude
+        DriveGuidance.vias = com.eunho.tagohub.data.ViaTracker.remaining(DriveGuidance.vias, loc.latitude, loc.longitude)
         val eng = engine ?: return
         // 오차가 너무 큰 위치는 안내에 쓰지 않음 (터널 입구 등)
         if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) return
@@ -324,7 +325,7 @@ class DriveGuidanceService : Service() {
         lastRerouteAt = now
         rerouteCount++
         scope.launch {
-            val (status, route) = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest, DriveGuidance.option)
+            val (status, route) = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest, DriveGuidance.option, DriveGuidance.vias)
             rerouting = false
             if (route != null) {
                 install(route)
