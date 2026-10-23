@@ -303,7 +303,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
 
 /** 현재 속도(동그라미)와, 앞 단속카메라의 제한속도(빨간 테두리). 제한을 넘으면 속도가 빨갛게 */
 @Composable
-private fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier) {
+internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier) {
     val over = limitKmh != null && speedKmh > limitKmh + 3
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(

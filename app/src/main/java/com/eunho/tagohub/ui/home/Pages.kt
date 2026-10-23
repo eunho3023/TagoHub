@@ -97,7 +97,7 @@ fun TabScaffold(
     }
 }
 
-/** 더보기: 대중교통(고속·시외, 항공), 도로교통, 화면 모드, 공지사항, 앱 제보 */
+/** 설정: 화면 모드, 공지사항, 앱 제보 */
 @Composable
 fun MorePage(
     onOpen: (ModeJump.Kind) -> Unit,
@@ -112,14 +112,7 @@ fun MorePage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text("더보기", fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
-                Text("대중교통", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                MoreRow("고속·시외버스", Icons.Outlined.AirportShuttle) { onOpen(ModeJump.Kind.Coach) }
-                MoreRow("항공", Icons.Outlined.Flight) { onOpen(ModeJump.Kind.Air) }
-                Spacer(Modifier.height(6.dp))
-                Text("도로", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                MoreRow(ModeJump.Kind.Road.label, Icons.Outlined.Traffic) { onOpen(ModeJump.Kind.Road) }
-                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Text("설정", fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
                 Text("화면 모드", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 ThemeModePicker()
@@ -158,7 +151,7 @@ fun MorePage(
                 }
             }
         }
-        AppBottomNav(AppTab.More, onTab)
+        AppBottomNav(AppTab.Settings, onTab)
     }
 }
 

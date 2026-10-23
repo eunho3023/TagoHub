@@ -35,7 +35,7 @@ enum class ZoneKind(val label: String, val code: String) {
 /** 안내 설정에서 묶어 켜고 끄는 종류 */
 enum class ZoneGroup(val label: String) {
     Camera("단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱"), Rest("다음 휴게소"),
-    Facility("결빙구간·톨게이트·전광판"),
+    Facility("결빙·위험예보·재난·교통안전·톨게이트"),
 }
 
 /** 단속카메라·어린이 보호구역·과속방지턱 한 곳. [limitKmh] 는 제한속도(모르면 null) */

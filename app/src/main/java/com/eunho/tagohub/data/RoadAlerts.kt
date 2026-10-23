@@ -3,12 +3,21 @@ package com.eunho.tagohub.data
 import kotlin.math.abs
 import kotlin.math.max
 
-/** 경로 안내 중 미리 알려 줄 도로 시설의 종류 */
+/**
+ * 경로 안내·자유주행 중 미리 알려 줄 도로 위험·시설의 종류.
+ * (예전에는 지도 레이어 버튼으로 켰지만, 이제는 달리는 동안 앞에 있을 때 알려 준다.)
+ */
 enum class RoadAlertKind(val label: String, val announceM: Double, val maxOffsetM: Double) {
     Ice("상습 결빙 구간", 1500.0, 120.0),
+    Risk("도로 위험 예보 구간", 1000.0, 150.0),
+    Disaster("재난 정보", 1500.0, 300.0),
+    Caution("주의운전 구간", 1000.0, 150.0),
+    Safety("교통안전 지점", 500.0, 80.0),
     Toll("톨게이트", 2000.0, 150.0),
-    Vms("전광판", 700.0, 60.0),
 }
+
+/** 지도 위의 위험·시설 한 곳 */
+class RoadHazard(val kind: RoadAlertKind, val name: String, val detail: String?, val lat: Double, val lng: Double, val id: String)
 
 /** 경로 위의 시설 하나: [along] 은 출발점부터의 거리(m) */
 class RoadAlert(val kind: RoadAlertKind, val name: String, val detail: String?, val along: Double, val id: String)
@@ -17,40 +26,41 @@ class RoadAlert(val kind: RoadAlertKind, val name: String, val detail: String?, 
 data class RoadAlertStatus(val kind: RoadAlertKind, val name: String, val detail: String?, val distance: Double, val speak: String?)
 
 /**
- * 경로 위의 상습 결빙구간·톨게이트·전광판을 찾아 경로 순서로 놓는다 (지도 레이어와 같은 자료).
- * 톨게이트·전광판은 반대 차로 쪽(진행 방향의 왼쪽)에 있는 것은 우리 쪽이 아니므로 뺀다.
- * 같은 시설이 양방향으로 겹쳐 있으면 [MERGE_M] 안에서 하나로 합친다.
+ * 경로 위의 위험·시설을 찾아 경로 순서로 놓는다.
+ * 톨게이트는 반대 차로 쪽(진행 방향의 왼쪽)에 있는 것은 우리 쪽이 아니므로 뺀다.
+ * 같은 종류가 가까이 겹쳐 있으면(양방향 등) [MERGE_M] 안에서 하나로 합친다.
  */
 object RoadAlerts {
     private const val MAX_LEFT_M = 15.0
     private const val MERGE_M = 300.0
+    private const val PAD = 0.003
 
-    fun match(route: NavRoute, kind: RoadAlertKind, features: List<ItsRoadFeature>): List<RoadAlert> {
-        val found = features.mapNotNull { f ->
-            val p = route.snap(f.lat, f.lng, kind.maxOffsetM, pad = 0.003) ?: return@mapNotNull null
-            if (kind != RoadAlertKind.Ice && p.side > MAX_LEFT_M) return@mapNotNull null
-            RoadAlert(kind, name(kind, f), detail(kind, f), p.along, f.id)
-        }.sortedBy { it.along }
+    fun match(route: NavRoute, hazards: List<RoadHazard>): List<RoadAlert> {
+        val pts = route.points
+        if (pts.size < 2 || hazards.isEmpty()) return emptyList()
+        // 전국 목록을 모든 선분에 대보지 않도록 경로가 지나는 네모 안의 것만 먼저 고름
+        val minLat = pts.minOf { it.lat } - PAD
+        val maxLat = pts.maxOf { it.lat } + PAD
+        val minLng = pts.minOf { it.lng } - PAD
+        val maxLng = pts.maxOf { it.lng } + PAD
+        val found = ArrayList<RoadAlert>()
+        for (h in hazards) {
+            if (h.lat < minLat || h.lat > maxLat || h.lng < minLng || h.lng > maxLng) continue
+            val p = route.snap(h.lat, h.lng, h.kind.maxOffsetM, pad = PAD) ?: continue
+            if (h.kind == RoadAlertKind.Toll && p.side > MAX_LEFT_M) continue
+            found += RoadAlert(h.kind, h.name, h.detail, p.along, h.id)
+        }
+        found.sortBy { it.along }
         val out = ArrayList<RoadAlert>()
         for (a in found) {
-            val dup = out.lastOrNull { abs(it.along - a.along) < MERGE_M && (kind != RoadAlertKind.Toll || it.name == a.name) }
+            val dup = out.lastOrNull { it.kind == a.kind && abs(it.along - a.along) < MERGE_M && (a.kind != RoadAlertKind.Toll || it.name == a.name) }
             if (dup == null) out += a
         }
         return out
     }
-
-    private fun name(kind: RoadAlertKind, f: ItsRoadFeature): String = when (kind) {
-        RoadAlertKind.Ice -> "상습 결빙 구간"
-        RoadAlertKind.Toll -> f.title.trim().let { if (it.endsWith("톨게이트") || it.endsWith("영업소")) it else "$it 톨게이트" }
-        RoadAlertKind.Vms -> "전광판"
-    }
-
-    /** 전광판에 뜬 문구 같은 덧붙임 (없으면 null) */
-    private fun detail(kind: RoadAlertKind, f: ItsRoadFeature): String? =
-        if (kind == RoadAlertKind.Vms) f.details.trim().takeIf { it.isNotEmpty() && it != f.title }?.take(60) else null
 }
 
-/** 달리면서 가장 가까운 시설을 알려줌. 시설마다 한 번만 말한다 */
+/** 달리면서 가장 가까운 위험·시설을 알려줌. 한 곳당 한 번만 말한다 */
 class RoadAlertTracker(alerts: List<RoadAlert>) {
     private val sorted = alerts.sortedBy { it.along }
     private val said = HashSet<String>()

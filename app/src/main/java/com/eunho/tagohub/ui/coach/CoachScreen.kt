@@ -134,14 +134,6 @@ fun CoachScreen(vm: CoachViewModel = viewModel()) {
     val accent = if (mode == CoachMode.Suburb) ModeColor.Suburb else ModeColor.Coach
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTitle(
-            "고속·시외버스", accent,
-            subtitle = when (mode) {
-                CoachMode.Express -> "고속버스 터미널 간 배차와 요금"
-                CoachMode.Suburb -> "시외버스 터미널 간 배차와 요금"
-                CoachMode.Live -> "출발한 고속버스의 현재 위치와 도착 예정"
-            },
-        )
         SingleChoiceSegmentedButtonRow(
             Modifier
                 .fillMaxWidth()

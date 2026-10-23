@@ -169,10 +169,18 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 지도 겹쳐 보기 (교통정보·자전거도로·지형도) — 저장해 두고 다음에도 */
     private val savedOverlays = prefs.getString("overlays", null).orEmpty().split(',').filter { it.isNotBlank() }.toSet()
-    val overlays = MutableStateFlow(savedOverlays - "cctv")
+    /**
+     * 레이어 버튼에서 없앤 항목(교통안전·위험재난·결빙구간·전광판·VSL)은 이제 지도에 그리지 않고
+     * 경로 안내·자유주행 중에 알려 줌. 예전에 켜 둔 저장값이 남아 지도에 계속 뜨지 않게 걸러냄.
+     */
+    private val removedOverlays = setOf(
+        "cctv", "utic_safety", "utic_road_risk", "its_safe_driving", "its_disasters",
+        "its_ice_sections", "its_vms", "its_vsl", "ex_vms",
+    )
+    val overlays = MutableStateFlow(savedOverlays - removedOverlays)
 
     init {
-        if ("cctv" in savedOverlays) prefs.edit().putString("overlays", (savedOverlays - "cctv").joinToString(",")).apply()
+        if (savedOverlays.any { it in removedOverlays }) prefs.edit().putString("overlays", (savedOverlays - removedOverlays).joinToString(",")).apply()
     }
 
     fun toggleOverlay(id: String) {
@@ -794,7 +802,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 closePick()
-                pickStop(matchedStop)
+                pickStop(matchedStop, at = lat to lng)
                 return@launch
             }
             // 2) 지하철역: 이름과 가까운 역 데이터
@@ -804,7 +812,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 closePick()
-                focusStation(station)
+                focusStation(station, at = lat to lng)
                 return@launch
             }
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
@@ -1643,13 +1651,19 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         busResult.value = Load.Idle
     }
 
-    fun pickStop(s: BusStop) {
+    /**
+     * 지도에서 정류장 모양을 눌러 연 경우 누른 그 자리 ([at]). 핀을 정류장 데이터의 좌표가 아니라 누른 자리에 두고
+     * 지도도 움직이지 않는다 (예전엔 데이터 좌표로 핀이 옮겨지고 화면이 그쪽으로 튀었음). 검색 등으로 연 경우는 null.
+     */
+    private var tappedPin: Pair<Double, Double>? = null
+
+    fun pickStop(s: BusStop, at: Pair<Double, Double>? = null) {
         if (canvas == null && s.lat != null && s.lng != null) pendingFocus = s.lat to s.lng
         clearBusSearch()
         closeStopTimetable()
         stops[s.nodeId] = s
-        if (s.lat != null && s.lng != null) canvas?.setPin(s.lat, s.lng)
-        if (s.lat != null && s.lng != null) canvas?.focus(s.lat, s.lng)
+        tappedPin = at
+        if (at == null && s.lat != null && s.lng != null) canvas?.focus(s.lat, s.lng)
         selected.value = BusDest.Stop(s, merged[s.nodeId]?.others)
         panel.value = MapPanel.Stop
         pushStops()
@@ -1686,18 +1700,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             .take(limit)
     }
 
-    /** 지하철 호선 이름들 (지하철 탭의 호선 고르기) */
-    fun subwayLines(): List<String> =
-        index?.groups.orEmpty().flatMap { it.displayLines }.distinct().sortedWith(com.eunho.tagohub.core.naturalOrder)
+    /** 노선도를 그리는 데 쓰는 전국 지하철역 */
+    fun metroStations(): List<com.eunho.tagohub.data.MetroStation> = index?.stations.orEmpty()
 
-    /** 한 호선의 역 (가나다순) */
-    fun stationsOfLine(line: String): List<StationGroup> =
-        index?.groups.orEmpty().filter { line in it.displayLines }.sortedBy { it.name }
+    /** 노선도에서 누른 역이 속한 역 묶음 */
+    fun groupOfMetro(s: com.eunho.tagohub.data.MetroStation): StationGroup? = index?.groupIdOf(s)?.let { index?.group(it) }
 
-    fun focusStation(g: StationGroup) {
+    fun focusStation(g: StationGroup, at: Pair<Double, Double>? = null) {
         if (canvas == null) pendingFocus = g.lat to g.lng
-        canvas?.setPin(g.lat, g.lng)
-        canvas?.focus(g.lat, g.lng)
+        tappedPin = at
+        if (at == null) canvas?.focus(g.lat, g.lng)
         openStation(g)
     }
 
@@ -1739,7 +1751,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     val following = MutableStateFlow(true)
 
     fun onUserMovedMap() {
-        if (com.eunho.tagohub.guidance.DriveGuidance.active.value) following.value = false
+        if (com.eunho.tagohub.guidance.DriveGuidance.active.value || com.eunho.tagohub.guidance.FreeDriveSession.active.value) following.value = false
     }
 
     /** 안내 중 마지막으로 구한 진행 방향 (내 위치 버튼으로 돌아올 때 앞쪽을 더 보여주려고) */
@@ -1750,6 +1762,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      * 안내 중이 아니면 false (일반 내 위치 이동은 호출한 쪽이 처리).
      */
     fun recenterGuidance(): Boolean {
+        // 자유주행 중이면 내 위치로 돌아와 다시 따라감
+        val fd = com.eunho.tagohub.guidance.FreeDriveSession.state.value
+        if (fd != null && com.eunho.tagohub.guidance.FreeDriveSession.active.value && !com.eunho.tagohub.guidance.DriveGuidance.active.value) {
+            following.value = true
+            followMe(fd.lat, fd.lng, fd.speedKmh, fd.heading)
+            return true
+        }
         val i = com.eunho.tagohub.guidance.DriveGuidance.info.value ?: return false
         if (!com.eunho.tagohub.guidance.DriveGuidance.active.value) return false
         following.value = true
@@ -2349,8 +2368,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 지도에 꽂을 핀 자리: 고른 장소 → 열린 정류장 → 열린 역. 아무것도 없으면 null */
     private fun expectedPin(p: PickedPlace?, pn: MapPanel, sel: BusDest.Stop?, st: StationDetail?): Pair<Double, Double>? = when {
         p != null -> p.lat to p.lng
-        pn == MapPanel.Stop && sel?.stop?.lat != null && sel.stop.lng != null -> sel.stop.lat to sel.stop.lng
-        pn == MapPanel.Station && st != null -> st.group.lat to st.group.lng
+        pn == MapPanel.Stop && sel?.stop?.lat != null && sel.stop.lng != null -> tappedPin ?: (sel.stop.lat to sel.stop.lng)
+        pn == MapPanel.Station && st != null -> tappedPin ?: (st.group.lat to st.group.lng)
         else -> null
     }
 
