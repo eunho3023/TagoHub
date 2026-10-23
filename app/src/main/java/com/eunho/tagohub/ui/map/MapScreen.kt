@@ -1365,7 +1365,7 @@ private fun StationSearch(vm: MapViewModel) {
     }
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
         Column {
-            SearchBox(query, { query = it }, "역 이름으로 찾기", onSearch = { results.firstOrNull()?.let { pick(it) } })
+            SearchBox(query, { query = it }, "검색하기", onSearch = { results.firstOrNull()?.let { pick(it) } })
             results.forEach { g ->
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(
@@ -1402,6 +1402,13 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    // 엔터를 안 쳐도 입력을 멈추면 바로 검색 (장소·역·정류소). 숫자가 든 말은 전국 노선 검색(느리고 호출이 많음)이라 엔터 때만
+    LaunchedEffect(query) {
+        if (query.isBlank()) return@LaunchedEffect
+        kotlinx.coroutines.delay(350)
+        searched = query
+        if (!query.any(Char::isDigit)) vm.searchBus(query)
+    }
     LaunchedEffect(Unit) {
         // 홈 화면의 검색창에서 왔으면 바로 입력할 수 있게 (화면이 뜬 뒤에)
         vm.searchFocus.collect { n ->
@@ -1425,7 +1432,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                             searched = ""
                         }
                     },
-                    if (withStations) "정류소·노선번호·지하철역" else "정류소명·정류소번호·노선번호",
+                    "검색하기",
                     Modifier.weight(1f),
                     onSearch = {
                         searched = query

@@ -148,12 +148,13 @@ private fun ForecastPanel(
             Text(selected?.let { "${it.roadName} · ${it.startName}~${it.endName}" } ?: "본선 구간 선택")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = date,
-                onValueChange = { date = it.filter(Char::isDigit).take(8) },
-                label = { Text("예측 날짜(YYYYMMDD)") },
+            com.eunho.tagohub.ui.common.DateField(
+                value = LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE),
+                onPick = { date = it.format(DateTimeFormatter.BASIC_ISO_DATE) },
                 modifier = Modifier.weight(1f),
-                singleLine = true,
+                label = "예측",
+                min = LocalDate.now(),
+                max = LocalDate.now().plusDays(30),
             )
             OutlinedTextField(
                 value = hour,

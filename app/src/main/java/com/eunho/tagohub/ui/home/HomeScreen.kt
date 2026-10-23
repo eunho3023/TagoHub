@@ -28,7 +28,8 @@ import androidx.compose.material.icons.outlined.DirectionsSubway
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Map
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Navigation
+import androidx.compose.material.icons.outlined.Traffic
 import androidx.compose.material.icons.outlined.Train
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material3.Icon
@@ -38,7 +39,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,12 +68,13 @@ import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 아래 탭: 홈(지도)·버스·지하철·기차·더보기 */
+/** 아래 탭: 홈·버스·지하철·기차·내비게이션·더보기 */
 enum class AppTab(val label: String, val icon: ImageVector) {
-    Home("지도", Icons.Outlined.Map),
+    Home("홈", Icons.Outlined.Home),
     Bus("버스", Icons.Outlined.DirectionsBus),
     Subway("지하철", Icons.Outlined.DirectionsSubway),
     Train("기차", Icons.Outlined.Train),
+    Navi("내비게이션", Icons.Outlined.Navigation),
     More("더보기", Icons.Outlined.Apps),
 }
 
@@ -89,7 +94,15 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
                     ) {
                         Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.height(3.dp))
-                        Text(tab.label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tint)
+                        // 탭이 여섯 개라 칸이 좁음: 글자가 겹치거나 줄바꿈되지 않게 긴 이름은 조금 작게 한 줄로
+                        Text(
+                            tab.label,
+                            fontSize = if (tab.label.length >= 5) 11.sp else 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = tint,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
                     }
                 }
             }
@@ -100,28 +113,34 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
 private class Tile(val label: String, val icon: ImageVector, val light: Color, val dark: Color, val onClick: () -> Unit)
 
 /**
- * 첫 화면: "어디로 가시나요?" 검색, 교통수단 타일 6개, 집·회사, 자주 가는 곳(즐겨찾기 정류장의 실시간 도착).
- * 대중교통 화면은 노선도(Line Map) 방식, 자동차 안내는 전광판(Board) 방식이라는 디자인 방향의 출발점.
+ * 첫 화면: "어디로 가시나요?" 검색(결과도 이 화면 안에), 교통수단 타일(대중교통 · 자동차), 집·회사, 자주 가는 곳(즐겨찾기 정류장의 실시간 도착).
+ * 검색어를 쓰면 타일 대신 결과를 보여 주고, 결과를 눌러야 지도가 열린다.
  */
 @Composable
 fun HomeScreen(
     vm: MapViewModel,
-    onSearch: () -> Unit,
+    search: SearchActions,
     onOpenMap: (MapMode) -> Unit,
+    onOpenTab: (AppTab) -> Unit,
     onOpenPage: (ModeJump.Kind) -> Unit,
     onGoTo: (SavedPlace) -> Unit,
     onFavorite: (Favorite) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalDarkTheme.current
-    val tiles = listOf(
-        Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF294653)) { onOpenMap(MapMode.Transit) },
-        Tile("버스", Icons.Outlined.DirectionsBus, Color(0xFF1F7A4A), Color(0xFF1F7A4A)) { onOpenMap(MapMode.Bus) },
-        Tile("지하철", Icons.Outlined.DirectionsSubway, Color(0xFF4B5563), Color(0xFF556070)) { onOpenMap(MapMode.Subway) },
-        Tile("기차", Icons.Outlined.Train, Color(0xFF1B3E8A), Color(0xFF2F55B5)) { onOpenPage(ModeJump.Kind.Train) },
+    val transit = listOf(
+        Tile("버스", Icons.Outlined.DirectionsBus, Color(0xFF1F7A4A), Color(0xFF1F7A4A)) { onOpenTab(AppTab.Bus) },
+        Tile("지하철", Icons.Outlined.DirectionsSubway, Color(0xFF4B5563), Color(0xFF556070)) { onOpenTab(AppTab.Subway) },
+        Tile("기차", Icons.Outlined.Train, Color(0xFF1B3E8A), Color(0xFF2F55B5)) { onOpenTab(AppTab.Train) },
         Tile("고속·시외", Icons.Outlined.AirportShuttle, Color(0xFF0A7E8C), Color(0xFF0A7E8C)) { onOpenPage(ModeJump.Kind.Coach) },
         Tile("항공", Icons.Outlined.Flight, Color(0xFFA85F0E), Color(0xFFA85F0E)) { onOpenPage(ModeJump.Kind.Air) },
     )
+    val road = listOf(
+        Tile("내비게이션", Icons.Outlined.Navigation, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Navi) },
+        Tile(ModeJump.Kind.Road.label, Icons.Outlined.Traffic, Color(0xFF8A4B1F), Color(0xFF8A4B1F)) { onOpenPage(ModeJump.Kind.Road) },
+        Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenMap(MapMode.Transit) },
+    )
+    var query by rememberSaveable { mutableStateOf("") }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val columns = if (maxWidth >= 560.dp) 3 else 2
         Column(
@@ -130,38 +149,38 @@ fun HomeScreen(
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    "어디로\n가시나요?",
-                    fontSize = 30.sp,
-                    lineHeight = 36.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = (-0.5).sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(14.dp))
-                Surface(
-                    onClick = onSearch,
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                ) {
-                    Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("장소 · 정류소 · 역 검색", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                if (query.isBlank()) {
+                    Text(
+                        "어디로\n가시나요?",
+                        fontSize = 30.sp,
+                        lineHeight = 36.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-0.5).sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(14.dp))
                 }
-                Spacer(Modifier.height(16.dp))
-                tiles.chunked(columns).forEach { row ->
-                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { t -> ModeTile(t, dark, Modifier.weight(1f)) }
-                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
+                SearchPanel(vm, SearchScope.All, query, { query = it }, search)
+                if (query.isBlank()) {
+                    Spacer(Modifier.height(16.dp))
+                    TileSection("대중교통", transit, columns, dark)
+                    TileSection("자동차", road, columns, dark)
+                    SavedPlaces(vm, onGoTo)
+                    Spacer(Modifier.height(10.dp))
+                    Favorites(vm, onFavorite)
                 }
-                SavedPlaces(vm, onGoTo)
-                Spacer(Modifier.height(10.dp))
-                Favorites(vm, onFavorite)
             }
+        }
+    }
+}
+
+@Composable
+private fun TileSection(title: String, tiles: List<Tile>, columns: Int, dark: Boolean) {
+    Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp, top = 2.dp))
+    tiles.chunked(columns).forEach { row ->
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            row.forEach { t -> ModeTile(t, dark, Modifier.weight(1f)) }
+            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
         }
     }
 }
@@ -216,7 +235,7 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
 
 /** 자주 가는 곳: 즐겨찾기(앞에서 4개). 정류장은 가장 먼저 오는 버스와 남은 시간을 30초마다 새로 받아 보여줌 */
 @Composable
-private fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
+internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val shown = remember(favs) { favs.take(4) }
     Text("자주 가는 곳", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)

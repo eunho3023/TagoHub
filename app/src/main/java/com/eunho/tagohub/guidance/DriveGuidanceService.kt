@@ -35,6 +35,10 @@ import com.eunho.tagohub.data.ItsRoadFeature
 import com.eunho.tagohub.data.RestAhead
 import com.eunho.tagohub.data.RouteCompare
 import com.eunho.tagohub.data.RestTracker
+import com.eunho.tagohub.data.RoadAlertKind
+import com.eunho.tagohub.data.RoadAlertTracker
+import com.eunho.tagohub.data.RoadAlerts
+import com.eunho.tagohub.core.HeadingMath
 import com.eunho.tagohub.data.RouteZone
 import com.eunho.tagohub.data.ZoneGroup
 import com.eunho.tagohub.data.SafetyZone
@@ -177,6 +181,7 @@ class DriveGuidanceService : Service() {
         DriveGuidance.route.value = route
         // 이 경로 위의 단속카메라·어린이 보호구역 (목록은 한 번만 읽고, 경로가 바뀌면 다시 맞춤)
         loadRest(nav)
+        loadAlerts(nav)
         val loaded = zoneData
         if (loaded != null) { matched = matchRoute(nav, loaded); rebuildTracker() }
         else scope.launch(Dispatchers.Default) {
@@ -191,6 +196,29 @@ class DriveGuidanceService : Service() {
         scope.launch(Dispatchers.Default) {
             val features = restFeatures ?: runCatching { ExMapLayers.features(ExMapLayers.REST) }.getOrNull()?.also { restFeatures = it }.orEmpty()
             if (currentNav === nav) restTracker = RestTracker(RestAhead.match(nav, features))
+        }
+    }
+
+    /**
+     * 경로 위 상습 결빙구간(앱에 든 자료)·톨게이트·전광판(한국도로공사 위치, 10분 캐시)을 경로에 맞춤.
+     * 받지 못한 종류는 빠질 뿐 안내는 그대로 된다.
+     */
+    private fun loadAlerts(nav: NavRoute) {
+        scope.launch(Dispatchers.Default) {
+            val ice = iceFeatures ?: runCatching {
+                applicationContext.assets.open("its_ice_sections.csv").bufferedReader(java.nio.charset.Charset.forName("MS949")).use {
+                    com.eunho.tagohub.data.ItsRoadParser.iceSections(it.readText())
+                }
+            }.getOrNull()?.also { iceFeatures = it }.orEmpty()
+            val tolls = runCatching { ExMapLayers.features(ExMapLayers.TOLL) }.getOrNull().orEmpty()
+            val vms = runCatching { ExMapLayers.features(ExMapLayers.VMS) }.getOrNull().orEmpty()
+            if (currentNav === nav) {
+                alertTracker = RoadAlertTracker(
+                    RoadAlerts.match(nav, RoadAlertKind.Ice, ice) +
+                        RoadAlerts.match(nav, RoadAlertKind.Toll, tolls) +
+                        RoadAlerts.match(nav, RoadAlertKind.Vms, vms),
+                )
+            }
         }
     }
 
@@ -242,6 +270,8 @@ class DriveGuidanceService : Service() {
     @Volatile private var matched: List<RouteZone> = emptyList()
     @Volatile private var restFeatures: List<ItsRoadFeature>? = null
     @Volatile private var restTracker: RestTracker? = null
+    @Volatile private var alertTracker: RoadAlertTracker? = null
+    @Volatile private var iceFeatures: List<ItsRoadFeature>? = null
     @Volatile private var lastLat = 0.0
     @Volatile private var lastLng = 0.0
     private var lastSuggestAt = 0L
@@ -298,10 +328,13 @@ class DriveGuidanceService : Service() {
         val rest = if (st.offRoute || st.arrived || !restOn) null else restTracker?.update(st.progressMeters, st.remainingMeters)
         // 모의주행은 배속만큼 빨리 달리는 것이므로 화면 속도도 그만큼 (1배속 100 → 5배속 500 …)
         val shownKmh = if (DriveGuidance.simulating.value) speedKmh * DriveGuidance.simFactor.value else speedKmh
-        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, shownKmh.roundToInt(), zone?.takeIf { it.next != null }, rest)
+        val facilityOn = ZoneGroup.Facility in DriveGuidance.zoneGroups.value
+        val alert = if (st.offRoute || st.arrived || !facilityOn) null else alertTracker?.update(st.progressMeters)
+        val bearing = if (HeadingMath.gpsUsable(loc.hasBearing(), if (loc.hasSpeed()) loc.speed else 0f) || (loc.hasBearing() && loc.speed >= 1f)) loc.bearing.toDouble() else null
+        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, shownKmh.roundToInt(), zone?.takeIf { it.next != null }, rest, alert, bearing)
         val v = voice
         // 회전 안내와 안전 지점 안내가 동시에 나오면 한 번에 이어서 말함 (따로 말하면 앞 말이 끊김)
-        val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak)
+        val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak) + listOfNotNull(alert?.speak)
         if (lines.isNotEmpty()) v?.speak(lines.joinToString(" "))
         if (v != null && v.ready && !v.koreanAvailable && !noted) {
             noted = true

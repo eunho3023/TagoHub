@@ -228,9 +228,10 @@ object PlaceFilter {
         return list
             .filter { p ->
                 p.name.replace(" ", "").contains(k, ignoreCase = true) ||
+                    com.eunho.tagohub.core.Chosung.contains(p.name, k) ||   // 초성(ㅅㅇㅇ)도
                     p.sub?.contains(k) == true ||
                     p.id.equals(k, ignoreCase = true)
             }
-            .sortedWith(compareBy({ !it.name.replace(" ", "").startsWith(k, ignoreCase = true) }, { it.name.length }, { it.name }))
+            .sortedWith(compareBy({ com.eunho.tagohub.core.Chosung.indexOf(it.name, k).let { i -> if (i < 0) !it.name.replace(" ", "").startsWith(k, ignoreCase = true) else i != 0 } }, { it.name.length }, { it.name }))
     }
 }

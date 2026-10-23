@@ -153,7 +153,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
     // 지도가 내 위치(GPS)를 따라감: 진행 방향 앞쪽을 더 보여주고, 빠를수록 넓게. 손으로 움직이면 멈춤
     val lastPos = remember { arrayOfNulls<Pair<Double, Double>>(1) }
     var bearing by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(info?.lat, info?.lng) {
+    LaunchedEffect(info?.lat, info?.lng, info?.bearing) {
         val i = info ?: return@LaunchedEffect
         val last = lastPos[0]
         // 8m 이상 움직였을 때만 방향을 새로 구함 (멈춰 있을 때 GPS 흔들림으로 방향이 돌지 않게)
@@ -161,7 +161,8 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             if (last != null) bearing = Geo.bearing(last.first, last.second, i.lat, i.lng)
             lastPos[0] = i.lat to i.lng
         }
-        vm.followMe(i.lat, i.lng, i.speedKmh, bearing)
+        // GPS 가 알려 준 방향이 있으면 그것을, 없으면(모의주행 등) 움직인 쪽으로 구한 방향을 씀
+        vm.followMe(i.lat, i.lng, i.speedKmh, i.bearing ?: bearing)
     }
     // 지나온 경로는 지도에서 지우고 남은 경로만 그림 (재탐색으로 경로가 바뀌어도 새 경로로)
     val latest = rememberUpdatedState(info)
@@ -221,6 +222,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             }
             info?.zone?.takeIf { it.next != null && it.distance <= 1500.0 }?.let { ZoneCard(it) }
             info?.rest?.let { RestCard(it) }
+            info?.alert?.let { AlertCard(it) }
             val suggestion by DriveGuidance.suggestion.collectAsStateWithLifecycle()
             suggestion?.let { SuggestionCard(it) }
             if (simulating) NoteChip("모의주행 중 · 실제 위치가 아닙니다", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
@@ -339,6 +341,21 @@ private fun SuggestionCard(s: DriveGuidance.Suggestion) {
     }
 }
 
+/** 앞의 결빙구간·톨게이트·전광판: "톨게이트 · 대전톨게이트 · 1.2km" */
+@Composable
+private fun AlertCard(a: com.eunho.tagohub.data.RoadAlertStatus) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, modifier = Modifier.widthIn(max = 320.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFF00ACC1), modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("${a.name} · ${NavText.short(a.distance)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            a.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+        }
+    }
+}
+
 /** 다음 휴게소: "다음 휴게소 서울만남휴게소 · 12.3km" */
 @Composable
 private fun RestCard(r: com.eunho.tagohub.data.RestStatus) {
@@ -367,7 +384,7 @@ private fun ZoneCard(z: ZoneStatus) {
                 when (rz.zone.kind.group) {
                     ZoneGroup.Protect -> Icons.Filled.ChildCare
                     ZoneGroup.Bump -> Icons.Filled.Warning
-                    ZoneGroup.Camera, ZoneGroup.Rest -> Icons.Filled.CameraAlt
+                    ZoneGroup.Camera, ZoneGroup.Rest, ZoneGroup.Facility -> Icons.Filled.CameraAlt
                 },
                 contentDescription = null,
                 tint = ink,

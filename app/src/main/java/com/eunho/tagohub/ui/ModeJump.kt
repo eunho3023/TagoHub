@@ -11,7 +11,7 @@ object ModeJump {
         Train("기차"),
         Coach("고속·시외"),
         Air("항공"),
-        Road("도로 정보"),
+        Road("도로교통"),
     }
 
     data class Jump(val kind: Kind, val name: String, val asOrigin: Boolean)

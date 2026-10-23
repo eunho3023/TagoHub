@@ -154,7 +154,8 @@ fun TimetablePane(
                 picking = null
             },
             loader = c.placeLoader,
-            browse = c.browseLoader != null,
+            browse = c.browseLoader != null || c.geo != null,
+            geo = c.geo,
         )
     }
 }

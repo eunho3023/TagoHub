@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
             if (BuildConfig.DEBUG) android.util.Log.i("TagoKakao", "키 해시: ${com.eunho.tagohub.ui.map.KakaoCanvas.keyHash(this)}")
         }
         com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
+        com.eunho.tagohub.data.CoachTerminalGeo.init(applicationContext)
         com.eunho.tagohub.data.TrainTimetable.init(applicationContext)
         com.eunho.tagohub.data.RailFacilities.init(applicationContext)
         com.eunho.tagohub.data.TripCache.init(filesDir)

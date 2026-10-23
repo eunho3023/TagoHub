@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.eunho.tagohub.core.Chosung
 import com.eunho.tagohub.core.Geo
 import com.eunho.tagohub.core.HeadingMath
 import com.eunho.tagohub.core.Load
@@ -745,7 +746,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 검색창의 장소 검색 (카카오 키워드 검색 — REST 키 필요) */
     suspend fun searchPlaces(q: String): List<com.eunho.tagohub.data.Place2> {
-        if (q.isBlank()) return emptyList()
+        // 카카오 장소 검색은 초성을 못 알아듣고 엉뚱한 결과만 줌 → 초성이 섞인 말은 지하철역·정류소 등 앱 안 자료로만 찾음
+        if (q.isBlank() || Chosung.hasInitials(q)) return emptyList()
         val near = me?.let { LatLng(it.first, it.second) } ?: lastView?.let { LatLng(it.first, it.second) }
         // 주소처럼 보이면(숫자가 있으면) 주소 검색 결과를 앞에 (카카오 주소로 좌표 변환)
         val addr = if (q.any(Char::isDigit)) com.eunho.tagohub.data.KakaoExtra.address(q) else emptyList()
@@ -753,7 +755,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 검색 결과의 장소를 누름 → 지도 이동 + 출발·경유·도착·정보 카드 */
+    /** 지도가 만들어지기 전에 고른 곳 (지도가 뜨면 그리로 이동) */
+    private var pendingFocus: Pair<Double, Double>? = null
+
     fun pickPlace(p: com.eunho.tagohub.data.Place2) {
+        if (canvas == null) pendingFocus = p.lat to p.lng
         clearForPlace()
         picked.value = PickedPlace(p.name, p.address, p.lat, p.lng, com.eunho.tagohub.ui.ModeJump.kindOf(p.name), p.category, p.phone, p.url)
         canvas?.setPin(p.lat, p.lng)
@@ -1180,6 +1186,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (v != null) {
             c.moveTo(v.first, v.second, v.third)
         }
+        // 지도가 아직 없을 때(홈·버스·지하철 탭의 검색) 고른 곳으로 지도를 열면 거기로 이동
+        pendingFocus?.let { (la, ln) ->
+            c.focus(la, ln)
+            startsAtSaved = true   // 내 위치로 다시 옮기지 않음
+            pendingFocus = null
+        }
         // 저장된 위치로 먼저 띄우고, 위치 권한이 있으면 내 위치 점도 바로 표시
         wantsLocate.value = true
     }
@@ -1552,7 +1564,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             busResult.value = Load.Loading
             val here = (autoCity.value ?: busCity.value)?.code
             val db = stopDb
-            val localStops = if (db != null) withContext(Dispatchers.IO) { db.search(k) } else emptyList()
+            val localStops = if (db != null) withContext(Dispatchers.IO) { if (Chosung.hasInitials(k)) db.searchInitials(k) else db.search(k) } else emptyList()
             // 같은 자리의 시군별 정류장은 한 줄로 (번호 두 개)
             val localGroups = withContext(Dispatchers.Default) { StopMerge.merge(localStops, here) }
             localGroups.filter { it.others.isNotEmpty() }.forEach { merged[it.main.nodeId] = it }
@@ -1632,6 +1644,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pickStop(s: BusStop) {
+        if (canvas == null && s.lat != null && s.lng != null) pendingFocus = s.lat to s.lng
         clearBusSearch()
         closeStopTimetable()
         stops[s.nodeId] = s
@@ -1660,17 +1673,29 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     // ───────────────────────── 지하철 검색 ─────────────────────────
 
     /** 역 이름 검색 (내장 데이터) */
-    fun searchStations(q: String): List<StationGroup> {
+    fun searchStations(q: String, limit: Int = 8): List<StationGroup> {
         val idx = index ?: return emptyList()
         val k = q.replace(" ", "").removeSuffix("역")
         if (k.isEmpty()) return emptyList()
+        // 초성("ㄱㄴ")도 되고, 초성과 글자를 섞어도("ㄱ남") 됨
         return idx.groups
-            .filter { it.name.contains(k) }
-            .sortedWith(compareBy({ !it.name.startsWith(k) }, { it.name.length }, { it.name }))
-            .take(8)
+            .map { it to Chosung.indexOf(it.name, k) }
+            .filter { it.second >= 0 }
+            .sortedWith(compareBy({ it.second != 0 }, { it.first.name.length }, { it.first.name }))
+            .map { it.first }
+            .take(limit)
     }
 
+    /** 지하철 호선 이름들 (지하철 탭의 호선 고르기) */
+    fun subwayLines(): List<String> =
+        index?.groups.orEmpty().flatMap { it.displayLines }.distinct().sortedWith(com.eunho.tagohub.core.naturalOrder)
+
+    /** 한 호선의 역 (가나다순) */
+    fun stationsOfLine(line: String): List<StationGroup> =
+        index?.groups.orEmpty().filter { line in it.displayLines }.sortedBy { it.name }
+
     fun focusStation(g: StationGroup) {
+        if (canvas == null) pendingFocus = g.lat to g.lng
         canvas?.setPin(g.lat, g.lng)
         canvas?.focus(g.lat, g.lng)
         openStation(g)

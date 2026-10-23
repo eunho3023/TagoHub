@@ -162,6 +162,21 @@ private fun ExApiDetail(api: ExApi) {
         }
         items(api.params.size) { i ->
             val p = api.params[i]
+            val isDate = p.code.contains("date", ignoreCase = true) && !p.code.contains("year", ignoreCase = true)
+            if (isDate) {
+                // 날짜는 글자로 치지 않고 달력에서 고름 (YYYYMMDD 로 채워 보냄)
+                val current = values[i].takeIf { it.length == 8 }?.let { runCatching { LocalDate.parse(it, DateTimeFormatter.BASIC_ISO_DATE) }.getOrNull() }
+                    ?: LocalDate.now().minusDays(1)
+                com.eunho.tagohub.ui.common.DateField(
+                    value = current,
+                    onPick = { values[i] = it.format(DateTimeFormatter.BASIC_ISO_DATE) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = p.label + if (p.required) " *" else "",
+                    min = LocalDate.now().minusYears(10),
+                    max = LocalDate.now().plusYears(1),
+                )
+                return@items
+            }
             OutlinedTextField(
                 value = values[i],
                 onValueChange = { values[i] = it },

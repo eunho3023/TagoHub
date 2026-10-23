@@ -37,6 +37,8 @@ class TimetableController(
     private val cachedTrips: ((dep: Place, arr: Place, date: LocalDate, grade: Grade?) -> List<Trip>?)? = null,
     /** 기차만: 카드마다 지난주 도착 지연 요약 (열차번호 → 요약) */
     private val delayLoader: (suspend (trips: List<Trip>) -> TagoResult<Map<String, DelayNote>>)? = null,
+    /** 선택 화면의 거리순·지역별에 쓰는 위치·시·도 표 (있으면 가나다순·거리순·지역별로 고르기) */
+    val geo: com.eunho.tagohub.data.PlaceGeo? = null,
 ) {
     val supportsTransfer: Boolean get() = transferLoader != null
     val supportsStops: Boolean get() = stopsLoader != null

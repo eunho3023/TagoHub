@@ -27,6 +27,10 @@ object DriveGuidance {
         val zone: com.eunho.tagohub.data.ZoneStatus? = null,
         /** 앞에 있는 휴게소 (고속도로가 아니거나 설정에서 끄면 null) */
         val rest: com.eunho.tagohub.data.RestStatus? = null,
+        /** 앞에 있는 상습 결빙구간·톨게이트·전광판 (없으면 null) */
+        val alert: com.eunho.tagohub.data.RoadAlertStatus? = null,
+        /** 가고 있는 방향(도, 북 0·동 90). GPS 가 알려 준 값이고, 모르면 null */
+        val bearing: Double? = null,
     )
 
     /** 안내 중인지 */
