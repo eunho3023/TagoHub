@@ -25,7 +25,10 @@ import com.kakao.vectormap.label.LabelLayerOptions
 import com.kakao.vectormap.label.LabelOptions
 import com.kakao.vectormap.label.LabelStyle
 import com.kakao.vectormap.label.LabelStyles
+import com.kakao.vectormap.label.CompetitionType
+import com.kakao.vectormap.label.CompetitionUnit
 import com.kakao.vectormap.label.LabelTextBuilder
+import com.kakao.vectormap.label.TransformMethod
 import com.kakao.vectormap.route.RouteLine
 import com.kakao.vectormap.route.RouteLineOptions
 import com.kakao.vectormap.route.RouteLinePattern
@@ -94,6 +97,10 @@ class KakaoCanvas(
     private val tripLines = ArrayList<RouteLine>()
     private val tripLabels = ArrayList<Label>()
     private var meLabel: Label? = null
+    private var meHeadingLabel: Label? = null
+    private var meHeadingDeg: Double? = null
+    /** 확대해 둔 상태에서 마지막으로 본 지도 가운데 (너무 축소했을 때 되돌아올 자리) */
+    private var goodCenter: KLatLng? = null
     private val styleCache = HashMap<String, LabelStyles>()
 
     /** 움직이는 차량 (버스·열차) */
@@ -156,7 +163,13 @@ class KakaoCanvas(
     private fun setup(km: KakaoMap) {
         map = km
         km.labelManager?.let { lm ->
-            LAYERS.forEach { (id, z) -> lm.addLayer(LabelLayerOptions.from(id).setZOrder(z)) }
+            LAYERS.forEach { (id, z) ->
+                val opts = LabelLayerOptions.from(id).setZOrder(z)
+                // 정류장·역·버스·열차 글자가 서로(그리고 지도의 장소 이름과) 겹치지 않게 SDK 의 겹침 처리에 맡김:
+                // 모든 층과 겹침을 따지고, 겹치면 글자를 접고 아이콘을 남김. 내 위치·핀·말풍선은 늘 보이게 따지지 않음
+                if (id in COMPETING_LAYERS) opts.setCompetitionType(CompetitionType.All).setCompetitionUnit(CompetitionUnit.IconFirst)
+                lm.addLayer(opts)
+            }
         }
         km.routeLineManager?.addLayer(ROUTE_LAYER, 10)
         km.routeLineManager?.addLayer(TRIP_LAYER, 5)
@@ -166,6 +179,12 @@ class KakaoCanvas(
                 runCatching { if (kotlin.math.abs(position.rotationAngle) > 0.01) map?.compass?.show() else map?.compass?.hide() }
                 vm.onMapTouched()
                 val z = position.zoomLevel
+                // 카카오맵은 세계 전체가 보일 만큼 축소하면 가운데가 엉뚱한 곳으로 옮겨짐 → 한국 전체가 보이는 배율까지만 허용
+                if (z < MIN_ZOOM) {
+                    map?.moveCamera(CameraUpdateFactory.newCenterPosition(goodCenter ?: KLatLng.from(36.3, 127.8), MIN_ZOOM), CameraAnimation.from(250))
+                    return@post
+                }
+                goodCenter = position.position
                 if (z != lastZoom) {
                     lastZoom = z
                     if ((routeArgs?.parts?.size ?: 0) >= 2) drawRouteLines() // 배율이 바뀌면 상·하행 간격 다시
@@ -213,7 +232,7 @@ class KakaoCanvas(
         applyOverlays()
         vm.onMapMode("kakao")
         lastZoom = km.zoomLevel
-        drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawPin()
+        drawStops(); drawStations(); drawRoute(); drawTrip(); drawMe(); drawMeHeading(); drawPin()
         drawVehicles(busPins, buses, BUS_LAYER, null)
         drawVehicles(klidBusPins, klidBuses, KLID_BUS_LAYER, null)
         drawVehicles(trainPins, trains, TRAIN_LAYER, selectedTrain)
@@ -260,9 +279,12 @@ class KakaoCanvas(
             z >= 12.0 -> 1
             else -> 0
         }
+        // 지하철 열차 모형은 축척 막대가 250m 이하일 때만: 막대 100dp 가 가리키는 거리가 500m 미만
+        val scaleM = metersPerPx() * 100f * density
         vm.onMoveEnd(cam.position.latitude, cam.position.longitude, z, level,
             minOf(nw.latitude, se.latitude), minOf(nw.longitude, se.longitude),
-            maxOf(nw.latitude, se.latitude), maxOf(nw.longitude, se.longitude))
+            maxOf(nw.latitude, se.latitude), maxOf(nw.longitude, se.longitude),
+            trainsVisible = scaleM in 1.0..TRAIN_MAX_SCALE_M)
     }
 
     /** 지금 배율의 1px 이 몇 m 인지 (상·하행 띄우는 거리) */
@@ -667,11 +689,40 @@ class KakaoCanvas(
         val existing = meLabel
         if (existing != null) {
             runCatching { existing.moveTo(KLatLng.from(p.lat, p.lng)) }
+            drawMeHeading()
             return
         }
         val l = layer(ME_LAYER) ?: return
         val st = styles("me") { LabelStyles.from(icon(icons.me(), 0.5f, 0.5f)) }
-        meLabel = l.addLabel(LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(st))
+        meLabel = l.addLabel(LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(st).setRank(10))
+        drawMeHeading()
+    }
+
+    override fun setMeHeading(deg: Double?) {
+        meHeadingDeg = deg
+        drawMeHeading()
+    }
+
+    /** 내 위치 점 뒤에 방향 부채꼴: 지도를 돌려도 방위는 그대로(북쪽 기준 회전) */
+    private fun drawMeHeading() {
+        val p = me ?: return
+        val deg = meHeadingDeg
+        if (deg == null) {
+            meHeadingLabel?.let { runCatching { it.remove() } }
+            meHeadingLabel = null
+            return
+        }
+        val angle = Math.toRadians(deg).toFloat()
+        val existing = meHeadingLabel
+        if (existing != null) {
+            runCatching { existing.moveTo(KLatLng.from(p.lat, p.lng)); existing.rotateTo(angle) }
+            return
+        }
+        val l = layer(ME_LAYER) ?: return
+        val st = styles("meHeading") { LabelStyles.from(icon(icons.meHeading(), 0.5f, 1f)) }
+        meHeadingLabel = l.addLabel(
+            LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(st).setRank(9).setTransform(TransformMethod.AbsoluteRotation_Decal),
+        )?.also { runCatching { it.rotateTo(angle) } }
     }
 
     private fun camera(block: (KakaoMap) -> Unit) {
@@ -773,6 +824,10 @@ class KakaoCanvas(
     companion object {
         private const val TAG = "TagoKakao"
         private const val FRAME_MS = 66L
+        /** 이보다 더 축소하면 카카오맵이 가운데를 엉뚱한 곳으로 옮기므로 되돌림 (한국 전체가 보이는 배율) */
+        private const val MIN_ZOOM = 6
+        /** 축척 막대(100dp)가 이 거리(m) 미만일 때만 지하철 열차 모형을 보임 */
+        private const val TRAIN_MAX_SCALE_M = 499.0
         private const val GLIDE_MS = 1_200L
         private const val STOP_LAYER = "stops"
         private const val STATION_LAYER = "stations"
@@ -799,6 +854,7 @@ class KakaoCanvas(
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
+        private val COMPETING_LAYERS = setOf(STATION_LAYER, STOP_LAYER, ROUTE_PIN_LAYER, BUS_LAYER, KLID_BUS_LAYER, TRAIN_LAYER)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()
         private val UTIC_BLUE = 0xFF1976D2.toInt()

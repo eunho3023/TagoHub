@@ -38,6 +38,8 @@ class DriveSummaryTest {
         val s = trafficSummary(listOf(road(1, 3200, 37.0 to 127.0, 37.0 to 127.1), road(3, 12100, 37.0 to 127.1, 37.0 to 127.2), road(4, 9000, 37.0 to 127.2, 37.0 to 127.3)))
         assertEquals("정체 3.2km · 서행 12.1km", s)
         assertNull(trafficSummary(emptyList()))
+        // 소통 정보가 하나도 없으면(전부 0) "정체 없음"이 아니라 정보 없음
+        assertEquals("실시간 소통 정보 없음 · 파랑은 정보 없는 구간", trafficSummary(listOf(road(0, 5000, 37.0 to 127.0, 37.0 to 127.1))))
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.eunho.tagohub.ui.map
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -85,17 +88,26 @@ fun ItsRoadScreen(vm: MapViewModel) {
                 ) {
                     items(traffic, key = { it.id }) { row ->
                         Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(row.roadName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    listOfNotNull(
-                                        row.direction,
-                                        row.speedKmh?.let { "속도 ${it} km/h" },
-                                        row.travelTimeSeconds?.let { "통행시간 ${it}초" },
-                                        row.updatedAt?.let { "갱신 $it" },
-                                    ).joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
+                            Row(Modifier.padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                // 속도에 따라 색: 원활 초록 · 서행 노랑 · 지체 주황 · 정체 빨강 (속도를 모르면 회색)
+                                val level = speedLevel(row.speedKmh)
+                                androidx.compose.foundation.layout.Box(
+                                    Modifier.size(14.dp).background(androidx.compose.ui.graphics.Color(level.color), androidx.compose.foundation.shape.CircleShape),
                                 )
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(row.roadName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        listOfNotNull(
+                                            level.label,
+                                            row.direction,
+                                            row.speedKmh?.let { "속도 ${it.toInt()} km/h" },
+                                            row.travelTimeSeconds?.let { "통행시간 ${it.toInt()}초" },
+                                            row.updatedAt?.let { "갱신 $it" },
+                                        ).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
                             }
                         }
                     }
@@ -148,12 +160,13 @@ private fun ForecastPanel(
             Text(selected?.let { "${it.roadName} · ${it.startName}~${it.endName}" } ?: "본선 구간 선택")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = date,
-                onValueChange = { date = it.filter(Char::isDigit).take(8) },
-                label = { Text("예측 날짜(YYYYMMDD)") },
+            com.eunho.tagohub.ui.common.DateField(
+                value = LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE),
+                onPick = { date = it.format(DateTimeFormatter.BASIC_ISO_DATE) },
                 modifier = Modifier.weight(1f),
-                singleLine = true,
+                label = "예측",
+                min = LocalDate.now(),
+                max = LocalDate.now().plusDays(30),
             )
             OutlinedTextField(
                 value = hour,
@@ -241,4 +254,15 @@ private fun ItsEmptyMessage(title: String, message: String) {
             Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/** 소통 속도 단계: 색(ARGB)과 말. 국도·고속도로 구분 없이 쓰는 단순한 기준(km/h) */
+internal class SpeedLevel(val label: String, val color: Long)
+
+internal fun speedLevel(speedKmh: Double?): SpeedLevel = when {
+    speedKmh == null -> SpeedLevel("정보 없음", 0xFF9E9E9E)
+    speedKmh < 20 -> SpeedLevel("정체", 0xFFE53935)
+    speedKmh < 40 -> SpeedLevel("지체", 0xFFF57C00)
+    speedKmh < 60 -> SpeedLevel("서행", 0xFFFBC02D)
+    else -> SpeedLevel("원활", 0xFF2E9B57)
 }

@@ -29,10 +29,16 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -76,8 +82,11 @@ import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.data.Grade
 import com.eunho.tagohub.data.Place
+import com.eunho.tagohub.data.PlaceGeo
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneOffset
 import java.time.LocalDate
 import java.time.format.TextStyle as JTextStyle
 import java.util.Locale
@@ -256,13 +265,77 @@ fun SectionHeader(text: String) {
     )
 }
 
+/** 달력에서 날짜 고르기. [min]~[max] 밖의 날은 누를 수 없다 */
+@Composable
+fun CalendarDialog(
+    initial: LocalDate,
+    onPick: (LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+    min: LocalDate = LocalDate.now(),
+    max: LocalDate = LocalDate.now().plusYears(1),
+) {
+    fun millis(d: LocalDate) = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    fun date(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate()
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = millis(initial.coerceIn(min, max)),
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = date(utcTimeMillis) in min..max
+            override fun isSelectableYear(year: Int) = year in min.year..max.year
+        },
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { state.selectedDateMillis?.let { onPick(date(it)) }; onDismiss() }) { Text("확인") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    ) { DatePicker(state = state) }
+}
+
+/** "2026.10.23 (금)" */
+fun dateLabel(d: LocalDate): String =
+    "%04d.%02d.%02d (%s)".format(d.year, d.monthValue, d.dayOfMonth, d.dayOfWeek.getDisplayName(JTextStyle.SHORT, Locale.KOREAN))
+
+/** 달력을 여는 날짜 버튼 (글자 입력 대신) */
+@Composable
+fun DateField(
+    value: LocalDate,
+    onPick: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    min: LocalDate = LocalDate.now(),
+    max: LocalDate = LocalDate.now().plusYears(1),
+) {
+    var open by remember { mutableStateOf(false) }
+    androidx.compose.material3.OutlinedButton(onClick = { open = true }, modifier = modifier.heightIn(min = 48.dp)) {
+        Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(listOfNotNull(label, dateLabel(value)).joinToString("  "), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    if (open) CalendarDialog(value, onPick, { open = false }, min, max)
+}
+
+/**
+ * 날짜 고르기 줄: 오늘부터 [days]일은 칩으로 바로, 그 밖의 날은 맨 앞 달력 버튼으로 (1년 뒤까지).
+ * 달력에서 고른 날이 칩 줄 밖이면 그 날짜 칩이 줄 맨 앞에 따로 보인다.
+ */
 @Composable
 fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit, days: Int = 7) {
     val today = remember { LocalDate.now() }
+    var calendar by remember { mutableStateOf(false) }
+    val outside = selected.isBefore(today) || !selected.isBefore(today.plusDays(days.toLong()))
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        item {
+            FilterChip(
+                selected = outside,
+                onClick = { calendar = true },
+                label = { Text(if (outside) dateLabel(selected) else "달력") },
+                leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            )
+        }
         items((0 until days).toList()) { i ->
             val d = today.plusDays(i.toLong())
             val dow = d.dayOfWeek.getDisplayName(JTextStyle.SHORT, Locale.KOREAN)
@@ -288,6 +361,7 @@ fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit, days: Int = 7)
             )
         }
     }
+    if (calendar) CalendarDialog(selected, onSelect, { calendar = false })
 }
 
 @Composable
@@ -355,20 +429,31 @@ fun OdSelector(
     }
 }
 
-/** 검색 가능한 선택 시트. loader 는 캐시된 목록을 로컬 필터링하므로 타이핑마다 호출해도 가볍다. */
+/** 선택 목록을 묶어 보는 방식 */
+private enum class PickMode(val label: String) { Alphabet("가나다순"), Distance("거리순"), Region("지역별") }
+
+/**
+ * 검색 가능한 선택 시트. loader 는 캐시된 목록을 로컬 필터링하므로 타이핑마다 호출해도 가볍다.
+ * [browse] 이면 검색어가 없을 때 가나다순 / 지역별(그리고 [geo] 가 있으면 내 위치에서 가까운 거리순)으로 묶어 보여줌.
+ */
 @Composable
 fun PlacePickerSheet(
     title: String,
     onDismiss: () -> Unit,
     onPick: (Place) -> Unit,
     loader: suspend (String) -> TagoResult<List<Place>>,
-    /** 기차역처럼 목록이 길 때: 검색어가 없으면 가나다순 / 지역별로 묶어 보여줌 */
+    /** 기차역·터미널·공항처럼 목록이 길 때: 검색어가 없으면 가나다순 / 거리순 / 지역별로 묶어 보여줌 */
     browse: Boolean = false,
+    /** 위치·시·도를 알려 주는 표 (거리순·지역별에 씀) */
+    geo: PlaceGeo? = null,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var query by remember { mutableStateOf("") }
-    var byRegion by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf(PickMode.Alphabet) }
     var retry by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<Load<List<Place>>>(Load.Loading) }
+    // 내 위치 (이미 아는 마지막 위치만. 여기서 권한을 새로 묻지 않음)
+    val here = remember { if (com.eunho.tagohub.ui.bus.hasLocationPermission(context)) com.eunho.tagohub.ui.bus.lastKnownLocation(context) else null }
     LaunchedEffect(query, retry) {
         if (query.isNotEmpty()) delay(200)
         if (state !is Load.Ok) state = Load.Loading
@@ -388,8 +473,9 @@ fun PlacePickerSheet(
             SearchBox(query, { query = it }, "이름으로 찾기", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             if (browse && query.isEmpty()) {
                 Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !byRegion, onClick = { byRegion = false }, label = { Text("가나다순") })
-                    FilterChip(selected = byRegion, onClick = { byRegion = true }, label = { Text("지역별") })
+                    PickMode.entries.filter { it != PickMode.Distance || geo != null }.forEach { m ->
+                        FilterChip(selected = mode == m, onClick = { mode = m }, label = { Text(m.label) })
+                    }
                 }
             }
             LoadView(
@@ -397,9 +483,14 @@ fun PlacePickerSheet(
                 onRetry = { retry++ },
                 isEmpty = { it.isEmpty() },
                 emptyText = "일치하는 항목이 없습니다.",
-            ) { list ->
+            ) { loaded ->
+                val list = remember(loaded, geo) { geo?.enrich(loaded) ?: loaded }
                 if (browse && query.isEmpty()) {
-                    GroupedPlaceList(list, byRegion, onPick)
+                    if (mode == PickMode.Distance && geo != null) {
+                        DistancePlaceList(list, geo, here, onPick)
+                    } else {
+                        GroupedPlaceList(list, mode == PickMode.Region, onPick)
+                    }
                     return@LoadView
                 }
                 LazyColumn {
@@ -416,6 +507,33 @@ fun PlacePickerSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 내 위치에서 가까운 순 (거리를 함께 보여줌). 위치를 모르면 안내만 */
+@Composable
+private fun DistancePlaceList(list: List<Place>, geo: PlaceGeo, here: android.location.Location?, onPick: (Place) -> Unit) {
+    if (here == null) {
+        MessageBox("내 위치를 알 수 없어 거리순으로 볼 수 없어요.\n위치 권한과 위치 서비스가 켜져 있는지 확인해 주세요.")
+        return
+    }
+    val sorted = remember(list, here) { geo.byDistance(list, here.latitude, here.longitude) }
+    LazyColumn {
+        items(sorted, key = { it.first.id }) { (p, meters) ->
+            ListItem(
+                headlineContent = { Text(p.name) },
+                supportingContent = if (!p.sub.isNullOrBlank()) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
+                trailingContent = {
+                    Text(
+                        meters?.let { if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it.toInt()}m" } ?: "위치 모름",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                modifier = Modifier.clickable { onPick(p) },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }

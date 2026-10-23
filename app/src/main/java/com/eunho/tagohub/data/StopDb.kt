@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.eunho.tagohub.core.Chosung
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -39,6 +40,29 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
                ORDER BY (replace(name, ' ', '') = ?) DESC, (no = ?) DESC, length(name), name
                LIMIT $limit""",
             arrayOf("%$k%", k, k, k),
+        ) { it.toStop() }
+    }
+
+    /** 공백을 뺀 정류장 이름 목록 (초성 검색용. 처음 한 번만 읽어 메모리에 둠) */
+    private val distinctNames: List<String> by lazy {
+        query("SELECT DISTINCT replace(name, ' ', '') FROM stops", emptyArray()) { it.getString(0) }
+    }
+
+    /** 초성("ㄱㄴ")이나 초성과 글자가 섞인 검색어로 정류장 찾기. 이름이 짧고 앞에서 맞는 것부터 */
+    fun searchInitials(q: String, limit: Int = 200): List<BusStop> {
+        val k = q.replace(" ", "")
+        if (k.isEmpty()) return emptyList()
+        val names = distinctNames
+            .mapNotNull { n -> Chosung.indexOf(n, k).takeIf { it >= 0 }?.let { n to it } }
+            .sortedWith(compareBy({ it.second != 0 }, { it.first.length }, { it.first }))
+            .take(40)
+            .map { it.first }
+        if (names.isEmpty()) return emptyList()
+        return query(
+            """SELECT id, name, lat, lng, no, city FROM stops
+               WHERE replace(name, ' ', '') IN (${names.joinToString(",") { "?" }})
+               ORDER BY length(name), name LIMIT $limit""",
+            names.toTypedArray(),
         ) { it.toStop() }
     }
 

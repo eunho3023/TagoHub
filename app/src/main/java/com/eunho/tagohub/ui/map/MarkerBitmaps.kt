@@ -105,6 +105,25 @@ class MarkerBitmaps(private val density: Float) {
         return forKakao(b)
     }
 
+    /** 내 위치 방향: 위(북쪽)를 향한 반투명 파란 부채꼴. 아래쪽 가운데가 내 위치 (anchor 0.5, 1). 라벨을 돌리면 방향이 바뀜 */
+    fun meHeading(): Bitmap {
+        val b = bmp(72f, 52f)
+        val c = Canvas(b)
+        val cx = b.width / 2f
+        val bottom = b.height.toFloat()
+        val r = px(50f)
+        val sweep = 70f   // 부채꼴 각도
+        val oval = RectF(cx - r, bottom - r, cx + r, bottom + r)
+        fill.shader = android.graphics.RadialGradient(
+            cx, bottom, r,
+            intArrayOf(Color.argb(150, 26, 115, 232), Color.argb(0, 26, 115, 232)), floatArrayOf(0.25f, 1f),
+            android.graphics.Shader.TileMode.CLAMP,
+        )
+        c.drawArc(oval, -90f - sweep / 2, sweep, true, fill)
+        fill.shader = null
+        return forKakao(b)
+    }
+
     /** 꾹 누른 곳 핀: 빨간 물방울 + 흰 점. anchor (0.5, 1) */
     fun pin(): Bitmap {
         val b = bmp(26f, 34f)

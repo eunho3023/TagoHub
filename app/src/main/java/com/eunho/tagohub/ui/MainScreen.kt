@@ -31,7 +31,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eunho.tagohub.ui.coach.CoachScreen
 import com.eunho.tagohub.ui.home.AppTab
 import com.eunho.tagohub.ui.home.HomeScreen
+import com.eunho.tagohub.ui.home.BusTab
 import com.eunho.tagohub.ui.home.MorePage
+import com.eunho.tagohub.ui.home.SearchActions
+import com.eunho.tagohub.ui.home.SubwayTab
+import com.eunho.tagohub.ui.home.TabScaffold
+import com.eunho.tagohub.ui.navi.NavigationScreen
+import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.home.PageScaffold
 import com.eunho.tagohub.ui.map.MapMode
 import com.eunho.tagohub.ui.map.MapScreen
@@ -39,8 +45,8 @@ import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.timetable.AirScreen
 import com.eunho.tagohub.ui.timetable.TrainScreen
 
-/** 앱의 큰 화면들: 첫 화면(홈), 지도(버스·지하철 포함), 기차·고속시외·항공·도로 정보, 더보기 */
-enum class Dest { Home, Map, Train, Coach, Air, Road, More }
+/** 앱의 큰 화면들: 첫 화면(홈), 지도, 버스·지하철·기차·내비게이션 탭, 고속시외·항공·도로교통, 더보기 */
+enum class Dest { Home, Map, Bus, Subway, Train, Navi, Coach, Air, Road, More }
 
 private fun ModeJump.Kind.dest(): Dest = when (this) {
     ModeJump.Kind.Train -> Dest.Train
@@ -77,13 +83,24 @@ fun MainScreen() {
         dest = next
     }
     fun openMap(mode: MapMode) { mapMode = mode; dest = Dest.Map }
-    fun onTab(tab: AppTab) = when (tab) {
-        AppTab.Home -> dest = Dest.Home
-        AppTab.Bus -> openMap(MapMode.Bus)
-        AppTab.Subway -> openMap(MapMode.Subway)
-        AppTab.Train -> { returnTo = Dest.Home; dest = Dest.Train }
-        AppTab.More -> { returnTo = Dest.Home; dest = Dest.More }
+    fun onTab(tab: AppTab) {
+        if (tab != AppTab.Home) returnTo = Dest.Home
+        dest = when (tab) {
+            AppTab.Home -> Dest.Home
+            AppTab.Bus -> Dest.Bus
+            AppTab.Subway -> Dest.Subway
+            AppTab.Train -> Dest.Train
+            AppTab.Navi -> Dest.Navi
+            AppTab.More -> Dest.More
+        }
     }
+    // 검색 결과를 누르면 그때 지도를 열어 그곳을 보여 줌 (검색 자체는 홈·버스·지하철 탭 안에서)
+    val searchActions = SearchActions(
+        onPlace = { mapVm.pickPlace(it); openMap(MapMode.Transit) },
+        onStation = { mapVm.focusStation(it); openMap(MapMode.Subway) },
+        onStop = { mapVm.pickStop(it); openMap(MapMode.Bus) },
+        onRoute = { mapVm.pickRoute(it); openMap(MapMode.Bus) },
+    )
 
     LaunchedEffect(Unit) {
         // 지도의 ☰ 는 더보기를 엶 (신호를 먼저 비워야 다음에 다시 전달됨)
@@ -131,8 +148,9 @@ fun MainScreen() {
                         Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
                             HomeScreen(
                                 vm = mapVm,
-                                onSearch = { openMap(MapMode.Transit); mapVm.requestSearchFocus() },
+                                search = searchActions,
                                 onOpenMap = ::openMap,
+                                onOpenTab = ::onTab,
                                 onOpenPage = { k -> open(k.dest()) },
                                 onGoTo = { place ->
                                     openMap(MapMode.Transit)
@@ -143,6 +161,18 @@ fun MainScreen() {
                             )
                         }
                         com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Home, ::onTab)
+                    }
+                    Dest.Bus -> TabScaffold("버스", ModeColor.Bus, AppTab.Bus, ::onTab) {
+                        BusTab(mapVm, searchActions, onFavorite = { f -> openMap(MapMode.Bus); mapVm.openFavorite(f) }, onShowMap = { openMap(MapMode.Bus) })
+                    }
+                    Dest.Subway -> TabScaffold("지하철", ModeColor.Subway, AppTab.Subway, ::onTab) {
+                        SubwayTab(mapVm, searchActions, onShowMap = { openMap(MapMode.Subway) })
+                    }
+                    Dest.Navi -> TabScaffold("내비게이션", androidx.compose.ui.graphics.Color(0xFF294653), AppTab.Navi, ::onTab) {
+                        NavigationScreen(
+                            onPlanRoute = { openMap(MapMode.Transit); mapVm.openPlanner() },
+                            onShowMap = { openMap(MapMode.Transit) },
+                        )
                     }
                     Dest.Train -> PageScaffold(ModeJump.Kind.Train, AppTab.Train, ::onTab) { TrainScreen() }
                     Dest.Coach -> PageScaffold(ModeJump.Kind.Coach, AppTab.More, ::onTab) { CoachScreen() }

@@ -53,7 +53,7 @@ import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.ThemeMode
 import com.eunho.tagohub.ui.theme.ThemeSettings
 
-/** 기차·고속시외·항공·도로 정보 화면의 모드색 (라이트/다크) */
+/** 기차·고속시외·항공·도로교통 화면의 모드색 (라이트/다크) */
 fun pageColor(kind: ModeJump.Kind, dark: Boolean): Color = when (kind) {
     ModeJump.Kind.Train -> if (dark) Color(0xFF2F55B5) else Color(0xFF1B3E8A)
     ModeJump.Kind.Coach -> Color(0xFF0A7E8C)
@@ -73,11 +73,23 @@ fun PageScaffold(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val dark = LocalDarkTheme.current
+    TabScaffold(kind.label, pageColor(kind, LocalDarkTheme.current), tab, onTab, modifier, content)
+}
+
+/** 제목 머리띠 + 본문 + 아래 탭. 버스·지하철·내비게이션 탭도 같은 틀을 씀 */
+@Composable
+fun TabScaffold(
+    title: String,
+    color: Color,
+    tab: AppTab,
+    onTab: (AppTab) -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        Surface(color = pageColor(kind, dark), modifier = Modifier.fillMaxWidth()) {
+        Surface(color = color, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(kind.label, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, color = Color.White)
+                Text(title, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, color = Color.White, maxLines = 1)
             }
         }
         Box(Modifier.weight(1f)) { content() }
@@ -85,7 +97,7 @@ fun PageScaffold(
     }
 }
 
-/** 더보기: 고속·시외, 항공, 도로 정보, 화면 모드, 공지사항, 앱 제보 */
+/** 더보기: 대중교통(고속·시외, 항공), 도로교통, 화면 모드, 공지사항, 앱 제보 */
 @Composable
 fun MorePage(
     onOpen: (ModeJump.Kind) -> Unit,
@@ -101,9 +113,12 @@ fun MorePage(
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Text("더보기", fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
+                Text("대중교통", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 MoreRow("고속·시외버스", Icons.Outlined.AirportShuttle) { onOpen(ModeJump.Kind.Coach) }
                 MoreRow("항공", Icons.Outlined.Flight) { onOpen(ModeJump.Kind.Air) }
-                MoreRow("도로 정보", Icons.Outlined.Traffic) { onOpen(ModeJump.Kind.Road) }
+                Spacer(Modifier.height(6.dp))
+                Text("도로", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                MoreRow(ModeJump.Kind.Road.label, Icons.Outlined.Traffic) { onOpen(ModeJump.Kind.Road) }
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 Text("화면 모드", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))

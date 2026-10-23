@@ -73,6 +73,7 @@ class CoachViewModel : ViewModel() {
         placeLoader = { q -> repo.expTerminalPlaces(q) },
         gradeLoader = { repo.expGrades() },
         tripLoader = { d, a, date, g -> repo.expTrips(d.id, a.id, date, g?.id) },
+        geo = com.eunho.tagohub.data.CoachTerminalGeo,
     )
 
     val suburb = TimetableController(
@@ -80,6 +81,7 @@ class CoachViewModel : ViewModel() {
         placeLoader = { q -> repo.suburbTerminalPlaces(q) },
         gradeLoader = { repo.suburbGrades() },
         tripLoader = { d, a, date, g -> repo.suburbTrips(d.id, a.id, date, g?.id) },
+        geo = com.eunho.tagohub.data.CoachTerminalGeo,
     )
 
     // ── 고속버스 실시간 도착 (ExpBusArrInfo: 별도 터미널 코드 체계) ──

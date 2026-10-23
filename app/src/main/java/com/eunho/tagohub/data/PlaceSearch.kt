@@ -276,6 +276,32 @@ object KacIntlClient {
         KacIntl.toTrips(KacIntl.forDate(mine, date), date)
     }.fold({ com.eunho.tagohub.core.TagoResult.Success(it) }, { com.eunho.tagohub.core.TagoResult.Error(it.message ?: "국제선 조회 실패") })
 
+    /**
+     * 국내선: TAGO 국내선 API 는 오늘·내일만 제대로 주므로 다른 날은 한국공항공사 정기 운항 스케줄로 찾는다.
+     * [dep]·[arr] 는 공항 코드(GMP·CJU …).
+     */
+    suspend fun domesticTrips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
+        val rows = withContext(Dispatchers.IO) {
+            val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+            val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
+            val out = ArrayList<KacDom.Flight>()
+            for (page in 1..5) {
+                val url = KacDom.URL.toHttpUrl().newBuilder()
+                    .addEncodedQueryParameter("serviceKey", key)
+                    .addQueryParameter("type", "json").addQueryParameter("pageNo", page.toString()).addQueryParameter("numOfRows", "1000")
+                    .addQueryParameter("schDate", date.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE))
+                    .addQueryParameter("schDeptCityCode", dep).addQueryParameter("schArrvCityCode", arr)
+                    .build()
+                val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
+                val got = KacDom.parse(body)
+                out += got
+                if (got.isEmpty() || out.size >= KacDom.totalCount(body)) break
+            }
+            out
+        }
+        KacDom.toTrips(KacDom.forDate(rows.filter { it.depCode == dep && it.arrCode == arr }, date), date)
+    }.fold({ com.eunho.tagohub.core.TagoResult.Success(it) }, { com.eunho.tagohub.core.TagoResult.Error(it.message ?: "국내선 스케줄 조회 실패") })
+
     /** 인천공항 실시간 운항 현황 (조회일 기준 -3일 ~ +6일) */
     private suspend fun icn(dep: String, arr: String, date: java.time.LocalDate): List<Trip> = withContext(Dispatchers.IO) {
         val today = java.time.LocalDate.now()

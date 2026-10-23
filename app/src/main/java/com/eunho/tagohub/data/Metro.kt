@@ -211,6 +211,21 @@ class StationIndex(val stations: List<MetroStation>) {
         return out
     }
 
+    /** 열차가 지나온 역 (기점이 맨 앞, 바로 전 역이 맨 뒤. [from] 은 제외). 이전 역 추정을 반복 */
+    fun pathBehind(lineId: String, from: MetroStation, dest: MetroStation?, maxSteps: Int = 80): List<MetroStation> {
+        if (dest == null) return emptyList()
+        val out = ArrayDeque<MetroStation>()
+        val seen = hashSetOf(from.norm)
+        var cur = from
+        repeat(maxSteps) {
+            val prev = neighbors(lineId, cur, dest).first ?: return out.toList()
+            if (!seen.add(prev.norm)) return out.toList()   // 순환선에서 한 바퀴 돌아오면 멈춤
+            out.addFirst(prev)
+            cur = prev
+        }
+        return out.toList()
+    }
+
     private val groupOfStation: Map<MetroStation, String> by lazy {
         groups.flatMap { g -> g.stations.map { it to g.id } }.toMap()
     }
