@@ -104,7 +104,7 @@ fun StationDetailPanel(
 
     Column(Modifier.fillMaxSize()) {
         // 머리띠: 지하철 색에 역 이름과 호선 원형 배지(환승역은 여러 개)
-        Surface(color = ModeColor.Subway, contentColor = Color.White) {
+        Surface(color = com.eunho.tagohub.ui.theme.headerColor(), contentColor = Color.White) {
             Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

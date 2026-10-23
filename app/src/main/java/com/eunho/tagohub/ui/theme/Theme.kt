@@ -7,6 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -56,42 +58,63 @@ object BoardColor {
 }
 
 private val Light = lightColorScheme(
-    primary = Color(0xFF101828),
+    primary = Color(0xFF1D4ED8),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFEFD2),
-    onPrimaryContainer = Color(0xFF3F2700),
-    secondary = Color(0xFFA65F00),
+    primaryContainer = Color(0xFFE3EBFF),
+    onPrimaryContainer = Color(0xFF0F2A6B),
+    secondary = Color(0xFF1D4ED8),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFE6BF),
-    onSecondaryContainer = Color(0xFF3F2700),
-    background = Color(0xFFF7F8FA),
-    onBackground = Color(0xFF101828),
+    secondaryContainer = Color(0xFFE3EBFF),
+    onSecondaryContainer = Color(0xFF0F2A6B),
+    background = Color(0xFFFFFFFF),
+    onBackground = Color(0xFF0B1220),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF101828),
-    surfaceVariant = Color(0xFFF0F2F5),
-    onSurfaceVariant = Color(0xFF4B5662),
+    onSurface = Color(0xFF0B1220),
+    surfaceVariant = Color(0xFFF3F5F8),
+    onSurfaceVariant = Color(0xFF44505E),
     outline = Color(0xFF7B8794),
-    outlineVariant = Color(0xFFE3E8ED),
+    outlineVariant = Color(0xFFD5DBE3),
 )
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFFFFB224),
-    onPrimary = Color(0xFF1A1100),
-    primaryContainer = Color(0xFF3A2A08),
-    onPrimaryContainer = Color(0xFFFFDFA3),
-    secondary = Color(0xFFFFB224),
-    onSecondary = Color(0xFF1A1100),
-    secondaryContainer = Color(0xFF2E230C),
-    onSecondaryContainer = Color(0xFFFFE0A0),
+    primary = Color(0xFF8FB0FF),
+    onPrimary = Color(0xFF0B1220),
+    primaryContainer = Color(0xFF1B2A4A),
+    onPrimaryContainer = Color(0xFFDCE6FF),
+    secondary = Color(0xFF8FB0FF),
+    onSecondary = Color(0xFF0B1220),
+    secondaryContainer = Color(0xFF1B2A4A),
+    onSecondaryContainer = Color(0xFFDCE6FF),
     background = Color(0xFF0B0F14),
-    onBackground = Color(0xFFF2F4F5),
+    onBackground = Color(0xFFF5F7FA),
     surface = Color(0xFF0B0F14),
-    onSurface = Color(0xFFF2F4F5),
-    surfaceVariant = Color(0xFF1A222B),
-    onSurfaceVariant = Color(0xFFA3ADB8),
+    onSurface = Color(0xFFF5F7FA),
+    surfaceVariant = Color(0xFF161C24),
+    onSurfaceVariant = Color(0xFFB4BECA),
     outline = Color(0xFF6B7683),
-    outlineVariant = Color(0xFF1E2630),
+    outlineVariant = Color(0xFF2A3440),
 )
+
+/** 보기 편한 글자 크기: 본문 16~17, 보조 설명 14, 가장 작은 글자도 13 */
+private val AppTypography = Typography().let { d ->
+    d.copy(
+        bodyLarge = d.bodyLarge.copy(fontSize = 17.sp, lineHeight = 24.sp),
+        bodyMedium = d.bodyMedium.copy(fontSize = 16.sp, lineHeight = 22.sp),
+        bodySmall = d.bodySmall.copy(fontSize = 14.sp, lineHeight = 20.sp),
+        labelLarge = d.labelLarge.copy(fontSize = 15.sp, lineHeight = 20.sp),
+        labelMedium = d.labelMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
+        labelSmall = d.labelSmall.copy(fontSize = 13.sp, lineHeight = 16.sp),
+        titleSmall = d.titleSmall.copy(fontSize = 16.sp, lineHeight = 22.sp),
+        titleMedium = d.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+        titleLarge = d.titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp),
+        headlineSmall = d.headlineSmall.copy(fontSize = 26.sp, lineHeight = 32.sp),
+        headlineMedium = d.headlineMedium.copy(fontSize = 30.sp, lineHeight = 36.sp),
+    )
+}
+
+/** 화면 제목 머리띠 색: 모든 화면에서 한 가지 남색 (교통수단 색은 번호 배지·아이콘에만) */
+@Composable
+fun headerColor(): Color = if (LocalDarkTheme.current) Color(0xFF111B2B) else Color(0xFF0F2747)
 
 private val AppShapes = Shapes().copy(
     small = RoundedCornerShape(8.dp),
@@ -118,6 +141,6 @@ fun TagoTheme(content: @Composable () -> Unit) {
         }
     }
     CompositionLocalProvider(LocalDarkTheme provides dark) {
-        MaterialTheme(colorScheme = if (dark) Dark else Light, shapes = AppShapes, content = content)
+        MaterialTheme(colorScheme = if (dark) Dark else Light, shapes = AppShapes, typography = AppTypography, content = content)
     }
 }
