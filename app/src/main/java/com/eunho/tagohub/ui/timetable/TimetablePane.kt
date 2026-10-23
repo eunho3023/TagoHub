@@ -91,7 +91,7 @@ fun TimetablePane(
 
     Column(Modifier.fillMaxSize()) {
         // 화면 제목 머리띠 바로 아래로 이어지는 같은 색 띠 안에 출발·도착 (철도 예매 앱처럼)
-        Surface(color = accent, contentColor = Color.White) {
+        Surface(color = com.eunho.tagohub.ui.theme.headerColor(), contentColor = Color.White) {
             Column(Modifier.padding(bottom = 12.dp)) {
                 OdSelector(
                     dep, arr, accent, "출발", "도착",

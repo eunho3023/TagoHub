@@ -94,7 +94,7 @@ fun ScreenTitle(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Surface(color = color, contentColor = Color.White) {
+    Surface(color = com.eunho.tagohub.ui.theme.headerColor(), contentColor = Color.White) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -105,13 +105,18 @@ fun ScreenTitle(
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
             }
             Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // 머리띠는 한 가지 남색. 어느 교통수단인지는 제목 앞의 수단 색 점으로만 표시
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(color).border(2.dp, Color.White, CircleShape))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (!subtitle.isNullOrBlank()) {
                     Text(
                         subtitle,

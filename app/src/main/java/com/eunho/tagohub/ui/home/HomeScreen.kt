@@ -77,7 +77,7 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
         Column {
             Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            Row(Modifier.fillMaxWidth().height(64.dp)) {
+            Row(Modifier.fillMaxWidth().height(72.dp)) {
                 AppTab.entries.forEach { tab ->
                     val on = tab == active
                     val tint = if (on) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -86,9 +86,9 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                        Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.height(3.dp))
-                        Text(tab.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = tint)
+                        Text(tab.label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = tint)
                     }
                 }
             }
@@ -131,8 +131,8 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "어디로\n가시나요?",
-                    fontSize = 26.sp,
-                    lineHeight = 31.sp,
+                    fontSize = 30.sp,
+                    lineHeight = 36.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = (-0.5).sp,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -142,12 +142,12 @@ fun HomeScreen(
                     onClick = onSearch,
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 ) {
                     Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Outlined.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("장소 · 정류소 · 역 검색", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("장소 · 정류소 · 역 검색", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -167,16 +167,23 @@ fun HomeScreen(
 
 @Composable
 private fun ModeTile(t: Tile, dark: Boolean, modifier: Modifier = Modifier) {
+    // 흰 카드에 수단 색 원형 아이콘 + 굵은 이름 (색은 아이콘에만)
     Surface(
         onClick = t.onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = if (dark) t.dark else t.light,
-        border = if (dark) BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)) else null,
-        modifier = modifier.heightIn(min = 76.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier.heightIn(min = 92.dp),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).heightIn(min = 56.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-            Text(t.label, fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color.White)
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(46.dp).background(if (dark) t.dark else t.light, androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(t.label, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -196,10 +203,10 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
-                Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (kind == SavedKind.Home) Icons.Outlined.Home else Icons.Outlined.Work, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("${kind.label}으로", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${kind.label}으로", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -211,12 +218,12 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
 private fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val shown = remember(favs) { favs.take(4) }
-    Text("자주 가는 곳", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("자주 가는 곳", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(6.dp))
     if (shown.isEmpty()) {
         Text(
             "정류장이나 노선의 ★ 를 누르면 여기에 모여요.",
-            fontSize = 13.sp,
+            fontSize = 15.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 8.dp),
         )
@@ -238,27 +245,27 @@ private fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
         val badgeText = if (f.kind == Favorite.Kind.Route) f.name else eta?.routeNo
         val badgeColor = if (f.kind == Favorite.Kind.Route) busRouteColor(f.extra) else busRouteColor(eta?.routeType)
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onFavorite(f) }.padding(vertical = 2.dp),
+            Modifier.fillMaxWidth().heightIn(min = 68.dp).clickable { onFavorite(f) }.padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.heightIn(min = 32.dp).widthIn(min = 32.dp).background(badgeColor, RoundedCornerShape(16.dp)).padding(horizontal = 8.dp),
+                Modifier.heightIn(min = 44.dp).widthIn(min = 44.dp).background(badgeColor, RoundedCornerShape(22.dp)).padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (badgeText != null) Text(badgeText, fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1)
+                if (badgeText != null) Text(badgeText, fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1)
                 else Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             }
             Spacer(Modifier.width(10.dp))
             Text(
                 if (f.kind == Favorite.Kind.Route) (f.sub ?: "노선") else f.name,
                 Modifier.weight(1f),
-                fontSize = 14.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (eta?.text != null) {
-                Text(eta.text, fontFamily = NumberFont, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(eta.text, fontFamily = NumberFont, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
