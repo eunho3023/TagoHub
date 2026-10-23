@@ -50,6 +50,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoTime
+import com.eunho.tagohub.data.DelayNote
+import com.eunho.tagohub.data.RailFacilities
 import com.eunho.tagohub.data.RunSummary
 import com.eunho.tagohub.data.StopTime
 import com.eunho.tagohub.data.TrainTransfer
@@ -85,6 +87,7 @@ fun TimetablePane(
     val trips by c.trips.collectAsStateWithLifecycle()
     val stopsMap by c.stops.collectAsStateWithLifecycle()
     val historyMap by c.history.collectAsStateWithLifecycle()
+    val notes by c.delayNotes.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<Boolean?>(null) } // true 출발, false 도착
 
     LaunchedEffect(c) { c.ensureGrades() }
@@ -137,6 +140,7 @@ fun TimetablePane(
             onStops = if (c.supportsStops) c::toggleStops else null,
             history = historyMap,
             onHistory = if (c.supportsHistory) c::toggleHistory else null,
+            notes = notes,
             footer = if (c.supportsTransfer) ({ TransferFooter(c, accent) }) else null,
         )
     }
@@ -169,6 +173,8 @@ fun TripList(
     /** 기차: 지난 7일 운행(지연)을 펼친 열차들 */
     history: Map<String, Load<RunSummary>> = emptyMap(),
     onHistory: ((Trip) -> Unit)? = null,
+    /** 기차: 카드마다 지난주 도착 지연 요약 (열차번호 → 요약) */
+    notes: Map<String, DelayNote> = emptyMap(),
     /** 기차: 목록 아래에 붙는 환승 경로. 있으면 운행편이 하나도 없어도 목록 화면을 보여줌 */
     footer: (@Composable () -> Unit)? = null,
 ) {
@@ -188,6 +194,7 @@ fun TripList(
             itemsIndexed(trips) { i, t ->
                 Column {
                     TripRow(t, accent, past = t.dep?.isBefore(now) == true, next = i == next)
+                    t.number?.let { notes[it] }?.let { DelayLine(it) }
                     if (onStops != null) StopsSection(stops[stopsKey(t)], accent) { onStops(t) }
                     if (onHistory != null) HistorySection(history[stopsKey(t)], accent) { onHistory(t) }
                 }
@@ -305,11 +312,14 @@ private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: (
                                     .border(2.dp, accent, CircleShape),
                             )
                             Spacer(Modifier.width(12.dp))
-                            Text(s.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = if (end) FontWeight.Black else FontWeight.Normal)
+                            Column(Modifier.weight(1f)) {
+                                Text(s.name, style = MaterialTheme.typography.bodyMedium, fontWeight = if (end) FontWeight.Black else FontWeight.Normal)
+                                RailFacilities.summary(s.name)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = variant) }
+                            }
                             Text(s.time?.let(TagoTime::hm) ?: "--:--", style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = variant)
                         }
                     }
-                    Text("한국철도공사 열차시간표 기준이에요. 시각은 출발(종착역은 도착)이고, 운행 요일에 따라 다를 수 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
+                    Text("한국철도공사 열차시간표 기준이에요. 시각은 출발(종착역은 도착)이고, 운행 요일에 따라 다를 수 있어요. 편의시설은 ${RailFacilities.AS_OF} 기준이에요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
                 }
             }
         }
@@ -338,9 +348,11 @@ private fun TransferFooter(c: TimetableController, accent: Color) {
                 TextButton(onClick = c::loadTransfers) { Text("다시 시도") }
             }
             is Load.Ok -> if (s.value.isEmpty()) {
+                MinWaitChips(c)
                 MessageBox("환승 1회로 갈 수 있는 열차를 찾지 못했습니다. 2회 이상 환승이 필요하거나 그날 운행이 없을 수 있어요.")
             } else {
-                Text("환승해서 가기  ·  갈아타는 시간 ${com.eunho.tagohub.data.TrainTransfers.MIN_WAIT_MIN}분 이상, 1회 환승만", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                Text("환승해서 가기  ·  1회 환승만", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                MinWaitChips(c)
                 s.value.forEach { t -> TransferCard(t, accent, stopsMap, historyMap, c) }
             }
         }
@@ -447,4 +459,34 @@ private fun delayText(min: Int?): String = when {
     min == 0 -> "정시"
     min > 0 -> "+${min}분"
     else -> "${min}분"
+}
+
+/** 카드 아래 한 줄: 지난주(어제까지 7일) 도착 지연 요약. 5분 이상 늦었던 열차는 강조 */
+@Composable
+private fun DelayLine(n: DelayNote) {
+    val late = n.average >= 5
+    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+        Text(
+            "지난주 도착 평균 ${delayText(n.average)} · 가장 늦은 날 ${delayText(n.worst)} (${n.days}일 기록)",
+            Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (late) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 갈아타는 데 필요한 최소 시간 고르기 (5·10·15·20분) */
+@Composable
+private fun MinWaitChips(c: TimetableController) {
+    val wait by c.minWait.collectAsStateWithLifecycle()
+    androidx.compose.foundation.lazy.LazyRow(
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        item { Text("갈아타는 시간", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        itemsIndexed(listOf(5, 10, 15, 20)) { _, m ->
+            androidx.compose.material3.FilterChip(selected = wait == m, onClick = { c.setMinWait(m) }, label = { Text("${m}분 이상") })
+        }
+    }
 }

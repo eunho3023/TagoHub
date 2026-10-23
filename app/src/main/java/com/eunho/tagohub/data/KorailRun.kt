@@ -14,33 +14,58 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 한국철도공사 여객열차 운행정보 (공공데이터포털 B551457/run/v2/travelerTrainRunInfo2, 인증키는 TAGO 와 같은 키).
- * 지난 운행 실적이라 어제까지만 있다(오늘·미래는 비어 있음). 열차번호와 날짜 범위로 걸러 정차역마다 실제 도착·출발 시각을 받는다.
- * 요청: cond[run_ymd::GTE]·cond[run_ymd::LTE]·cond[trn_no::EQ] (열차번호는 5자리, 예 00001)
+ * 지난 운행 실적이라 어제까지만 있다(오늘·미래는 비어 있음). 열차번호·역·날짜 범위로 걸러 정차역마다 실제 도착·출발 시각을 받는다.
+ * 요청: cond[run_ymd::GTE]·cond[run_ymd::LTE]·cond[trn_no::EQ]·cond[stn_nm::EQ] (열차번호는 5자리, 예 00001)
  */
 object KorailRunClient {
     private const val URL = "https://apis.data.go.kr/B551457/run/v2/travelerTrainRunInfo2"
+    private const val PAGE_ROWS = 1000
+    private const val MAX_PAGES = 6
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
     private val ymd = DateTimeFormatter.BASIC_ISO_DATE
 
-    /** [from]~[to] (포함) 동안 [trainNo] 열차가 선 역별 실제 시각 */
-    suspend fun history(trainNo: String, from: LocalDate, to: LocalDate): List<RunStop> = withContext(Dispatchers.IO) {
+    private fun key(): String {
         val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
         require(raw.isNotEmpty()) { "서비스키가 없습니다. local.properties 에 TAGO_SERVICE_KEY=... 를 추가하세요." }
-        val key = if ('%' in raw) raw else URLEncoder.encode(raw, "UTF-8")
+        return if ('%' in raw) raw else URLEncoder.encode(raw, "UTF-8")
+    }
+
+    private fun fetch(page: Int, from: LocalDate, to: LocalDate, extra: Map<String, String>): RunPage {
         val url = URL.toHttpUrl().newBuilder()
-            .addEncodedQueryParameter("serviceKey", key)
-            .addQueryParameter("pageNo", "1").addQueryParameter("numOfRows", "500")
+            .addEncodedQueryParameter("serviceKey", key())
+            .addQueryParameter("pageNo", page.toString()).addQueryParameter("numOfRows", PAGE_ROWS.toString())
             .addQueryParameter("cond[run_ymd::GTE]", from.format(ymd))
             .addQueryParameter("cond[run_ymd::LTE]", to.format(ymd))
-            .addQueryParameter("cond[trn_no::EQ]", trainNo.padStart(5, '0'))
+            .apply { extra.forEach { (k, v) -> addQueryParameter(k, v) } }
             .build()
         val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
-        RunHistory.parse(body)
+        return RunHistory.parsePage(body)
+    }
+
+    /** [from]~[to] (포함) 동안 [trainNo] 열차가 선 역별 실제 시각 */
+    suspend fun history(trainNo: String, from: LocalDate, to: LocalDate): List<RunStop> = withContext(Dispatchers.IO) {
+        fetch(1, from, to, mapOf("cond[trn_no::EQ]" to trainNo.padStart(5, '0'))).rows
+    }
+
+    /** [from]~[to] 동안 [station] 역에 선 모든 열차의 실제 시각 (쪽을 나눠 받음, 한 역·일주일에 보통 2~3쪽) */
+    suspend fun arrivalsAt(station: String, from: LocalDate, to: LocalDate): List<RunStop> = withContext(Dispatchers.IO) {
+        val first = fetch(1, from, to, mapOf("cond[stn_nm::EQ]" to station))
+        val rows = first.rows.toMutableList()
+        var page = 1
+        while (rows.size < first.total && page < MAX_PAGES) {
+            page++
+            val next = fetch(page, from, to, mapOf("cond[stn_nm::EQ]" to station)).rows
+            if (next.isEmpty()) break
+            rows += next
+        }
+        rows
     }
 }
 
 /** 한 날 한 열차가 한 역에 선 실제 시각 (0시부터의 분, 없으면 null) */
-data class RunStop(val day: LocalDate, val station: String, val arrivalMin: Int?, val departureMin: Int?)
+data class RunStop(val day: LocalDate, val station: String, val arrivalMin: Int?, val departureMin: Int?, val trainNo: String = "")
+
+internal data class RunPage(val total: Int, val rows: List<RunStop>)
 
 /** 하루의 지연(분, 계획보다 늦으면 +): 출발역과 도착역 */
 data class DayDelay(val day: LocalDate, val departure: Int?, val arrival: Int?)
@@ -53,6 +78,9 @@ data class RunSummary(val days: List<DayDelay>) {
     val lateDays: Int get() = arrivals.count { it >= 5 }
 }
 
+/** 카드에 한 줄로 보여주는 지난주 도착 지연 요약: 평균·가장 늦은 날(분)·기록이 있는 날 수 */
+data class DelayNote(val average: Int, val worst: Int, val days: Int)
+
 object RunHistory {
     private fun minuteOfDay(text: String?): Int? {
         // "2026-10-22 05:14:00.0"
@@ -62,20 +90,26 @@ object RunHistory {
         return h * 60 + m
     }
 
-    fun parse(body: String): List<RunStop> {
-        val root = runCatching { MiniJson.parse(body) }.getOrNull() as? Map<*, *> ?: return emptyList()
-        val items = ((root["response"] as? Map<*, *>)?.get("body") as? Map<*, *>)?.get("items") as? Map<*, *> ?: return emptyList()
+    fun parse(body: String): List<RunStop> = parsePage(body).rows
+
+    internal fun parsePage(body: String): RunPage {
+        val root = runCatching { MiniJson.parse(body) }.getOrNull() as? Map<*, *> ?: return RunPage(0, emptyList())
+        val bodyMap = (root["response"] as? Map<*, *>)?.get("body") as? Map<*, *> ?: return RunPage(0, emptyList())
+        val total = bodyMap["totalCount"]?.toString()?.toDoubleOrNull()?.toInt() ?: 0
+        val items = bodyMap["items"] as? Map<*, *> ?: return RunPage(total, emptyList())
         val list = when (val item = items["item"]) {
             is List<*> -> item
             is Map<*, *> -> listOf(item)
             else -> emptyList<Any?>()
         }
-        return list.mapNotNull { r ->
+        val rows = list.mapNotNull { r ->
             val m = r as? Map<*, *> ?: return@mapNotNull null
             val day = (m["run_ymd"] as? String)?.let { runCatching { LocalDate.parse(it, DateTimeFormatter.BASIC_ISO_DATE) }.getOrNull() } ?: return@mapNotNull null
             val name = (m["stn_nm"] as? String)?.trim().orEmpty()
-            if (name.isEmpty()) null else RunStop(day, name, minuteOfDay(m["trn_arvl_dt"] as? String), minuteOfDay(m["trn_dptre_dt"] as? String))
+            if (name.isEmpty()) null
+            else RunStop(day, name, minuteOfDay(m["trn_arvl_dt"] as? String), minuteOfDay(m["trn_dptre_dt"] as? String), (m["trn_no"] as? String).orEmpty())
         }
+        return RunPage(total, rows)
     }
 
     /** 계획과 실제의 차(분). 자정을 걸쳐도 맞게 -12시간~+12시간 안으로 */
@@ -101,4 +135,26 @@ object RunHistory {
         }
         return RunSummary(days)
     }
+
+    /**
+     * 도착역 한 곳의 지난 일주일 기록([rows], 열차 여러 편)으로 [trips] 각 열차의 도착 지연 요약을 만든다 (열차번호 → 요약).
+     * 기록이 [MIN_DAYS] 일보다 적은 열차는 빠짐.
+     */
+    fun delayNotes(rows: List<RunStop>, trips: List<Trip>): Map<String, DelayNote> {
+        val byTrain = rows.filter { it.arrivalMin != null || it.departureMin != null }.groupBy { it.trainNo.trimStart('0') }
+        val out = HashMap<String, DelayNote>()
+        for (t in trips) {
+            val no = t.number ?: continue
+            val planArr = t.arr?.let { it.hour * 60 + it.minute } ?: continue
+            val arrKey = TrainTimetable.norm(t.arrName)
+            val delays = byTrain[no].orEmpty()
+                .filter { TrainTimetable.norm(it.station) == arrKey }
+                .groupBy { it.day }
+                .mapNotNull { (_, stops) -> stops.firstOrNull()?.let { delay(it.arrivalMin ?: it.departureMin, planArr) } }
+            if (delays.size >= MIN_DAYS) out[no] = DelayNote(Math.round(delays.average()).toInt(), delays.max(), delays.size)
+        }
+        return out
+    }
+
+    private const val MIN_DAYS = 2
 }

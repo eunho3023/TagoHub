@@ -544,31 +544,78 @@ def _spread(items: list, limit: int) -> list:
 
 
 # ── 정차역 ──
-# TAGO 에는 '열차별 정차역' 조회가 없어서, 출발역에서 각 역까지의 구간 시간표를 모아 같은 열차번호가 나오는 역을 정차역으로 봅니다.
+# 한국철도공사 열차시간표·운행기록(app/src/main/assets/train_timetable.tsv)에서 바로 찾는다 (앱과 같은 파일).
+# 한 줄 = 열차 한 편: 번호 \t 종별 \t 운행요일 \t 역@분;역@분...  (분 = 0시부터의 분, 자정을 넘으면 1440 이상)
 
-def stop_scan(dep: str, date: str) -> dict:
-    """출발역에서 모든 역까지 조회 → {열차번호: [(도착시각, 역이름), ...]}. 첫 조회는 수십 초 걸리지만 이후엔 기억함."""
-    def load():
-        stations = [s for s in train_stations() if s["id"] != dep]
-        errors = []
+_timetable = None
+MAX_GAP_MIN = 60   # 조회한 열차의 출발 시각과 시간표가 이만큼(분) 넘게 다르면 다른 열차로 봄
 
-        def one(s):
-            try:
-                return s["name"], train_trips_cached(dep, s["id"], date)
-            except ApiError as e:
-                errors.append(str(e))
-                return s["name"], []
 
-        with ThreadPoolExecutor(16) as ex:
-            results = list(ex.map(one, stations))
-        if len(errors) > max(10, len(stations) // 5):
-            raise ApiError("정차역을 찾는 중 TAGO 호출이 계속 실패했습니다: " + errors[0])
-        by_no: dict = {}
-        for name, trips in results:
-            for t in trips:
-                by_no.setdefault(t["no"], []).append((t["arr"], name))
-        return by_no
-    return cached(f"stopscan:{dep}:{date}", 1800, load)
+def tt_norm(name: str) -> str:
+    """역 이름 비교용: 괄호 안 설명·공백을 빼고, 시간표와 TAGO 의 표기가 다른 몇 곳을 맞춤"""
+    n = re.sub(r"\(.*?\)|\s+", "", name or "")
+    return {"여수엑스포": "여수EXPO", "평택지제": "지제"}.get(n, n)
+
+
+def timetable() -> dict:
+    """{열차번호: [[(역, 분), ...], ...]} — 파일이 없으면 빈 딕셔너리"""
+    global _timetable
+    if _timetable is None:
+        table: dict = {}
+        for p in (os.path.join(BUNDLE, "data", "train_timetable.tsv"), os.path.join(HOME, "..", "app", "src", "main", "assets", "train_timetable.tsv")):
+            if os.path.isfile(p):
+                with open(p, encoding="utf-8") as f:
+                    table = parse_timetable(f.read())
+                break
+        _timetable = table
+    return _timetable
+
+
+def parse_timetable(text: str) -> dict:
+    table: dict = {}
+    for line in text.splitlines():
+        f = line.split("\t")
+        if len(f) < 4 or not f[0]:
+            continue
+        stops = []
+        for x in f[3].split(";"):
+            name, _, m = x.rpartition("@")
+            if name and m.isdigit():
+                stops.append((name, int(m)))
+        if len(stops) >= 2:
+            table.setdefault(f[0], []).append(stops)
+    return table
+
+
+def stops_from_timetable(table: dict, no: str, dep_name: str, arr_name: str, dep: str):
+    """[{name, time}] (시각은 yyyymmddHHMM) 또는 못 찾으면 None. dep 은 조회한 열차의 계획 출발 시각 yyyymmddHHMM"""
+    d, a = tt_norm(dep_name), tt_norm(arr_name)
+    try:
+        start = dt.datetime.strptime(dep[:12], "%Y%m%d%H%M")
+    except ValueError:
+        return None
+    want = start.hour * 60 + start.minute
+
+    def gap(m):
+        x = abs(m % 1440 - want)
+        return min(x, 1440 - x)
+
+    best = None
+    for stops in table.get(str(int(no)) if str(no).isdigit() else str(no), []):
+        names = [tt_norm(n) for n, _ in stops]
+        if d in names and a in names and names.index(d) < names.index(a):
+            i = names.index(d)
+            if best is None or gap(stops[i][1]) < gap(best[0][i][1]):
+                best = (stops, i, names.index(a))
+    if best is None or gap(best[0][best[1]][1]) > MAX_GAP_MIN:
+        return None
+    stops, i, j = best
+    base = stops[i][1]
+    out = []
+    for k in range(i, j + 1):
+        name = dep_name if k == i else arr_name if k == j else stops[k][0]
+        out.append({"name": name, "time": (start + dt.timedelta(minutes=stops[k][1] - base)).strftime("%Y%m%d%H%M")})
+    return out
 
 
 def train_stops(dep: str, arr: str, date: str, no: str) -> dict:
@@ -577,9 +624,9 @@ def train_stops(dep: str, arr: str, date: str, no: str) -> dict:
     if not trips:
         return {"stops": [], "message": "이 열차의 시간표를 찾지 못했습니다."}
     t = trips[0]
-    scan = stop_scan(dep, date)
-    mid = sorted((a, n) for a, n in scan.get(no, []) if t["dep"] < a < t["arr"])
-    stops = [{"name": t["depName"], "time": t["dep"]}] + [{"name": n, "time": a} for a, n in mid] + [{"name": t["arrName"], "time": t["arr"]}]
+    stops = stops_from_timetable(timetable(), no, t["depName"], t["arrName"], t["dep"])
+    if stops is None:
+        return {"stops": [], "message": "이 열차의 정차역을 시간표에서 찾지 못했습니다."}
     return {"stops": stops}
 
 

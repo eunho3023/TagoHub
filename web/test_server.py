@@ -124,15 +124,46 @@ class TrainTransfer(unittest.TestCase):
 
 
 class TrainStops(unittest.TestCase):
-    def test_stops_are_the_stations_the_same_train_reaches_before_the_destination_in_time_order(self):
-        t = trip("101", "202610230800", "202610231000", dn="서울", an="부산")
-        scan = {"101": [("202610230930", "동대구"), ("202610230845", "대전"), ("202610231000", "부산"), ("202610231100", "마산")],
-                "202": [("202610230850", "수원")]}
-        with mock.patch.object(s, "train_trips_cached", return_value=[t]), mock.patch.object(s, "stop_scan", return_value=scan):
-            r = s.train_stops("D", "A", "2026-10-23", "101")
-        self.assertEqual([x["name"] for x in r["stops"]], ["서울", "대전", "동대구", "부산"])   # 부산 이후(마산)·다른 열차(수원) 제외
+    TABLE = s.parse_timetable(
+        "1\tKTX\t매일\t서울@313;광명@332;대전@374;동대구@418;부산@470\n"
+        "1\tKTX\t금토\t서울@600;대전@660;부산@760\n"
+        "9\t무궁화\t매일\t부산@1430;울산@1480;포항@1530\n"
+        "bad line\n"
+    )
 
-    def test_unknown_train_number_explains_itself(self):
+    def test_stops_between_two_stations_with_times_shifted_to_the_trips_departure(self):
+        r = s.stops_from_timetable(self.TABLE, "00001", "서울", "부산", "202610230513")
+        self.assertEqual([x["name"] for x in r], ["서울", "광명", "대전", "동대구", "부산"])
+        self.assertEqual(r[0]["time"], "202610230513")
+        self.assertEqual(r[-1]["time"], "202610230750")     # 470분 = 07:50
+
+    def test_the_variant_with_the_closest_departure_wins_and_a_far_one_is_not_the_same_train(self):
+        r = s.stops_from_timetable(self.TABLE, "1", "서울", "부산", "202610231000")
+        self.assertEqual([x["name"] for x in r], ["서울", "대전", "부산"])   # 금토 편(서울 10:00)
+        self.assertIsNone(s.stops_from_timetable(self.TABLE, "1", "서울", "부산", "202610230300"))   # 새벽 3시 출발은 다른 열차
+
+    def test_wrong_direction_unknown_train_and_midnight_crossing(self):
+        self.assertIsNone(s.stops_from_timetable(self.TABLE, "1", "부산", "서울", "202610230513"))
+        self.assertIsNone(s.stops_from_timetable(self.TABLE, "555", "서울", "부산", "202610230513"))
+        night = s.stops_from_timetable(self.TABLE, "9", "부산", "포항", "202610232350")
+        self.assertEqual(night[1]["time"], "202610240040")     # 자정을 넘어 다음 날 00:40
+        self.assertEqual(night[2]["time"], "202610240130")
+
+    def test_names_ignore_parentheses_and_known_spelling_differences(self):
+        self.assertEqual(s.tt_norm("울산(통도사)"), s.tt_norm("울산"))
+        self.assertEqual(s.tt_norm("여수엑스포"), s.tt_norm("여수EXPO"))
+        self.assertEqual(s.tt_norm("평택지제"), s.tt_norm("지제"))
+
+    def test_the_bundled_timetable_file_has_the_morning_ktx(self):
+        table = s.timetable()
+        self.assertGreater(len(table), 900)
+        r = s.stops_from_timetable(table, "1", "서울", "부산", "202610230513")
+        self.assertIn("대전", [x["name"] for x in r])
+
+    def test_train_stops_uses_the_timetable_and_explains_when_missing(self):
+        t = {"no": "1", "dep": "202610230513", "arr": "202610230750", "depName": "서울", "arrName": "부산"}
+        with mock.patch.object(s, "train_trips_cached", return_value=[t]):
+            self.assertEqual([x["name"] for x in s.train_stops("D", "A", "2026-10-23", "1")["stops"]][0], "서울")
         with mock.patch.object(s, "train_trips_cached", return_value=[]):
             r = s.train_stops("D", "A", "2026-10-23", "999")
         self.assertEqual(r["stops"], [])

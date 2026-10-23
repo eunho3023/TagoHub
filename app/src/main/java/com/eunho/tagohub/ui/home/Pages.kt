@@ -36,6 +36,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -114,6 +117,30 @@ fun MorePage(
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 MoreRow("공지사항", Icons.Outlined.Info, onNotices)
                 MoreRow("앱 제보", Icons.Outlined.Email, onReport)
+                // 앱이 비정상 종료된 적이 있으면 원인을 보고 공유할 수 있음
+                var crash by remember { mutableStateOf(com.eunho.tagohub.data.CrashLog.last()) }
+                var showCrash by remember { mutableStateOf(false) }
+                if (crash != null) MoreRow("최근 오류 보고서", Icons.Outlined.Info) { showCrash = true }
+                if (showCrash) crash?.let { text ->
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showCrash = false },
+                        title = { Text("최근 오류") },
+                        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(text, fontSize = 11.sp) } },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                context.startActivity(
+                                    android.content.Intent.createChooser(
+                                        android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "오류 보고서 공유",
+                                    ),
+                                )
+                            }) { Text("공유") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { com.eunho.tagohub.data.CrashLog.clear(); crash = null; showCrash = false }) { Text("지우고 닫기") }
+                        },
+                    )
+                }
             }
         }
         AppBottomNav(AppTab.More, onTab)

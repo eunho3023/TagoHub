@@ -284,7 +284,12 @@ class TagoRepository(private val api: TagoApi) {
     suspend fun trainTrips(dep: String, arr: String, date: LocalDate, grade: String?) = run {
         all(listOf(300, 100), 5) { p, n -> api.trainTrips(dep, arr, TagoTime.ymd(date), grade, p, n) }
             .map(Mappers::trainTrip).map { it.copy(depId = dep, arrId = arr) }.sortedBy { it.dep ?: LocalDateTime.MAX }
+            .also { TripCache.put(TripCache.key(dep, arr, date, grade), it) }   // 다음에 같은 조회를 하면 받는 동안 먼저 보여줌
     }
+
+    /** 마지막으로 받아 둔 같은 조회의 결과 (없으면 null) */
+    fun cachedTrainTrips(dep: String, arr: String, date: LocalDate, grade: String?): List<Trip>? =
+        TripCache.get(TripCache.key(dep, arr, date, grade))
 
     /** 전국 역 전체 (가나다순·지역별로 고르는 화면용) */
     suspend fun trainStationsAll() = run { trainStationList() }
@@ -296,7 +301,7 @@ class TagoRepository(private val api: TagoApi) {
     }
 
     /** 직통이 없을 때: 주요 환승역을 거치는 환승 1회 경로 (환승역마다 두 구간을 조회해 이어 붙임) */
-    suspend fun trainTransfers(dep: String, arr: String, date: LocalDate): TagoResult<List<TrainTransfer>> = run {
+    suspend fun trainTransfers(dep: String, arr: String, date: LocalDate, minWait: Int = TrainTransfers.MIN_WAIT_MIN): TagoResult<List<TrainTransfer>> = run {
         val stations = trainStationList()
         // 시간표로 "출발역 다음에 서고 도착역 앞에 서는" 역만 골라 조회 (정해 둔 29곳 × 2 → 보통 10곳 안쪽).
         // 이어지는 역이 없으면 조회 없이 바로 없음. 시간표에 출발·도착역이 없을 때만 정해 둔 환승역을 씀.
@@ -307,7 +312,7 @@ class TagoRepository(private val api: TagoApi) {
             stations.firstOrNull { TrainTimetable.norm(it.name) == TrainTimetable.norm(n) && it.id != dep && it.id != arr }
         }
         val results = coroutineScope {
-            hubs.map { h -> async { attempt { TrainTransfers.combine(trainLeg(dep, h.id, date), trainLeg(h.id, arr, date), h.name) } } }.awaitAll()
+            hubs.map { h -> async { attempt { TrainTransfers.combine(trainLeg(dep, h.id, date), trainLeg(h.id, arr, date), h.name, minWait) } } }.awaitAll()
         }
         if (results.isNotEmpty() && results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
         TrainTransfers.select(results.mapNotNull { it.getOrNull() }.flatten())
@@ -329,6 +334,17 @@ class TagoRepository(private val api: TagoApi) {
         val no = trip.number ?: error("열차번호를 알 수 없습니다.")
         val today = LocalDate.now()
         RunHistory.summarize(KorailRunClient.history(no, today.minusDays(7), today.minusDays(1)), trip)
+    }
+
+    /**
+     * 카드마다 보여줄 "지난주 도착 지연" 요약: 도착역 한 곳의 지난 7일 운행기록을 한 번에(2~3쪽) 받아 열차별로 계산.
+     * 같은 도착역·같은 날이면 기억해 둔 걸 씀. 열차번호 → 요약
+     */
+    suspend fun trainDelayNotes(trips: List<Trip>): TagoResult<Map<String, DelayNote>> = run {
+        val station = trips.firstOrNull()?.arrName ?: return@run emptyMap()
+        val today = LocalDate.now()
+        val rows = cached("arrRows:$station:$today") { KorailRunClient.arrivalsAt(station, today.minusDays(7), today.minusDays(1)) }
+        RunHistory.delayNotes(rows, trips)
     }
 
     // ───────────────────────── 항공 ─────────────────────────

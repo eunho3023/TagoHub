@@ -36,9 +36,11 @@ class TrainViewModel : ViewModel() {
         gradeLoader = { repo.trainKinds() },
         tripLoader = { d, a, date, g -> repo.trainTrips(d.id, a.id, date, g?.id) },
         browseLoader = { repo.trainStationsAll() },
-        transferLoader = { d, a, date -> repo.trainTransfers(d.id, a.id, date) },
+        transferLoader = { d, a, date, wait -> repo.trainTransfers(d.id, a.id, date, wait) },
         stopsLoader = { t, date -> repo.trainStops(t, date) },
         historyLoader = { t -> repo.trainHistory(t) },
+        cachedTrips = { d, a, date, g -> repo.cachedTrainTrips(d.id, a.id, date, g?.id) },
+        delayLoader = { trips -> repo.trainDelayNotes(trips) },
     )
 }
 
