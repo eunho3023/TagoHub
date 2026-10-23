@@ -1352,8 +1352,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     // 지역 코드: 지도 중심의 법정동 코드(카카오) → 초정밀 버스 제공 지역 (시군구 → 시도)
                     val activeRegion = region ?: run {
                         val c = lastView ?: throw IOException("지도 위치를 아직 모릅니다.")
-                        val legal = com.eunho.tagohub.data.KakaoExtra.legalCode(c.first, c.second)
-                            ?: throw IOException("지역 코드를 찾지 못했습니다 (카카오 REST 키 확인).")
+                        val (legal, why) = com.eunho.tagohub.data.KakaoExtra.legalCodeOrReason(c.first, c.second)
+                        if (legal == null) throw IOException(why ?: "지역 코드를 찾지 못했습니다.")
                         withContext(Dispatchers.IO) { repository.resolveByLegalCode(legal) }
                     }
                     if (activeRegion == null) {
