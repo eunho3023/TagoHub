@@ -5,6 +5,7 @@ import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.data.Grade
 import com.eunho.tagohub.data.Place
+import com.eunho.tagohub.data.RunSummary
 import com.eunho.tagohub.data.StopTime
 import com.eunho.tagohub.data.TrainTransfer
 import com.eunho.tagohub.data.Trip
@@ -29,9 +30,12 @@ class TimetableController(
     private val transferLoader: (suspend (dep: Place, arr: Place, date: LocalDate) -> TagoResult<List<TrainTransfer>>)? = null,
     /** 기차만: 열차별 정차역 */
     private val stopsLoader: (suspend (trip: Trip, date: LocalDate) -> TagoResult<List<StopTime>>)? = null,
+    /** 기차만: 지난 7일 실제 운행(지연) */
+    private val historyLoader: (suspend (trip: Trip) -> TagoResult<RunSummary>)? = null,
 ) {
     val supportsTransfer: Boolean get() = transferLoader != null
     val supportsStops: Boolean get() = stopsLoader != null
+    val supportsHistory: Boolean get() = historyLoader != null
     val dep = MutableStateFlow<Place?>(null)
     val arr = MutableStateFlow<Place?>(null)
     val date = MutableStateFlow(LocalDate.now())
@@ -44,6 +48,23 @@ class TimetableController(
 
     /** 정차역을 펼친 열차: 키 → 정차역 (키는 [stopsKey]) */
     val stops = MutableStateFlow<Map<String, Load<List<StopTime>>>>(emptyMap())
+
+    /** 지난 7일 운행을 펼친 열차: 키 → 요약 (키는 [stopsKey]) */
+    val history = MutableStateFlow<Map<String, Load<RunSummary>>>(emptyMap())
+
+    fun toggleHistory(t: Trip) {
+        val loader = historyLoader ?: return
+        val key = stopsKey(t)
+        if (history.value.containsKey(key)) {
+            history.value = history.value - key
+            return
+        }
+        history.value = history.value + (key to Load.Loading)
+        scope.launch {
+            val r = loader(t).toLoad()
+            if (history.value.containsKey(key)) history.value = history.value + (key to r)
+        }
+    }
 
     private var job: Job? = null
     private var transferJob: Job? = null
@@ -115,6 +136,7 @@ class TimetableController(
         transferJob?.cancel()
         transfers.value = Load.Idle
         stops.value = emptyMap()
+        history.value = emptyMap()
         if (d.id == a.id) {
             trips.value = Load.Fail("출발지와 도착지가 같습니다.")
             return

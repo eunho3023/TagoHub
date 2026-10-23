@@ -38,6 +38,7 @@ class TrainViewModel : ViewModel() {
         browseLoader = { repo.trainStationsAll() },
         transferLoader = { d, a, date -> repo.trainTransfers(d.id, a.id, date) },
         stopsLoader = { t, date -> repo.trainStops(t, date) },
+        historyLoader = { t -> repo.trainHistory(t) },
     )
 }
 

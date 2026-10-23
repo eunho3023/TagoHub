@@ -321,6 +321,16 @@ class TagoRepository(private val api: TagoApi) {
         TrainTimetable.stopsFor(trip) ?: error("이 열차의 정차역을 시간표에서 찾지 못했습니다.")
     }
 
+    /**
+     * 지난 7일(어제까지) 이 열차의 실제 운행: 날짜별 출발·도착 지연. 한국철도공사 여객열차 운행정보(호출 1번).
+     * 계획 시각은 조회한 열차 카드의 시각을 씀.
+     */
+    suspend fun trainHistory(trip: Trip): TagoResult<RunSummary> = run {
+        val no = trip.number ?: error("열차번호를 알 수 없습니다.")
+        val today = LocalDate.now()
+        RunHistory.summarize(KorailRunClient.history(no, today.minusDays(7), today.minusDays(1)), trip)
+    }
+
     // ───────────────────────── 항공 ─────────────────────────
 
     suspend fun airportPlaces(q: String) = run {
