@@ -86,9 +86,13 @@ internal fun trafficSegments(roads: List<com.eunho.tagohub.data.DriveRoad>): Lis
     return out
 }
 
+private val KNOWN_TRAFFIC = setOf(1, 2, 3, 4, 6)
+
 /** "정체 3.2km · 서행 12.1km" (없으면 null) */
 internal fun trafficSummary(roads: List<com.eunho.tagohub.data.DriveRoad>): String? {
     if (roads.isEmpty()) return null
+    // 소통 정보가 전혀 없는 경로(전부 파랑)는 "정체 없음"이 아니라 정보 없음이라고 말해 줌
+    if (roads.none { it.trafficState in KNOWN_TRAFFIC }) return "실시간 소통 정보 없음 · 파랑은 정보 없는 구간"
     val heavy = roads.filter { it.trafficState == 1 || it.trafficState == 2 || it.trafficState == 6 }.sumOf { it.distance }
     val slow = roads.filter { it.trafficState == 3 }.sumOf { it.distance }
     fun km(m: Int) = "%.1fkm".format(m / 1000.0)

@@ -25,6 +25,8 @@ import com.kakao.vectormap.label.LabelLayerOptions
 import com.kakao.vectormap.label.LabelOptions
 import com.kakao.vectormap.label.LabelStyle
 import com.kakao.vectormap.label.LabelStyles
+import com.kakao.vectormap.label.CompetitionType
+import com.kakao.vectormap.label.CompetitionUnit
 import com.kakao.vectormap.label.LabelTextBuilder
 import com.kakao.vectormap.label.TransformMethod
 import com.kakao.vectormap.route.RouteLine
@@ -161,7 +163,13 @@ class KakaoCanvas(
     private fun setup(km: KakaoMap) {
         map = km
         km.labelManager?.let { lm ->
-            LAYERS.forEach { (id, z) -> lm.addLayer(LabelLayerOptions.from(id).setZOrder(z)) }
+            LAYERS.forEach { (id, z) ->
+                val opts = LabelLayerOptions.from(id).setZOrder(z)
+                // 정류장·역·버스·열차 글자가 서로(그리고 지도의 장소 이름과) 겹치지 않게 SDK 의 겹침 처리에 맡김:
+                // 모든 층과 겹침을 따지고, 겹치면 글자를 접고 아이콘을 남김. 내 위치·핀·말풍선은 늘 보이게 따지지 않음
+                if (id in COMPETING_LAYERS) opts.setCompetitionType(CompetitionType.All).setCompetitionUnit(CompetitionUnit.IconFirst)
+                lm.addLayer(opts)
+            }
         }
         km.routeLineManager?.addLayer(ROUTE_LAYER, 10)
         km.routeLineManager?.addLayer(TRIP_LAYER, 5)
@@ -846,6 +854,7 @@ class KakaoCanvas(
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
+        private val COMPETING_LAYERS = setOf(STATION_LAYER, STOP_LAYER, ROUTE_PIN_LAYER, BUS_LAYER, KLID_BUS_LAYER, TRAIN_LAYER)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()
         private val UTIC_BLUE = 0xFF1976D2.toInt()

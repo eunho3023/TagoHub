@@ -24,13 +24,20 @@ object ModeJump {
     /** 왼쪽 메뉴 열기 (검색창의 ☰) */
     val drawer = MutableStateFlow(false)
 
-    /** 지도 POI 이름으로 종류 판별 (지하철역·버스정류장은 먼저 걸러진 뒤) */
+    private val AIRPORT = Regex("""공항(\s*(제?\d\s*)?(여객\s*)?터미널|\s*(국내선|국제선).*)?$""")
+    private val NOT_A_TERMINAL = Regex("화물|물류|택배|철도|지하철|초등|중학|고등|대학|병원|약국|주차|카페|식당")
+
+    /**
+     * 지도 POI 이름으로 종류 판별 (지하철역·버스정류장은 먼저 걸러진 뒤).
+     * 이름 "끝"이 공항·터미널·역일 때만: 예전에는 이름에 들어 있기만 해도 맞다고 해서
+     * "서울역 맛집"·"공항초등학교"·"터미널 약국" 같은 장소가 기차·항공·버스 화면으로 잘못 연결됐다.
+     */
     fun kindOf(name: String): Kind? {
-        val n = name.trim()
+        val n = name.replace(Regex("""\s*\(.*?\)\s*$"""), "").trim()   // 끝의 "(서울)" 같은 덧붙임은 뗌
         return when {
-            n.contains("공항") -> Kind.Air
-            n.contains("터미널") -> Kind.Coach
-            n.endsWith("역") || n.contains("역 ") -> Kind.Train
+            AIRPORT.containsMatchIn(n) && !NOT_A_TERMINAL.containsMatchIn(n) -> Kind.Air
+            n.endsWith("터미널") && !NOT_A_TERMINAL.containsMatchIn(n) -> Kind.Coach
+            n.endsWith("역") && !NOT_A_TERMINAL.containsMatchIn(n) -> Kind.Train
             else -> null
         }
     }

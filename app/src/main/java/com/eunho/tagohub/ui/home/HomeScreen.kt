@@ -195,15 +195,24 @@ private fun ModeTile(t: Tile, dark: Boolean, modifier: Modifier = Modifier) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier.heightIn(min = 92.dp),
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(46.dp).background(if (dark) t.dark else t.light, androidx.compose.foundation.shape.CircleShape),
+                Modifier.size(42.dp).background(if (dark) t.dark else t.light, androidx.compose.foundation.shape.CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
+                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
             }
-            Spacer(Modifier.width(12.dp))
-            Text(t.label, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(10.dp))
+            // 칸이 좁아도 글자가 겹치거나 아이콘 밑으로 줄바꿈되지 않게: 긴 이름은 작게, 한 줄
+            Text(
+                t.label,
+                fontSize = if (t.label.length >= 5) 15.sp else 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
