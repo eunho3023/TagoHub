@@ -130,3 +130,28 @@ input, select { font: inherit; color: inherit; }
 .mk.bus { background: #ffb224; }
 .mk.me { background: #1a73e8; }
 .mk.pin { background: #e53935; }
+
+/* 기차: 목록에서 고르기 · 정차역 · 환승 */
+.lnk { border: 0; background: none; padding: 2px 0; margin-left: 6px; color: var(--accent); font-weight: 700; font-size: 12px; text-decoration: underline; }
+.sheet-back { position: fixed; inset: 0; z-index: 2000; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: min(520px, 100%); max-height: 85vh; display: flex; flex-direction: column; background: var(--bg); border-radius: 18px 18px 0 0; overflow: hidden; }
+@media (min-width: 700px) { .sheet-back { align-items: center; } .sheet { border-radius: 18px; max-height: 80vh; } }
+.sh-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px; font-size: 17px; }
+.sh-x { border: 0; background: var(--field); width: 36px; height: 36px; border-radius: 18px; color: var(--ink); }
+.sh-body { overflow-y: auto; position: relative; padding-bottom: 12px; }
+.sh-idx { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 12px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.sh-idx button { border: 0; background: none; min-width: 30px; min-height: 30px; border-radius: 15px; font-weight: 700; color: var(--accent); }
+.sh-grp { padding: 8px 16px 2px; font-size: 12px; font-weight: 800; color: var(--sub); background: var(--card); }
+.sh-body details summary { padding: 12px 16px; font-weight: 800; cursor: pointer; border-bottom: 1px solid var(--line); background: var(--card); }
+.sh-body details .item { padding-left: 28px; }
+.stops { margin: 8px 0 2px; padding: 8px 4px 4px 6px; border-top: 1px dashed var(--line); }
+.stp { display: flex; align-items: center; gap: 10px; min-height: 26px; font-size: 13px; position: relative; }
+.stp i { width: 8px; height: 8px; border-radius: 4px; background: var(--bg); border: 2px solid var(--tc, var(--c-train)); flex-shrink: 0; }
+.stp.end { font-weight: 800; }
+.stp.end i { background: var(--tc, var(--c-train)); }
+.stp .grow { flex: 1; }
+.trip .leg { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.trip .xfer { margin: 6px 0 0; padding: 6px 10px; border-radius: 8px; background: var(--field); font-size: 12px; font-weight: 700; color: var(--sub); }
+.sec-title { margin: 14px 16px 2px; font-weight: 800; }
+.trip .fare { white-space: nowrap; margin-left: 8px; }
+.trip .leg .bot > span:first-child { min-width: 0; }
