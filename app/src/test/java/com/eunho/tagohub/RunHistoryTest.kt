@@ -32,8 +32,8 @@ class RunHistoryTest {
     fun parsesTheRealResponseShape() {
         val rows = RunHistory.parse(body)
         assertEquals(4, rows.size)
-        assertEquals(RunStop(LocalDate.of(2026, 10, 21), "서울", null, 5 * 60 + 14), rows[0])
-        assertEquals(RunStop(LocalDate.of(2026, 10, 21), "부산", 7 * 60 + 53, null), rows[1])
+        assertEquals(RunStop(LocalDate.of(2026, 10, 21), "서울", null, 5 * 60 + 14, "00001"), rows[0])
+        assertEquals(RunStop(LocalDate.of(2026, 10, 21), "부산", 7 * 60 + 53, null, "00001"), rows[1])
     }
 
     @Test

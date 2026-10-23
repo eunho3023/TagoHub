@@ -113,7 +113,7 @@ class SeoulBusRepository(private val api: SeoulBusApi) {
         fun create(): SeoulBusRepository {
             val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
             val key = if ('%' in raw) raw else URLEncoder.encode(raw, "UTF-8")
-            val client = OkHttpClient.Builder()
+            val client = Http.builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
                 .addInterceptor { chain ->

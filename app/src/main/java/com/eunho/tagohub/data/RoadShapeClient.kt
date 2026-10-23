@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
  * 공개 데모 서버라 대량 사용에는 맞지 않는다 → 배포 시 자체 OSRM 이나 상용 길찾기 API 로 교체.
  */
 object RoadShapeClient {
-    private val client = OkHttpClient.Builder()
+    private val client = Http.builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()

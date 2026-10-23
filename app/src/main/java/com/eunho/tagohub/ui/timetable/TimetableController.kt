@@ -5,6 +5,7 @@ import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.data.Grade
 import com.eunho.tagohub.data.Place
+import com.eunho.tagohub.data.DelayNote
 import com.eunho.tagohub.data.RunSummary
 import com.eunho.tagohub.data.StopTime
 import com.eunho.tagohub.data.TrainTransfer
@@ -27,11 +28,15 @@ class TimetableController(
     /** 기차만: 모든 역 목록 (가나다순·지역별로 고르기) */
     val browseLoader: (suspend () -> TagoResult<List<Place>>)? = null,
     /** 기차만: 환승 1회 경로 */
-    private val transferLoader: (suspend (dep: Place, arr: Place, date: LocalDate) -> TagoResult<List<TrainTransfer>>)? = null,
+    private val transferLoader: (suspend (dep: Place, arr: Place, date: LocalDate, minWait: Int) -> TagoResult<List<TrainTransfer>>)? = null,
     /** 기차만: 열차별 정차역 */
     private val stopsLoader: (suspend (trip: Trip, date: LocalDate) -> TagoResult<List<StopTime>>)? = null,
     /** 기차만: 지난 7일 실제 운행(지연) */
     private val historyLoader: (suspend (trip: Trip) -> TagoResult<RunSummary>)? = null,
+    /** 기차만: 지난 조회의 저장본 (같은 조회를 하면 받는 동안 먼저 보여줌) */
+    private val cachedTrips: ((dep: Place, arr: Place, date: LocalDate, grade: Grade?) -> List<Trip>?)? = null,
+    /** 기차만: 카드마다 지난주 도착 지연 요약 (열차번호 → 요약) */
+    private val delayLoader: (suspend (trips: List<Trip>) -> TagoResult<Map<String, DelayNote>>)? = null,
 ) {
     val supportsTransfer: Boolean get() = transferLoader != null
     val supportsStops: Boolean get() = stopsLoader != null
@@ -42,6 +47,27 @@ class TimetableController(
     val grades = MutableStateFlow<Load<List<Grade>>>(Load.Idle)
     val grade = MutableStateFlow<Grade?>(null)
     val trips = MutableStateFlow<Load<List<Trip>>>(Load.Idle)
+
+    /** 카드에 보여줄 지난주 도착 지연 요약 (열차번호 → 요약) */
+    val delayNotes = MutableStateFlow<Map<String, DelayNote>>(emptyMap())
+
+    /** 환승할 때 갈아타는 데 필요한 최소 시간(분) */
+    val minWait = MutableStateFlow(com.eunho.tagohub.data.TrainTransfers.MIN_WAIT_MIN)
+
+    fun setMinWait(minutes: Int) {
+        if (minWait.value == minutes) return
+        minWait.value = minutes
+        if (transfers.value !is Load.Idle) loadTransfers()
+    }
+
+    private var delayJob: Job? = null
+
+    private fun loadDelayNotes(list: List<Trip>) {
+        val loader = delayLoader ?: return
+        if (list.isEmpty()) return
+        delayJob?.cancel()
+        delayJob = scope.launch { (loader(list) as? TagoResult.Success)?.let { delayNotes.value = it.data } }
+    }
 
     /** 환승 경로 (직통이 없으면 자동으로, 있으면 버튼을 눌렀을 때) */
     val transfers = MutableStateFlow<Load<List<TrainTransfer>>>(Load.Idle)
@@ -92,7 +118,7 @@ class TimetableController(
         transferJob?.cancel()
         transferJob = scope.launch {
             transfers.value = Load.Loading
-            transfers.value = loader(d, a, date.value).toLoad()
+            transfers.value = loader(d, a, date.value, minWait.value).toLoad()
         }
     }
 
@@ -141,10 +167,15 @@ class TimetableController(
             trips.value = Load.Fail("출발지와 도착지가 같습니다.")
             return
         }
+        delayJob?.cancel()
+        delayNotes.value = emptyMap()
         job = scope.launch {
-            trips.value = Load.Loading
+            // 지난번에 받아 둔 같은 조회가 있으면 새로 받는 동안 먼저 보여줌 (못 받아도 그대로 둠)
+            val saved = cachedTrips?.invoke(d, a, date.value, grade.value)
+            trips.value = if (saved != null) Load.Ok(saved) else Load.Loading
             val r = tripLoader(d, a, date.value, grade.value).toLoad()
-            trips.value = r
+            if (r is Load.Ok || saved == null) trips.value = r
+            (r as? Load.Ok)?.value?.let(::loadDelayNotes)
             // 직통이 하나도 없으면 환승 경로를 바로 찾아 줌
             if (r is Load.Ok && r.value.isEmpty() && grade.value == null) loadTransfers()
         }

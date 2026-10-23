@@ -149,7 +149,7 @@ class ExRepository(
         const val MAX_PAGES = 60
         const val BASE = "https://data.ex.co.kr"
         const val UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36"
-        val httpClient: OkHttpClient = OkHttpClient.Builder()
+        val httpClient: OkHttpClient = Http.builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
             .build()

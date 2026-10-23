@@ -193,7 +193,7 @@ class KricSubwayRepository(
         fun create(): KricSubwayRepository {
             val rawKey = BuildConfig.KRIC_SUBWAY_KEY.trim()
             val encodedKey = if ('%' in rawKey) rawKey else URLEncoder.encode(rawKey, "UTF-8")
-            val client = OkHttpClient.Builder()
+            val client = Http.builder()
                 .protocols(listOf(Protocol.HTTP_1_1))
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)

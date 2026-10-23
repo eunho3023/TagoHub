@@ -76,7 +76,7 @@ class SeoulSubwayRepository(private val api: SeoulSubwayApi) {
 
     companion object {
         fun create(): SeoulSubwayRepository {
-            val client = OkHttpClient.Builder()
+            val client = Http.builder()
                 .protocols(listOf(Protocol.HTTP_1_1))
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)

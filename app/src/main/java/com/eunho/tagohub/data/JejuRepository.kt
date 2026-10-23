@@ -195,7 +195,7 @@ class JejuRepository(
                 if (host != null) ext.checkServerTrusted(chain, authType, host) else system.checkServerTrusted(chain, authType)
             })
             val ssl = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
-            val client = OkHttpClient.Builder()
+            val client = Http.builder()
                 .sslSocketFactory(ssl.socketFactory, trust)
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(25, TimeUnit.SECONDS)

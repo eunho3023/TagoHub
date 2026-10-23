@@ -62,6 +62,7 @@ import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.NumberFont
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** 아래 탭: 홈(지도)·버스·지하철·기차·더보기 */
 enum class AppTab(val label: String, val icon: ImageVector) {
@@ -223,14 +224,24 @@ private fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
         return
     }
     val etas by produceState(emptyMap<String, Eta>(), shown) {
+        val stops = shown.filter { it.kind == Favorite.Kind.Stop }
         while (true) {
-            value = shown.filter { it.kind == Favorite.Kind.Stop }.associate { f ->
-                f.id to when (val r = runCatching { arrivalsFor(Graph.repo, f.toStop()) }.getOrNull()) {
-                    is TagoResult.Success -> HomeText.firstArrival(r.data)
-                    else -> Eta(null, null, null)
+            // 앱이 내려가 있으면 기다림. 즐겨찾기마다 동시에 받고(공공 API 동시 요청은 앱이 4개로 제한), 오는 대로 화면에 채움.
+            // 전에는 하나씩 차례로 받아서 즐겨찾기가 늘수록 오래 걸리고, 다 받은 뒤에야 한꺼번에 보였음
+            com.eunho.tagohub.core.AppState.awaitForeground()
+            val got = LinkedHashMap<String, Eta>(value)
+            kotlinx.coroutines.coroutineScope {
+                stops.forEach { f ->
+                    launch {
+                        got[f.id] = when (val r = runCatching { arrivalsFor(Graph.repo, f.toStop()) }.getOrNull()) {
+                            is TagoResult.Success -> HomeText.firstArrival(r.data)
+                            else -> got[f.id] ?: Eta(null, null, null)   // 이번에 못 받으면 지난 값을 그대로 둠
+                        }
+                        value = LinkedHashMap(got)
+                    }
                 }
             }
-            delay(30_000L)
+            delay(45_000L)
         }
     }
     shown.forEach { f ->

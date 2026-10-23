@@ -1,0 +1,54 @@
+# 열차 시간표 파일(app/src/main/assets/train_timetable.tsv)을 매주 한국철도공사 운행기록으로 다시 만들어 바뀌었으면 PR 로 올린다.
+# PC 가 꺼져 있어도 되도록 GitHub 기본 서버에서 돈다. 머지는 직접 해야 하고, 머지한 뒤 앱을 다시 설치해야 반영된다.
+#
+# 먼저 해 둘 것 (처음 한 번):
+#  1) 저장소 Settings → Secrets and variables → Actions 에 TAGO_SERVICE_KEY 가 있어야 함 (다른 워크플로가 이미 씀)
+#  2) 저장소 Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" 켜기
+name: 열차 시간표 갱신
+
+on:
+  schedule:
+    - cron: "0 18 * * 0"   # 매주 월요일 03:00 (한국 시간) = 일요일 18:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 만드는 프로그램 시험 (인터넷 없이)
+        run: python pipeline/test_train_timetable.py
+
+      - name: 운행기록으로 시간표 만들기
+        env:
+          TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
+        run: python pipeline/build_train_timetable.py
+
+      - name: 바뀌었으면 PR 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- app/src/main/assets/train_timetable.tsv; then
+            echo "시간표가 그대로입니다."
+            exit 0
+          fi
+          branch="auto/train-timetable-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add app/src/main/assets/train_timetable.tsv
+          git commit -m "열차 시간표 갱신 (자동): 최근 운행기록 기준"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "열차 시간표 갱신 (자동)" \
+            --body "한국철도공사 여객열차 운행정보의 최근 평일·토·일 운행기록으로 \`train_timetable.tsv\` 를 다시 만들었습니다. 머지한 뒤 앱을 다시 설치하면 반영됩니다. (\`pipeline/build_train_timetable.py\`)"

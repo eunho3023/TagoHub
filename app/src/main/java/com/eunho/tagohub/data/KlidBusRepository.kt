@@ -107,7 +107,7 @@ class KlidBusRepository(
         const val BASE_URL = "https://apis.data.go.kr/B551982/rte/"
         // 한 번에 받는 개수: 1000 은 허용 범위를 넘을 수 있어 100 씩 (여러 쪽으로 나눠 받음)
         const val PAGE_SIZE = 100
-        val httpClient: OkHttpClient = OkHttpClient.Builder()
+        val httpClient: OkHttpClient = Http.builder()
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)

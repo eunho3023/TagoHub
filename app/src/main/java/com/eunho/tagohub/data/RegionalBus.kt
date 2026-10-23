@@ -213,7 +213,7 @@ class RegionalBusRepository(
     }
 
     private companion object {
-        val httpClient: OkHttpClient = OkHttpClient.Builder()
+        val httpClient: OkHttpClient = Http.builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .build()

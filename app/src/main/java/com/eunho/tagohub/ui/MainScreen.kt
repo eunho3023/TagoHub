@@ -67,6 +67,8 @@ fun MainScreen() {
     val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
     var mapStarted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(dest, guiding) { if (dest == Dest.Map || dest == Dest.Road || guiding) mapStarted = true }
+    // 지도가 맨 앞에 보일 때만 도착정보·버스 위치를 주기적으로 받음 (홈이 덮고 있거나 앱을 내려놓으면 멈춤)
+    LaunchedEffect(dest) { com.eunho.tagohub.core.AppState.mapVisible.value = dest == Dest.Map }
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
 
     /** 다른 화면을 열 때 어디로 돌아올지 기억 (지도에서 열었으면 지도) */

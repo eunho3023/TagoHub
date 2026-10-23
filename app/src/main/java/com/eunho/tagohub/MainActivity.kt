@@ -11,6 +11,16 @@ import com.eunho.tagohub.ui.theme.TagoTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun onStart() {
+        super.onStart()
+        com.eunho.tagohub.core.AppState.foreground.value = true
+    }
+
+    override fun onStop() {
+        com.eunho.tagohub.core.AppState.foreground.value = false
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         // 방향 고정이 남아 있으면 풀어서 폰을 돌리는 대로 따라가게
@@ -27,6 +37,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 앱이 비정상 종료되면 원인을 저장해 둠 (더보기 → 최근 오류)
+        com.eunho.tagohub.data.CrashLog.install(applicationContext)
         enableEdgeToEdge()
         // 전국 정류장 DB 를 화면 그리기와 동시에 준비 (첫 실행 때만 복사, 이후엔 바로 열림)
         // 카카오맵 SDK 초기화 (지도 시작 전에 한 번)
@@ -37,14 +49,12 @@ class MainActivity : ComponentActivity() {
         }
         com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
         com.eunho.tagohub.data.TrainTimetable.init(applicationContext)
+        com.eunho.tagohub.data.RailFacilities.init(applicationContext)
+        com.eunho.tagohub.data.TripCache.init(filesDir)
         lifecycleScope.launch {
             StopDb.get(applicationContext)
             // 정류장·노선 데이터 자동 업데이트 (데이터 저장소, 하루 한 번·와이파이에서만)
             com.eunho.tagohub.data.DataUpdater.check(applicationContext)
-        }
-        // 예전 브이월드(OSMDroid) 지도 조각 저장소 정리 (최대 400MB, 이제 안 씀)
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            java.io.File(filesDir, "osmdroid").takeIf { it.exists() }?.deleteRecursively()
         }
         // 잘 안 바뀌는 정보(노선 모양·정류장 순서·노선 정보 등)를 저장해 두는 곳
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())

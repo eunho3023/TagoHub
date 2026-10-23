@@ -30,7 +30,7 @@ python web/server.py --host 0.0.0.0  # 같은 Wi-Fi 의 폰에서도 http://PC�
 - 되는 것: 장소·정류장·역 검색, 내 주변 정류장, 정류장 실시간 도착(국토교통부 서비스 지역), 노선 타임라인과 버스 위치,
   지하철 실시간 도착(서울·수도권), 기차·항공 시간표, 대중교통·자동차 길찾기 미리보기(경로 옵션 포함), 즐겨찾기, 라이트·다크·시스템 모드
 - 기차 탭: 역을 **가나다순 / 지역별**로 골라 볼 수 있고, 직통이 없으면 **환승 1회** 경로를 찾아 줍니다. 열차마다 **정차역**을 펼쳐 볼 수 있습니다.
-  - 국토교통부에는 열차별 정차역 조회가 없어서, 출발역에서 각 역까지의 구간 시간표를 모아 같은 열차가 나오는 역을 정차역으로 봅니다. 그래서 처음 한 번은 1분쯤 걸리고(그날·그 출발역 기준으로 기억함), 조회를 수백 번 하므로 TAGO 하루 호출 한도를 꽤 씁니다. 실제 정차와 다를 수 있습니다.
+  - 정차역은 앱과 같은 한국철도공사 시간표 파일(`app/src/main/assets/train_timetable.tsv`)에서 바로 찾습니다(인터넷·TAGO 호출 없음). 시간표에 없는 열차는 "찾지 못했습니다"가 나옵니다.
   - 환승은 서울·대전·동대구·익산 등 주요 환승역 약 30곳을 거치는 경우만 찾고, 갈아타는 시간은 10분 이상으로 잡습니다.
 - 아직 없는 것: 고속·시외버스, 서울·경기·부산 등 지역 전용 버스 API, 지하철 시간표·출구, 집/회사
 - 일부러 뺀 것(폰에서만 의미 있음): GPS 경로 안내, 하차·막차·출근 알림, 홈 화면 위젯, 음성 안내
@@ -43,7 +43,7 @@ python web/server.py --host 0.0.0.0  # 같은 Wi-Fi 의 폰에서도 http://PC�
 ```bash
 pip install pyinstaller
 pyinstaller --noconfirm --onefile --name TagoHubWeb \
-  --add-data "web/static;static" --add-data "app/src/main/assets/subway_stations.tsv;data" web/server.py
+  --add-data "web/static;static" --add-data "app/src/main/assets/subway_stations.tsv;data" --add-data "app/src/main/assets/train_timetable.tsv;data" web/server.py
 ```
 `dist/TagoHubWeb.exe` 가 생깁니다. 키(`local.properties`)는 exe에 넣지 않습니다 — 넣으면 exe를 받은 사람이 꺼낼 수 있습니다.
 
