@@ -74,6 +74,14 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
+        // 내 폰에서 실제 속도로 써 볼 때: release 와 같은 최적화(코드 줄이기·난독화·기준 프로파일)에 디버그 키로 서명.
+        // 스토어에 올리는 용도가 아님(올리려면 위 release 를 키스토어로 서명). 디버그 빌드 위에 그대로 덮어 설치됨.
+        create("fast") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+            isDebuggable = false
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -15,20 +15,38 @@ object TrainStationGeo {
     /** [served] 가 false 면 어느 열차도 서지 않는 역 */
     data class Station(val id: String, val name: String, val city: String, val point: Point?, val served: Boolean)
 
-    @Volatile private var all: List<Station> = emptyList()
-    @Volatile private var points: Map<String, Point> = emptyMap()
-    @Volatile private var unserved: Set<String> = emptySet()
+    private var all: List<Station> = emptyList()
+    private var points: Map<String, Point> = emptyMap()
+    private var unserved: Set<String> = emptySet()
+    private var appContext: Context? = null
+    @Volatile private var loaded = false
 
+    /** 앱 시작 때는 컨텍스트만 기억하고, 파일은 처음 쓸 때 읽음 (앱 여는 시간을 늘리지 않으려고) */
     fun init(context: Context) {
-        if (all.isNotEmpty()) return
-        val text = runCatching { context.assets.open("train_stations.tsv").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrDefault("")
-        set(parse(text))
+        if (appContext == null) appContext = context.applicationContext
     }
 
-    internal fun set(list: List<Station>) {
+    private fun ensure() {
+        if (loaded) return
+        synchronized(this) {
+            if (loaded) return
+            val text = appContext?.let { c -> runCatching { c.assets.open("train_stations.tsv").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull() }
+            if (text != null) apply(parse(text))
+            loaded = true
+        }
+    }
+
+    private fun apply(list: List<Station>) {
         all = list
         points = list.mapNotNull { s -> s.point?.let { s.id to it } }.toMap()
         unserved = list.filter { !it.served }.map { it.id }.toSet()
+    }
+
+    internal fun set(list: List<Station>) {
+        synchronized(this) {
+            apply(list)
+            loaded = true
+        }
     }
 
     /** "ID \t 이름 \t 시·도 \t 위도 \t 경도 \t 운행(1/0)" 줄들 */
@@ -41,15 +59,14 @@ object TrainStationGeo {
     }.toList()
 
     /** 파일에 있는 역 (운행하지 않는 역은 뺌), 이름순. 파일이 없으면 빈 목록 */
-    fun places(): List<Place> =
-        all.filter { it.served }.map { Place(it.id, it.name, it.city.ifBlank { null }) }.sortedBy { it.name }
+    fun places(): List<Place> = run { ensure(); all }.filter { it.served }.map { Place(it.id, it.name, it.city.ifBlank { null }) }.sortedBy { it.name }
 
-    fun isUnserved(id: String) = id in unserved
+    fun isUnserved(id: String): Boolean { ensure(); return id in unserved }
 
-    fun pointOf(id: String): Point? = points[id]
+    fun pointOf(id: String): Point? { ensure(); return points[id] }
 
     /** 내 위치에서 가까운 역 [n] 개 (위치를 아는 역만, 운행하지 않는 역 제외) — (역, 거리 m) */
     fun nearest(places: List<Place>, lat: Double, lng: Double, n: Int = 2): List<Pair<Place, Double>> =
-        places.mapNotNull { p -> if (isUnserved(p.id)) null else points[p.id]?.let { p to Geo.meters(lat, lng, it.lat, it.lng) } }
+        places.mapNotNull { p -> if (isUnserved(p.id)) null else pointOf(p.id)?.let { p to Geo.meters(lat, lng, it.lat, it.lng) } }
             .sortedBy { it.second }.take(n)
 }

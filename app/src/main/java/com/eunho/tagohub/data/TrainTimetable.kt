@@ -20,21 +20,39 @@ object TrainTimetable {
     /** 시간표와 조회한 열차의 출발 시각 차이가 이만큼(분) 넘으면 같은 열차로 보지 않음 */
     private const val MAX_GAP_MIN = 60
 
-    @Volatile private var byNo: Map<String, List<Train>> = emptyMap()
-    @Volatile private var trains: List<Train> = emptyList()
+    private var byNo: Map<String, List<Train>> = emptyMap()
+    private var trains: List<Train> = emptyList()
+    private var appContext: Context? = null
+    @Volatile private var loaded = false
 
+    /** 앱 시작 때는 컨텍스트만 기억하고, 시간표는 처음 쓸 때 읽음 (앱 여는 시간을 늘리지 않으려고) */
     fun init(context: Context) {
-        if (trains.isNotEmpty()) return
-        val text = runCatching { context.assets.open("train_timetable.tsv").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrDefault("")
-        set(parse(text))
+        if (appContext == null) appContext = context.applicationContext
     }
 
-    internal fun set(list: List<Train>) {
+    private fun ensure() {
+        if (loaded) return
+        synchronized(this) {
+            if (loaded) return
+            val text = appContext?.let { c -> runCatching { c.assets.open("train_timetable.tsv").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull() }
+            if (text != null) apply(parse(text))
+            loaded = true
+        }
+    }
+
+    private fun apply(list: List<Train>) {
         trains = list
         byNo = list.groupBy { it.no }
     }
 
-    val isLoaded: Boolean get() = trains.isNotEmpty()
+    internal fun set(list: List<Train>) {
+        synchronized(this) {
+            apply(list)
+            loaded = true
+        }
+    }
+
+    val isLoaded: Boolean get() { ensure(); return trains.isNotEmpty() }
 
     /** 역 이름 비교용: 괄호 안 설명과 공백을 뺌 ("울산(통도사)" = "울산") */
     fun norm(name: String): String = name.replace(Regex("\\(.*?\\)"), "").replace(Regex("\\s+"), "").let {
@@ -62,6 +80,7 @@ object TrainTimetable {
      * 같은 번호가 요일마다 따로 있을 수 있어서 출발역 시각이 같은 것을 우선 고른다.
      */
     fun stopsFor(trip: Trip): List<StopTime>? {
+        ensure()
         val number = trip.number ?: return null
         val dep = trip.dep ?: return null
         val depKey = norm(trip.depName)
@@ -84,7 +103,7 @@ object TrainTimetable {
     }
 
     /** 시간표에 이 역이 나오는지 */
-    fun knows(name: String): Boolean = norm(name).let { key -> trains.any { key in it.keys } }
+    fun knows(name: String): Boolean = run { ensure(); norm(name) }.let { key -> trains.any { key in it.keys } }
 
     /**
      * [dep]→[arr] 을 한 번 갈아타서 갈 수 있는 역(환승역) 후보, 많이 이어지는 순으로 [limit] 곳.
