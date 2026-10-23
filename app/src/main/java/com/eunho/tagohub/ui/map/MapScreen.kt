@@ -308,6 +308,9 @@ fun MapScreen(
     BackHandler(enabled = pickedOpen != null) { vm.closePick() }
     // 경로 안내 중에는 검색창·하단 패널을 숨기고 안내 화면만 보여줌
     val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
+    val freeDriving by com.eunho.tagohub.guidance.FreeDriveSession.active.collectAsStateWithLifecycle()
+    // 경로 안내든 자유주행이든 달리는 중이면 검색창·하단 패널은 숨김
+    val driving = guiding || freeDriving
 
     // 패널 높이(화면 대비 비율). 패널 종류가 바뀌면 기본 높이로
     val sheetFrac = remember { mutableFloatStateOf(0.45f) }
@@ -326,7 +329,7 @@ fun MapScreen(
         key(osm) { AndroidView(factory = { osm.view }, modifier = Modifier.fillMaxSize()) }
 
         // ── 상단 안내 ──
-        if (!guiding) Column(
+        if (!driving) Column(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -359,8 +362,8 @@ fun MapScreen(
         // ── 오른쪽 버튼 ── (안내 중에는 아래쪽으로 내려 파란 배너·소통 막대를 가리지 않게)
         Column(
             Modifier
-                .align(if (guiding) Alignment.BottomEnd else Alignment.TopEnd)
-                .then(if (guiding) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 96.dp, end = 30.dp) else Modifier.padding(top = 12.dp, end = 12.dp)),
+                .align(if (driving) Alignment.BottomEnd else Alignment.TopEnd)
+                .then(if (driving) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 96.dp, end = 30.dp) else Modifier.padding(top = 12.dp, end = 12.dp)),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (mapFailed) {
@@ -369,7 +372,7 @@ fun MapScreen(
                 }
             }
             SmallFloatingActionButton(onClick = {
-                if (guiding && vm.recenterGuidance()) Unit
+                if (driving && vm.recenterGuidance()) Unit
                 else if (hasLocationPermission(context)) locate()
                 else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             }) { Icon(Icons.Filled.MyLocation, contentDescription = "내 위치") }
@@ -385,10 +388,11 @@ fun MapScreen(
 
         // ── 경로 안내 중 화면 (배너·소통 막대·도착 시각 바) ──
         DriveGuidanceOverlay(vm)
+        FreeDriveOverlay(vm)
 
         // ── 하단 패널 ── (imePadding: 키보드가 올라오면 패널도 키보드 위로, 내려가면 다시 아래로)
         val pickedPlace by vm.picked.collectAsStateWithLifecycle()
-        if (!guiding) Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
+        if (!driving) Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
             pickedPlace?.let { PickCard(vm, it) }
             when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
@@ -480,13 +484,9 @@ private fun MapLayerSheet(
     val layers = listOf(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
         MapLayerOption(listOf("utic_incidents", "its_events", "its_dangerous_cars"), "돌발·사고", Icons.Filled.Warning),
-        MapLayerOption(listOf("utic_road_risk", "its_safe_driving", "its_disasters"), "위험·재난", Icons.Filled.Report),
-        MapLayerOption(listOf("utic_safety"), "교통안전", Icons.Filled.Shield),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
-        MapLayerOption(listOf("its_vms", "its_vsl", "ex_vms"), "전광판", Icons.Filled.Campaign),
         MapLayerOption(listOf("ex_rest"), "휴게소", Icons.Filled.Place),
         MapLayerOption(listOf("ex_toll", "ex_ic"), "영업소·IC", Icons.Filled.Directions),
-        MapLayerOption(listOf("its_ice_sections"), "결빙구간", Icons.Filled.AcUnit),
         MapLayerOption(listOf("bicycle_road"), "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),
         MapLayerOption(listOf("hill_shading"), "지형도", Icons.Filled.Terrain),
     )

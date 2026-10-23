@@ -32,6 +32,8 @@ import com.eunho.tagohub.ui.coach.CoachScreen
 import com.eunho.tagohub.ui.home.AppTab
 import com.eunho.tagohub.ui.home.HomeScreen
 import com.eunho.tagohub.ui.home.BusTab
+import com.eunho.tagohub.ui.home.TransitMode
+import com.eunho.tagohub.ui.home.TransitScreen
 import com.eunho.tagohub.ui.home.MorePage
 import com.eunho.tagohub.ui.home.SearchActions
 import com.eunho.tagohub.ui.home.SubwayTab
@@ -45,14 +47,17 @@ import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.timetable.AirScreen
 import com.eunho.tagohub.ui.timetable.TrainScreen
 
-/** 앱의 큰 화면들: 첫 화면(홈), 지도, 버스·지하철·기차·내비게이션 탭, 고속시외·항공·도로교통, 더보기 */
-enum class Dest { Home, Map, Bus, Subway, Train, Navi, Coach, Air, Road, More }
+/** 앱의 큰 화면들: 홈, 대중교통(버스·지하철·기차·고속시외·항공), 지도, 내비게이션, 도로교통, 설정 */
+enum class Dest { Home, Map, Transit, Navi, Road, Settings }
 
-private fun ModeJump.Kind.dest(): Dest = when (this) {
-    ModeJump.Kind.Train -> Dest.Train
-    ModeJump.Kind.Coach -> Dest.Coach
-    ModeJump.Kind.Air -> Dest.Air
-    ModeJump.Kind.Road -> Dest.Road
+/** 지도 등에서 기차·고속시외·항공·도로교통을 열라는 요청이 오면 어느 화면(과 대중교통 갈래)인지 */
+private fun ModeJump.Kind.dest(): Dest = if (this == ModeJump.Kind.Road) Dest.Road else Dest.Transit
+
+private fun ModeJump.Kind.transitMode(): TransitMode? = when (this) {
+    ModeJump.Kind.Train -> TransitMode.Train
+    ModeJump.Kind.Coach -> TransitMode.Coach
+    ModeJump.Kind.Air -> TransitMode.Air
+    ModeJump.Kind.Road -> null
 }
 
 /**
@@ -64,6 +69,7 @@ fun MainScreen() {
     var dest by rememberSaveable { mutableStateOf(Dest.Home) }
     var returnTo by rememberSaveable { mutableStateOf(Dest.Home) }
     var mapMode by rememberSaveable { mutableStateOf(MapMode.Transit) }
+    var transitMode by rememberSaveable { mutableStateOf(TransitMode.Bus) }
     var showNotices by rememberSaveable { mutableStateOf(false) }
     var showReport by rememberSaveable { mutableStateOf(false) }
     var askExit by rememberSaveable { mutableStateOf(false) }
@@ -71,6 +77,7 @@ fun MainScreen() {
     // 지도 화면(카카오맵 시작·타일·GPS)은 처음 지도를 열 때 만들고, 그 뒤로는 계속 유지(상태·위치 보존).
     // 홈이 첫 화면인데 뒤에서 미리 띄우면 앱 여는 시간이 길어짐. 안내 중이면 바로 만듦.
     val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
+    val freeDriving by com.eunho.tagohub.guidance.FreeDriveSession.active.collectAsStateWithLifecycle()
     var mapStarted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(dest, guiding) { if (dest == Dest.Map || dest == Dest.Road || guiding) mapStarted = true }
     // 지도가 맨 앞에 보일 때만 도착정보·버스 위치를 주기적으로 받음 (홈이 덮고 있거나 앱을 내려놓으면 멈춤)
@@ -82,16 +89,23 @@ fun MainScreen() {
         if (dest == Dest.Map || dest == Dest.Home) returnTo = dest
         dest = next
     }
+    fun openKind(k: ModeJump.Kind) {
+        k.transitMode()?.let { transitMode = it }
+        open(k.dest())
+    }
+    fun openTransit(mode: TransitMode) {
+        transitMode = mode
+        open(Dest.Transit)
+    }
     fun openMap(mode: MapMode) { mapMode = mode; dest = Dest.Map }
     fun onTab(tab: AppTab) {
         if (tab != AppTab.Home) returnTo = Dest.Home
         dest = when (tab) {
             AppTab.Home -> Dest.Home
-            AppTab.Bus -> Dest.Bus
-            AppTab.Subway -> Dest.Subway
-            AppTab.Train -> Dest.Train
+            AppTab.Transit -> Dest.Transit
+            AppTab.Map -> { mapMode = MapMode.Transit; Dest.Map }
             AppTab.Navi -> Dest.Navi
-            AppTab.More -> Dest.More
+            AppTab.Settings -> Dest.Settings
         }
     }
     // 검색 결과를 누르면 그때 지도를 열어 그곳을 보여 줌 (검색 자체는 홈·버스·지하철 탭 안에서)
@@ -107,16 +121,16 @@ fun MainScreen() {
         ModeJump.drawer.collect {
             if (it) {
                 ModeJump.drawer.value = false
-                open(Dest.More)
+                open(Dest.Settings)
             }
         }
     }
     LaunchedEffect(Unit) {
         // 출발/도착 요청은 그 화면이 받아서 채운 뒤 지움 — 여기서는 화면만 엶
-        ModeJump.request.collect { j -> j?.let { open(it.kind.dest()) } }
+        ModeJump.request.collect { j -> j?.let { openKind(it.kind) } }
     }
     LaunchedEffect(Unit) {
-        ModeJump.open.collect { k -> if (k != null) { open(k.dest()); ModeJump.open.value = null } }
+        ModeJump.open.collect { k -> if (k != null) { openKind(k); ModeJump.open.value = null } }
     }
 
     // 뒤로 가기: 지도 위 창은 지도 화면이 먼저 닫고(안쪽 핸들러가 우선), 그 뒤 지도→홈, 다른 화면→온 곳, 홈→종료 확인
@@ -134,7 +148,13 @@ fun MainScreen() {
     }
 
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
-        if (mapStarted) MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
+        // 지도 탭: 지도 아래에 하단 탭 (달리는 중에는 숨김)
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                if (mapStarted) MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
+            }
+            if (dest == Dest.Map && !guiding && !freeDriving) com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Map, ::onTab)
+        }
         if (dest != Dest.Map) {
             // 지도 위를 덮는 화면: 뒤의 지도가 터치를 받지 않게 막음
             Box(
@@ -151,7 +171,8 @@ fun MainScreen() {
                                 search = searchActions,
                                 onOpenMap = ::openMap,
                                 onOpenTab = ::onTab,
-                                onOpenPage = { k -> open(k.dest()) },
+                                onOpenTransit = ::openTransit,
+                                onOpenPage = ::openKind,
                                 onGoTo = { place ->
                                     openMap(MapMode.Transit)
                                     mapVm.openPlanner()
@@ -162,24 +183,27 @@ fun MainScreen() {
                         }
                         com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Home, ::onTab)
                     }
-                    Dest.Bus -> TabScaffold("버스", ModeColor.Bus, AppTab.Bus, ::onTab) {
-                        BusTab(mapVm, searchActions, onFavorite = { f -> openMap(MapMode.Bus); mapVm.openFavorite(f) }, onShowMap = { openMap(MapMode.Bus) })
-                    }
-                    Dest.Subway -> TabScaffold("지하철", ModeColor.Subway, AppTab.Subway, ::onTab) {
-                        SubwayTab(mapVm, searchActions, onShowMap = { openMap(MapMode.Subway) })
+                    Dest.Transit -> TabScaffold("대중교통", com.eunho.tagohub.ui.theme.headerColor(), AppTab.Transit, ::onTab) {
+                        TransitScreen(
+                            mode = transitMode,
+                            onMode = { transitMode = it },
+                            bus = { BusTab(mapVm, searchActions, onFavorite = { f -> openMap(MapMode.Bus); mapVm.openFavorite(f) }, onShowMap = { openMap(MapMode.Bus) }) },
+                            subway = { SubwayTab(mapVm, searchActions, onShowMap = { openMap(MapMode.Subway) }) },
+                            train = { TrainScreen() },
+                            coach = { CoachScreen() },
+                            air = { AirScreen() },
+                        )
                     }
                     Dest.Navi -> TabScaffold("내비게이션", androidx.compose.ui.graphics.Color(0xFF294653), AppTab.Navi, ::onTab) {
                         NavigationScreen(
                             onPlanRoute = { openMap(MapMode.Transit); mapVm.openPlanner() },
                             onShowMap = { openMap(MapMode.Transit) },
+                            onRoadInfo = { openKind(ModeJump.Kind.Road) },
                         )
                     }
-                    Dest.Train -> PageScaffold(ModeJump.Kind.Train, AppTab.Train, ::onTab) { TrainScreen() }
-                    Dest.Coach -> PageScaffold(ModeJump.Kind.Coach, AppTab.More, ::onTab) { CoachScreen() }
-                    Dest.Air -> PageScaffold(ModeJump.Kind.Air, AppTab.More, ::onTab) { AirScreen() }
-                    Dest.Road -> PageScaffold(ModeJump.Kind.Road, AppTab.More, ::onTab) { RoadInfoScreen(mapVm) }
-                    Dest.More -> MorePage(
-                        onOpen = { k -> open(k.dest()) },
+                    Dest.Road -> PageScaffold(ModeJump.Kind.Road, AppTab.Navi, ::onTab) { RoadInfoScreen(mapVm) }
+                    Dest.Settings -> MorePage(
+                        onOpen = ::openKind,
                         onNotices = { showNotices = true },
                         onReport = { showReport = true },
                         onTab = ::onTab,

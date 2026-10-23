@@ -18,6 +18,18 @@ class PoiMatchTest {
         assertTrue(!PoiMatch.similar("역", "역"))                       // 빈 이름끼리는 아님
     }
 
+    @Test
+    fun stationNameWithLineOrExitTail() {
+        // 지도의 역 POI 는 노선·출구가 붙어 와서 두 글자 역(강남·신촌 …)이 매칭되지 않던 것
+        assertTrue(PoiMatch.similar("강남역 신분당선", "강남"))
+        assertTrue(PoiMatch.similar("신촌역 2번출구", "신촌"))
+        assertTrue(PoiMatch.similar("서울역 1호선 경부선", "서울"))
+        assertTrue(PoiMatch.similar("인천공항1터미널역 공항철도", "인천공항1터미널"))
+        // 장소 이름은 역으로 보지 않음
+        assertTrue(!PoiMatch.similar("서울역 롯데마트", "서울"))
+        assertTrue(!PoiMatch.similar("강남역 맛집", "강남"))
+    }
+
     data class S(val name: String, val lat: Double, val lng: Double)
 
     @Test

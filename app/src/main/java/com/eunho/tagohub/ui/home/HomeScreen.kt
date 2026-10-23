@@ -22,7 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AirportShuttle
-import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.DirectionsTransit
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.DirectionsBus
 import androidx.compose.material.icons.outlined.DirectionsSubway
 import androidx.compose.material.icons.outlined.Flight
@@ -68,14 +69,13 @@ import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 아래 탭: 홈·버스·지하철·기차·내비게이션·더보기 */
+/** 아래 탭: 홈·대중교통(버스·지하철·기차·고속시외·항공)·지도·내비게이션·설정 */
 enum class AppTab(val label: String, val icon: ImageVector) {
     Home("홈", Icons.Outlined.Home),
-    Bus("버스", Icons.Outlined.DirectionsBus),
-    Subway("지하철", Icons.Outlined.DirectionsSubway),
-    Train("기차", Icons.Outlined.Train),
+    Transit("대중교통", Icons.Outlined.DirectionsTransit),
+    Map("지도", Icons.Outlined.Map),
     Navi("내비게이션", Icons.Outlined.Navigation),
-    More("더보기", Icons.Outlined.Apps),
+    Settings("설정", Icons.Outlined.Settings),
 }
 
 @Composable
@@ -122,6 +122,7 @@ fun HomeScreen(
     search: SearchActions,
     onOpenMap: (MapMode) -> Unit,
     onOpenTab: (AppTab) -> Unit,
+    onOpenTransit: (TransitMode) -> Unit,
     onOpenPage: (ModeJump.Kind) -> Unit,
     onGoTo: (SavedPlace) -> Unit,
     onFavorite: (Favorite) -> Unit,
@@ -129,16 +130,16 @@ fun HomeScreen(
 ) {
     val dark = LocalDarkTheme.current
     val transit = listOf(
-        Tile("버스", Icons.Outlined.DirectionsBus, Color(0xFF1F7A4A), Color(0xFF1F7A4A)) { onOpenTab(AppTab.Bus) },
-        Tile("지하철", Icons.Outlined.DirectionsSubway, Color(0xFF4B5563), Color(0xFF556070)) { onOpenTab(AppTab.Subway) },
-        Tile("기차", Icons.Outlined.Train, Color(0xFF1B3E8A), Color(0xFF2F55B5)) { onOpenTab(AppTab.Train) },
-        Tile("고속·시외", Icons.Outlined.AirportShuttle, Color(0xFF0A7E8C), Color(0xFF0A7E8C)) { onOpenPage(ModeJump.Kind.Coach) },
-        Tile("항공", Icons.Outlined.Flight, Color(0xFFA85F0E), Color(0xFFA85F0E)) { onOpenPage(ModeJump.Kind.Air) },
+        Tile("버스", Icons.Outlined.DirectionsBus, Color(0xFF1F7A4A), Color(0xFF1F7A4A)) { onOpenTransit(TransitMode.Bus) },
+        Tile("지하철", Icons.Outlined.DirectionsSubway, Color(0xFF4B5563), Color(0xFF556070)) { onOpenTransit(TransitMode.Subway) },
+        Tile("기차", Icons.Outlined.Train, Color(0xFF1B3E8A), Color(0xFF2F55B5)) { onOpenTransit(TransitMode.Train) },
+        Tile("고속·시외", Icons.Outlined.AirportShuttle, Color(0xFF0A7E8C), Color(0xFF0A7E8C)) { onOpenTransit(TransitMode.Coach) },
+        Tile("항공", Icons.Outlined.Flight, Color(0xFFA85F0E), Color(0xFFA85F0E)) { onOpenTransit(TransitMode.Air) },
     )
     val road = listOf(
         Tile("내비게이션", Icons.Outlined.Navigation, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Navi) },
         Tile(ModeJump.Kind.Road.label, Icons.Outlined.Traffic, Color(0xFF8A4B1F), Color(0xFF8A4B1F)) { onOpenPage(ModeJump.Kind.Road) },
-        Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenMap(MapMode.Transit) },
+        Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
     )
     var query by rememberSaveable { mutableStateOf("") }
     BoxWithConstraints(modifier.fillMaxSize()) {

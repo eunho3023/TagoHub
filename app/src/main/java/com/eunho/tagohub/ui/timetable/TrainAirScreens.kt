@@ -116,7 +116,6 @@ fun TrainScreen(vm: TrainViewModel = viewModel()) {
     }
     val nearby by vm.nearby.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize()) {
-        ScreenTitle("기차", ModeColor.Train, subtitle = "KTX·SRT·ITX·무궁화 시간표와 운임")
         TimetablePane(
             vm.table, ModeColor.Train,
             quickPicks = nearby,
@@ -143,7 +142,6 @@ fun AirScreen(vm: AirViewModel = viewModel()) {
     }
     Column(Modifier.fillMaxSize()) {
         val intl by vm.intlMode.collectAsStateWithLifecycle()
-        ScreenTitle("항공", ModeColor.Air, subtitle = if (intl) "한국공항공사 국제선 운항 스케줄 (인천공항 제외)" else "공항 간 운항 스케줄과 운임")
         androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
             androidx.compose.material3.FilterChip(selected = !intl, onClick = { vm.intlMode.value = false }, label = { Text("국내선") })
             androidx.compose.material3.FilterChip(selected = intl, onClick = { vm.intlMode.value = true }, label = { Text("국제선") })

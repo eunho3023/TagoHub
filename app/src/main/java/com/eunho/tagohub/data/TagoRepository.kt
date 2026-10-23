@@ -278,7 +278,8 @@ class TagoRepository(private val api: TagoApi) {
     suspend fun trainStationPlaces(q: String) = run { search(trainStationList(), q) }
 
     suspend fun trainKinds() = run {
-        cached("trainKinds") { all(listOf(100)) { p, n -> api.trainKinds(p, n) }.map(Mappers::trainKind) }
+        // SRT 는 KTX 에 통합되어 따로 없으므로 차종에서 뺌
+        cached("trainKinds") { all(listOf(100)) { p, n -> api.trainKinds(p, n) }.map(Mappers::trainKind).filterNot { it.name.contains("SRT", ignoreCase = true) } }
     }
 
     suspend fun trainTrips(dep: String, arr: String, date: LocalDate, grade: String?) = run {

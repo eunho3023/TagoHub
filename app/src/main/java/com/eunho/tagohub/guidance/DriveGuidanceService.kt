@@ -35,7 +35,7 @@ import com.eunho.tagohub.data.ItsRoadFeature
 import com.eunho.tagohub.data.RestAhead
 import com.eunho.tagohub.data.RouteCompare
 import com.eunho.tagohub.data.RestTracker
-import com.eunho.tagohub.data.RoadAlertKind
+import com.eunho.tagohub.data.RoadHazards
 import com.eunho.tagohub.data.RoadAlertTracker
 import com.eunho.tagohub.data.RoadAlerts
 import com.eunho.tagohub.core.HeadingMath
@@ -200,25 +200,13 @@ class DriveGuidanceService : Service() {
     }
 
     /**
-     * 경로 위 상습 결빙구간(앱에 든 자료)·톨게이트·전광판(한국도로공사 위치, 10분 캐시)을 경로에 맞춤.
+     * 경로 위 상습 결빙구간·도로 위험 예보·재난·주의운전·교통안전 지점·톨게이트를 경로에 맞춤 ([RoadHazards], 지도 레이어 대신 안내로).
      * 받지 못한 종류는 빠질 뿐 안내는 그대로 된다.
      */
     private fun loadAlerts(nav: NavRoute) {
         scope.launch(Dispatchers.Default) {
-            val ice = iceFeatures ?: runCatching {
-                applicationContext.assets.open("its_ice_sections.csv").bufferedReader(java.nio.charset.Charset.forName("MS949")).use {
-                    com.eunho.tagohub.data.ItsRoadParser.iceSections(it.readText())
-                }
-            }.getOrNull()?.also { iceFeatures = it }.orEmpty()
-            val tolls = runCatching { ExMapLayers.features(ExMapLayers.TOLL) }.getOrNull().orEmpty()
-            val vms = runCatching { ExMapLayers.features(ExMapLayers.VMS) }.getOrNull().orEmpty()
-            if (currentNav === nav) {
-                alertTracker = RoadAlertTracker(
-                    RoadAlerts.match(nav, RoadAlertKind.Ice, ice) +
-                        RoadAlerts.match(nav, RoadAlertKind.Toll, tolls) +
-                        RoadAlerts.match(nav, RoadAlertKind.Vms, vms),
-                )
-            }
+            val hazards = RoadHazards.load(applicationContext)
+            if (currentNav === nav) alertTracker = RoadAlertTracker(RoadAlerts.match(nav, hazards))
         }
     }
 
@@ -271,7 +259,6 @@ class DriveGuidanceService : Service() {
     @Volatile private var restFeatures: List<ItsRoadFeature>? = null
     @Volatile private var restTracker: RestTracker? = null
     @Volatile private var alertTracker: RoadAlertTracker? = null
-    @Volatile private var iceFeatures: List<ItsRoadFeature>? = null
     @Volatile private var lastLat = 0.0
     @Volatile private var lastLng = 0.0
     private var lastSuggestAt = 0L
