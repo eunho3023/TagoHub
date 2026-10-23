@@ -314,36 +314,11 @@ class TagoRepository(private val api: TagoApi) {
     }
 
     /**
-     * 출발역에서 모든 역까지 직통을 조회해 열차번호별로 도착 시각을 모음. 처음 한 번은 수십 초 걸리고(동시 4개씩 호출),
-     * 같은 출발역·날짜는 기억해 둔다. 국토교통부에는 열차별 정차역 조회가 없어서 이렇게 추정한다.
+     * 한 열차의 정차역 (출발역~도착역, 시각순). 한국철도공사 열차시간표·운행기록(assets)에서 바로 찾으므로 인터넷이 필요 없고 빠르다.
+     * 시간표에 없는 열차만 못 찾음.
      */
-    private suspend fun trainStopScan(dep: String, arr: String, date: LocalDate): Map<String, List<Pair<LocalDateTime, String>>> = cached("trainScan:$dep:$arr:$date") {
-        val all = trainStationList()
-        // 출발~도착 길목에 있는 역만 조회 (전국 349곳 → 수십 곳): TAGO 하루 호출 한도를 아끼고 빨라짐
-        val from = all.firstOrNull { it.id == dep }
-        val to = all.firstOrNull { it.id == arr }
-        val others = all.filter { it.id != dep }
-        val stations = if (from != null && to != null) TrainStationGeo.corridor(others, from, to) else others
-        val results = coroutineScope { stations.map { s -> async { s.name to attempt { trainLeg(dep, s.id, date) } } }.awaitAll() }
-        val failed = results.count { it.second.isFailure }
-        if (failed > maxOf(10, stations.size / 5)) throw results.first { it.second.isFailure }.second.exceptionOrNull()!!
-        val byNumber = HashMap<String, MutableList<Pair<LocalDateTime, String>>>()
-        results.forEach { (name, r) ->
-            r.getOrNull()?.forEach { t ->
-                val no = t.number
-                val at = t.arr
-                if (no != null && at != null) byNumber.getOrPut(no) { ArrayList() } += at to name
-            }
-        }
-        byNumber
-    }
-
-    /** 한 열차의 정차역 (출발역~도착역, 시각순) */
-    suspend fun trainStops(trip: Trip, date: LocalDate): TagoResult<List<StopTime>> = run {
-        // 열차시간표 파일에 있으면 인터넷 없이 바로 (없는 열차만 아래처럼 국토교통부 구간 조회로 추정)
-        TrainTimetable.stopsFor(trip)?.let { return@run it }
-        val dep = trip.depId ?: error("출발역을 알 수 없습니다.")
-        TrainStops.between(trainStopScan(dep, trip.arrId ?: error("도착역을 알 수 없습니다."), date), trip)
+    suspend fun trainStops(trip: Trip, @Suppress("UNUSED_PARAMETER") date: LocalDate): TagoResult<List<StopTime>> = run {
+        TrainTimetable.stopsFor(trip) ?: error("이 열차의 정차역을 시간표에서 찾지 못했습니다.")
     }
 
     // ───────────────────────── 항공 ─────────────────────────

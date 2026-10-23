@@ -9,12 +9,16 @@ import android.content.Context
  *
  * 한 줄 = 열차 한 편: 번호 \t 종별 \t 운행요일 \t 역@분;역@분... (분 = 0시부터의 분, 자정을 넘으면 1440 이상)
  * 시각은 중간 역은 출발, 종착역은 도착 기준이다.
+ * 만든 곳: 한국철도공사 열차시간표(xlsx)와 여객열차 운행정보 API(B551457/run/v2, 평일·토·일 하루씩의 운행기록).
  */
 object TrainTimetable {
     data class Train(val no: String, val kind: String, val remark: String, val stops: List<Pair<String, Int>>) {
         /** 정규화한 역 이름 */
         val keys: List<String> = stops.map { norm(it.first) }
     }
+
+    /** 시간표와 조회한 열차의 출발 시각 차이가 이만큼(분) 넘으면 같은 열차로 보지 않음 */
+    private const val MAX_GAP_MIN = 60
 
     @Volatile private var byNo: Map<String, List<Train>> = emptyMap()
     @Volatile private var trains: List<Train> = emptyList()
@@ -68,8 +72,9 @@ object TrainTimetable {
             val j = t.keys.indexOf(arrKey)
             if (i < 0 || j <= i) null else Triple(t, i, j)
         }
-        val best = candidates.firstOrNull { (t, i, _) -> t.stops[i].second % 1440 == depMinuteOfDay }
-            ?: candidates.firstOrNull() ?: return null
+        // 계획(국토교통부)과 실제 운행기록은 1~2분 다를 수 있어서 출발역 시각이 가장 가까운 편을 고르고, 너무 다르면 다른 열차로 봄
+        fun gap(minute: Int): Int = Math.abs(minute % 1440 - depMinuteOfDay).let { minOf(it, 1440 - it) }
+        val best = candidates.minByOrNull { (t, i, _) -> gap(t.stops[i].second) }?.takeIf { (t, i, _) -> gap(t.stops[i].second) <= MAX_GAP_MIN } ?: return null
         val (t, i, j) = best
         val base = t.stops[i].second
         return (i..j).map { k ->

@@ -2,7 +2,6 @@ package com.eunho.tagohub
 
 import com.eunho.tagohub.data.Place
 import com.eunho.tagohub.data.PlaceGroups
-import com.eunho.tagohub.data.TrainStops
 import com.eunho.tagohub.data.TrainTransfers
 import com.eunho.tagohub.data.Trip
 import org.junit.Assert.assertEquals
@@ -65,26 +64,6 @@ class TrainExtrasTest {
         val r = TrainTransfers.select(all, limit = 10)
         assertEquals(10, r.size)
         assertTrue(r.zipWithNext().all { (x, y) -> !x.dep!!.isAfter(y.dep!!) })
-    }
-
-    // ── 정차역 ──
-
-    @Test
-    fun stopsAreTheStationsTheSameTrainReachesBeforeTheDestinationInTimeOrder() {
-        val t = trip("101", at(8, 0), at(10, 0), from = "서울", to = "부산")
-        val scan = mapOf(
-            "101" to listOf(at(9, 30) to "동대구", at(8, 45) to "대전", at(10, 0) to "부산", at(11, 0) to "마산", at(8, 45) to "대전"),
-            "202" to listOf(at(8, 50) to "수원"),
-        )
-        val r = TrainStops.between(scan, t)
-        assertEquals(listOf("서울", "대전", "동대구", "부산"), r.map { it.name })   // 부산 이후(마산)·다른 열차(수원)·중복 제외
-        assertEquals(at(8, 45), r[1].time)
-    }
-
-    @Test
-    fun unknownTrainStillShowsDepartureAndArrival() {
-        val r = TrainStops.between(emptyMap(), trip("5", at(8, 0), at(10, 0), from = "서울", to = "부산"))
-        assertEquals(listOf("서울", "부산"), r.map { it.name })
     }
 
     // ── 역 목록 묶기 ──

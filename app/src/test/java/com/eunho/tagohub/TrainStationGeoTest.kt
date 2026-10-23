@@ -61,31 +61,4 @@ class TrainStationGeoTest {
         assertEquals(listOf("서울", "수원"), r.map { it.first.name })
         assertTrue(r[0].second < r[1].second)
     }
-
-    @Test
-    fun corridorKeepsStationsAlongTheLineAndUnknownPositionsButDropsFarOnes() {
-        setUp()
-        val all = listOf(suwon, daejeon, gangneung, noGeo)
-        val r = TrainStationGeo.corridor(all, seoul, busan).map { it.name }
-        assertTrue("수원" in r && "대전" in r)       // 서울-부산 선 위
-        assertTrue("위치모름" in r)                   // 위치를 모르면 남김
-        assertTrue("강릉" !in r)                      // 선에서 멀리 떨어짐
-    }
-
-    @Test
-    fun corridorFallsBackToEverythingWhenAnEndpointHasNoPosition() {
-        setUp()
-        val all = listOf(suwon, gangneung)
-        assertEquals(all, TrainStationGeo.corridor(all, noGeo, busan))
-    }
-
-    @Test
-    fun distanceToSegmentIsZeroOnTheLineAndGrowsAwayFromIt() {
-        val a = Point(37.0, 127.0)
-        val b = Point(37.0, 128.0)
-        assertEquals(0.0, TrainStationGeo.distanceToSegmentKm(Point(37.0, 127.5), a, b), 0.01)
-        assertEquals(111.0, TrainStationGeo.distanceToSegmentKm(Point(38.0, 127.5), a, b), 1.0)
-        // 선분 끝 너머는 끝점까지 거리
-        assertEquals(TrainStationGeo.distanceToSegmentKm(Point(37.0, 129.0), a, b), 88.8, 1.0)
-    }
 }

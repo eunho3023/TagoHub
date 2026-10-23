@@ -58,22 +58,6 @@ object TrainTransfers {
     private const val MAX_LATER_MIN = 120L
 }
 
-/** 열차별 정차역 (순수 계산): 출발역에서 각 역까지의 직통 시간표에 같은 열차번호가 나오는 역 = 정차역 */
-object TrainStops {
-    /** [scan] 은 열차번호 → (그 역에 도착하는 시각, 역 이름) 목록 */
-    fun between(scan: Map<String, List<Pair<LocalDateTime, String>>>, trip: Trip): List<StopTime> {
-        val dep = trip.dep
-        val arr = trip.arr
-        val mid = if (dep == null || arr == null) emptyList() else
-            scan[trip.number].orEmpty().filter { it.first.isAfter(dep) && it.first.isBefore(arr) }.sortedBy { it.first }
-        return buildList {
-            add(StopTime(trip.depName, dep))
-            mid.distinctBy { it.second }.filter { it.second != trip.depName && it.second != trip.arrName }.forEach { add(StopTime(it.second, it.first)) }
-            add(StopTime(trip.arrName, arr))
-        }
-    }
-}
-
 /** 역 목록을 가나다순(초성 머리글) 또는 지역별(시·도)로 묶음 */
 object PlaceGroups {
     private const val CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"

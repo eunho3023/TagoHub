@@ -61,6 +61,15 @@ class TrainTimetableTest {
     }
 
     @Test
+    fun theClosestDepartureWinsAndATooDifferentOneIsNotTheSameTrain() {
+        load()
+        // 계획 05:14 도 실제 기록 05:13 과 같은 열차 (1분 차이)
+        assertEquals(7, TrainTimetable.stopsFor(trip("1", "서울", "부산", 5, 14))!!.size)
+        // 새벽 3시 출발로 조회한 1번은 다른 열차: 5:13 편과 2시간 넘게 차이 → 정보 없음
+        assertNull(TrainTimetable.stopsFor(trip("1", "서울", "부산", 3, 0)))
+    }
+
+    @Test
     fun unknownTrainOrWrongDirectionOrOvernightTimes() {
         load()
         assertNull(TrainTimetable.stopsFor(trip("555", "서울", "부산", 5, 13)))      // 시간표에 없는 열차
@@ -101,6 +110,9 @@ class TrainTimetableTest {
         // 서울 → 부산 KTX 1번 열차: 대전·동대구를 지남
         val stops = TrainTimetable.stopsFor(trip("1", "서울", "부산", 5, 13))!!.map { it.name }
         assertTrue("대전" in stops && "동대구" in stops && stops.last() == "부산")
+        // 운행기록 API 로 채운 ITX-청춘(2001번): 용산 → 춘천, 시간표(xlsx)에는 없던 열차
+        val itx = TrainTimetable.stopsFor(trip("2001", "용산", "춘천", 5, 38))!!.map { it.name }
+        assertEquals(listOf("용산", "청량리", "평내호평", "가평", "남춘천", "춘천"), itx)
         // 강릉 → 목포는 서울을 거치는 환승 후보
         assertTrue("서울" in TrainTimetable.hubsBetween("강릉", "목포", 30)!!)
     }
