@@ -80,7 +80,7 @@ class KmaRoadRepository(
 
     private companion object {
         const val BASE = "https://apis.data.go.kr/1360000/RoadWthrInfoService"
-        val httpClient: OkHttpClient = OkHttpClient.Builder()
+        val httpClient: OkHttpClient = Http.builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .build()

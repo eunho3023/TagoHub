@@ -11,6 +11,16 @@ import com.eunho.tagohub.ui.theme.TagoTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun onStart() {
+        super.onStart()
+        com.eunho.tagohub.core.AppState.foreground.value = true
+    }
+
+    override fun onStop() {
+        com.eunho.tagohub.core.AppState.foreground.value = false
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         // 방향 고정이 남아 있으면 풀어서 폰을 돌리는 대로 따라가게

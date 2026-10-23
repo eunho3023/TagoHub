@@ -23,7 +23,7 @@ object Network {
         if ('%' in rawKey) rawKey else URLEncoder.encode(rawKey, "UTF-8")
     }
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    private val client: OkHttpClient = Http.builder()
         .protocols(listOf(Protocol.HTTP_1_1)) // data.go.kr 게이트웨이 HTTP/2 오류 회피 (TagoTransit 과 동일)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)

@@ -21,7 +21,7 @@ object KorailRunClient {
     private const val URL = "https://apis.data.go.kr/B551457/run/v2/travelerTrainRunInfo2"
     private const val PAGE_ROWS = 1000
     private const val MAX_PAGES = 6
-    private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+    private val client = Http.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
     private val ymd = DateTimeFormatter.BASIC_ISO_DATE
 
     private fun key(): String {

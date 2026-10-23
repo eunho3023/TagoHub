@@ -457,6 +457,7 @@ class TripController(
         // 첫 버스·환승 버스 실시간 도착 (패널이 열려 있는 동안 20초마다)
         liveJob = scope.launch {
             while (true) {
+                com.eunho.tagohub.core.AppState.awaitMapVisible()
                 val first = liveFor(p.legs[0])
                 val second = p.legs.getOrNull(1)?.let { liveFor(it) }.orEmpty()
                 live.value = TripLive(first, second)

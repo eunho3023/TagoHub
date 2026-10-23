@@ -19,7 +19,7 @@ data class Place2(val name: String, val address: String?, val lat: Double, val l
  * 키가 없거나 카카오맵 사용 설정이 꺼져 있으면 빈 결과 → 길찾기는 정류장 이름으로만 목적지를 고른다.
  */
 object PlaceSearch {
-    private val client = OkHttpClient.Builder()
+    private val client = Http.builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
@@ -66,7 +66,7 @@ object PlaceSearch {
 
 /** 카카오맵 REST API 대중교통 경로 조회 (키는 KAKAO_REST_KEY, 카카오맵 사용 설정 ON 필요) */
 object KakaoRoutes {
-    private val client = OkHttpClient.Builder()
+    private val client = Http.builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
@@ -99,7 +99,7 @@ object KakaoRoutes {
 
 /** 카카오 키 점검용 REST 호출 (키워드 장소 검색 1건) — 응답 코드와 본문 그대로 */
 object KakaoProbe {
-    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
+    private val client = Http.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
 
     suspend fun probe(key: String): KakaoDiag.Probe = withContext(Dispatchers.IO) {
         runCatching {
@@ -113,7 +113,7 @@ object KakaoProbe {
 
 /** 카카오 REST: 대중교통 결과 원본(노선 모양용), 도보 경로, 좌표 → 이름 */
 object KakaoExtra {
-    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+    private val client = Http.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
     private val addressClient = client.newBuilder().connectTimeout(2, TimeUnit.SECONDS).readTimeout(3, TimeUnit.SECONDS).build()
     private val addressCache = android.util.LruCache<String, String>(128)
     private fun key() = BuildConfig.KAKAO_REST_KEY.trim()
@@ -220,7 +220,7 @@ object KakaoExtra {
 
 /** 한국공항공사 국제선 운항 스케줄 (공공데이터포털 인증키 = TAGO_SERVICE_KEY) */
 object KacIntlClient {
-    private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+    private val client = Http.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
 
     private suspend fun fetch(dep: String, arr: String, date: java.time.LocalDate): List<KacIntl.Flight> = withContext(Dispatchers.IO) {
         val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
@@ -275,7 +275,7 @@ object KacIntlClient {
 
 /** 공지사항 받기 (깃허브 notices.json) */
 object NoticeClient {
-    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
+    private val client = Http.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
     suspend fun load(): List<Notices.Notice> = withContext(Dispatchers.IO) {
         runCatching { client.newCall(Request.Builder().url(Notices.URL).build()).execute().use { Notices.parse(it.body?.string().orEmpty()) } }
             .getOrDefault(emptyList())

@@ -24,7 +24,7 @@ import java.util.zip.GZIPInputStream
 object DataUpdater {
     private const val TAG = "TagoData"
     private const val PREF = "data_update"
-    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+    private val client = Http.builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
     /** 바꿔 넣었으면 새 버전, 아니면 null */
     suspend fun check(ctx: Context, force: Boolean = false): String? = withContext(Dispatchers.IO) {

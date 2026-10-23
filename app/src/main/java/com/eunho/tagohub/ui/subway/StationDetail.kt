@@ -128,6 +128,7 @@ class StationDetailController(
             return
         }
         while (true) {
+            com.eunho.tagohub.core.AppState.awaitMapVisible()
             val r = seoul.arrivals(d.group)
             if (r is TagoResult.Success || d.arrivals.value !is Load.Ok) d.arrivals.value = r.toLoad()
             if (r is TagoResult.Success) d.arrivalsUpdated.value = LocalTime.now()

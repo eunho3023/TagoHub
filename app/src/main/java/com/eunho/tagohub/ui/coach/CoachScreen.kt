@@ -180,6 +180,7 @@ private fun LivePane(vm: CoachViewModel) {
     LaunchedEffect(dep, arr, tick) {
         if (dep != null && arr != null) {
             while (true) {
+                com.eunho.tagohub.core.AppState.awaitForeground()
                 vm.refreshLive()
                 delay(60_000)
             }

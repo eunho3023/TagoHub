@@ -101,7 +101,7 @@ class UticIncidentRepository(
 }
 
 internal object UticHttp {
-    private val client = OkHttpClient.Builder()
+    private val client = Http.builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()

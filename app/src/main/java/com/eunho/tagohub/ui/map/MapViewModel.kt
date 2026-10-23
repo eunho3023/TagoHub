@@ -1347,6 +1347,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val repository = Graph.klidBus
             var region: com.eunho.tagohub.data.KlidBusRegion? = null
             while (klidBusCityCode == city.code && busLayer && lastLevel >= 2) {
+                com.eunho.tagohub.core.AppState.awaitMapVisible()
                 try {
                     // 지역 코드: 지도 중심의 법정동 코드(카카오) → 초정밀 버스 제공 지역 (시군구 → 시도)
                     val activeRegion = region ?: run {
@@ -1957,6 +1958,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
         var first = true
         while (true) {
+            com.eunho.tagohub.core.AppState.awaitMapVisible()
             tracked { loadStopBoard(repo, d) }
             if (first) {
                 first = false
@@ -2013,6 +2015,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         while (true) {
+            com.eunho.tagohub.core.AppState.awaitMapVisible()
             tracked { refreshBusData(repo, d) }
             pushBuses()
             delay(10_000)
@@ -2039,6 +2042,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (want.isEmpty()) return
         trainJob = viewModelScope.launch {
             while (true) {
+                com.eunho.tagohub.core.AppState.awaitMapVisible()
                 val results = coroutineScope {
                     want.mapNotNull { SeoulLines.byId[it] }.map { line -> async { line.id to tracked { seoul.positions(line) } } }.awaitAll()
                 }

@@ -35,7 +35,7 @@ object OverlaySnapshot {
     /** 가진 것이 이보다 오래됐으면 뒤에서 새것이 있는지 확인 */
     private const val BG_REFRESH_AFTER_SEC = 120L
 
-    private val client = OkHttpClient.Builder()
+    private val client = Http.builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .build()
