@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,11 @@ fun MainScreen() {
     var showReport by rememberSaveable { mutableStateOf(false) }
     var askExit by rememberSaveable { mutableStateOf(false) }
     val mapVm = viewModel<MapViewModel>(key = "transitMap")
+    // 지도 화면(카카오맵 시작·타일·GPS)은 처음 지도를 열 때 만들고, 그 뒤로는 계속 유지(상태·위치 보존).
+    // 홈이 첫 화면인데 뒤에서 미리 띄우면 앱 여는 시간이 길어짐. 안내 중이면 바로 만듦.
+    val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
+    var mapStarted by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(dest, guiding) { if (dest == Dest.Map || dest == Dest.Road || guiding) mapStarted = true }
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
 
     /** 다른 화면을 열 때 어디로 돌아올지 기억 (지도에서 열었으면 지도) */
@@ -109,7 +115,7 @@ fun MainScreen() {
     }
 
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
-        MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
+        if (mapStarted) MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
         if (dest != Dest.Map) {
             // 지도 위를 덮는 화면: 뒤의 지도가 터치를 받지 않게 막음
             Box(
