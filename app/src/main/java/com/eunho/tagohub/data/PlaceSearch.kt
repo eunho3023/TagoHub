@@ -137,6 +137,29 @@ object KakaoExtra {
         KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
     )?.let(KakaoLocal::legalCode)
 
+    /**
+     * 법정동 코드와, 못 받았을 때는 그 이유(화면에 그대로 보여줄 문장). 이유를 구분해 두면
+     * "키 확인" 같은 짐작 대신 실제 원인(권한 없음·네트워크·바다 위 좌표 …)을 알 수 있음.
+     */
+    suspend fun legalCodeOrReason(lat: Double, lng: Double): Pair<String?, String?> = withContext(Dispatchers.IO) {
+        if (key().isEmpty()) return@withContext null to "local.properties 에 KAKAO_REST_KEY 가 없습니다."
+        val url = KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
+        try {
+            client.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK ${key()}").build()).execute().use { res ->
+                val body = res.body?.string().orEmpty()
+                when {
+                    !res.isSuccessful -> null to "카카오 지역 조회가 거절됐습니다 (HTTP ${res.code}) ${KakaoLocal.error(body).orEmpty()}".trim()
+                    else -> KakaoLocal.legalCode(body)?.let { it to null }
+                        ?: (null to "이 위치(%.4f, %.4f)의 법정동 코드를 찾지 못했습니다. (바다·국외이거나 응답이 비어 있음)".format(lat, lng))
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            null to "카카오 지역 조회에 연결하지 못했습니다: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
     suspend fun transit(a: LatLng, b: LatLng): KakaoTransit.Result? = get(
         KakaoTransit.URL.toHttpUrl().newBuilder()
             .addQueryParameter("start_x", a.lng.toString()).addQueryParameter("start_y", a.lat.toString())
