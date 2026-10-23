@@ -194,8 +194,7 @@ fun MapScreen(
     val scope = rememberCoroutineScope()
 
     val mode by vm.mode.collectAsStateWithLifecycle()
-    val banner by vm.banner.collectAsStateWithLifecycle()
-    val needZoom by vm.needZoom.collectAsStateWithLifecycle()
+    val mapFailure by vm.mapFailure.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val trainView by vm.trainView.collectAsStateWithLifecycle()
     val panel by vm.panel.collectAsStateWithLifecycle()
@@ -251,27 +250,35 @@ fun MapScreen(
     fun locate() {
         scope.launch {
             val loc = currentLocation(context)
-            if (loc == null) vm.banner.value = "현재 위치를 가져오지 못했습니다. 위치 서비스가 켜져 있는지 확인하세요."
+            if (loc == null) android.widget.Toast.makeText(context, "현재 위치를 가져오지 못했습니다. 위치 서비스가 켜져 있는지 확인하세요.", android.widget.Toast.LENGTH_SHORT).show()
             else vm.setMe(loc.latitude, loc.longitude, center = true)
         }
     }
 
     var locationKey by remember { mutableStateOf(0) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if (granted.values.any { it }) { locate(); locationKey++ } else vm.banner.value = "위치 권한이 없어 현재 위치를 표시할 수 없습니다."
+        if (granted.values.any { it }) { locate(); locationKey++ } else android.widget.Toast.makeText(context, "위치 권한이 없어 현재 위치를 표시할 수 없습니다.", android.widget.Toast.LENGTH_SHORT).show()
     }
     // 내 위치: 화면이 보이는 동안 GPS 를 따라 계속 움직임 (앱이 뒤로 가면 멈춰 배터리 아낌)
+    val compass = remember { com.eunho.tagohub.core.HeadingSensor(context) { vm.onCompass(it) } }
     DisposableEffect(lifecycle, locationKey) {
         var stop: () -> Unit = {}
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
             when (e) {
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> { stop(); stop = startLocationUpdates(context) { if (!com.eunho.tagohub.guidance.DriveGuidance.simulating.value) vm.setMe(it.latitude, it.longitude, center = false) } }
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> { stop(); stop = {} }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> { stop(); stop = startLocationUpdates(context) {
+                    if (!com.eunho.tagohub.guidance.DriveGuidance.simulating.value) {
+                        vm.setMe(it.latitude, it.longitude, center = false)
+                        vm.onGpsFix(it.hasBearing(), it.bearing, if (it.hasSpeed()) it.speed else 0f)
+                        compass.setLocation(it.latitude, it.longitude)
+                    }
+                } }
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> { stop(); stop = {}; compass.stop() }
                 else -> {}
             }
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) compass.start()
         }
         lifecycle.addObserver(obs)
-        onDispose { lifecycle.removeObserver(obs); stop() }
+        onDispose { lifecycle.removeObserver(obs); stop(); compass.stop() }
     }
 
     // 시작: 저장된 자리가 있으면 그대로 두고 내 위치 점만, 없으면 내 위치로 이동.
@@ -331,14 +338,8 @@ fun MapScreen(
                 MapMode.Bus -> BusSearchBar(vm)
                 MapMode.Transit -> BusSearchBar(vm, withStations = true)
             }
-            banner?.let { Banner(it) { vm.banner.value = null } }
-            when {
-                needZoom && panel == MapPanel.None -> Hint(
-                    if (mapMode == MapMode.Transit) "지도를 확대하면 정류장·지하철역과 실시간 열차가 표시됩니다"
-                    else if (mapMode == MapMode.Subway) "지도를 확대하면 지하철역과 실시간 열차가 표시됩니다"
-                    else "지도를 확대하면 주변 버스 정류장이 표시됩니다"
-                )
-            }
+            // 지도를 아예 못 띄울 때의 안내만 보임 (부가 기능의 경고·'확대하면 …' 안내는 지움)
+            mapFailure?.let { Banner(it) { vm.mapFailure.value = null } }
             val itsRoadLabels = mapOf(
                 "its_events" to "ITS 돌발정보",
                 "its_disasters" to "ITS 재난정보",
@@ -366,9 +367,6 @@ fun MapScreen(
                 SmallFloatingActionButton(onClick = { mapAttempt++ }) {
                     Icon(Icons.Filled.Refresh, contentDescription = "지도 다시 시도")
                 }
-            }
-            if (!guiding) SmallFloatingActionButton(onClick = vm::refreshNow) {
-                Icon(Icons.Filled.Refresh, contentDescription = "지도 정보 새로고침")
             }
             SmallFloatingActionButton(onClick = {
                 if (guiding && vm.recenterGuidance()) Unit
@@ -1621,6 +1619,8 @@ private fun TrainPanel(vm: MapViewModel, v: TrainView, hasStation: Boolean) {
                     isLast = i == v.path.lastIndex,
                     trainHere = st.norm == v.trainAtNorm,
                     focused = st.norm == v.focusNorm,
+                    isOrigin = i == 0 && st.norm == v.originNorm,
+                    isPrevious = st.norm == v.previousNorm && st.norm != v.trainAtNorm,
                 ) { vm.focusMetro(st) }
             }
         }
@@ -1635,6 +1635,8 @@ private fun MetroTimelineRow(
     isLast: Boolean,
     trainHere: Boolean,
     focused: Boolean,
+    isOrigin: Boolean = false,
+    isPrevious: Boolean = false,
     onClick: () -> Unit,
 ) {
     Row(
@@ -1691,9 +1693,19 @@ private fun MetroTimelineRow(
                 .padding(horizontal = 10.dp, vertical = 11.dp)
         ) {
             Text(name, style = MaterialTheme.typography.bodyLarge, fontWeight = if (focused || isLast) FontWeight.Bold else FontWeight.Normal)
-            when {
-                trainHere -> Text("열차 현재 위치", style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.Bold)
-                isLast -> Text("종착", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val tags = buildList {
+                if (isOrigin) add("기점")
+                if (isPrevious) add("전역")
+                if (trainHere) add("열차 현재 위치")
+                if (isLast) add("종점")
+            }
+            if (tags.isNotEmpty()) {
+                Text(
+                    tags.joinToString(" · "),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (trainHere) color else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (trainHere) FontWeight.Bold else FontWeight.Normal,
+                )
             }
         }
     }

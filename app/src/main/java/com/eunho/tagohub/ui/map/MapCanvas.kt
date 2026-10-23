@@ -67,6 +67,8 @@ interface MapCanvas {
     fun selectStation(id: String?)
     fun selectTrain(id: String?)
     fun setMe(lat: Double, lng: Double)
+    /** 내 위치가 향하는 방위(도, 북 0 · 동 90). null 이면 방향 표시를 지움 */
+    fun setMeHeading(deg: Double?) {}
     /** zoom 이 null 이면 현재 배율 유지 */
     fun moveTo(lat: Double, lng: Double, zoom: Double?)
     /** 배율은 그대로, 아래 패널(화면의 panelFrac)에 가리지 않는 자리 가운데에 오도록 이동 */

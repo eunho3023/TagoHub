@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.eunho.tagohub.core.Geo
+import com.eunho.tagohub.core.HeadingMath
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
@@ -75,6 +76,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -102,6 +105,10 @@ data class TrainView(
     val focusNorm: String?,
     /** 열차가 지금 있는 역 */
     val trainAtNorm: String?,
+    /** 기점 (path 의 첫 역) */
+    val originNorm: String? = null,
+    /** 전역 (열차가 방금 떠난 바로 앞 역) */
+    val previousNorm: String? = null,
 )
 
 /** 버스 탭 / 지하철 탭 — 같은 지도 화면을 레이어만 다르게 */
@@ -125,7 +132,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** "kakao" | null(준비 전·실패) */
     val mode = MutableStateFlow<String?>(null)
+    /** 부가 기능(레이어·초정밀 버스 등)의 안내·오류 문구. 화면에는 띄우지 않고 로그에만 남김 */
     val banner = MutableStateFlow<String?>(null)
+
+    /** 지도를 아예 못 띄울 때(카카오 인증 실패 등)의 안내. 이것만 화면에 보임 */
+    val mapFailure = MutableStateFlow<String?>(null)
     val needZoom = MutableStateFlow(true)
     /** 진행 중인 요청 수 (> 0 이면 상단에 진행 막대) */
     val busy = MutableStateFlow(0)
@@ -1147,7 +1158,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (ITS_CCTV_OVERLAY in overlays.value) scheduleItsCctvRefresh()
         ITS_ROAD_OVERLAY_IDS.filter { it in overlays.value && it !in STATIC_ITS_ROAD_LAYERS }
             .forEach(::refreshItsRoadLayer)
-        picked.value?.let { c.setPin(it.lat, it.lng) }
+        expectedPin(picked.value, panel.value, selected.value, station.value)?.let { c.setPin(it.first, it.second) }
         pushStations()
         pushStops()
         pushRoute()
@@ -1161,6 +1172,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
         trip.selected.value?.let { trip.select(it) }
         me?.let { (lat, lng) -> c.setMe(lat, lng) }
+        publishHeading()
         val v = lastView ?: savedView()
         // 앱을 새로 켰을 때는 늘 내 위치로. 탭을 바꿨다 돌아온 경우(lastView 있음)만 보던 자리 유지.
         // 저장된 자리는 위치를 받기 전까지 잠깐 보여주는 용도
@@ -1223,11 +1235,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onMapMode(m: String) { mode.value = m }
-    fun onMapProblem(message: String) { banner.value = message }
+    fun onMapProblem(message: String) { mapFailure.value = message }
 
     /** 카카오맵 인증 실패: 안내를 띄우고, REST 호출로 원인을 점검해 카카오가 보낸 이유까지 덧붙인다 */
     fun onKakaoFailed(reason: String, packageName: String, keyHash: String?) {
-        banner.value = "$reason\n\n원인 점검 중…"
+        mapFailure.value = "$reason\n\n원인 점검 중…"
         viewModelScope.launch {
             val nativeAsRest = com.eunho.tagohub.data.KakaoProbe.probe(com.eunho.tagohub.BuildConfig.KAKAO_NATIVE_KEY)
             val restKey = com.eunho.tagohub.BuildConfig.KAKAO_REST_KEY.trim()
@@ -1235,12 +1247,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 com.eunho.tagohub.data.KakaoProbe.probe(restKey) else null
             val d = com.eunho.tagohub.data.KakaoDiag.diagnose(packageName, keyHash, nativeAsRest, rest)
             android.util.Log.w("TagoKakao", "점검: $d")
-            banner.value = "$reason\n\n[원인 점검] $d"
+            mapFailure.value = "$reason\n\n[원인 점검] $d"
         }
     }
 
-    fun onMoveEnd(lat: Double, lng: Double, zoom: Double, level: Int, s: Double, w: Double, n: Double, e: Double) {
+    /** 지도 축척 막대가 250m 이하(500m 에서는 안 보임)일 때만 지하철 열차 모형을 그림 */
+    @Volatile private var lastTrainsVisible = false
+
+    fun onMoveEnd(lat: Double, lng: Double, zoom: Double, level: Int, s: Double, w: Double, n: Double, e: Double, trainsVisible: Boolean = true) {
         lastView = Triple(lat, lng, zoom)
+        val trainsChanged = lastTrainsVisible != trainsVisible
+        lastTrainsVisible = trainsVisible
         saveView(lat, lng, zoom)
         lastLevel = level
         lastBox = doubleArrayOf(s, w, n, e)
@@ -1253,6 +1270,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             .forEach(::refreshItsRoadLayer)
         needZoom.value = if (subwayLayer) level < 1 else level < 2
         updateTrainLines()
+        if (trainsChanged) pushTrains()
         if (level >= 2 && busLayer) loadStopsInView(doubleArrayOf(s, w, n, e))
         if (level >= 1 && busLayer) detectCity(lat, lng)
         syncKlidBuses()
@@ -1446,6 +1464,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val t = trainsByLine.values.flatten().firstOrNull { "t:${it.lineId}:${it.trainNo}" == id } ?: return
         val cur = idx.locate(t.lineId, t.stationName) ?: return
         val dest = t.destName?.let { idx.locate(t.lineId, it) }
+        val behind = idx.pathBehind(t.lineId, cur, dest)
         showTrain(
             TrainView(
                 lineId = t.lineId,
@@ -1454,9 +1473,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 trainId = id,
                 trainNo = t.trainNo,
                 status = "${t.stationName} ${SeoulMappers.statusText(t.status)}".trim(),
-                path = idx.pathToward(t.lineId, cur, dest),
+                // 기점 → 전역 → 현재 → … → 종점 전부 (예전에는 현재 역부터라 기점·전역이 안 보였음)
+                path = behind + idx.pathToward(t.lineId, cur, dest),
                 focusNorm = cur.norm,
                 trainAtNorm = cur.norm,
+                originNorm = (behind.firstOrNull() ?: cur).norm,
+                previousNorm = behind.lastOrNull()?.norm,
             ),
         )
     }
@@ -1471,6 +1493,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val train = a.trainNo?.trimStart('0')?.let { no ->
             trainsByLine[a.lineId]?.firstOrNull { it.trainNo.trimStart('0') == no }
         }
+        val behind = idx.pathBehind(a.lineId, from, dest)
         showTrain(
             TrainView(
                 lineId = a.lineId,
@@ -1479,9 +1502,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 trainId = train?.let { "t:${it.lineId}:${it.trainNo}" },
                 trainNo = a.trainNo,
                 status = a.message.ifBlank { null },
-                path = idx.pathToward(a.lineId, from, dest),
+                path = behind + idx.pathToward(a.lineId, from, dest),
                 focusNorm = here.norm,
                 trainAtNorm = at?.norm,
+                originNorm = (behind.firstOrNull() ?: from).norm,
+                previousNorm = behind.lastOrNull()?.norm,
             ),
         )
     }
@@ -1653,9 +1678,32 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     // ───────────────────────── 사용자 동작 ─────────────────────────
 
+    // 내가 향하는 방위: 움직일 땐 GPS 방향, 서 있을 땐 나침반 (HeadingMath.choose)
+    private var compassDeg: Double? = null
+    private var gpsDeg: Double? = null
+    private var gpsAt = 0L
+
+    fun onCompass(deg: Double) {
+        compassDeg = deg
+        publishHeading()
+    }
+
+    /** GPS 한 번 받을 때마다: 방향이 있고 충분히 빨리 움직이면 그 방향을 씀 */
+    fun onGpsFix(hasBearing: Boolean, bearing: Float, speedMps: Float) {
+        if (!HeadingMath.gpsUsable(hasBearing, speedMps)) return
+        gpsDeg = HeadingMath.smooth(gpsDeg, bearing.toDouble(), alpha = 0.5)
+        gpsAt = System.currentTimeMillis()
+        publishHeading()
+    }
+
+    private fun publishHeading() {
+        canvas?.setMeHeading(HeadingMath.choose(gpsDeg, System.currentTimeMillis() - gpsAt, compassDeg))
+    }
+
     fun setMe(lat: Double, lng: Double, center: Boolean) {
         me = lat to lng
         canvas?.setMe(lat, lng)
+        publishHeading()
         if (center) {
             canvas?.focus(lat, lng)
             following.value = true
@@ -1688,7 +1736,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun followMe(lat: Double, lng: Double, speedKmh: Int, bearingDeg: Double?) {
         me = lat to lng
         canvas?.setMe(lat, lng)
-        if (bearingDeg != null) lastBearing = bearingDeg
+        if (bearingDeg != null) {
+            lastBearing = bearingDeg
+            gpsDeg = bearingDeg
+            gpsAt = System.currentTimeMillis()
+        }
+        publishHeading()
         if (!following.value) return
         val zoom = when {
             speedKmh >= 80 -> 15
@@ -1755,6 +1808,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             else -> MapPanel.None
         }
         if (closingPickedMapFeature && panel.value == MapPanel.None) canvas?.setPin(null, null)
+        if (route.value == null && trainView.value == null) {
+            canvas?.setRoute(null, emptyList(), null)
+            canvas?.selectTrain(null)
+        }
     }
 
     fun openPanel(p: MapPanel) { panel.value = p }
@@ -2029,7 +2086,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private fun updateTrainLines() {
         val box = lastBox
         val idx = index
-        val want: Set<String> = if (subwayLayer && trainsOn.value && seoul.hasKey && lastLevel >= 1 && box != null && idx != null) {
+        val want: Set<String> = if (subwayLayer && trainsOn.value && seoul.hasKey && lastTrainsVisible && box != null && idx != null) {
             val dLat = (box[2] - box[0]) * 0.1
             val dLng = (box[3] - box[1]) * 0.1
             idx.seoulLinesIn(box[0] - dLat, box[1] - dLng, box[2] + dLat, box[3] + dLng)
@@ -2098,23 +2155,33 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private fun pushTrains() {
         val idx = index
         val list = ArrayList<VehiclePin>()
-        if (idx != null && trainsOn.value && subwayLayer) {
+        if (idx != null && trainsOn.value && subwayLayer && lastTrainsVisible) {
             val now = LocalDateTime.now()
             trainsByLine.values.flatten().forEach { t ->
                 val cur = idx.locate(t.lineId, t.stationName) ?: return@forEach
                 val dest = t.destName?.let { idx.locate(t.lineId, it) }
                 val (prev, next) = idx.neighbors(t.lineId, cur, dest)
                 val elapsed = t.received?.let { Duration.between(it, now).toMillis().coerceIn(0, 120_000) } ?: 0L
-                // 같은 역의 상행·하행 열차가 겹치지 않게 방향별로 약 25m 비켜서
-                val sign = if (t.upDown == 0) 1 else -1
-                fun pt(s: MetroStation) = LatLng(s.lat + sign * 0.00022, s.lng - sign * 0.00028)
+                // 선로(역과 역을 잇는 선) 위에 두되, 상·하행이 겹치지 않게 진행 방향 오른쪽으로 아주 조금(약 7m)만 비켜 놓음.
+                // 예전에는 방향과 상관없이 대각선으로 약 35m 비켜서 노선에서 벗어나 보였음
+                val ahead = next ?: dest
+                val facing = when {
+                    ahead != null && ahead.norm != cur.norm -> Geo.bearing(cur.lat, cur.lng, ahead.lat, ahead.lng)
+                    prev != null -> Geo.bearing(prev.lat, prev.lng, cur.lat, cur.lng)
+                    else -> if (t.upDown == 0) 0.0 else 180.0
+                }
+                fun pt(s: MetroStation, bearing: Double = facing): LatLng {
+                    val (la, ln) = Geo.offset(s.lat, s.lng, bearing + 90.0, TRAIN_SIDE_M)
+                    return LatLng(la, ln)
+                }
 
                 var path = listOf(pt(cur))
                 var start = 0.0
                 var end = 0.0
                 var duration = 0L
                 fun move(from: MetroStation, to: MetroStation, startAt: Double, endAt: Double, already: Long) {
-                    path = listOf(pt(from), pt(to))
+                    val b = Geo.bearing(from.lat, from.lng, to.lat, to.lng)
+                    path = listOf(pt(from, b), pt(to, b))
                     val travel = (Shapes.length(path) / TRAIN_SPEED * 1000).toLong().coerceIn(40_000, 600_000)
                     start = (startAt + already.toDouble() / travel).coerceAtMost(endAt)
                     end = endAt
@@ -2254,7 +2321,28 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         keep.forEach { stops[it.nodeId] = it }
     }
 
+    /** 지도에 꽂을 핀 자리: 고른 장소 → 열린 정류장 → 열린 역. 아무것도 없으면 null */
+    private fun expectedPin(p: PickedPlace?, pn: MapPanel, sel: BusDest.Stop?, st: StationDetail?): Pair<Double, Double>? = when {
+        p != null -> p.lat to p.lng
+        pn == MapPanel.Stop && sel?.stop?.lat != null && sel.stop.lng != null -> sel.stop.lat to sel.stop.lng
+        pn == MapPanel.Station && st != null -> st.group.lat to st.group.lng
+        else -> null
+    }
+
+    init {
+        // 핀(꾹 누른 곳·고른 정류장·역)은 위 상태에서 계산해서 그림. 닫을 때 일일이 지우던 방식은 빠뜨리는 경로가 있어 아이콘이 남았음
+        viewModelScope.launch {
+            combine(picked, panel, selected, station) { p, pn, sel, st -> expectedPin(p, pn, sel, st) }
+                .distinctUntilChanged()
+                .collect { pos -> canvas?.setPin(pos?.first, pos?.second) }
+        }
+        // 부가 기능 문구는 화면에 띄우지 않고 로그로만
+        viewModelScope.launch { banner.collect { text -> if (text != null) android.util.Log.w("TagoMap", "알림: $text") } }
+    }
+
     private companion object {
+        /** 지하철 열차 모형을 선로에서 비켜 놓는 거리(m) */
+        const val TRAIN_SIDE_M = 7.0
         const val KLID_BUS_REFRESH_MS = 30_000L
         const val MAX_KLID_BUS_PINS = 300
         const val KLID_BUS_COLOR = 0xFF008577.toInt()
