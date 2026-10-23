@@ -13,6 +13,14 @@ class SeoulBusTest {
         """<?xml version="1.0" encoding="UTF-8"?><ServiceResult><comMsgHeader/><msgHeader><headerCd>$cd</headerCd><headerMsg>정상적으로 처리되었습니다.</headerMsg><itemCount>0</itemCount></msgHeader><msgBody>$items</msgBody></ServiceResult>"""
 
     @Test
+    fun arsIsPaddedToFiveDigits() {
+        assertEquals("01001", SeoulBus.ars("1001"))     // 엑셀을 거치며 앞의 0 이 빠진 번호도
+        assertEquals("01001", SeoulBus.ars(" 01001 "))
+        assertEquals("11486", SeoulBus.ars("11486"))
+        assertEquals("", SeoulBus.ars(""))
+    }
+
+    @Test
     fun arrMsg_parsing() {
         assertEquals(482 to 4, SeoulBus.parseArrMsg("8분2초후[4번째 전]"))
         assertEquals(720 to 5, SeoulBus.parseArrMsg("12분후[5번째 전]"))

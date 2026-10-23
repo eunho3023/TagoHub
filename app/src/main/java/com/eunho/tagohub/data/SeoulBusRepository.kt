@@ -65,7 +65,7 @@ class SeoulBusRepository(private val api: SeoulBusApi) {
 
     /** 정류장 도착 (정류장 번호 arsId 로) */
     suspend fun arrivals(arsId: String) = run {
-        rows { api.stationArrivals(arsId) }.flatMap(SeoulMappers2::arrivals).sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
+        rows { api.stationArrivals(SeoulBus.ars(arsId)) }.flatMap(SeoulMappers2::arrivals).sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
     }
 
     /** 노선 버스 위치 (맵매칭 GPS) */
