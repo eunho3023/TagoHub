@@ -24,7 +24,7 @@ object TrainTransfers {
     /** 환승역 후보. 이름이 역 목록에 없으면 건너뜀 */
     val HUBS = listOf(
         "서울", "용산", "영등포", "수원", "평택", "천안아산", "오송", "조치원", "대전", "서대전", "김천구미", "동대구", "신경주",
-        "울산(통도사)", "부산", "밀양", "마산", "익산", "정읍", "광주송정", "목포", "순천", "여수EXPO", "행신", "청량리", "원주", "제천", "영주", "강릉",
+        "울산", "부산", "밀양", "마산", "익산", "정읍", "광주송정", "목포", "순천", "여수EXPO", "행신", "청량리", "원주", "제천", "영주", "강릉",
     )
 
     /** 갈아타는 데 필요한 최소 시간(분) */
@@ -58,22 +58,6 @@ object TrainTransfers {
     private const val MAX_LATER_MIN = 120L
 }
 
-/** 열차별 정차역 (순수 계산): 출발역에서 각 역까지의 직통 시간표에 같은 열차번호가 나오는 역 = 정차역 */
-object TrainStops {
-    /** [scan] 은 열차번호 → (그 역에 도착하는 시각, 역 이름) 목록 */
-    fun between(scan: Map<String, List<Pair<LocalDateTime, String>>>, trip: Trip): List<StopTime> {
-        val dep = trip.dep
-        val arr = trip.arr
-        val mid = if (dep == null || arr == null) emptyList() else
-            scan[trip.number].orEmpty().filter { it.first.isAfter(dep) && it.first.isBefore(arr) }.sortedBy { it.first }
-        return buildList {
-            add(StopTime(trip.depName, dep))
-            mid.distinctBy { it.second }.filter { it.second != trip.depName && it.second != trip.arrName }.forEach { add(StopTime(it.second, it.first)) }
-            add(StopTime(trip.arrName, arr))
-        }
-    }
-}
-
 /** 역 목록을 가나다순(초성 머리글) 또는 지역별(시·도)로 묶음 */
 object PlaceGroups {
     private const val CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
@@ -101,8 +85,19 @@ object PlaceGroups {
     private fun rank(region: String): Int =
         REGIONS.indexOfFirst { names -> names.any { region.startsWith(it) } }.let { if (it < 0) REGIONS.size else it }
 
+    /** 화면에 보여줄 시·도 이름: 충청·경상·전라는 남북을 구분해 충북·충남·경북·경남·전북·전남으로 짧게 (나머지는 그대로) */
+    fun shortRegion(name: String): String = when {
+        name.startsWith("충청북") || name.startsWith("충북") -> "충북"
+        name.startsWith("충청남") || name.startsWith("충남") -> "충남"
+        name.startsWith("경상북") || name.startsWith("경북") -> "경북"
+        name.startsWith("경상남") || name.startsWith("경남") -> "경남"
+        name.startsWith("전라북") || name.startsWith("전북") -> "전북"
+        name.startsWith("전라남") || name.startsWith("전남") -> "전남"
+        else -> name
+    }
+
     fun byRegion(list: List<Place>): List<Pair<String, List<Place>>> =
-        list.groupBy { it.sub?.takeIf(String::isNotBlank) ?: "기타" }
+        list.groupBy { it.sub?.takeIf(String::isNotBlank)?.let(::shortRegion) ?: "기타" }
             .toList().sortedWith(compareBy({ rank(it.first) }, { it.first }))
             .map { (k, v) -> k to v.sortedBy { it.name } }
 }

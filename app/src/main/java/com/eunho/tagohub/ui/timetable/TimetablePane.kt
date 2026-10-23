@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoTime
+import com.eunho.tagohub.data.RunSummary
 import com.eunho.tagohub.data.StopTime
 import com.eunho.tagohub.data.TrainTransfer
 import com.eunho.tagohub.data.Trip
@@ -64,6 +65,9 @@ import com.eunho.tagohub.ui.common.Tnum
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
+/** 목록을 열지 않고 바로 고를 수 있는 추천 칸 (예: 내 위치에서 가까운 역과 거리) */
+data class QuickPick(val place: com.eunho.tagohub.data.Place, val label: String)
+
 @Composable
 fun TimetablePane(
     c: TimetableController,
@@ -71,6 +75,7 @@ fun TimetablePane(
     pickerNoun: String,
     gradeAllLabel: String,
     idleText: String,
+    quickPicks: List<QuickPick> = emptyList(),
 ) {
     val dep by c.dep.collectAsStateWithLifecycle()
     val arr by c.arr.collectAsStateWithLifecycle()
@@ -79,6 +84,7 @@ fun TimetablePane(
     val grade by c.grade.collectAsStateWithLifecycle()
     val trips by c.trips.collectAsStateWithLifecycle()
     val stopsMap by c.stops.collectAsStateWithLifecycle()
+    val historyMap by c.history.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<Boolean?>(null) } // true 출발, false 도착
 
     LaunchedEffect(c) { c.ensureGrades() }
@@ -93,6 +99,22 @@ fun TimetablePane(
                     onArr = { picking = false },
                     onSwap = c::swap,
                 )
+            }
+        }
+        if (quickPicks.isNotEmpty()) {
+            // 가까운 역: 누르면 출발역(아직 없으면) → 도착역 순서로 채움
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                item { Text("가까운 역", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                itemsIndexed(quickPicks) { _, q ->
+                    androidx.compose.material3.AssistChip(
+                        onClick = { if (dep == null) c.setDep(q.place) else c.setArr(q.place) },
+                        label = { Text("${q.place.name} · ${q.label}") },
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -113,6 +135,8 @@ fun TimetablePane(
             stops = stopsMap,
             stopsKey = c::stopsKey,
             onStops = if (c.supportsStops) c::toggleStops else null,
+            history = historyMap,
+            onHistory = if (c.supportsHistory) c::toggleHistory else null,
             footer = if (c.supportsTransfer) ({ TransferFooter(c, accent) }) else null,
         )
     }
@@ -142,6 +166,9 @@ fun TripList(
     stops: Map<String, Load<List<StopTime>>> = emptyMap(),
     stopsKey: (Trip) -> String = { "" },
     onStops: ((Trip) -> Unit)? = null,
+    /** 기차: 지난 7일 운행(지연)을 펼친 열차들 */
+    history: Map<String, Load<RunSummary>> = emptyMap(),
+    onHistory: ((Trip) -> Unit)? = null,
     /** 기차: 목록 아래에 붙는 환승 경로. 있으면 운행편이 하나도 없어도 목록 화면을 보여줌 */
     footer: (@Composable () -> Unit)? = null,
 ) {
@@ -162,6 +189,7 @@ fun TripList(
                 Column {
                     TripRow(t, accent, past = t.dep?.isBefore(now) == true, next = i == next)
                     if (onStops != null) StopsSection(stops[stopsKey(t)], accent) { onStops(t) }
+                    if (onHistory != null) HistorySection(history[stopsKey(t)], accent) { onHistory(t) }
                 }
             }
             if (footer != null) item { footer() }
@@ -264,7 +292,7 @@ private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: (
                 null, is Load.Idle -> Unit
                 is Load.Loading -> Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("정차역을 찾는 중… 처음 한 번은 1분쯤 걸릴 수 있어요", style = MaterialTheme.typography.bodySmall, color = variant)
+                    Text("정차역을 찾는 중…", style = MaterialTheme.typography.bodySmall, color = variant)
                 }
                 is Load.Fail -> Text(open.message, Modifier.padding(bottom = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 is Load.Ok -> Column(Modifier.padding(bottom = 10.dp)) {
@@ -281,7 +309,7 @@ private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: (
                             Text(s.time?.let(TagoTime::hm) ?: "--:--", style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = variant)
                         }
                     }
-                    Text("국토교통부 시간표를 구간별로 맞춰 본 결과예요. 실제 정차와 다를 수 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
+                    Text("한국철도공사 열차시간표 기준이에요. 시각은 출발(종착역은 도착)이고, 운행 요일에 따라 다를 수 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
                 }
             }
         }
@@ -293,6 +321,7 @@ private fun StopsSection(open: Load<List<StopTime>>?, accent: Color, onToggle: (
 private fun TransferFooter(c: TimetableController, accent: Color) {
     val state by c.transfers.collectAsStateWithLifecycle()
     val stopsMap by c.stops.collectAsStateWithLifecycle()
+    val historyMap by c.history.collectAsStateWithLifecycle()
     val trips by c.trips.collectAsStateWithLifecycle()
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -312,14 +341,14 @@ private fun TransferFooter(c: TimetableController, accent: Color) {
                 MessageBox("환승 1회로 갈 수 있는 열차를 찾지 못했습니다. 2회 이상 환승이 필요하거나 그날 운행이 없을 수 있어요.")
             } else {
                 Text("환승해서 가기  ·  갈아타는 시간 ${com.eunho.tagohub.data.TrainTransfers.MIN_WAIT_MIN}분 이상, 1회 환승만", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
-                s.value.forEach { t -> TransferCard(t, accent, stopsMap, c) }
+                s.value.forEach { t -> TransferCard(t, accent, stopsMap, historyMap, c) }
             }
         }
     }
 }
 
 @Composable
-private fun TransferCard(t: TrainTransfer, accent: Color, stopsMap: Map<String, Load<List<StopTime>>>, c: TimetableController) {
+private fun TransferCard(t: TrainTransfer, accent: Color, stopsMap: Map<String, Load<List<StopTime>>>, historyMap: Map<String, Load<RunSummary>>, c: TimetableController) {
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(Modifier.fillMaxWidth().padding(top = 6.dp), color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.padding(top = 12.dp)) {
@@ -344,6 +373,7 @@ private fun TransferCard(t: TrainTransfer, accent: Color, stopsMap: Map<String, 
                     )
                 }
                 if (c.supportsStops) StopsSection(stopsMap[c.stopsKey(leg)], accent) { c.toggleStops(leg) }
+                if (c.supportsHistory) HistorySection(historyMap[c.stopsKey(leg)], accent) { c.toggleHistory(leg) }
                 if (i == 0) {
                     Text(
                         "${t.hub}에서 ${t.waitMinutes}분 기다려 갈아타기",
@@ -361,4 +391,60 @@ private fun TransferCard(t: TrainTransfer, accent: Color, stopsMap: Map<String, 
             }
         }
     }
+}
+
+/** 열차 카드 아래 "지난주 운행 보기": 어제까지 7일 동안 이 열차가 실제로 얼마나 늦었는지 (한국철도공사 운행기록) */
+@Composable
+private fun HistorySection(open: Load<RunSummary>?, accent: Color, onToggle: () -> Unit) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            TextButton(onClick = onToggle, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 2.dp)) {
+                Text(if (open == null) "지난주 운행 보기" else "지난주 운행 닫기", color = accent, fontWeight = FontWeight.Bold)
+            }
+            when (open) {
+                null, is Load.Idle -> Unit
+                is Load.Loading -> Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("지난 7일 운행을 불러오는 중…", style = MaterialTheme.typography.bodySmall, color = variant)
+                }
+                is Load.Fail -> Text(open.message, Modifier.padding(bottom = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                is Load.Ok -> Column(Modifier.padding(bottom = 10.dp)) {
+                    val s = open.value
+                    if (s.days.isEmpty()) {
+                        Text("지난 7일 기록이 없어요. 그 기간에 운행하지 않은 열차일 수 있어요.", style = MaterialTheme.typography.bodySmall, color = variant)
+                    } else {
+                        Text(
+                            buildString {
+                                append("도착 평균 ").append(delayText(s.average))
+                                s.worst?.let { append(" · 가장 늦은 날 ").append(delayText(it)) }
+                                if (s.lateDays > 0) append(" · 5분 이상 늦은 날 ").append(s.lateDays).append("일")
+                            },
+                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        s.days.forEach { d ->
+                            Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "%d/%d (%s)".format(d.day.monthValue, d.day.dayOfMonth, d.day.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.KOREAN)),
+                                    Modifier.width(84.dp), style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = variant,
+                                )
+                                Text("출발 ${delayText(d.departure)}", Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
+                                val late = (d.arrival ?: 0) >= 5
+                                Text("도착 ${delayText(d.arrival)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = if (late) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        Text("계획 시각과 실제 운행기록의 차이예요. 어제까지 기록만 있어요.", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = variant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun delayText(min: Int?): String = when {
+    min == null -> "-"
+    min == 0 -> "정시"
+    min > 0 -> "+${min}분"
+    else -> "${min}분"
 }

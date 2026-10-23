@@ -2,7 +2,6 @@ package com.eunho.tagohub
 
 import com.eunho.tagohub.data.Place
 import com.eunho.tagohub.data.PlaceGroups
-import com.eunho.tagohub.data.TrainStops
 import com.eunho.tagohub.data.TrainTransfers
 import com.eunho.tagohub.data.Trip
 import org.junit.Assert.assertEquals
@@ -67,26 +66,6 @@ class TrainExtrasTest {
         assertTrue(r.zipWithNext().all { (x, y) -> !x.dep!!.isAfter(y.dep!!) })
     }
 
-    // ── 정차역 ──
-
-    @Test
-    fun stopsAreTheStationsTheSameTrainReachesBeforeTheDestinationInTimeOrder() {
-        val t = trip("101", at(8, 0), at(10, 0), from = "서울", to = "부산")
-        val scan = mapOf(
-            "101" to listOf(at(9, 30) to "동대구", at(8, 45) to "대전", at(10, 0) to "부산", at(11, 0) to "마산", at(8, 45) to "대전"),
-            "202" to listOf(at(8, 50) to "수원"),
-        )
-        val r = TrainStops.between(scan, t)
-        assertEquals(listOf("서울", "대전", "동대구", "부산"), r.map { it.name })   // 부산 이후(마산)·다른 열차(수원)·중복 제외
-        assertEquals(at(8, 45), r[1].time)
-    }
-
-    @Test
-    fun unknownTrainStillShowsDepartureAndArrival() {
-        val r = TrainStops.between(emptyMap(), trip("5", at(8, 0), at(10, 0), from = "서울", to = "부산"))
-        assertEquals(listOf("서울", "부산"), r.map { it.name })
-    }
-
     // ── 역 목록 묶기 ──
 
     @Test
@@ -102,13 +81,24 @@ class TrainExtrasTest {
     }
 
     @Test
+    fun chungcheongGyeongsangAndJeollaAreSplitIntoNorthAndSouthShortNames() {
+        listOf(
+            "충청북도" to "충북", "충청남도" to "충남", "경상북도" to "경북", "경상남도" to "경남",
+            "전북특별자치도" to "전북", "전라북도" to "전북", "전라남도" to "전남",
+            "서울특별시" to "서울특별시", "경기도" to "경기도",
+        ).forEach { (long, short) -> assertEquals(long, short, PlaceGroups.shortRegion(long)) }
+        val g = PlaceGroups.byRegion(listOf(Place("1", "청주", "충청북도"), Place("2", "천안", "충청남도"), Place("3", "대구", "경상북도"), Place("4", "부산", "경상남도"), Place("5", "전주", "전북특별자치도"), Place("6", "목포", "전라남도")))
+        assertEquals(listOf("충북", "충남", "전북", "전남", "경북", "경남"), g.map { it.first })
+    }
+
+    @Test
     fun regionsComeInTheUsualOrderAndUnknownLast() {
         val places = listOf(
             Place("1", "대전", "대전광역시"), Place("2", "서울", "서울특별시"), Place("3", "수원", "경기도"),
             Place("4", "전주", "전북특별자치도"), Place("5", "광주송정", "광주광역시"), Place("6", "어딘가", null), Place("7", "강릉", "강원특별자치도"),
         )
         assertEquals(
-            listOf("서울특별시", "광주광역시", "대전광역시", "경기도", "강원특별자치도", "전북특별자치도", "기타"),
+            listOf("서울특별시", "광주광역시", "대전광역시", "경기도", "강원특별자치도", "전북", "기타"),
             PlaceGroups.byRegion(places).map { it.first },
         )
     }

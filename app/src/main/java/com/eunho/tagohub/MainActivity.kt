@@ -35,6 +35,8 @@ class MainActivity : ComponentActivity() {
             // 카카오 개발자 사이트에 등록할 키 해시 (Logcat 에서 TagoKakao 로 검색)
             if (BuildConfig.DEBUG) android.util.Log.i("TagoKakao", "키 해시: ${com.eunho.tagohub.ui.map.KakaoCanvas.keyHash(this)}")
         }
+        com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
+        com.eunho.tagohub.data.TrainTimetable.init(applicationContext)
         lifecycleScope.launch {
             StopDb.get(applicationContext)
             // 정류장·노선 데이터 자동 업데이트 (데이터 저장소, 하루 한 번·와이파이에서만)
