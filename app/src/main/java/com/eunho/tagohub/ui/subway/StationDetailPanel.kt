@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -102,62 +105,144 @@ fun StationDetailPanel(
 
     LaunchedEffect(d, refreshKey) { c.runArrivals(d) }
 
+    val selectedLine by d.line.collectAsStateWithLifecycle()
+    val route by d.kricRoute.collectAsStateWithLifecycle()
+    val codes by d.kricCodes.collectAsStateWithLifecycle()
+    // 이전·다음 역(노선 띠에 표시)을 알려면 노선 역 목록이 필요함 — 노선이 정해지면 한 번 받아 둠
+    LaunchedEffect(selectedLine?.id) {
+        if (selectedLine != null && d.kricRoute.value is Load.Idle) c.loadKricRoute(d)
+    }
+    val neighbors = remember(route, codes) {
+        (route as? Load.Ok)?.value?.sortedBy { it.stationOrder }?.let { all ->
+            val i = all.indexOfFirst { it.stationCode == codes?.stationCode }
+            if (i >= 0) Triple(all.getOrNull(i - 1)?.stationName, all[i].stationName, all.getOrNull(i + 1)?.stationName) else null
+        }
+    }
+    val stripColor = subwayLineColor(selectedLine?.routeName ?: lines.first())
+
     Column(Modifier.fillMaxSize()) {
-        // 머리띠: 지하철 색에 역 이름과 호선 원형 배지(환승역은 여러 개)
-        Surface(color = com.eunho.tagohub.ui.theme.headerColor(), contentColor = Color.White) {
-            Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stationName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            lines.forEach { LineBadge(lineBadgeLabel(it), subwayLineColor(it), size = 28.dp, ring = true) }
+        // 머리: 큰 역 이름 + 호선 알약(환승역은 여러 개), 오른쪽에 회색 원 안의 닫기
+        Row(Modifier.padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stationName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 2)
+                if (operatorLabel.isNotBlank()) {
+                    Text(operatorLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                lines.forEach {
+                    Text(
+                        it,
+                        Modifier.background(subwayLineColor(it), CircleShape).padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Surface(onClick = onClose, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
+            }
+        }
+        // 노선 띠: 이전 역 ‹  [ 이 역 ]  › 다음 역
+        neighbors?.let { (prev, cur, next) ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .height(48.dp)
+                    .background(stripColor, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(prev?.let { "‹ " + it } ?: "", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.weight(1.1f))
+                    Text(next?.let { it + " ›" } ?: "", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(3.dp, stripColor),
+                ) {
+                    Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        LineBadge(lineBadgeLabel(selectedLine?.routeName ?: lines.first()), stripColor, size = 26.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(cur, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                    }
+                }
+            }
+        }
+        // 실시간 | 시간표 전환
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                listOf(StationTab.Live to "실시간", StationTab.Timetable to "시간표").forEach { (t, label) ->
+                    val on = tab == t
+                    Surface(
+                        onClick = { c.setTab(d, t) },
+                        shape = CircleShape,
+                        color = if (on) MaterialTheme.colorScheme.surface else Color.Transparent,
+                        border = if (on) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null,
+                    ) {
+                        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
-                    if (operatorLabel.isNotBlank()) {
-                        Text(operatorLabel, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.88f))
+                }
+            }
+        }
+        // 노선도 | 출구 | 편의정보 (눌러 아래 내용을 바꿈)
+        Surface(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Row(Modifier.height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(StationTab.Route to "노선도", StationTab.Exits to "출구", StationTab.Facilities to "편의정보").forEachIndexed { i, (t, label) ->
+                    if (i > 0) VerticalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    val on = tab == t
+                    Box(Modifier.weight(1f).fillMaxHeight().clickable { c.setTab(d, t) }, contentAlignment = Alignment.Center) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold,
+                            color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
-                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
         }
-        LazyRow(
-            Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Box(Modifier.weight(1f)) {
+            when (tab) {
+                StationTab.Live -> LiveTab(d, c, onArrivalClick)
+                StationTab.Timetable -> TimetableTab(d, c)
+                StationTab.Route -> RouteTab(d, c)
+                StationTab.Exits -> ExitsTab(d, c)
+                StationTab.Facilities -> FacilitiesTab(d)
+            }
+        }
+        // 아래: 파란 [출발][도착] 알약 (이 역을 길찾기 출발지·도착지로)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            item {
-                OutlinedButton(onClick = { onUseStation?.invoke(true) }, enabled = onUseStation != null) {
-                    Text("출발")
-                }
+            Button(onClick = { onUseStation?.invoke(true) }, enabled = onUseStation != null, shape = CircleShape, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
             }
-            item {
-                Button(onClick = { onUseStation?.invoke(false) }, enabled = onUseStation != null) {
-                    Text("도착")
-                }
+            Button(onClick = { onUseStation?.invoke(false) }, enabled = onUseStation != null, shape = CircleShape, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
             }
-            item {
-                OutlinedButton(onClick = { c.setTab(d, StationTab.Timetable) }) {
-                    Text("전체 시간표")
-                }
-            }
-            item {
-                OutlinedButton(onClick = { c.setTab(d, StationTab.Live) }, enabled = d.realtime) {
-                    Text("실시간 도착")
-                }
-            }
-        }
-        TabRow(selectedTabIndex = tab.ordinal, contentColor = color) {
-            StationTab.entries.forEach { t ->
-                Tab(selected = tab == t, onClick = { c.setTab(d, t) }, text = { Text(t.label, maxLines = 1) })
-            }
-        }
-        when (tab) {
-            StationTab.Live -> LiveTab(d, c, onArrivalClick)
-            StationTab.Timetable -> TimetableTab(d, c)
-            StationTab.Route -> RouteTab(d, c)
-            StationTab.Exits -> ExitsTab(d, c)
-            StationTab.Facilities -> FacilitiesTab(d)
         }
     }
 }
@@ -395,9 +480,8 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
                 main,
                 style = MaterialTheme.typography.titleLarge.merge(Tnum),
                 fontWeight = FontWeight.Black,
-                color = if (main == "곧 도착") {
-                    if (LocalDarkTheme.current) BoardColor.ArriveDark else BoardColor.ArriveLight
-                } else MaterialTheme.colorScheme.onSurface,
+                // 도착 시간은 빨간 글씨 (정류소·지하철 도착 목록 공통)
+                color = if (LocalDarkTheme.current) Color(0xFFFF8A80) else Color(0xFFD7262E),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (a.express) Pill("급행", Color(0xFFD7262E), filled = false)
