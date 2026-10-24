@@ -129,7 +129,9 @@ class StationDetailController(
         }
         while (true) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
-            val r = seoul.arrivals(d.group)
+            val fetched = seoul.arrivals(d.group)
+            // 새로고침해도 남은 시간이 거꾸로 늘지 않게
+            val r = if (fetched is TagoResult.Success) TagoResult.Success(com.eunho.tagohub.data.ArrivalSmoothing.subway((d.arrivals.value as? Load.Ok)?.value, fetched.data, java.time.LocalDateTime.now())) else fetched
             if (r is TagoResult.Success || d.arrivals.value !is Load.Ok) d.arrivals.value = r.toLoad()
             if (r is TagoResult.Success) d.arrivalsUpdated.value = LocalTime.now()
             delay(20_000)
