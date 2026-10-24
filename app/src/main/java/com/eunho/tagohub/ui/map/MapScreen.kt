@@ -1006,23 +1006,16 @@ private fun PanelHeader(
     /** null 이면 새로고침 버튼 없음 */
     onRefresh: (() -> Unit)? = null,
 ) {
-    Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .width(5.dp)
-                .height(34.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(color)
-        )
-        Spacer(Modifier.width(10.dp))
+    // 정류소·노선 패널 머리: 큰 굵은 이름, 오른쪽에 회색 원 안의 닫기(X) — 색 띠 없이 깔끔하게
+    Row(Modifier.padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         leading()
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (!subtitle.isNullOrBlank()) {
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel) }
+        if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
         onRefresh?.let { r -> IconButton(onClick = r) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") } }
         if (favorite != null) {
             IconButton(onClick = onFavorite) {
@@ -1033,7 +1026,9 @@ private fun PanelHeader(
                 )
             }
         }
-        IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
+        Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
+            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
+        }
     }
 }
 
@@ -1055,32 +1050,31 @@ private fun RouteBandHeader(
     onFavorite: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    Surface(color = color, contentColor = Color.White, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(routeNo, fontSize = 34.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.7).sp, color = Color.White)
-                type?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.width(10.dp))
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color.White.copy(alpha = 0.2f)) {
-                        Text(it.removeSuffix("버스"), Modifier.padding(horizontal = 10.dp, vertical = 3.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, color = Color.White, fontWeight = FontWeight.Bold) }
-                IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침", tint = Color.White) }
-                IconButton(onClick = onFavorite) {
-                    Icon(
-                        if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                        contentDescription = if (favorite) "즐겨찾기에서 빼기" else "즐겨찾기에 넣기",
-                        tint = if (favorite) Color(0xFFFFD54F) else Color.White,
-                    )
-                }
-                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기", tint = Color.White) }
+    // 노선 종류 배지 + 큰 노선번호, 오른쪽에 새로고침·즐겨찾기·회색 원 닫기. 아래에 "기점 → 종점", 배차·운행 대수
+    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            type?.takeIf { it.isNotBlank() }?.let {
+                Pill(it.removeSuffix("버스"), color)
+                Spacer(Modifier.width(10.dp))
             }
-            if (line.isNotBlank()) Text(line, fontSize = 13.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-            if (detail.isNotBlank()) Text(detail, fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(routeNo, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1)
+            if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
+            IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") }
+            IconButton(onClick = onFavorite) {
+                Icon(
+                    if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = if (favorite) "즐겨찾기에서 빼기" else "즐겨찾기에 넣기",
+                    tint = if (favorite) FAVORITE_GOLD else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
+            }
         }
+        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
@@ -1111,38 +1105,54 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             onFavorite = { vm.toggleFavorite(Favorite.of(d.stop)) },
             onRefresh = vm::refreshNow,
         )
-        // 이 정류장을 출발지·도착지로 길찾기
-        if (d.stop.lat != null) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("출발지로") }
-                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("도착지로") }
-            }
-        }
         val timetable by vm.stopTimetable.collectAsStateWithLifecycle()
-        // 실시간 도착 ↔ 예상 시간표
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = timetable == null, onClick = vm::closeStopTimetable, label = { Text("실시간 도착") },
-                leadingIcon = { Icon(Icons.Filled.DirectionsBus, contentDescription = null, modifier = Modifier.size(16.dp)) })
-            FilterChip(selected = timetable != null, onClick = { vm.openStopTimetable() }, label = { Text("시간표") },
-                leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(16.dp)) })
-            Spacer(Modifier.weight(1f))
-            updated?.let {
-                Text("${it.hhmm()} 갱신", Modifier.align(Alignment.CenterVertically),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // 노선 목록(가운데, 남는 높이를 모두 씀) + 아래 고정 바
+        Box(Modifier.weight(1f)) {
+            val tt = timetable
+            if (tt != null) {
+                StopTimetable(vm, tt)
+            } else {
+                LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류소를 지나는 노선 정보가 없습니다.") { list ->
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(list) { row ->
+                            // 노선을 누르면 지도에 노선 + 실시간 버스 위치
+                            StopRouteItem(row, elapsedSec, direction) { vm.showRoute(row) }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    }
+                }
             }
         }
+        // 아래 바: 왼쪽 시간표(↔ 실시간) 알약, 오른쪽 파란 [출발][도착] 알약 (이 정류장을 길찾기 출발지·도착지로)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        val tt = timetable
-        if (tt != null) {
-            StopTimetable(vm, tt)
-        } else {
-            LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류소를 지나는 노선 정보가 없습니다.") { list ->
-                LazyColumn {
-                    items(list) { row ->
-                        // 노선을 누르면 지도에 노선 + 실시간 버스 위치
-                        StopRouteItem(row, elapsedSec, direction) { vm.showRoute(row) }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Surface(
+                onClick = { if (timetable == null) vm.openStopTimetable() else vm.closeStopTimetable() },
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (timetable == null) Icons.Filled.Schedule else Icons.Filled.DirectionsBus, contentDescription = null, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (timetable == null) "시간표" else "실시간", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            updated?.let {
+                Text("${it.hhmm()} 갱신", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.weight(1f))
+            if (d.stop.lat != null) {
+                Button(onClick = { vm.useStopAs(d.stop, asOrigin = true) }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                    Text("출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                }
+                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false) }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                    Text("도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 }
             }
         }
@@ -1304,16 +1314,32 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
             val labels = remember(all) { vm.routeDirLabels(d) }
             labels?.let { names ->
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 방면 탭: 고른 쪽은 굵게 + 아래 파란 줄
+                Row(Modifier.fillMaxWidth()) {
                     names.forEachIndexed { i, name ->
-                        FilterChip(
-                            selected = dir == i,
-                            onClick = { vm.setRouteDir(d, i) },
-                            label = { Text("$name 방면", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = color, selectedLabelColor = Color.White),
-                        )
+                        val on = dir == i
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp)
+                                .clickable { vm.setRouteDir(d, i) },
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Text(
+                                "$name 방면",
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 14.dp),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                            )
+                            Box(Modifier.fillMaxWidth().height(3.dp).background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent))
+                        }
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
