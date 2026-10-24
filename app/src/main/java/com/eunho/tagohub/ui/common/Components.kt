@@ -94,7 +94,7 @@ import java.util.Locale
 /** 시각·요금 숫자는 고정폭 숫자로 정렬 */
 val Tnum = TextStyle(fontFeatureSettings = "tnum")
 
-/** 화면 제목. 교통수단 색의 머리띠에 흰 굵은 글씨 — 노선도 안내판처럼 한눈에 어느 교통수단인지 보이게. */
+/** 화면 제목. 흰 바탕에 굵은 제목, 제목 앞의 작은 색 점이 교통수단. 아래에 얇은 선. */
 @Composable
 fun ScreenTitle(
     title: String,
@@ -103,7 +103,7 @@ fun ScreenTitle(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Surface(color = com.eunho.tagohub.ui.theme.headerColor(), contentColor = Color.White) {
+    Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -114,13 +114,13 @@ fun ScreenTitle(
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
             }
             Column(Modifier.weight(1f)) {
-                // 머리띠는 한 가지 남색. 어느 교통수단인지는 제목 앞의 수단 색 점으로만 표시
+                // 어느 교통수단인지는 제목 앞의 수단 색 점으로만 표시
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(12.dp).clip(CircleShape).background(color).border(2.dp, Color.White, CircleShape))
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(color))
                     Spacer(Modifier.width(10.dp))
                     Text(
                         title,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -130,7 +130,7 @@ fun ScreenTitle(
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.88f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -139,6 +139,7 @@ fun ScreenTitle(
             actions()
         }
     }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /** 호선·노선 원형 배지 (지하철 노선도의 숫자 원). 환승역은 여러 개를 나란히 */

@@ -2,6 +2,8 @@ package com.eunho.tagohub.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -86,12 +88,19 @@ fun TabScaffold(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        Surface(color = color, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(title, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, color = Color.White, maxLines = 1)
+    Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        // 흰 머리 + 아래 얇은 선. 어느 탭인지는 제목 앞의 수단 색 점으로
+        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(12.dp).background(color, androidx.compose.foundation.shape.CircleShape))
+                Spacer(Modifier.width(10.dp))
+                Text(title, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(Modifier.weight(1f)) { content() }
         AppBottomNav(tab, onTab)
     }
@@ -106,7 +115,7 @@ fun MorePage(
     onTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
             Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars).verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -173,14 +182,29 @@ private fun MoreRow(label: String, icon: ImageVector, onClick: () -> Unit) {
 fun ThemeModePicker(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val mode by ThemeSettings.mode.collectAsStateWithLifecycle()
-    SingleChoiceSegmentedButtonRow(modifier.fillMaxWidth()) {
-        ThemeMode.entries.forEachIndexed { i, m ->
-            SegmentedButton(
-                selected = mode == m,
+    // 세 칸 전환: 회색 바탕 위에 고른 칸만 흰 카드로
+    Row(
+        modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        ThemeMode.entries.forEach { m ->
+            val on = mode == m
+            Surface(
                 onClick = { ThemeSettings.set(context, m) },
-                shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
-                label = { Text(m.label, maxLines = 1) },
-            )
+                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = if (on) MaterialTheme.colorScheme.surface else Color.Transparent,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        m.label,
+                        fontSize = 15.sp,
+                        fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }

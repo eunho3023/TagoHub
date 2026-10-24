@@ -83,7 +83,7 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
         Column {
             Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            Row(Modifier.fillMaxWidth().height(64.dp)) {
+            Row(Modifier.fillMaxWidth().height(68.dp)) {
                 AppTab.entries.forEach { tab ->
                     val on = tab == active
                     val tint = if (on) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -92,8 +92,16 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.height(3.dp))
+                        // 고른 탭은 아이콘 뒤에 연한 파란 알약
+                        Box(
+                            Modifier
+                                .size(width = 52.dp, height = 28.dp)
+                                .background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent, RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(Modifier.height(2.dp))
                         // 탭이 여섯 개라 칸이 좁음: 글자가 겹치거나 줄바꿈되지 않게 긴 이름은 조금 작게 한 줄로
                         Text(
                             tab.label,
@@ -143,7 +151,7 @@ fun HomeScreen(
     )
     var query by rememberSaveable { mutableStateOf("") }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val columns = if (maxWidth >= 560.dp) 3 else 2
+        val columns = 3
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -152,14 +160,14 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
                 if (query.isBlank()) {
                     Text(
-                        "어디로\n가시나요?",
+                        "어디로 가시나요?",
                         fontSize = 26.sp,
                         lineHeight = 32.sp,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.ExtraBold,
                         letterSpacing = (-0.5).sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
                 SearchPanel(vm, SearchScope.All, query, { query = it }, search)
                 if (query.isBlank()) {
@@ -189,30 +197,32 @@ private fun TileSection(title: String, tiles: List<Tile>, columns: Int, dark: Bo
 @Composable
 private fun ModeTile(t: Tile, dark: Boolean, modifier: Modifier = Modifier) {
     // 흰 카드에 수단 색 원형 아이콘 + 굵은 이름 (색은 아이콘에만)
+    // 한 줄에 세 칸: 흰 카드, 위에 수단 색 원형 아이콘, 아래에 이름 (긴 이름도 줄바꿈 없이 한 줄에 들어가는 크기)
     Surface(
         onClick = t.onClick,
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier.heightIn(min = 72.dp),
+        modifier = modifier.heightIn(min = 76.dp),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
+        ) {
             Box(
-                Modifier.size(38.dp).background(if (dark) t.dark else t.light, androidx.compose.foundation.shape.CircleShape),
+                Modifier.size(34.dp).background(if (dark) t.dark else t.light, androidx.compose.foundation.shape.CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
-            Spacer(Modifier.width(10.dp))
-            // 칸이 좁아도 글자가 겹치거나 아이콘 밑으로 줄바꿈되지 않게: 긴 이름은 작게, 한 줄
             Text(
                 t.label,
-                fontSize = if (t.label.length >= 5) 14.sp else 16.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = if (t.label.length >= 5) 13.sp else 14.sp,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -280,32 +290,44 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
             delay(45_000L)
         }
     }
-    shown.forEach { f ->
-        val eta = etas[f.id]
-        val badgeText = if (f.kind == Favorite.Kind.Route) f.name else eta?.routeNo
-        val badgeColor = if (f.kind == Favorite.Kind.Route) busRouteColor(f.extra) else busRouteColor(eta?.routeType)
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { onFavorite(f) }.padding(vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.heightIn(min = 36.dp).widthIn(min = 36.dp).background(badgeColor, RoundedCornerShape(18.dp)).padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (badgeText != null) Text(badgeText, fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1)
-                else Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                if (f.kind == Favorite.Kind.Route) (f.sub ?: "노선") else f.name,
-                Modifier.weight(1f),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (eta?.text != null) {
-                Text(eta.text, fontFamily = NumberFont, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    // 하나의 흰 카드 안에 줄로 나눠서, 도착 시간은 빨간 글씨
+    val red = if (LocalDarkTheme.current) Color(0xFFFF8A80) else Color(0xFFD92D20)
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            shown.forEachIndexed { i, f ->
+                val eta = etas[f.id]
+                val badgeText = if (f.kind == Favorite.Kind.Route) f.name else eta?.routeNo
+                val badgeColor = if (f.kind == Favorite.Kind.Route) busRouteColor(f.extra) else busRouteColor(eta?.routeType)
+                if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable { onFavorite(f) }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.heightIn(min = 28.dp).widthIn(min = 34.dp).background(badgeColor, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (badgeText != null) Text(badgeText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1)
+                        else Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        if (f.kind == Favorite.Kind.Route) (f.sub ?: "노선") else f.name,
+                        Modifier.weight(1f),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (eta?.text != null) {
+                        Text(eta.text, fontFamily = NumberFont, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = red)
+                    }
+                }
             }
         }
     }

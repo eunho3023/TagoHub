@@ -112,15 +112,15 @@ import com.eunho.tagohub.ui.theme.LocalDarkTheme
 private val Mono = com.eunho.tagohub.ui.theme.NumberFont
 
 /** 내비 앱 느낌의 색. 안내 배너는 낮에는 파랑, 어두운 화면에서는 남색. 아래 바는 어두운 회색, 길안내 버튼은 남색+파랑 */
-private val NaviBlue = Color(0xFF2F5BFF)
+private val NaviBlue = Color(0xFF2563EB)
 private val NaviNavy = Color(0xFF14224D)
-private val NaviButton = Color(0xFF3A63D8)
+private val NaviButton = Color(0xFF2563EB)
 
 @Composable
-private fun bannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0E2A55) else NaviBlue
+private fun bannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF14295A) else NaviBlue
 
 @Composable
-private fun subBannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0A1F42) else Color(0xFF1B2F8F)
+private fun subBannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0C1B3D) else Color(0xFF1B3FA0)
 
 internal fun TurnKind.icon(): ImageVector = when (this) {
     TurnKind.Left -> Icons.Filled.TurnLeft
