@@ -31,6 +31,9 @@ object DriveGuidance {
         val alert: com.eunho.tagohub.data.RoadAlertStatus? = null,
         /** 가고 있는 방향(도, 북 0·동 90). GPS 가 알려 준 값이고, 모르면 null */
         val bearing: Double? = null,
+        /** 지금 도로의 제한속도(표준 노드·링크, 모르면 null)와 도로 전체 차로 수(모르면 0) */
+        val roadLimitKmh: Int? = null,
+        val lanes: Int = 0,
     )
 
     /** 안내 중인지 */

@@ -8,6 +8,8 @@ import com.eunho.tagohub.core.HeadingSensor
 import com.eunho.tagohub.data.FreeDrive
 import com.eunho.tagohub.data.FreeDriveAnnouncer
 import com.eunho.tagohub.data.RoadHazard
+import com.eunho.tagohub.data.RoadLinkIndex
+import com.eunho.tagohub.data.SpeedLimitWatch
 import com.eunho.tagohub.data.RoadHazards
 import com.eunho.tagohub.data.SafetyZone
 import com.eunho.tagohub.data.SafetyZones
@@ -34,6 +36,9 @@ object FreeDriveSession {
         val heading: Double?,
         val zones: List<FreeDrive.Ahead>,
         val hazards: List<FreeDrive.HazardAhead>,
+        /** 지금 도로의 제한속도(표준 노드·링크, 모르면 null)와 도로 전체 차로 수(모르면 0) */
+        val roadLimitKmh: Int? = null,
+        val lanes: Int = 0,
     )
 
     val active = MutableStateFlow(false)
@@ -48,6 +53,8 @@ object FreeDriveSession {
     private val announcer = FreeDriveAnnouncer()
 
     @Volatile private var zones: List<SafetyZone> = emptyList()
+    @Volatile private var links: RoadLinkIndex? = null
+    private val speedWatch = SpeedLimitWatch()
     @Volatile private var hazards: List<RoadHazard> = emptyList()
     @Volatile private var heading: Double? = null
     @Volatile private var gpsAt = 0L
@@ -70,6 +77,7 @@ object FreeDriveSession {
         job = scope.launch {
             launch { zones = SafetyZones.load(app) }
             launch { hazards = RoadHazards.load(app) }
+            launch { links = RoadLinkIndex.get(app) }
             // 앱이 보일 때만 위치·나침반을 받음
             AppState.foreground.collect { fg ->
                 if (fg) {
@@ -101,14 +109,24 @@ object FreeDriveSession {
         val pos = fix ?: return
         val h = heading
         scope.launch {
+            // 안내 설정에서 끈 종류는 화면에도 말에도 빼고, 지점과 위험은 더 가까운 것부터 말함
+            val on = DriveGuidance.zoneGroups.value
+            val facilityOn = com.eunho.tagohub.data.ZoneGroup.Facility in on
             val (z, hz) = withContext(Dispatchers.Default) {
                 if (h == null) emptyList<FreeDrive.Ahead>() to emptyList()
-                else FreeDrive.zonesAhead(pos.first, pos.second, h, zones).take(3) to FreeDrive.hazardsAhead(pos.first, pos.second, h, hazards).take(3)
+                else FreeDrive.zonesAhead(pos.first, pos.second, h, zones).filter { it.zone.kind.group in on }.take(3) to
+                    (if (facilityOn) FreeDrive.hazardsAhead(pos.first, pos.second, h, hazards).take(3) else emptyList())
             }
+            val road = withContext(Dispatchers.Default) { links?.find(pos.first, pos.second, h) }
             if (!active.value) return@launch
-            state.value = Snapshot(pos.first, pos.second, speedKmh, h, z, hz)
+            state.value = Snapshot(pos.first, pos.second, speedKmh, h, z, hz, road?.speedKmh, road?.lanes ?: 0)
             if (voiceOn.value) {
-                val line = z.firstOrNull()?.let { announcer.speakFor(it) } ?: hz.firstOrNull()?.let { announcer.speakForHazard(it) }
+                val zone = z.firstOrNull()
+                val hazard = hz.firstOrNull()
+                val zoneFirst = zone != null && (hazard == null || zone.distance <= hazard.distance)
+                val spoken = if (zoneFirst) zone?.let { announcer.speakFor(it) } ?: hazard?.let { announcer.speakForHazard(it) }
+                else hazard?.let { announcer.speakForHazard(it) } ?: zone?.let { announcer.speakFor(it) }
+                val line = spoken ?: speedWatch.update(speedKmh, road?.speedKmh, System.currentTimeMillis())
                 if (line != null) voice?.speak(line)
             }
         }
