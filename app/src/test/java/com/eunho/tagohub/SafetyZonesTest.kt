@@ -186,6 +186,21 @@ class SafetyZonesTest {
         assertTrue(t.update(bump.along - 100, 40.0).speak.isEmpty())
     }
 
+    @Test
+    fun newKindsParseAndSpeakTheirOwnSentences() {
+        val z = SafetyZoneSnapshot.parseLines(sequenceOf("park,37.5,127.0,,창동 주차타워 앞", "acc,37.51,127.01,,보행노인 사고다발 지역", "speed,37.52,127.02,60,우만통"))
+        assertEquals(listOf(ZoneKind.ParkingCamera, ZoneKind.AccidentSpot, ZoneKind.SpeedCamera), z.map { it.kind })
+        assertEquals(ZoneGroup.Parking, z[0].kind.group)
+        assertEquals(ZoneGroup.Accident, z[1].kind.group)
+        assertTrue(z[0].kind.isCamera.not() && z[2].kind.isCamera)
+        val r = route()
+        val parking = matchRoute(r, listOf(zoneAt(r, 5_000.0, ZoneKind.ParkingCamera))).first()
+        val said = ZoneTracker(listOf(parking)).update(parking.along - 250, 40.0).speak
+        assertTrue(said.toString(), said.size == 1 && "주정차" in said[0])
+        val acc = matchRoute(r, listOf(zoneAt(r, 9_000.0, ZoneKind.AccidentSpot))).first()
+        assertTrue(ZoneTracker(listOf(acc)).update(acc.along - 350, 40.0).speak.size == 1)
+    }
+
     /** 앱에 넣은 실제 파일(assets/safety_zones.csv)을 읽어 실제 경로에 맞춰 봄 */
     @Test
     fun bundledAssetLoadsAndMatchesTheRealRoute() {
@@ -194,6 +209,10 @@ class SafetyZonesTest {
         assertTrue("점 수 ${zones.size}", zones.size > 90_000)
         assertTrue(zones.count { it.kind == ZoneKind.SpeedBump } > 50_000)
         assertTrue(zones.count { it.kind == ZoneKind.ChildZone } > 10_000)
+        assertTrue(zones.count { it.kind == ZoneKind.SpeedCamera } > 5_000)
+        assertTrue(zones.count { it.kind == ZoneKind.SignalCamera } > 5_000)
+        assertTrue(zones.count { it.kind == ZoneKind.ParkingCamera } > 5_000)
+        assertTrue(zones.count { it.kind == ZoneKind.AccidentSpot } > 5_000)
         val r = route()
         val t0 = System.nanoTime()
         val on = matchRoute(r, zones)

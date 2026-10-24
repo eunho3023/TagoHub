@@ -15,7 +15,9 @@ enum class ZoneKind(val label: String, val code: String) {
     SignalCamera("신호위반 단속카메라", "signal"),
     OtherCamera("단속카메라", "cam"),
     ChildZone("어린이 보호구역", "child"),
-    SpeedBump("과속방지턱", "bump");
+    SpeedBump("과속방지턱", "bump"),
+    ParkingCamera("주정차 단속카메라", "park"),
+    AccidentSpot("사고다발 지역", "acc");
 
     val isCamera: Boolean get() = group == ZoneGroup.Camera
 
@@ -24,6 +26,8 @@ enum class ZoneKind(val label: String, val code: String) {
         get() = when (this) {
             ChildZone -> ZoneGroup.Protect
             SpeedBump -> ZoneGroup.Bump
+            ParkingCamera -> ZoneGroup.Parking
+            AccidentSpot -> ZoneGroup.Accident
             else -> ZoneGroup.Camera
         }
 
@@ -34,7 +38,7 @@ enum class ZoneKind(val label: String, val code: String) {
 
 /** 안내 설정에서 묶어 켜고 끄는 종류 */
 enum class ZoneGroup(val label: String) {
-    Camera("단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱"), Rest("다음 휴게소"),
+    Camera("과속·신호·구간 단속카메라"), Parking("주정차 단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱"), Accident("사고다발 지역(보행자·자전거)"), Rest("다음 휴게소"),
     Facility("결빙·위험예보·재난·교통안전·톨게이트"),
 }
 
@@ -182,6 +186,8 @@ class ZoneTracker(private val zones: List<RouteZone>) {
     private fun leads(kind: ZoneKind, speedKmh: Double): IntArray = when {
         kind == ZoneKind.ChildZone -> intArrayOf(400)
         kind == ZoneKind.SpeedBump -> intArrayOf(200)
+        kind == ZoneKind.ParkingCamera -> intArrayOf(300)
+        kind == ZoneKind.AccidentSpot -> intArrayOf(400)
         speedKmh >= 70 -> intArrayOf(1000, 400)
         else -> intArrayOf(500, 200)
     }
@@ -195,6 +201,8 @@ class ZoneTracker(private val zones: List<RouteZone>) {
             ZoneKind.SignalCamera -> "$lead 신호위반 단속카메라가 있습니다."
             ZoneKind.OtherCamera -> "$lead 단속카메라가 있습니다."
             ZoneKind.SpeedBump -> "$lead 과속방지턱이 있습니다."
+            ZoneKind.ParkingCamera -> "$lead 주정차 단속카메라가 있습니다."
+            ZoneKind.AccidentSpot -> "$lead ${z.name.ifBlank { "사고다발 지역" }}입니다. 주의하세요."
         }
     }
 

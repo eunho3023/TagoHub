@@ -97,7 +97,8 @@ class FreeDriveAnnouncer {
 
     private fun announceDistance(z: SafetyZone): Double = when (z.kind.group) {
         ZoneGroup.Camera -> 700.0
-        ZoneGroup.Protect -> 400.0
+        ZoneGroup.Protect, ZoneGroup.Accident -> 400.0
+        ZoneGroup.Parking -> 300.0
         else -> 200.0
     }
 }
