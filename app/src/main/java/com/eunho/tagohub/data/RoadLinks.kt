@@ -97,7 +97,7 @@ class RoadLinkIndex(private val buf: ByteBuffer) {
 /** 지금 도로 제한속도를 넘어 달릴 때 한 번 알려 주는 판단 (지점 안내와 겹치지 않게 간격을 둠) */
 class SpeedLimitWatch {
     private var armed = true
-    private var lastAt = 0L
+    private var lastAt = Long.MIN_VALUE / 2
 
     /** 알릴 말이 있으면 문구, 아니면 null. 제한속도를 모르면 아무 말 없음 */
     fun update(speedKmh: Int, limitKmh: Int?, nowMs: Long): String? {
