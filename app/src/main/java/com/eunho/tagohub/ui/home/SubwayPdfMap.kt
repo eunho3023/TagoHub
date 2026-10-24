@@ -61,15 +61,20 @@ internal class MetroPdf(context: Context) {
 
     /** [matrix](쪽 좌표 → 그림 픽셀)로 [width]x[height] 그림을 그림. 한 번에 하나씩만 */
     @Synchronized
-    fun render(width: Int, height: Int, matrix: Matrix): Bitmap {
+    fun render(width: Int, height: Int, matrix: Matrix): Bitmap? = runCatching {
+        // 화면을 벗어나 문서가 이미 닫힌 뒤에 끝나는 그리기가 앱을 죽이지 않게 실패는 null
+        if (closed) return null
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         bmp.eraseColor(android.graphics.Color.WHITE)
         page.render(bmp, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-        return bmp
-    }
+        bmp
+    }.getOrNull()
+
+    private var closed = false
 
     @Synchronized
     fun close() {
+        closed = true
         runCatching { page.close() }
         runCatching { renderer.close() }
         runCatching { fd.close() }
@@ -84,7 +89,10 @@ internal class MetroPdf(context: Context) {
 fun SubwayPdfMap(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val pdf by produceState<MetroPdf?>(null) { value = withContext(Dispatchers.IO) { runCatching { MetroPdf(context) }.getOrNull() } }
-    DisposableEffect(pdf) { onDispose { pdf?.close() } }
+    // 주의: onDispose 안에서 위임 값(pdf)을 읽으면 '지금 값'이라, 처음 null→열림으로 바뀔 때 방금 연 문서를 바로 닫아 버려 앱이 죽었음.
+    // 그래서 이 효과가 만들어질 때의 값을 따로 잡아 둠
+    val opened = pdf
+    DisposableEffect(opened) { onDispose { opened?.close() } }
 
     Box(modifier.background(Color.White)) {
         val doc = pdf
@@ -122,7 +130,7 @@ fun SubwayPdfMap(modifier: Modifier = Modifier) {
                     setScale(fit * s, fit * s)
                     postTranslate(padX * s + o.x, padY * s + o.y)
                 }
-                val bmp = withContext(Dispatchers.Default) { doc.render(w, h, m) }
+                val bmp = withContext(Dispatchers.Default) { doc.render(w, h, m) } ?: return@LaunchedEffect
                 sharp = Triple(bmp, s, o)
             }
 
