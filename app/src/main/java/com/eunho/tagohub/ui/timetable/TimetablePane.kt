@@ -130,7 +130,7 @@ fun TimetablePane(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("출발 빠른 순", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            Text("출발 빠른 순", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         TripList(
