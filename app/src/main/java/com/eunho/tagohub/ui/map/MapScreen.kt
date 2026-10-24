@@ -752,7 +752,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                         Modifier.weight(1f).padding(start = 8.dp),
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     TextButton(onClick = { fullscreen = false }) { Text("전체화면 종료", color = Color.White) }
@@ -860,7 +860,7 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 Icon(Icons.Filled.Place, contentDescription = null, tint = Color(0xFFE53935))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     p.sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     val extra = listOfNotNull(p.category, p.phone).joinToString(" · ")
                     if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -893,7 +893,7 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
                 list.take(6).forEach { pl ->
                     Row(Modifier.fillMaxWidth().clickable { vm.pickPlace(pl) }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(pl.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(pl.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         pl.distance?.let { Text(if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it}m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
@@ -1060,7 +1060,7 @@ private fun RouteBandHeader(
                 Pill(it.removeSuffix("버스"), color)
                 Spacer(Modifier.width(10.dp))
             }
-            Text(routeNo, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(routeNo, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1)
             if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
             IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") }
             IconButton(onClick = onFavorite) {
@@ -1074,8 +1074,8 @@ private fun RouteBandHeader(
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
         }
-        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-        if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
@@ -1334,7 +1334,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
                                 color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center,
                             )
@@ -1353,7 +1353,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
             list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${s.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${s.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     AlightButton(com.eunho.tagohub.guidance.AlightAlert.Target(s.name, s.lat!!, s.lng!!, false, d.routeNo))
                 }
             }
@@ -1506,7 +1506,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                                 focus.clearFocus()
                                 vm.openFavorite(f)
                             },
-                            label = { Text(if (f.kind == Favorite.Kind.Route) "${f.name}번" else f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            label = { Text(if (f.kind == Favorite.Kind.Route) "${f.name}번" else f.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                             leadingIcon = {
                                 Icon(
                                     if (f.kind == Favorite.Kind.Route) Icons.Filled.DirectionsBus else Icons.Filled.Place,
@@ -1565,9 +1565,9 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                                         Icon(Icons.Filled.Place, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(10.dp))
                                         Column(Modifier.weight(1f)) {
-                                            Text(pl.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(pl.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                             Text(listOfNotNull(pl.category, pl.address).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                 }
@@ -1862,7 +1862,7 @@ private fun PlanPointField(label: String, value: String, active: Boolean, placeh
                 value,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (placeholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -1928,8 +1928,8 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!sub.isNullOrBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (!sub.isNullOrBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -2052,7 +2052,7 @@ private fun CarViaBar(t: TripController) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         vias.forEachIndexed { i, v ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("경유 ${i + 1}  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text("경유 ${i + 1}  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 TextButton(onClick = { t.removeCarVia(i) }) { Text("빼기") }
             }
         }
@@ -2207,7 +2207,7 @@ private fun RouteTitle(r: RouteTimes, modifier: Modifier = Modifier) {
         Text(
             r.routeNo + if (ends.isNotEmpty()) "($ends)" else "",
             style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }

@@ -107,7 +107,7 @@ internal fun FreeDriveOverlay(vm: MapViewModel, modifier: Modifier = Modifier) {
 @Composable
 private fun InfoChip(text: String) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp) {
-        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -127,7 +127,7 @@ private fun AheadCard(label: String, meters: Double, camera: Boolean) {
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = if (camera) BoardColor.OnAmber else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }

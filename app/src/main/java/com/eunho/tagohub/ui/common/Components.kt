@@ -122,7 +122,7 @@ fun ScreenTitle(
                         title,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -131,7 +131,7 @@ fun ScreenTitle(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.88f),
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -310,7 +310,7 @@ fun DateField(
     androidx.compose.material3.OutlinedButton(onClick = { open = true }, modifier = modifier.heightIn(min = 48.dp)) {
         Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text(listOfNotNull(label, dateLabel(value)).joinToString("  "), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(listOfNotNull(label, dateLabel(value)).joinToString("  "), maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     if (open) CalendarDialog(value, onPick, { open = false }, min, max)
 }
@@ -398,7 +398,7 @@ fun PlaceField(label: String, value: Place?, accent: Color, modifier: Modifier =
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = if (value != null) FontWeight.Bold else FontWeight.Normal,
                 color = if (value != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }

@@ -109,7 +109,7 @@ internal fun RouteListRow(r: BusRoute, region: String? = null, onClick: () -> Un
             Text(
                 listOfNotNull(r.startName, r.endName).joinToString(" ↔ ").ifEmpty { r.routeNo },
                 style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val sub = listOfNotNull(region, r.routeType).joinToString("   ")
@@ -158,7 +158,7 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
                     Pill(t.removeSuffix("버스"), busRouteColor(t))
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(row.routeNo, fontSize = 26.sp, lineHeight = 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(row.routeNo, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             val a0 = row.arrivals.firstOrNull()
             val roundTrip = com.eunho.tagohub.data.RouteDirections.isRoundTrip(row.startName, row.endName)
