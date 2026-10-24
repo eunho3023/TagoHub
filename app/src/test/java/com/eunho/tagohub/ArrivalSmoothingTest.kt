@@ -58,3 +58,17 @@ class PassedBusTest {
         assertEquals(false, p.passed(a(null, 1), 100))
     }
 }
+
+class PassedByPositionTest {
+    private val p = com.eunho.tagohub.data.PassedByPosition
+
+    @Test
+    fun passedOnlyWhenABusJustLeftAndNoneIsComing() {
+        assertEquals(true, p.passed(listOf(20), listOf(21, 5)))      // 방금 지나감, 오는 버스 없음
+        assertEquals(false, p.passed(listOf(20), listOf(21, 18)))    // 뒤따라 오는 버스가 있음
+        assertEquals(false, p.passed(listOf(20), listOf(20)))        // 지금 정류장에 있음
+        assertEquals(false, p.passed(listOf(20), listOf(5)))         // 멀리 있음 → 모름
+        assertEquals(false, p.passed(listOf(20), emptyList()))       // 위치 없음 → 모름
+        assertEquals(false, p.passed(listOf(3, 40), listOf(41)))     // 순환 노선: 정류장이 두 번 나와 판단 안 함
+    }
+}

@@ -347,7 +347,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
             if (arr.data.isNotEmpty() || d.emptyStreak >= 1 || d.lastArrivals.isNullOrEmpty()) {
                 // 새로고침해도 남은 시간이 거꾸로 늘지 않게 (화면에서 이미 줄어든 값을 유지)
                 val elapsed = d.updated.value?.let { java.time.Duration.between(it, LocalTime.now()).seconds.toInt().coerceIn(0, 600) } ?: 0
-                d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, arr.data)
+                d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, dropPassedBySeoulPosition(d, arr.data))
                 d.updated.value = LocalTime.now()
             }
             d.emptyStreak = if (arr.data.isEmpty()) d.emptyStreak + 1 else 0
@@ -642,4 +642,32 @@ private fun mergeWithGrace(d: BusDest.Route, fresh: List<BusLocation>): List<Bus
     }
     d.misses.keys.retainAll(now.keys + kept.map(::key))
     return fresh + kept
+}
+
+private val busPosCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<Int>>>()
+private const val BUS_POS_TTL_MS = 15_000L
+private const val BUS_POS_MAX_ROUTES = 5
+
+/**
+ * 서울: 곧 도착(1정류장 전 이내)으로 뜬 첫 버스가 실시간 위치상 이미 정류장을 지나갔으면 목록에서 뺀다.
+ * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 15초 동안 결과를 재사용한다.
+ * 위치를 못 받거나 정류장이 노선에 여러 번 나오면 판단하지 않고 그대로 둔다.
+ */
+private suspend fun dropPassedBySeoulPosition(d: BusDest.Stop, list: List<BusArrival>): List<BusArrival> {
+    if (!SeoulBus.isSeoul(d.stop.nodeId)) return list
+    val db = StopDb.peek() ?: return list
+    val firsts = list.filter { (it.prevStops ?: Int.MAX_VALUE) <= 1 }
+        .groupBy { it.routeId }.values.map { g -> g.minBy { it.arrSeconds ?: Int.MAX_VALUE } }.take(BUS_POS_MAX_ROUTES)
+    if (firsts.isEmpty()) return list
+    val gone = ArrayList<BusArrival>()
+    for (a in firsts) {
+        val stopOrds = withContext(Dispatchers.IO) { db.routeStops(a.routeId) }.filter { it.nodeId == d.stop.nodeId }.map { it.ord }
+        if (stopOrds.size != 1) continue
+        val now = System.currentTimeMillis()
+        val cached = busPosCache[a.routeId]?.takeIf { now - it.first < BUS_POS_TTL_MS }?.second
+        val busOrds = cached ?: (Graph.seoulBus.buses(a.routeId) as? TagoResult.Success)?.data?.mapNotNull { it.ord }
+            ?.also { busPosCache[a.routeId] = now to it } ?: continue
+        if (com.eunho.tagohub.data.PassedByPosition.passed(stopOrds, busOrds)) gone += a
+    }
+    return if (gone.isEmpty()) list else list.filterNot { x -> gone.any { it === x } }
 }
