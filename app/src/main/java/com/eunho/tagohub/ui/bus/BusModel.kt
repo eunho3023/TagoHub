@@ -345,7 +345,9 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
     when (arr) {
         is TagoResult.Success -> {
             if (arr.data.isNotEmpty() || d.emptyStreak >= 1 || d.lastArrivals.isNullOrEmpty()) {
-                d.lastArrivals = arr.data
+                // 새로고침해도 남은 시간이 거꾸로 늘지 않게 (화면에서 이미 줄어든 값을 유지)
+                val elapsed = d.updated.value?.let { java.time.Duration.between(it, LocalTime.now()).seconds.toInt().coerceIn(0, 600) } ?: 0
+                d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, arr.data)
                 d.updated.value = LocalTime.now()
             }
             d.emptyStreak = if (arr.data.isEmpty()) d.emptyStreak + 1 else 0
