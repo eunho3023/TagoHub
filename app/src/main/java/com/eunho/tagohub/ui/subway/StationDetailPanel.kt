@@ -4,6 +4,9 @@ package com.eunho.tagohub.ui.subway
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,6 +102,8 @@ fun StationDetailPanel(
     /** 같은 자리에 기차역이 있으면 그 역 이름 (기차 시간표로 바로 가는 버튼을 보임) */
     railStationName: String? = null,
     onRailJump: ((Boolean) -> Unit)? = null,
+    /** 노선 띠의 이전·다음 역 이름을 누르면 그 역으로 */
+    onStationName: ((String) -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
     val lines = d.group.displayLines
@@ -159,9 +164,9 @@ fun StationDetailPanel(
                 contentAlignment = Alignment.Center,
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(prev?.let { "‹ " + it } ?: "", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(prev?.let { "‹ " + it } ?: "", Modifier.weight(1f).heightIn(min = 48.dp).then(if (prev != null && onStationName != null) Modifier.clickable { onStationName(prev) } else Modifier).wrapContentHeight(Alignment.CenterVertically), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.weight(1.1f))
-                    Text(next?.let { it + " ›" } ?: "", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
+                    Text(next?.let { it + " ›" } ?: "", Modifier.weight(1f).heightIn(min = 48.dp).then(if (next != null && onStationName != null) Modifier.clickable { onStationName(next) } else Modifier).wrapContentHeight(Alignment.CenterVertically), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
                 }
                 Surface(
                     shape = CircleShape,
@@ -176,13 +181,19 @@ fun StationDetailPanel(
                 }
             }
         }
-        // 실시간 | 시간표 전환
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 실시간 · 시간표 · 노선도 · 출구 · 편의정보: 한 줄 (좁으면 옆으로 밀어서)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Row(
                 Modifier.background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                listOf(StationTab.Live to "실시간", StationTab.Timetable to "시간표").forEach { (t, label) ->
+                listOf(
+                    StationTab.Live to "실시간", StationTab.Timetable to "시간표", StationTab.Route to "노선도",
+                    StationTab.Exits to "출구", StationTab.Facilities to "편의정보",
+                ).forEach { (t, label) ->
                     val on = tab == t
                     Surface(
                         onClick = { c.setTab(d, t) },
@@ -190,36 +201,15 @@ fun StationDetailPanel(
                         color = if (on) MaterialTheme.colorScheme.surface else Color.Transparent,
                         border = if (on) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null,
                     ) {
-                        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
                             Text(
                                 label,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
                                 color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
                             )
                         }
-                    }
-                }
-            }
-        }
-        // 노선도 | 출구 | 편의정보 (눌러 아래 내용을 바꿈)
-        Surface(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            shape = RoundedCornerShape(16.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            color = MaterialTheme.colorScheme.surface,
-        ) {
-            Row(Modifier.height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                listOf(StationTab.Route to "노선도", StationTab.Exits to "출구", StationTab.Facilities to "편의정보").forEachIndexed { i, (t, label) ->
-                    if (i > 0) VerticalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    val on = tab == t
-                    Box(Modifier.weight(1f).fillMaxHeight().clickable { c.setTab(d, t) }, contentAlignment = Alignment.Center) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold,
-                            color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        )
                     }
                 }
             }

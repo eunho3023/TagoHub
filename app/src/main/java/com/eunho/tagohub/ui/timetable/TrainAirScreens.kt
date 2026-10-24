@@ -142,7 +142,7 @@ fun AirScreen(vm: AirViewModel = viewModel()) {
     }
     Column(Modifier.fillMaxSize()) {
         val intl by vm.intlMode.collectAsStateWithLifecycle()
-        androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+        androidx.compose.foundation.layout.Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
             androidx.compose.material3.FilterChip(selected = !intl, onClick = { vm.intlMode.value = false }, label = { Text("국내선") })
             androidx.compose.material3.FilterChip(selected = intl, onClick = { vm.intlMode.value = true }, label = { Text("국제선") })
         }

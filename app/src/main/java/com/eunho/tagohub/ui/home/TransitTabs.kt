@@ -80,10 +80,9 @@ fun SubwayTab(
     var query by rememberSaveable { mutableStateOf("") }
     var regionName by rememberSaveable { mutableStateOf(SubwayRegion.Capital.name) }
     var highlight by rememberSaveable { mutableStateOf<String?>(null) }
-    // 수도권은 서울교통공사 공식 노선도(그림)를 기본으로, 원하면 위치에 맞춰 그린 노선도(역을 눌러 열기)로
-    var official by rememberSaveable { mutableStateOf(true) }
+    // 수도권은 노선도 그림(역 이름을 누르면 열림), 나머지 권역은 역 위치로 그린 노선도
     val region = SubwayRegion.valueOf(regionName)
-    val officialMap = region == SubwayRegion.Capital && official
+    val officialMap = region == SubwayRegion.Capital
     val stations = remember { vm.metroStations() }
     val lines = remember(stations, region) { SubwayMap.lines(stations, region) }
 
@@ -103,13 +102,6 @@ fun SubwayTab(
             }
         }
         Spacer(Modifier.height(6.dp))
-        if (region == SubwayRegion.Capital) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = official, onClick = { official = true }, label = { Text("공식 노선도", maxLines = 1) })
-                FilterChip(selected = !official, onClick = { official = false }, label = { Text("위치로 보기 (역 누르기)", maxLines = 1) })
-            }
-            Spacer(Modifier.height(4.dp))
-        }
         // 노선 이름 칩: 누르면 그 노선만 진하게 (다시 누르면 전체). 공식 노선도는 그림이라 강조 없음
         if (!officialMap) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -135,7 +127,7 @@ fun SubwayTab(
             )
         }
         Text(
-            if (officialMap) "서울교통공사 공식 노선도 · 두 손가락으로 확대·이동 · 역 이름을 누르면 지도에서 열려요" else "두 손가락으로 확대·이동 · 역을 누르면 지도에서 열려요",
+            if (officialMap) "노선도 · 두 손가락으로 확대·이동 · 역 이름을 누르면 지도에서 열려요" else "두 손가락으로 확대·이동 · 역을 누르면 지도에서 열려요",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 6.dp),
