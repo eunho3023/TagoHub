@@ -1703,6 +1703,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 노선도를 그리는 데 쓰는 전국 지하철역 */
     fun metroStations(): List<com.eunho.tagohub.data.MetroStation> = index?.stations.orEmpty()
 
+    /** 노선도 그림에서 누른 역 이름 → 수도권의 그 역 묶음 (같은 이름이 다른 권역에도 있으면 수도권 것을 먼저) */
+    fun stationGroupNamed(name: String): StationGroup? =
+        index?.groups.orEmpty().filter { it.name == name }
+            .minByOrNull { if (com.eunho.tagohub.data.SubwayRegion.of(it.lat, it.lng) == com.eunho.tagohub.data.SubwayRegion.Capital) 0 else 1 }
+
     /** 노선도에서 누른 역이 속한 역 묶음 */
     fun groupOfMetro(s: com.eunho.tagohub.data.MetroStation): StationGroup? = index?.groupIdOf(s)?.let { index?.group(it) }
 
