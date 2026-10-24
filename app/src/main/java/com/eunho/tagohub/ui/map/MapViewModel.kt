@@ -2100,7 +2100,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 val shape = saved ?: run {
                     val official: List<LatLng>? = when {
                         com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) ->
-                            (Graph.seoulBus.path(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                            // 앱 안 노선 모양(서울시 TBIS). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (아니면 서울 API)
+                            withContext(Dispatchers.IO) { com.eunho.tagohub.data.RouteShapes.seoul(getApplication(), d.routeId) }
+                                ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts) }
+                                ?: (Graph.seoulBus.path(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
                         com.eunho.tagohub.data.Gyeonggi.isGyeonggi(d.routeId) ->
                             // 앱 안 노선 모양(경기 경로이력 2025-10). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (노선이 바뀌었으면 경기 API)
                             stopDb?.let { db -> withContext(Dispatchers.IO) { db.gyeonggiShape(d.routeId) } }
