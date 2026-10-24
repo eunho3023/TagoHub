@@ -93,9 +93,9 @@ fun TimetablePane(
     LaunchedEffect(c) { c.ensureGrades() }
 
     Column(Modifier.fillMaxSize()) {
-        // 화면 제목 머리띠 바로 아래로 이어지는 같은 색 띠 안에 출발·도착 (철도 예매 앱처럼)
-        Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface) {
-            Column(Modifier.padding(bottom = 12.dp)) {
+        // 출발·도착: 화면 바탕과 같은 색 위에 흰 칸 두 개 (위의 기차·고속·항공 탭과는 떨어뜨림)
+        Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
+            Column(Modifier.padding(top = 14.dp, bottom = 12.dp)) {
                 OdSelector(
                     dep, arr, accent, "출발", "도착",
                     onDep = { picking = true },

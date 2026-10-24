@@ -87,3 +87,17 @@ class RailMatchTest {
         assertEquals(null, g.matchNear("중앙", 35.1, 129.0))                // 이름만 같은 먼 역
     }
 }
+
+class StationPoiTest {
+    @Test
+    fun stationNamesWinOverSameNamedBusStops() {
+        val p = com.eunho.tagohub.data.PoiMatch
+        assertEquals(true, p.looksLikeStation("강남역"))
+        assertEquals(true, p.looksLikeStation("강남역 2호선"))
+        assertEquals(true, p.looksLikeStation("신촌역 2번출구"))
+        assertEquals(true, p.looksLikeStation("서울역(1호선)"))
+        assertEquals(false, p.looksLikeStation("강남역.강남역사거리"))
+        assertEquals(false, p.looksLikeStation("서울역 롯데마트"))
+        assertEquals(false, p.looksLikeStation("강남역 정류장"))
+    }
+}

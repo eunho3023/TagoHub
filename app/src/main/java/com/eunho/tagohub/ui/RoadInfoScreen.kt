@@ -17,13 +17,13 @@ import com.eunho.tagohub.ui.map.ItsRoadScreen
 import com.eunho.tagohub.ui.map.MapViewModel
 
 /**
- * 도로 정보 한 화면: 예전에는 메뉴가 넷(실시간 교통상황 · 도로 정보 · 고속도로 정보 · 도로날씨)으로 나뉘어 있었다.
+ * 도로 정보 한 화면: 예전에는 메뉴가 넷(실시간 교통상황 · 도로 정보 · 고속도로 정보)으로 나뉘어 있었다.
  * 지도 위 정보는 지도의 레이어 버튼에서 켜고, 여기서는 목록·표로 자세히 본다.
  */
 @Composable
 fun RoadInfoScreen(vm: MapViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val titles = listOf("교통상황", "소통·예측", "고속도로", "도로날씨")
+    val titles = listOf("교통상황", "소통·예측", "고속도로")
     Column(Modifier.fillMaxSize()) {
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
             titles.forEachIndexed { i, title ->
@@ -34,8 +34,7 @@ fun RoadInfoScreen(vm: MapViewModel) {
             when (tab) {
                 0 -> UticTrafficScreen()
                 1 -> ItsRoadScreen(vm)
-                2 -> ExpresswayScreen()
-                else -> RoadWeatherScreen()
+                else -> ExpresswayScreen()
             }
         }
     }

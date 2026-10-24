@@ -406,6 +406,7 @@ fun MapScreen(
                             refreshKey = refreshTick,
                             onArrivalClick = { a -> vm.showArrivalPath(d.group, a) },
                             onUseStation = { asOrigin -> vm.useStationAs(d.group, asOrigin) },
+                            onStationName = { n -> vm.stationGroupNear(n, d.group)?.let { vm.focusStation(it) } },
                             railStationName = railName,
                             onRailJump = railName?.let { rn -> { asOrigin -> vm.jumpToTrain(rn, asOrigin) } },
                         )

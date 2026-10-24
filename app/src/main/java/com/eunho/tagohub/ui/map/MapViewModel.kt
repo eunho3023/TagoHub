@@ -792,8 +792,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val stopDistance = stop?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat ?: lat, it.lng ?: lng) }
             val stationDistance = station?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) }
             val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
+            // 이름이 지하철역("강남역", "강남역 2호선")이면 같은 이름의 정류장이 더 가까워도 역을 연다
             val useStop = stop != null && (
-                station == null || busPoi || stopDistance!! <= stationDistance!!
+                station == null || busPoi || (!com.eunho.tagohub.data.PoiMatch.looksLikeStation(name) && stopDistance!! <= stationDistance!!)
             )
             if (useStop) {
                 val matchedStop = stop!!
@@ -1715,6 +1716,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun stationGroupNamed(name: String): StationGroup? =
         index?.groups.orEmpty().filter { it.name == name }
             .minByOrNull { if (com.eunho.tagohub.data.SubwayRegion.of(it.lat, it.lng) == com.eunho.tagohub.data.SubwayRegion.Capital) 0 else 1 }
+
+    /** 이름이 같은 역 중 [from] 에서 가장 가까운 것 (노선 띠에서 이전·다음 역을 눌렀을 때) */
+    fun stationGroupNear(name: String, from: StationGroup): StationGroup? {
+        val n = com.eunho.tagohub.data.StationName.norm(name)
+        return index?.groups.orEmpty().filter { com.eunho.tagohub.data.StationName.norm(it.name) == n && it.id != from.id }
+            .minByOrNull { com.eunho.tagohub.core.Geo.meters(from.lat, from.lng, it.lat, it.lng) }
+    }
 
     /** 노선도에서 누른 역이 속한 역 묶음 */
     fun groupOfMetro(s: com.eunho.tagohub.data.MetroStation): StationGroup? = index?.groupIdOf(s)?.let { index?.group(it) }

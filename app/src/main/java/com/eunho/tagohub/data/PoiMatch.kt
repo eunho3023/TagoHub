@@ -7,6 +7,18 @@ import com.eunho.tagohub.core.Geo
  * 카카오 POI 는 이름과 좌표만 주므로, 가까운 정류장·역 중 이름이 비슷한 것을 고른다.
  */
 object PoiMatch {
+    /**
+     * 지도에서 누른 곳의 이름이 지하철역인지: "강남역", "강남역 2호선", "신촌역 2번출구" 는 역,
+     * "강남역.강남역사거리"(점 들어간 정류장 이름)·"서울역 롯데마트"(장소)는 아님
+     */
+    fun looksLikeStation(name: String): Boolean {
+        val n = name.replace(Regex("""\(.*?\)"""), "").trim()
+        if (n.contains('.')) return false
+        if (n.endsWith("역")) return true
+        val m = Regex("""^(.+역)\s+(.+)$""").find(n) ?: return false
+        return LINE_OR_EXIT.matches(m.groupValues[2])
+    }
+
     /** 공백·문장부호·괄호 안·끝의 '역'·'정류장'·호선 표기를 빼고 비교 */
     /** "역" 뒤에 붙는 노선·출구 표기: "강남역 신분당선", "신촌역 2번출구", "서울역 1호선 경부선" (장소 이름 "서울역 롯데마트" 는 아님) */
     private val LINE_OR_EXIT = Regex("""^(\d+\s*호선|\d+\s*번\s*출구|출구.*|[가-힣A-Za-z0-9]*선|[가-힣]*철도|[가-힣]*경전철|GTX-?[A-Ca-c]|신분당|분당)(\s+.*)?$""")

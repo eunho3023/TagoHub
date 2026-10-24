@@ -103,7 +103,7 @@ fun NavigationScreen(onPlanRoute: () -> Unit, onShowMap: () -> Unit, onRoadInfo:
                 OutlinedButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("지도에서 보기") }
             }
         }
-        OutlinedButton(onClick = onRoadInfo, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("도로교통 (소통·예측·고속도로·도로날씨)") }
+        OutlinedButton(onClick = onRoadInfo, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("도로교통 (소통·예측·고속도로)") }
         OutlinedButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("지도 열기") }
     }
 }
