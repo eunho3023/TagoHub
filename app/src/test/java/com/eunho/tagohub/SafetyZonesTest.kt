@@ -201,6 +201,25 @@ class SafetyZonesTest {
         assertTrue(ZoneTracker(listOf(acc)).update(acc.along - 350, 40.0).speak.size == 1)
     }
 
+    @Test
+    fun hazardKindsHaveTheirOwnGroupsAndSentences() {
+        val kinds = mapOf(
+            "curve" to ZoneGroup.Curve, "rock" to ZoneGroup.Rockfall, "fog" to ZoneGroup.Fog, "fall" to ZoneGroup.Fall,
+            "rail" to ZoneGroup.RailCrossing, "senior" to ZoneGroup.Senior, "disabled" to ZoneGroup.Disabled,
+        )
+        val words = mapOf("curve" to "급커브", "rock" to "낙석", "fog" to "안개", "fall" to "추락", "rail" to "건널목", "senior" to "노인", "disabled" to "장애인")
+        val r = route()
+        for ((code, group) in kinds) {
+            val kind = ZoneKind.of(code)!!
+            assertEquals(code, group, kind.group)
+            assertFalse(code, kind.isCamera)
+            val rz = matchRoute(r, listOf(zoneAt(r, 6_000.0, kind))).first()
+            val said = ZoneTracker(listOf(rz)).update(rz.along - 380, 40.0).speak
+            assertTrue("$code: $said", said.size == 1 && words.getValue(code) in said[0])
+        }
+        assertEquals(ZoneGroup.entries.size, ZoneGroup.entries.map { it.label }.toSet().size)   // 설정 화면 이름이 겹치지 않음
+    }
+
     /** 앱에 넣은 실제 파일(assets/safety_zones.csv)을 읽어 실제 경로에 맞춰 봄 */
     @Test
     fun bundledAssetLoadsAndMatchesTheRealRoute() {

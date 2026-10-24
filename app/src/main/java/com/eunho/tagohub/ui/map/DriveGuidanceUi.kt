@@ -388,7 +388,9 @@ private fun ZoneCard(z: ZoneStatus) {
                 when (rz.zone.kind.group) {
                     ZoneGroup.Protect -> Icons.Filled.ChildCare
                     ZoneGroup.Bump -> Icons.Filled.Warning
+                    ZoneGroup.Senior, ZoneGroup.Disabled -> Icons.Filled.ChildCare
                     ZoneGroup.Accident -> Icons.Filled.Warning
+                    ZoneGroup.Curve, ZoneGroup.Rockfall, ZoneGroup.Fog, ZoneGroup.Fall, ZoneGroup.RailCrossing -> Icons.Filled.Warning
                     ZoneGroup.Camera, ZoneGroup.Parking, ZoneGroup.Rest, ZoneGroup.Facility -> Icons.Filled.CameraAlt
                 },
                 contentDescription = null,

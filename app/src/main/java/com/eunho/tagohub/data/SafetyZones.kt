@@ -17,7 +17,14 @@ enum class ZoneKind(val label: String, val code: String) {
     ChildZone("어린이 보호구역", "child"),
     SpeedBump("과속방지턱", "bump"),
     ParkingCamera("주정차 단속카메라", "park"),
-    AccidentSpot("사고다발 지역", "acc");
+    AccidentSpot("사고다발 지역", "acc"),
+    Curve("급커브 구간", "curve"),
+    Rockfall("낙석 위험 구간", "rock"),
+    Fog("안개 주의 구간", "fog"),
+    Fall("추락 위험 구간", "fall"),
+    RailCrossing("철길 건널목", "rail"),
+    SeniorZone("노인 보호구역", "senior"),
+    DisabledZone("장애인 보호구역", "disabled");
 
     val isCamera: Boolean get() = group == ZoneGroup.Camera
 
@@ -28,6 +35,13 @@ enum class ZoneKind(val label: String, val code: String) {
             SpeedBump -> ZoneGroup.Bump
             ParkingCamera -> ZoneGroup.Parking
             AccidentSpot -> ZoneGroup.Accident
+            Curve -> ZoneGroup.Curve
+            Rockfall -> ZoneGroup.Rockfall
+            Fog -> ZoneGroup.Fog
+            Fall -> ZoneGroup.Fall
+            RailCrossing -> ZoneGroup.RailCrossing
+            SeniorZone -> ZoneGroup.Senior
+            DisabledZone -> ZoneGroup.Disabled
             else -> ZoneGroup.Camera
         }
 
@@ -38,7 +52,8 @@ enum class ZoneKind(val label: String, val code: String) {
 
 /** 안내 설정에서 묶어 켜고 끄는 종류 */
 enum class ZoneGroup(val label: String) {
-    Camera("과속·신호·구간 단속카메라"), Parking("주정차 단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱"), Accident("사고다발 지역(보행자·자전거)"), Rest("다음 휴게소"),
+    Camera("과속·신호·구간 단속카메라"), Parking("주정차 단속카메라"), Protect("어린이 보호구역"), Bump("과속방지턱"), Accident("사고다발 지역(보행자·자전거)"), Curve("급커브 주의"), Rockfall("낙석 주의"), Fog("안개 주의"), Fall("추락 주의"),
+    RailCrossing("철길 건널목"), Senior("노인 보호구역"), Disabled("장애인 보호구역"), Rest("다음 휴게소"),
     Facility("결빙·위험예보·재난·교통안전·톨게이트"),
 }
 
@@ -188,6 +203,9 @@ class ZoneTracker(private val zones: List<RouteZone>) {
         kind == ZoneKind.SpeedBump -> intArrayOf(200)
         kind == ZoneKind.ParkingCamera -> intArrayOf(300)
         kind == ZoneKind.AccidentSpot -> intArrayOf(400)
+        kind == ZoneKind.SeniorZone || kind == ZoneKind.DisabledZone -> intArrayOf(400)
+        kind == ZoneKind.RailCrossing -> intArrayOf(400, 150)
+        kind == ZoneKind.Curve || kind == ZoneKind.Rockfall || kind == ZoneKind.Fog || kind == ZoneKind.Fall -> intArrayOf(500)
         speedKmh >= 70 -> intArrayOf(1000, 400)
         else -> intArrayOf(500, 200)
     }
@@ -203,6 +221,13 @@ class ZoneTracker(private val zones: List<RouteZone>) {
             ZoneKind.SpeedBump -> "$lead 과속방지턱이 있습니다."
             ZoneKind.ParkingCamera -> "$lead 주정차 단속카메라가 있습니다."
             ZoneKind.AccidentSpot -> "$lead ${z.name.ifBlank { "사고다발 지역" }}입니다. 주의하세요."
+            ZoneKind.Curve -> "$lead 급커브 구간입니다. 속도를 줄이세요."
+            ZoneKind.Rockfall -> "$lead 낙석 위험 구간입니다. 주의하세요."
+            ZoneKind.Fog -> "$lead 안개 주의 구간입니다. 안전거리를 지키세요."
+            ZoneKind.Fall -> "$lead 추락 위험 구간입니다. 주의하세요."
+            ZoneKind.RailCrossing -> "$lead 철길 건널목입니다. 일단 멈추고 안전을 확인하세요."
+            ZoneKind.SeniorZone -> "$lead 노인 보호구역입니다. 속도를 줄이세요."
+            ZoneKind.DisabledZone -> "$lead 장애인 보호구역입니다. 속도를 줄이세요."
         }
     }
 
