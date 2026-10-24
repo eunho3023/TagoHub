@@ -235,7 +235,7 @@ fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
                             style = MaterialTheme.typography.headlineMedium.merge(Tnum),
                             fontWeight = FontWeight.Black,
                         )
-                        Text(t.depName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(t.depName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowForward,
@@ -250,7 +250,7 @@ fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
                             style = MaterialTheme.typography.headlineMedium.merge(Tnum),
                             fontWeight = FontWeight.Black,
                         )
-                        Text(t.arrName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(t.arrName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Fmt.duration(t.dep, t.arr)?.let {

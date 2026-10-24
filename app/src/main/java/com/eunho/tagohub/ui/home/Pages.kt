@@ -89,7 +89,7 @@ fun TabScaffold(
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         Surface(color = color, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(title, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, color = Color.White, maxLines = 1)
+                Text(title, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, color = Color.White, maxLines = 1)
             }
         }
         Box(Modifier.weight(1f)) { content() }
@@ -112,7 +112,7 @@ fun MorePage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text("설정", fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
+                Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
                 Text("화면 모드", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 ThemeModePicker()
@@ -134,7 +134,7 @@ fun MorePage(
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { showCrash = false },
                         title = { Text("최근 오류") },
-                        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(text, fontSize = 11.sp) } },
+                        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(text, fontSize = 12.sp) } },
                         confirmButton = {
                             androidx.compose.material3.TextButton(onClick = {
                                 context.startActivity(
