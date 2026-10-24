@@ -61,6 +61,18 @@ object TrainStationGeo {
     /** 파일에 있는 역 (운행하지 않는 역은 뺌), 이름순. 파일이 없으면 빈 목록 */
     fun places(): List<Place> = run { ensure(); all }.filter { it.served }.map { Place(it.id, it.name, it.city.ifBlank { null }) }.sortedBy { it.name }
 
+    /**
+     * 지하철역과 같은 자리에 있는 기차역 (열차가 서는 역만). 이름이 같고(끝의 '역' 은 무시) 가까워야 같은 곳으로 봄.
+     * 같은 이름의 먼 역(예: 다른 도시의 같은 이름)은 거리로 걸러냄. 위치를 모르는 기차역은 이름만 같으면 인정.
+     */
+    fun matchNear(name: String, lat: Double, lng: Double, maxM: Double = 1200.0): Place? {
+        fun norm(s: String) = s.removeSuffix("역").trim()
+        val n = norm(name)
+        return places().firstOrNull { p ->
+            norm(p.name) == n && (pointOf(p.id)?.let { Geo.meters(lat, lng, it.lat, it.lng) <= maxM } ?: true)
+        }
+    }
+
     fun isUnserved(id: String): Boolean { ensure(); return id in unserved }
 
     fun pointOf(id: String): Point? { ensure(); return points[id] }
