@@ -93,6 +93,9 @@ fun StationDetailPanel(
     refreshKey: Int = 0,
     onArrivalClick: ((SubwayArrival) -> Unit)? = null,
     onUseStation: ((Boolean) -> Unit)? = null,
+    /** 같은 자리에 기차역이 있으면 그 역 이름 (기차 시간표로 바로 가는 버튼을 보임) */
+    railStationName: String? = null,
+    onRailJump: ((Boolean) -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
     val lines = d.group.displayLines
@@ -134,6 +137,14 @@ fun StationDetailPanel(
             item {
                 Button(onClick = { onUseStation?.invoke(false) }, enabled = onUseStation != null) {
                     Text("도착")
+                }
+            }
+            if (railStationName != null && onRailJump != null) {
+                item {
+                    OutlinedButton(onClick = { onRailJump(true) }) { Text("기차 출발") }
+                }
+                item {
+                    OutlinedButton(onClick = { onRailJump(false) }) { Text("기차 도착") }
                 }
             }
             item {

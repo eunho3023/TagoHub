@@ -888,6 +888,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (trip.dest.value != null) trip.plan()
     }
 
+    /** 이 지하철역과 같은 자리에 열차가 서는 기차역이 있으면 그 역 */
+    fun railStationFor(g: StationGroup): com.eunho.tagohub.data.Place? = com.eunho.tagohub.data.TrainStationGeo.matchNear(g.name, g.lat, g.lng)
+
+    /** 지하철역 패널에서 같은 자리 기차역의 시간표로 (출발지·도착지로 채움) */
+    fun jumpToTrain(name: String, asOrigin: Boolean) {
+        com.eunho.tagohub.ui.ModeJump.request.value = com.eunho.tagohub.ui.ModeJump.Jump(com.eunho.tagohub.ui.ModeJump.Kind.Train, name, asOrigin)
+    }
+
     /** 고른 기차역·터미널·공항을 그 시간표의 출발지(asOrigin)·도착지로 */
     fun jumpPicked(asOrigin: Boolean) {
         val p = picked.value ?: return

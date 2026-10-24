@@ -398,6 +398,7 @@ fun MapScreen(
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
                 MapPanel.Route -> route?.let { RoutePanel(vm, it, hasStop = selected != null) }
                 MapPanel.Station -> station?.let { d ->
+                    val railName = remember(d) { vm.railStationFor(d.group)?.name }   // 지하철역과 같은 자리의 기차역
                     PanelSurface {
                         StationDetailPanel(
                             d, vm.stations,
@@ -405,6 +406,8 @@ fun MapScreen(
                             refreshKey = refreshTick,
                             onArrivalClick = { a -> vm.showArrivalPath(d.group, a) },
                             onUseStation = { asOrigin -> vm.useStationAs(d.group, asOrigin) },
+                            railStationName = railName,
+                            onRailJump = railName?.let { rn -> { asOrigin -> vm.jumpToTrain(rn, asOrigin) } },
                         )
                     }
                 }
