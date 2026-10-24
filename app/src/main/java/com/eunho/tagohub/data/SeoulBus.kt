@@ -19,6 +19,9 @@ object SeoulBus {
     fun std(id: String) = id.removePrefix(PREFIX)
     fun app(stdId: String) = PREFIX + stdId.trim()
 
+    /** 정류소 번호는 5자리 (종로·중구 …의 '01001'). 엑셀 등을 거치며 앞의 0 이 빠진 '1001' 도 맞춰 줌 */
+    fun ars(id: String): String = id.trim().let { if (it.isNotEmpty() && it.all(Char::isDigit)) it.padStart(5, '0') else it }
+
     /** routeType: 1 공항, 2 마을, 3 간선, 4 지선, 5 순환, 6 광역, 7 인천, 8 경기, 9 폐지, 10 관광, 13 동행, 14 한강, 15 심야, 0 공용 */
     fun typeName(code: String?): String? = when (code?.trim()) {
         "1" -> "공항"; "2" -> "마을"; "3" -> "간선"; "4" -> "지선"; "5" -> "순환"; "6" -> "광역"
