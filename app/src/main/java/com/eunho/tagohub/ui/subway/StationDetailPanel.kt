@@ -48,6 +48,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -90,7 +93,7 @@ import java.util.Locale
 
 private fun LocalTime.hhmm() = TagoTime.clockText(hour * 60 + minute)
 
-/** 역 상세: 실시간 도착 / 시간표 / 출구정보. 부모가 높이를 정해준다. */
+/** 역 상세: 실시간 도착 / 시간표 / 출구정보. 부모가 높이를 정해준다. 글자는 앱 기본보다 조금(8%) 작게 해서 긴 역·방면 이름이 다 보이게 한다. */
 @Composable
 fun StationDetailPanel(
     d: StationDetail,
@@ -103,6 +106,45 @@ fun StationDetailPanel(
     railStationName: String? = null,
     onRailJump: ((Boolean) -> Unit)? = null,
     /** 노선 띠의 이전·다음 역 이름을 누르면 그 역으로 */
+    onStationName: ((String) -> Unit)? = null,
+) {
+    val base = MaterialTheme.typography
+    val smaller = remember(base) { base.scaled(0.92f) }
+    MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = smaller) {
+        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName)
+    }
+}
+
+private fun TextStyle.scaled(f: Float): TextStyle = copy(
+    fontSize = if (fontSize.isSpecified) fontSize * f else fontSize,
+    lineHeight = if (lineHeight.isSpecified) lineHeight * f else lineHeight,
+)
+
+private fun Typography.scaled(f: Float): Typography = copy(
+    headlineMedium = headlineMedium.scaled(f),
+    headlineSmall = headlineSmall.scaled(f),
+    titleLarge = titleLarge.scaled(f),
+    titleMedium = titleMedium.scaled(f),
+    titleSmall = titleSmall.scaled(f),
+    bodyLarge = bodyLarge.scaled(f),
+    bodyMedium = bodyMedium.scaled(f),
+    bodySmall = bodySmall.scaled(f),
+    labelLarge = labelLarge.scaled(f),
+    labelMedium = labelMedium.scaled(f),
+    labelSmall = labelSmall.scaled(f),
+)
+
+@Composable
+private fun StationDetailBody(
+    d: StationDetail,
+    c: StationDetailController,
+    onClose: () -> Unit,
+    refreshKey: Int = 0,
+    onArrivalClick: ((SubwayArrival) -> Unit)? = null,
+    onUseStation: ((Boolean) -> Unit)? = null,
+    /** 같은 자리에 기차역이 있으면 그 역 이름 (기차 시간표로 바로 가는 버튼을 보임) */
+    railStationName: String? = null,
+    onRailJump: ((Boolean) -> Unit)? = null,
     onStationName: ((String) -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
@@ -159,14 +201,14 @@ fun StationDetailPanel(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .height(48.dp)
+                    .heightIn(min = 48.dp)
                     .background(stripColor, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(prev?.let { "‹ " + it } ?: "", Modifier.weight(1f).heightIn(min = 48.dp).then(if (prev != null && onStationName != null) Modifier.clickable { onStationName(prev) } else Modifier).wrapContentHeight(Alignment.CenterVertically), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(prev?.let { "‹ " + it } ?: "", Modifier.weight(1f).heightIn(min = 48.dp).then(if (prev != null && onStationName != null) Modifier.clickable { onStationName(prev) } else Modifier).wrapContentHeight(Alignment.CenterVertically), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.weight(1.1f))
-                    Text(next?.let { it + " ›" } ?: "", Modifier.weight(1f).heightIn(min = 48.dp).then(if (next != null && onStationName != null) Modifier.clickable { onStationName(next) } else Modifier).wrapContentHeight(Alignment.CenterVertically), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
+                    Text(next?.let { it + " ›" } ?: "", Modifier.weight(1f).heightIn(min = 48.dp).then(if (next != null && onStationName != null) Modifier.clickable { onStationName(next) } else Modifier).wrapContentHeight(Alignment.CenterVertically), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
                 }
                 Surface(
                     shape = CircleShape,
@@ -176,7 +218,7 @@ fun StationDetailPanel(
                     Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         LineBadge(lineBadgeLabel(selectedLine?.routeName ?: lines.first()), stripColor, size = 26.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text(cur, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                        Text(cur, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold, maxLines = 2)
                     }
                 }
             }
@@ -471,7 +513,7 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
                 a.lineText.ifBlank { a.dest?.let { "${it}행" } ?: "" } + if (onClick != null) "  ›" else "",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val sub = listOfNotNull(
@@ -480,7 +522,7 @@ private fun ArrivalRow(a: SubwayArrival, now: LocalDateTime, onClick: (() -> Uni
                 a.current?.let { "현재 $it" },
             ).joinToString("   ")
             if (sub.isNotEmpty()) {
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = variant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         Spacer(Modifier.width(8.dp))
