@@ -43,3 +43,18 @@ class ArrivalSmoothingTest {
         assertEquals(t0.plusSeconds(30), out[0].received)
     }
 }
+
+class PassedBusTest {
+    private fun a(sec: Int?, stops: Int?) = BusArrival("A", "A", null, null, stops, sec)
+
+    @Test
+    fun removesOnlyNearBusesWhoseTimeRanOut() {
+        val p = com.eunho.tagohub.data.PassedBus
+        assertEquals(false, p.passed(a(45, 1), 44))      // 아직 1초 남음
+        assertEquals(false, p.passed(a(45, 1), 47))      // 0초 지났지만 여유 3초 안
+        assertEquals(true, p.passed(a(45, 1), 49))       // 지나감
+        assertEquals(true, p.passed(a(20, 0), 30))       // 이번 정류장 차례였던 버스
+        assertEquals(false, p.passed(a(45, 5), 100))     // 멀리 있던 버스는 서버가 다시 알려줄 때까지 둠
+        assertEquals(false, p.passed(a(null, 1), 100))
+    }
+}

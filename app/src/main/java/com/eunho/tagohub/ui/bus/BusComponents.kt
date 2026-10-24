@@ -139,7 +139,9 @@ internal fun StopListRow(s: BusStop, distance: String?, region: String? = null, 
 @Composable
 /** elapsedSec: 도착정보를 받은 뒤 지난 초. 다음 갱신 전까지 매초 줄어든다 */
 /** dirLabel: 정류장 방면 (회차 노선에만 붙임 — 편도 노선은 기점-종점으로 충분) */
-internal fun StopRouteItem(row: StopRouteRow, elapsedSec: Int = 0, dirLabel: String? = null, onClick: () -> Unit) {
+internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: String? = null, onClick: () -> Unit) {
+    // 정류장을 이미 지나간 버스는 바로 지움 (다음 새로고침을 기다리지 않고)
+    val row = row0.copy(arrivals = row0.arrivals.filterNot { com.eunho.tagohub.data.PassedBus.passed(it, elapsedSec) })
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     val soon = Color(0xFFD7262E)
     Row(
