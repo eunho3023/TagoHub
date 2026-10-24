@@ -77,7 +77,12 @@ internal fun FreeDriveOverlay(vm: MapViewModel, modifier: Modifier = Modifier) {
             Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            SpeedGauge(speedKmh = snap?.speedKmh ?: 0, limitKmh = snap?.zones?.firstOrNull { it.zone.kind.isCamera }?.zone?.limitKmh)
+            // 앞 단속카메라 제한속도가 있으면 그것, 없으면 지금 도로의 제한속도
+            SpeedGauge(
+                speedKmh = snap?.speedKmh ?: 0,
+                limitKmh = snap?.zones?.firstOrNull { it.zone.kind.isCamera }?.zone?.limitKmh ?: snap?.roadLimitKmh,
+                lanes = snap?.lanes ?: 0,
+            )
             Spacer(Modifier.weight(1f))
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {

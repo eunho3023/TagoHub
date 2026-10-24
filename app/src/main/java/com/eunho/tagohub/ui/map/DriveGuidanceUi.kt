@@ -244,7 +244,8 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
         val limit = zone?.next?.zone?.limitKmh?.takeIf { zone.next.zone.kind.isCamera && zone.distance <= 1500.0 }
         SpeedGauge(
             speedKmh = info?.speedKmh ?: 0,
-            limitKmh = limit,
+            limitKmh = limit ?: info?.roadLimitKmh,
+            lanes = info?.lanes ?: 0,
             modifier = Modifier.align(Alignment.BottomStart).windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, bottom = 88.dp),
         )
 
@@ -303,7 +304,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
 
 /** 현재 속도(동그라미)와, 앞 단속카메라의 제한속도(빨간 테두리). 제한을 넘으면 속도가 빨갛게 */
 @Composable
-internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier) {
+internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier, lanes: Int = 0) {
     val over = limitKmh != null && speedKmh > limitKmh + 3
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
@@ -312,9 +313,12 @@ internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modi
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shadowElevation = 8.dp,
         ) {
-            Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("$speedKmh", fontSize = 54.sp, fontWeight = FontWeight.ExtraBold, color = if (over) BoardColor.Danger else MaterialTheme.colorScheme.onSurface)
-                Text("km/h", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("$speedKmh", fontSize = 54.sp, fontWeight = FontWeight.ExtraBold, color = if (over) BoardColor.Danger else MaterialTheme.colorScheme.onSurface)
+                    Text("km/h", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+                }
+                if (lanes > 0) Text("${lanes}차로 도로", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (limitKmh != null) {

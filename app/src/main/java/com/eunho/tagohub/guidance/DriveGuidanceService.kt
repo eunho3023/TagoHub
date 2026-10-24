@@ -148,6 +148,7 @@ class DriveGuidanceService : Service() {
         }
         scope.launch { suggestLoop() }
         scope.launch { DriveGuidance.zoneGroups.collect { rebuildTracker() } }
+        scope.launch { roadLinks = com.eunho.tagohub.data.RoadLinkIndex.get(applicationContext) }
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock =pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tagohub:guidance").apply { acquire(MAX_SESSION_MS) }
 
@@ -259,6 +260,8 @@ class DriveGuidanceService : Service() {
     @Volatile private var restFeatures: List<ItsRoadFeature>? = null
     @Volatile private var restTracker: RestTracker? = null
     @Volatile private var alertTracker: RoadAlertTracker? = null
+    @Volatile private var roadLinks: com.eunho.tagohub.data.RoadLinkIndex? = null
+    private val speedWatch = com.eunho.tagohub.data.SpeedLimitWatch()
     @Volatile private var lastLat = 0.0
     @Volatile private var lastLng = 0.0
     private var lastSuggestAt = 0L
@@ -318,10 +321,14 @@ class DriveGuidanceService : Service() {
         val facilityOn = ZoneGroup.Facility in DriveGuidance.zoneGroups.value
         val alert = if (st.offRoute || st.arrived || !facilityOn) null else alertTracker?.update(st.progressMeters)
         val bearing = if (HeadingMath.gpsUsable(loc.hasBearing(), if (loc.hasSpeed()) loc.speed else 0f) || (loc.hasBearing() && loc.speed >= 1f)) loc.bearing.toDouble() else null
-        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, shownKmh.roundToInt(), zone?.takeIf { it.next != null }, rest, alert, bearing)
+        // 지금 달리는 도로의 제한속도·차로 수 (표준 노드·링크). 단속카메라 제한속도가 따로 있으면 화면은 그것을 먼저 보여 줌
+        val road = roadLinks?.find(loc.latitude, loc.longitude, bearing)
+        DriveGuidance.info.value = DriveGuidance.Info(st, loc.latitude, loc.longitude, shownKmh.roundToInt(), zone?.takeIf { it.next != null }, rest, alert, bearing, road?.speedKmh, road?.lanes ?: 0)
         val v = voice
         // 회전 안내와 안전 지점 안내가 동시에 나오면 한 번에 이어서 말함 (따로 말하면 앞 말이 끊김)
-        val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak) + listOfNotNull(alert?.speak)
+        val over = if (st.offRoute || st.arrived || DriveGuidance.simulating.value || zone?.overspeed == true) null
+        else speedWatch.update(speedKmh.roundToInt(), road?.speedKmh, System.currentTimeMillis())
+        val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak) + listOfNotNull(alert?.speak) + listOfNotNull(over)
         if (lines.isNotEmpty()) v?.speak(lines.joinToString(" "))
         if (v != null && v.ready && !v.koreanAvailable && !noted) {
             noted = true
