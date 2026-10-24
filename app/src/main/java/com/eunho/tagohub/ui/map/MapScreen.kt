@@ -1354,6 +1354,12 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     AlightButton(com.eunho.tagohub.guidance.AlightAlert.Target(s.name, s.lat!!, s.lng!!, false, d.routeNo))
                 }
             }
+            var diagram by rememberSaveable { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(false to "목록", true to "배치도").forEach { (isDiagram, label) ->
+                    FilterChip(selected = diagram == isDiagram, onClick = { diagram = isDiagram }, label = { Text(label) })
+                }
+            }
             val listState = rememberLazyListState()
             LaunchedEffect(list) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
@@ -1361,6 +1367,17 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     ?: list.indexOfFirst { busesAt(it).isNotEmpty() }.takeIf { it >= 0 }
                 if (target != null && target > 2) listState.scrollToItem(target - 2)
             }
+            if (diagram) {
+                RouteDiagramView(
+                    routeId = d.routeId,
+                    stops = list,
+                    color = color,
+                    busOrds = buses.mapNotNull { it.ord }.toSet(),
+                    focusedNodeId = d.focusNodeId,
+                    onStop = { vm.focusRouteStop(it.nodeId) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)
