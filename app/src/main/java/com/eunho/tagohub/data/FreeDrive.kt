@@ -99,7 +99,7 @@ class FreeDriveAnnouncer {
         ZoneGroup.Camera -> 700.0
         ZoneGroup.Protect, ZoneGroup.Accident, ZoneGroup.Senior, ZoneGroup.Disabled -> 400.0
         ZoneGroup.Parking -> 300.0
-        ZoneGroup.Curve, ZoneGroup.Rockfall, ZoneGroup.Fog, ZoneGroup.Fall, ZoneGroup.RailCrossing -> 500.0
+        ZoneGroup.Curve, ZoneGroup.Rockfall, ZoneGroup.Fog, ZoneGroup.Fall, ZoneGroup.RailCrossing, ZoneGroup.PedestrianPriority, ZoneGroup.BusLane -> 500.0
         else -> 200.0
     }
 }
