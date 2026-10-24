@@ -121,7 +121,10 @@ fun SubwayTab(
             Spacer(Modifier.height(8.dp))
         }
         if (officialMap) {
-            SubwayPdfMap(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)))
+            SubwayImageMap(
+                onStation = { name -> vm.stationGroupNamed(name)?.let(search.onStation) },
+                modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)),
+            )
         } else if (lines.isEmpty()) {
             Text("이 권역의 노선 자료가 없어요.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
         } else {
@@ -132,7 +135,7 @@ fun SubwayTab(
             )
         }
         Text(
-            if (officialMap) "서울교통공사 공식 노선도 · 두 손가락으로 확대·이동 (역은 위 검색으로 열어요)" else "두 손가락으로 확대·이동 · 역을 누르면 지도에서 열려요",
+            if (officialMap) "서울교통공사 공식 노선도 · 두 손가락으로 확대·이동 · 역 이름을 누르면 지도에서 열려요" else "두 손가락으로 확대·이동 · 역을 누르면 지도에서 열려요",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 6.dp),
