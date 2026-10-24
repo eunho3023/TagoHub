@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "app/src/main/assets/safety_zones.csv"
-KEEP = {"bump", "child"}
+OWN = {"speed", "signal", "section", "park", "cam", "acc"}   # 이 스크립트가 만드는 종류 (나머지 줄은 그대로 둠)
 
 
 def clean(s: str) -> str:
@@ -78,7 +78,7 @@ def accidents(path: Path):
 def main():
     cam = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "pipeline/out/camera.csv"
     acc = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "pipeline/out/accident.csv"
-    kept = [l for l in OUT.read_text(encoding="utf-8").splitlines() if l.split(",", 1)[0] in KEEP]
+    kept = [l for l in OUT.read_text(encoding="utf-8").splitlines() if l.split(",", 1)[0] not in OWN]
     seen, rows = set(), []
     for code, lat, lng, limit, name in cameras(cam) + accidents(acc):
         key = (code, round(lat, 5), round(lng, 5))
