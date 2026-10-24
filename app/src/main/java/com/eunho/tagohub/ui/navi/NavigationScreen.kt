@@ -133,7 +133,7 @@ private fun FreeDriveSummary() {
     val s = snap
     Row(verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
-            Text("${s?.speedKmh ?: 0}", fontSize = 56.sp, fontWeight = FontWeight.Black, lineHeight = 60.sp)
+            Text("${s?.speedKmh ?: 0}", fontSize = 44.sp, fontWeight = FontWeight.Black, lineHeight = 48.sp)
             Spacer(Modifier.width(6.dp))
             Text("km/h", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 10.dp))
         }
@@ -168,7 +168,7 @@ private fun FreeDriveSummary() {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(label, modifier = Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, modifier = Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.width(8.dp))
                 Text(NavText.short(meters), fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }

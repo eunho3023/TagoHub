@@ -90,7 +90,7 @@ internal fun AlightStatusCard(modifier: Modifier = Modifier) {
                     "${t.name}${if (t.subway) "역" else ""} 하차 알림" + (distance?.let { " · ${NavText.short(it)} 남음" } ?: " · 위치 확인 중"),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2) }

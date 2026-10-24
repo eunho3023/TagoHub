@@ -112,15 +112,15 @@ import com.eunho.tagohub.ui.theme.LocalDarkTheme
 private val Mono = com.eunho.tagohub.ui.theme.NumberFont
 
 /** 내비 앱 느낌의 색. 안내 배너는 낮에는 파랑, 어두운 화면에서는 남색. 아래 바는 어두운 회색, 길안내 버튼은 남색+파랑 */
-private val NaviBlue = Color(0xFF2F5BFF)
+private val NaviBlue = Color(0xFF2563EB)
 private val NaviNavy = Color(0xFF14224D)
-private val NaviButton = Color(0xFF3A63D8)
+private val NaviButton = Color(0xFF2563EB)
 
 @Composable
-private fun bannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0E2A55) else NaviBlue
+private fun bannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF14295A) else NaviBlue
 
 @Composable
-private fun subBannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0A1F42) else Color(0xFF1B2F8F)
+private fun subBannerColor(): Color = if (LocalDarkTheme.current) Color(0xFF0C1B3D) else Color(0xFF1B3FA0)
 
 internal fun TurnKind.icon(): ImageVector = when (this) {
     TurnKind.Left -> Icons.Filled.TurnLeft
@@ -267,18 +267,18 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
                             "${GuidanceText.duration(st.remainingSeconds)} · ${DriveGuidance.destinationName.ifBlank { "목적지" }}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                             Text(
                                 GuidanceText.etaLabel(System.currentTimeMillis(), st.remainingSeconds),
-                                fontSize = 36.sp,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Black,
                             )
                             Text(
                                 NavText.short(st.remainingMeters),
-                                fontSize = 36.sp,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Black,
                             )
                         }
@@ -315,7 +315,7 @@ internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modi
         ) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("$speedKmh", fontSize = 54.sp, fontWeight = FontWeight.ExtraBold, color = if (over) BoardColor.Danger else MaterialTheme.colorScheme.onSurface)
+                    Text("$speedKmh", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (over) BoardColor.Danger else MaterialTheme.colorScheme.onSurface)
                     Text("km/h", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
                 }
                 if (lanes > 0) Text("${lanes}차로 도로", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -323,9 +323,9 @@ internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modi
         }
         if (limitKmh != null) {
             Box(
-                Modifier.size(62.dp).background(Color.White, CircleShape).border(6.dp, BoardColor.Danger, CircleShape),
+                Modifier.size(52.dp).background(Color.White, CircleShape).border(5.dp, BoardColor.Danger, CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Text("$limitKmh", color = Color.Black, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold) }
+            ) { Text("$limitKmh", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold) }
         }
     }
 }
@@ -421,10 +421,10 @@ private fun TurnBanner(guide: DriveGuide, meters: Double) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(kind.icon(), contentDescription = null, tint = Color.White, modifier = Modifier.size(78.dp))
+            Icon(kind.icon(), contentDescription = null, tint = Color.White, modifier = Modifier.size(60.dp))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(NavText.short(meters), color = Color.White, fontSize = 60.sp, lineHeight = 64.sp, fontWeight = FontWeight.ExtraBold)
+                Text(NavText.short(meters), color = Color.White, fontSize = 44.sp, lineHeight = 48.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     if (guide.isDestination) "목적지" else TurnKind.text(guide),
                     color = Color.White.copy(alpha = 0.92f),
@@ -568,7 +568,7 @@ internal fun DriveRoutePanel(plan: RidePlan, option: DriveOption, onOption: (Dri
         }
         // 머리글: 큰 소요시간, 아래에 거리 · 통행료 · 택시 (내비 앱 경로 목록처럼)
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(GuidanceText.duration(plan.durationSeconds), fontSize = 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.ExtraBold)
+            Text(GuidanceText.duration(plan.durationSeconds), fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold)
             val toll = plan.tollWon
             val fare = buildList {
                 add(NavText.short(plan.distanceMeters.toDouble()))
@@ -646,23 +646,23 @@ private fun DriveStartBar(plan: RidePlan) {
         if (active) {
             Button(
                 onClick = { DriveGuidance.stop(context) },
-                modifier = Modifier.weight(1f).height(68.dp),
+                modifier = Modifier.weight(1f).height(56.dp),
                 shape = RoundedCornerShape(0.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = BoardColor.Danger, contentColor = Color.White),
-            ) { Text("안내 종료", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
+            ) { Text("안내 종료", fontWeight = FontWeight.Bold, fontSize = 17.sp) }
         } else {
             Button(
                 onClick = { begin(true) },
-                modifier = Modifier.weight(1f).height(68.dp),
+                modifier = Modifier.weight(1f).height(56.dp),
                 shape = RoundedCornerShape(0.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = NaviNavy, contentColor = Color.White),
-            ) { Text("모의주행", fontSize = 20.sp) }
+            ) { Text("모의주행", fontSize = 17.sp) }
             Button(
                 onClick = { begin(false) },
-                modifier = Modifier.weight(2f).height(68.dp),
+                modifier = Modifier.weight(2f).height(56.dp),
                 shape = RoundedCornerShape(0.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = NaviButton, contentColor = Color.White),
-            ) { Text("안내시작", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
+            ) { Text("안내시작", fontWeight = FontWeight.Bold, fontSize = 17.sp) }
         }
     }
 }
