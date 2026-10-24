@@ -72,3 +72,18 @@ class PassedByPositionTest {
         assertEquals(false, p.passed(listOf(3, 40), listOf(41)))     // 순환 노선: 정류장이 두 번 나와 판단 안 함
     }
 }
+
+class RailMatchTest {
+    @Test
+    fun matchesSameNameNearbyOnly() {
+        val g = com.eunho.tagohub.data.TrainStationGeo
+        g.set(listOf(
+            com.eunho.tagohub.data.TrainStationGeo.Station("a", "서울", "서울특별시", com.eunho.tagohub.data.TrainStationGeo.Point(37.5547, 126.9708), true),
+            com.eunho.tagohub.data.TrainStationGeo.Station("b", "광운대", "서울특별시", com.eunho.tagohub.data.TrainStationGeo.Point(37.6238, 127.0617), false),
+            com.eunho.tagohub.data.TrainStationGeo.Station("c", "중앙", "경기도", com.eunho.tagohub.data.TrainStationGeo.Point(37.3, 126.9), true),
+        ))
+        assertEquals("a", g.matchNear("서울역", 37.5558, 126.9723)?.id)    // 서울역 지하철(약 200m)
+        assertEquals(null, g.matchNear("광운대", 37.6238, 127.0617))        // 열차가 서지 않는 역은 제외
+        assertEquals(null, g.matchNear("중앙", 35.1, 129.0))                // 이름만 같은 먼 역
+    }
+}

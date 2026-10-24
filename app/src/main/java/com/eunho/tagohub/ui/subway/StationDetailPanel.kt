@@ -96,6 +96,9 @@ fun StationDetailPanel(
     refreshKey: Int = 0,
     onArrivalClick: ((SubwayArrival) -> Unit)? = null,
     onUseStation: ((Boolean) -> Unit)? = null,
+    /** 같은 자리에 기차역이 있으면 그 역 이름 (기차 시간표로 바로 가는 버튼을 보임) */
+    railStationName: String? = null,
+    onRailJump: ((Boolean) -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
     val lines = d.group.displayLines
@@ -237,6 +240,23 @@ fun StationDetailPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // 같은 자리에 기차역이 있으면 기차 시간표로 바로 가기 (왼쪽, 연한 알약)
+            if (railStationName != null && onRailJump != null) {
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(true to "기차 출발", false to "기차 도착").forEach { (asOrigin, label) ->
+                        Surface(
+                            onClick = { onRailJump(asOrigin) },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        ) {
+                            Box(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                                Text(label, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
             Button(onClick = { onUseStation?.invoke(true) }, enabled = onUseStation != null, shape = CircleShape, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text("출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
             }
