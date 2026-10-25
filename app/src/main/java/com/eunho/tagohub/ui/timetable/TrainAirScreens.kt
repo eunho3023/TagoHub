@@ -149,6 +149,7 @@ fun AirScreen(vm: AirViewModel = viewModel()) {
         if (intl) {
             TimetablePane(
                 vm.intl, ModeColor.Air,
+                recentKey = "air-intl",
                 pickerNoun = "공항",
                 gradeAllLabel = "전체 항공사",
                 idleText = "출발 공항과 도착 공항을 고르면 그날 운항편이 표시됩니다. 한쪽은 김포·김해·제주·청주·대구·무안·양양이어야 합니다.",

@@ -192,7 +192,7 @@ fun SearchBox(
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); onSearch() }),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(24.dp),
     )
 }
 
@@ -266,7 +266,7 @@ fun SectionHeader(text: String) {
     )
 }
 
-/** 달력에서 날짜 고르기. [min]~[max] 밖의 날은 누를 수 없다 */
+/** 달력에서 날짜 고르기 (아래에서 올라오는 달력 시트). [min]~[max] 밖의 날은 누를 수 없다 */
 @Composable
 fun CalendarDialog(
     initial: LocalDate,
@@ -274,24 +274,7 @@ fun CalendarDialog(
     onDismiss: () -> Unit,
     min: LocalDate = LocalDate.now(),
     max: LocalDate = LocalDate.now().plusYears(1),
-) {
-    fun millis(d: LocalDate) = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    fun date(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate()
-    val state = rememberDatePickerState(
-        initialSelectedDateMillis = millis(initial.coerceIn(min, max)),
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long) = date(utcTimeMillis) in min..max
-            override fun isSelectableYear(year: Int) = year in min.year..max.year
-        },
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = { state.selectedDateMillis?.let { onPick(date(it)) }; onDismiss() }) { Text("확인") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
-    ) { DatePicker(state = state) }
-}
+) = CalendarSheet(initial, onPick, onDismiss, min, max)
 
 /** "2026.10.23 (금)" */
 fun dateLabel(d: LocalDate): String =
@@ -330,11 +313,11 @@ fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit, days: Int = 7)
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         item {
-            FilterChip(
+            PillChip(
+                label = if (outside) dateLabel(selected) else "날짜 선택",
                 selected = outside,
                 onClick = { calendar = true },
-                label = { Text(if (outside) dateLabel(selected) else "달력") },
-                leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                dropdown = true,
             )
         }
         items((0 until days).toList()) { i ->
@@ -345,19 +328,14 @@ fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit, days: Int = 7)
                 1 -> "내일"
                 else -> "${d.monthValue}/${d.dayOfMonth}"
             }
-            FilterChip(
+            PillChip(
+                label = "$label $dow",
                 selected = d == selected,
                 onClick = { onSelect(d) },
-                label = {
-                    Text(
-                        "$label $dow",
-                        color = when {
-                            d == selected -> Color.Unspecified
-                            d.dayOfWeek == DayOfWeek.SUNDAY -> Color(0xFFC0392B)
-                            d.dayOfWeek == DayOfWeek.SATURDAY -> Color(0xFF2E6BC4)
-                            else -> Color.Unspecified
-                        },
-                    )
+                textColor = when (d.dayOfWeek) {
+                    DayOfWeek.SUNDAY -> Color(0xFFC0392B)
+                    DayOfWeek.SATURDAY -> Color(0xFF2E6BC4)
+                    else -> Color.Unspecified
                 },
             )
         }
@@ -367,20 +345,12 @@ fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit, days: Int = 7)
 
 @Composable
 fun GradeStrip(grades: List<Grade>, selected: Grade?, accent: Color, allLabel: String, onSelect: (Grade?) -> Unit) {
-    val colors = FilterChipDefaults.filterChipColors(
-        selectedContainerColor = accent.copy(alpha = 0.16f),
-        selectedLabelColor = accent,
-    )
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        item {
-            FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text(allLabel) }, colors = colors)
-        }
-        items(grades) { g ->
-            FilterChip(selected = selected?.id == g.id, onClick = { onSelect(g) }, label = { Text(g.name) }, colors = colors)
-        }
+        item { PillChip(allLabel, selected == null, { onSelect(null) }) }
+        items(grades) { g -> PillChip(g.name, selected?.id == g.id, { onSelect(g) }) }
     }
 }
 
@@ -407,7 +377,9 @@ fun PlaceField(label: String, value: Place?, accent: Color, modifier: Modifier =
     }
 }
 
-/** 출발/도착 선택 + 교환 버튼 */
+/**
+ * 출발/도착 선택 카드: 왼쪽에 노선도처럼 점과 선으로 두 곳을 잇고, 이름은 크게(두 줄까지 끝까지), 오른쪽에 바꾸기 버튼.
+ */
 @Composable
 fun OdSelector(
     dep: Place?,
@@ -419,15 +391,53 @@ fun OdSelector(
     onArr: () -> Unit,
     onSwap: (() -> Unit)?,
 ) {
-    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            PlaceField(depLabel, dep, accent, onClick = onDep)
-            Spacer(Modifier.height(6.dp))
-            PlaceField(arrLabel, arr, accent, onClick = onArr)
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = cs.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, cs.outlineVariant),
+    ) {
+        Row(
+            Modifier.padding(start = 14.dp, end = 12.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.width(20.dp).fillMaxHeight().padding(vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.size(12.dp).clip(CircleShape).border(3.dp, accent, CircleShape))
+                Box(Modifier.weight(1f).width(4.dp).padding(vertical = 3.dp).background(accent.copy(alpha = 0.35f)))
+                Box(Modifier.size(12.dp).clip(CircleShape).background(accent))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                OdRow(depLabel, dep, accent, onDep)
+                HorizontalDivider(color = cs.outlineVariant)
+                OdRow(arrLabel, arr, accent, onArr)
+            }
+            if (onSwap != null) {
+                Spacer(Modifier.width(8.dp))
+                Surface(onClick = onSwap, shape = CircleShape, color = cs.surfaceVariant, modifier = Modifier.size(44.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.SwapVert, contentDescription = "출발·도착 바꾸기") }
+                }
+            }
         }
-        if (onSwap != null) {
-            IconButton(onClick = onSwap) { Icon(Icons.Filled.SwapVert, contentDescription = "출발·도착 바꾸기") }
-        }
+    }
+}
+
+@Composable
+private fun OdRow(label: String, value: Place?, accent: Color, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(onClick = onClick).padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.Bold)
+        Text(
+            value?.name ?: "선택하세요",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = if (value != null) FontWeight.ExtraBold else FontWeight.Normal,
+            color = if (value != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -476,7 +486,7 @@ fun PlacePickerSheet(
             if (browse && query.isEmpty()) {
                 Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PickMode.entries.filter { it != PickMode.Distance || geo != null }.forEach { m ->
-                        FilterChip(selected = mode == m, onClick = { mode = m }, label = { Text(m.label) })
+                        PillChip(m.label, mode == m, { mode = m })
                     }
                 }
             }
@@ -503,6 +513,7 @@ fun PlacePickerSheet(
                             trailingContent = {
                                 Text(p.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             },
+                            leadingContent = { StationDot() },
                             modifier = Modifier.clickable { onPick(p) },
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -533,7 +544,8 @@ private fun DistancePlaceList(list: List<Place>, geo: PlaceGeo, here: android.lo
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
-                modifier = Modifier.clickable { onPick(p) },
+                leadingContent = { StationDot() },
+                            modifier = Modifier.clickable { onPick(p) },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
@@ -573,7 +585,8 @@ private fun GroupedPlaceList(list: List<Place>, byRegion: Boolean, onPick: (Plac
                     ListItem(
                         headlineContent = { Text(p.name) },
                         supportingContent = if (!byRegion && p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
-                        modifier = Modifier.clickable { onPick(p) },
+                        leadingContent = { StationDot() },
+                            modifier = Modifier.clickable { onPick(p) },
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
