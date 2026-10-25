@@ -1104,7 +1104,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     PanelSurface {
         PanelHeader(
             title = d.stop.name,
-            subtitle = listOfNotNull(numbers, direction?.let { "$it 방면" }).joinToString(" · ").ifEmpty { null },
+            subtitle = listOfNotNull(numbers, direction?.let { "$it 방면" }, updated?.let { "${it.hhmm()} 갱신" }).joinToString(" · ").ifEmpty { null },
             color = ModeColor.Bus,
             onClose = vm::closePanel,
             switchLabel = if (hasRoute) "노선 보기" else null,
@@ -1150,9 +1150,6 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                     Spacer(Modifier.width(8.dp))
                     Text(if (timetable == null) "시간표" else "실시간", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 }
-            }
-            updated?.let {
-                Text("${it.hhmm()} 갱신", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.weight(1f))
             if (d.stop.lat != null) {
