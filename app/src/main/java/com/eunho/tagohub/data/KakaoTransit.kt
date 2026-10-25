@@ -100,6 +100,18 @@ object KakaoTransit {
         )
     }
 
+    /**
+     * 같은 노선(버스 번호·지하철 노선)을 같은 순서로 타는 경로가 여러 개면 하나만 남긴다.
+     * 지도에 경로가 그려지는(모든 구간에 좌표가 있는) 것을 먼저, 그다음 빠른 것. 순서는 처음 나온 자리를 유지.
+     */
+    fun dedupe(plans: List<TripPlan>): List<TripPlan> {
+        fun key(p: TripPlan) = p.legs.joinToString(">") { (if (it.subway) "S:" else "B:") + it.routeNo }
+        val best = plans.groupBy(::key).mapValues { (_, same) ->
+            same.sortedWith(compareBy({ p -> if (p.legs.all { it.path != null }) 0 else 1 }, { it.minutes })).first()
+        }
+        return plans.map(::key).distinct().mapNotNull { best[it] }
+    }
+
     /** 결과 코드를 사용자 문구로 (경로가 없을 때) */
     fun message(status: String): String? = when (status) {
         "EQUAL_POINTS" -> "출발지와 도착지가 같습니다."

@@ -74,6 +74,8 @@ class CoachViewModel : ViewModel() {
         gradeLoader = { repo.expGrades() },
         tripLoader = { d, a, date, g -> repo.expTrips(d.id, a.id, date, g?.id) },
         geo = com.eunho.tagohub.data.CoachTerminalGeo,
+        // 출발 터미널을 고르면 도착은 거기서 가는 터미널만 (도착을 먼저 고르면 전체)
+        connectedNames = { fixed, fixedIsDep -> if (fixedIsDep) repo.expDestinationNames(fixed.name) else null },
     )
 
     val suburb = TimetableController(

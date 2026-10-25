@@ -424,6 +424,12 @@ class TagoRepository(private val api: TagoApi) {
         )
     }
 
+    /** 고속버스: 출발 터미널에서 가는 도착 터미널 이름들 (모르면 null). 시간표 터미널과 실시간 터미널의 코드가 달라 이름으로 맞춤 */
+    suspend fun expDestinationNames(depName: String): List<String>? {
+        val dep = (expArrDepPlaces("") as? TagoResult.Success)?.data?.firstOrNull { PlaceNames.same(it.name, depName) } ?: return null
+        return (expArrDestPlaces(dep.id, "") as? TagoResult.Success)?.data?.map { it.name }?.takeIf { it.isNotEmpty() }
+    }
+
     suspend fun expArrivals(depCode: String, arrCode: String) = run {
         all(listOf(100), 5) { p, n -> api.expArrivals(depCode, arrCode, p, n) }
             .map(Mappers::expArrival).sortedWith(Mappers.expArrivalOrder)

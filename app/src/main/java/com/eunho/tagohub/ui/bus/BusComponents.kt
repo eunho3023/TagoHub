@@ -264,7 +264,7 @@ internal fun TimelineRow(
         Box(Modifier.width(TIMELINE_GUTTER).fillMaxHeight(), contentAlignment = Alignment.CenterEnd) {
             buses.firstOrNull()?.let { b ->
                 Text(
-                    (b.vehicleNo ?: "운행 중") + if (buses.size > 1) " 외 ${buses.size - 1}" else "",
+                    (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (buses.size > 1) " 외 ${buses.size - 1}" else "",
                     Modifier
                         .padding(end = 6.dp)
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))

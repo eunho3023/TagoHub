@@ -396,7 +396,6 @@ class KakaoCanvas(
             val st = styles("itsRoad:${feature.layer}") {
                 val marker = when (feature.layer) {
                     "its_events", "its_safe_driving" -> icons.triangleBadge(AMBER)
-                    "its_dangerous_cars" -> icons.triangleBadge(UTIC_ORANGE)
                     "its_disasters" -> icons.letterBadge(0xFF7B1FA2.toInt(), "재")
                     "its_vsl" -> icons.letterBadge(0xFF00897B.toInt(), "V")
                     "its_vms" -> icons.letterBadge(0xFF1565C0.toInt(), "전")

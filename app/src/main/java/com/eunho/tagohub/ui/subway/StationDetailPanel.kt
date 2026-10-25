@@ -32,6 +32,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -107,11 +109,14 @@ fun StationDetailPanel(
     onRailJump: ((Boolean) -> Unit)? = null,
     /** 노선 띠의 이전·다음 역 이름을 누르면 그 역으로 */
     onStationName: ((String) -> Unit)? = null,
+    /** ★ 자주 가는 곳에 넣기 */
+    favorite: Boolean = false,
+    onFavorite: (() -> Unit)? = null,
 ) {
     val base = MaterialTheme.typography
     val smaller = remember(base) { base.scaled(0.92f) }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = smaller) {
-        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName)
+        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName, favorite, onFavorite)
     }
 }
 
@@ -146,6 +151,8 @@ private fun StationDetailBody(
     railStationName: String? = null,
     onRailJump: ((Boolean) -> Unit)? = null,
     onStationName: ((String) -> Unit)? = null,
+    favorite: Boolean = false,
+    onFavorite: (() -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
     val lines = d.group.displayLines
@@ -191,6 +198,15 @@ private fun StationDetailBody(
                 }
             }
             Spacer(Modifier.width(10.dp))
+            if (onFavorite != null) {
+                androidx.compose.material3.IconButton(onClick = onFavorite) {
+                    Icon(
+                        if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (favorite) "자주 가는 곳에서 빼기" else "자주 가는 곳에 넣기",
+                        tint = if (favorite) androidx.compose.ui.graphics.Color(0xFFF5B301) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Surface(onClick = onClose, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }

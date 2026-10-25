@@ -626,10 +626,27 @@ private suspend fun resolveTagoRoute(repo: TagoRepository, d: BusDest.Route, db:
 
 /** 늦게 온 옛 데이터(정류장 순번이 줄어든 위치)는 직전 위치 유지 → 버스가 뒤로 가지 않음 */
 private fun guard(d: BusDest.Route, fresh: List<BusLocation>): List<BusLocation> =
-    StaleGuard.filter(d.buses.value, fresh, d.backOrd, d.stops.value.valueOrNull()?.size ?: 0)
+    StaleGuard.filter(d.buses.value, withIds(fresh), d.backOrd, d.stops.value.valueOrNull()?.size ?: 0)
+
+/**
+ * 차량 번호가 비어 있는 응답(TAGO 일부 도시)은 버스를 구분할 수 없어 한 대로 뭉치거나 지도에 안 그려졌음.
+ * 정류장·순번으로 임시 번호("#…")를 붙여 여러 대가 따로 보이게 함. 차량 번호는 앞뒤 공백을 지움.
+ */
+internal fun withIds(list: List<BusLocation>): List<BusLocation> {
+    val seen = HashMap<String, Int>()
+    return list.map { b ->
+        val v = b.vehicleNo?.trim()
+        if (!v.isNullOrEmpty()) return@map if (v == b.vehicleNo) b else b.copy(vehicleNo = v)
+        val base = "#${b.nodeId.orEmpty()}:${b.ord ?: ""}"
+        val n = (seen[base] ?: 0) + 1
+        seen[base] = n
+        b.copy(vehicleNo = if (n > 1) "$base-$n" else base)
+    }
+}
 
 /** 이번 응답에 없는 차량도 2회까지는 직전 위치로 유지 (TAGO 응답에서 가끔 빠짐) */
-private fun mergeWithGrace(d: BusDest.Route, fresh: List<BusLocation>): List<BusLocation> {
+private fun mergeWithGrace(d: BusDest.Route, freshRaw: List<BusLocation>): List<BusLocation> {
+    val fresh = withIds(freshRaw)
     fun key(b: BusLocation) = b.vehicleNo ?: "${b.nodeId}:${b.ord}"
     val now = fresh.associateBy(::key)
     now.keys.forEach { d.misses.remove(it) }

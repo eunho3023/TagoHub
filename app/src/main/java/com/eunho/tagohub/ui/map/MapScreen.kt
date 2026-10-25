@@ -349,7 +349,6 @@ fun MapScreen(
                 "its_vsl" to "가변속도표지",
                 "its_vms" to "도로전광표지",
                 "its_safe_driving" to "주의운전",
-                "its_dangerous_cars" to "위험물 사고",
                 "its_vds" to "VDS 시설물",
                 "its_ice_sections" to "상습 결빙구간",
             )
@@ -398,6 +397,7 @@ fun MapScreen(
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
                 MapPanel.Route -> route?.let { RoutePanel(vm, it, hasStop = selected != null) }
                 MapPanel.Station -> station?.let { d ->
+                    val favs by vm.favorites.collectAsStateWithLifecycle()
                     val railName = remember(d) { vm.railStationFor(d.group)?.name }   // 지하철역과 같은 자리의 기차역
                     PanelSurface {
                         StationDetailPanel(
@@ -407,6 +407,8 @@ fun MapScreen(
                             onArrivalClick = { a -> vm.showArrivalPath(d.group, a) },
                             onUseStation = { asOrigin -> vm.useStationAs(d.group, asOrigin) },
                             onStationName = { n -> vm.stationGroupNear(n, d.group)?.let { vm.focusStation(it) } },
+                            favorite = favs.any { it.kind == Favorite.Kind.Station && it.id == d.group.id },
+                            onFavorite = { vm.toggleFavorite(Favorite.of(d.group)) },
                             railStationName = railName,
                             onRailJump = railName?.let { rn -> { asOrigin -> vm.jumpToTrain(rn, asOrigin) } },
                         )
@@ -487,7 +489,7 @@ private fun MapLayerSheet(
 ) {
     val layers = listOf(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
-        MapLayerOption(listOf("utic_incidents", "its_events", "its_dangerous_cars"), "돌발·사고", Icons.Filled.Warning),
+        MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_rest"), "휴게소", Icons.Filled.Place),
         MapLayerOption(listOf("ex_toll", "ex_ic"), "영업소·IC", Icons.Filled.Directions),
@@ -2081,6 +2083,13 @@ private fun PlanCard(p: TripPlan, onClick: () -> Unit) {
             Icon(Icons.AutoMirrored.Filled.DirectionsWalk, contentDescription = "걷기", tint = variant, modifier = Modifier.size(16.dp))
             p.legs.forEachIndexed { i, leg ->
                 if (i > 0) Text("›", color = variant)
+                if (!leg.subway) {
+                    Icon(
+                        if (leg.intercity) androidx.compose.material.icons.Icons.Filled.AirportShuttle else Icons.Filled.DirectionsBus,
+                        contentDescription = if (leg.intercity) "시외·고속버스" else "시내버스",
+                        tint = variant, modifier = Modifier.size(16.dp),
+                    )
+                }
                 Pill(leg.routeNo, legColor(leg, i))
             }
             Text("›", color = variant)
@@ -2130,8 +2139,8 @@ private fun PlanDetail(t: TripController, p: TripPlan) {
                 }
             }
             item {
-                StepRow(if (leg.subway) Icons.Filled.DirectionsSubway else Icons.Filled.DirectionsBus, color,
-                    (if (i == 0) "" else "환승  ") + (if (leg.subway) "${leg.routeNo} 탑승  ${leg.boardName}역" else "${(listOf(leg.routeNo) + leg.alternatives).joinToString(" · ")}번 탑승  ${leg.boardName}") +
+                StepRow(if (leg.subway) Icons.Filled.DirectionsSubway else if (leg.intercity) androidx.compose.material.icons.Icons.Filled.AirportShuttle else Icons.Filled.DirectionsBus, color,
+                    (if (i == 0) "" else "환승  ") + (if (leg.subway) "${leg.routeNo} 탑승  ${leg.boardName}역" else "${(listOf(leg.routeNo) + leg.alternatives).joinToString(" · ")}번 ${if (leg.intercity) "시외·고속버스" else "시내버스"} 탑승  ${leg.boardName}") +
                         (if (i == 1) p.transferRemark?.let { " ($it)" }.orEmpty() else ""),
                     when {
                         leg.subway -> "실시간 도착은 지도에서 역을 누르면 볼 수 있어요"

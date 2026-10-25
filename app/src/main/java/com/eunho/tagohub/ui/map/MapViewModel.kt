@@ -175,7 +175,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val removedOverlays = setOf(
         "cctv", "utic_safety", "utic_road_risk", "its_safe_driving", "its_disasters",
-        "its_ice_sections", "its_vms", "its_vsl", "ex_vms",
+        "its_ice_sections", "its_vms", "its_vsl", "ex_vms", "its_dangerous_cars",
     )
     val overlays = MutableStateFlow(savedOverlays - removedOverlays)
 
@@ -951,6 +951,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun openFavorite(f: com.eunho.tagohub.data.Favorite) = when (f.kind) {
         com.eunho.tagohub.data.Favorite.Kind.Stop -> pickStop(f.toStop())
         com.eunho.tagohub.data.Favorite.Kind.Route -> pickRoute(f.toRoute())
+        com.eunho.tagohub.data.Favorite.Kind.Station -> { index?.group(f.id)?.let { focusStation(it) }; Unit }
     }
     val busCity = MutableStateFlow(
         prefs.getString("cityCode", null)?.let { City(it, prefs.getString("cityName", null).orEmpty()) }
@@ -2374,7 +2375,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val path = GpsTracker.path(g, d.geom?.line ?: shape)
             val dur = g.durMs.toDouble()
             val k = if (g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
-            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeLast(4).orEmpty(), "")
+            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "")
         })
         pushKlidBuses()
     }
@@ -2425,7 +2426,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "its_vsl",
             "its_vms",
             "its_safe_driving",
-            "its_dangerous_cars",
             "its_vds",
             "its_ice_sections",
             "ex_rest",

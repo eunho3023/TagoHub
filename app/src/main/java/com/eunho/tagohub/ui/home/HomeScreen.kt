@@ -65,6 +65,7 @@ import com.eunho.tagohub.ui.map.MapMode
 import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.NumberFont
+import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -254,6 +255,7 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
 }
 
 /** 자주 가는 곳: 즐겨찾기(앞에서 4개). 정류장은 가장 먼저 오는 버스와 남은 시간을 30초마다 새로 받아 보여줌 */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
@@ -269,19 +271,19 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
         )
         return
     }
-    val etas by produceState(emptyMap<String, Eta>(), shown) {
+    val etas by produceState(emptyMap<String, List<RouteEta>>(), shown) {
         val stops = shown.filter { it.kind == Favorite.Kind.Stop }
         while (true) {
             // 앱이 내려가 있으면 기다림. 즐겨찾기마다 동시에 받고(공공 API 동시 요청은 앱이 4개로 제한), 오는 대로 화면에 채움.
             // 전에는 하나씩 차례로 받아서 즐겨찾기가 늘수록 오래 걸리고, 다 받은 뒤에야 한꺼번에 보였음
             com.eunho.tagohub.core.AppState.awaitForeground()
-            val got = LinkedHashMap<String, Eta>(value)
+            val got = LinkedHashMap<String, List<RouteEta>>(value)
             kotlinx.coroutines.coroutineScope {
                 stops.forEach { f ->
                     launch {
                         got[f.id] = when (val r = runCatching { arrivalsFor(Graph.repo, f.toStop()) }.getOrNull()) {
-                            is TagoResult.Success -> HomeText.firstArrival(r.data)
-                            else -> got[f.id] ?: Eta(null, null, null)   // 이번에 못 받으면 지난 값을 그대로 둠
+                            is TagoResult.Success -> HomeText.routeEtas(r.data)
+                            else -> got[f.id] ?: emptyList()   // 이번에 못 받으면 지난 값을 그대로 둠
                         }
                         value = LinkedHashMap(got)
                     }
@@ -300,9 +302,18 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     ) {
         Column {
             shown.forEachIndexed { i, f ->
-                val eta = etas[f.id]
-                val badgeText = if (f.kind == Favorite.Kind.Route) f.name else eta?.routeNo
-                val badgeColor = if (f.kind == Favorite.Kind.Route) busRouteColor(f.extra) else busRouteColor(eta?.routeType)
+                val routes = etas[f.id].orEmpty()
+                val first = routes.firstOrNull()
+                val badgeText = when (f.kind) {
+                    Favorite.Kind.Route -> f.name
+                    Favorite.Kind.Stop -> first?.routeNo
+                    Favorite.Kind.Station -> null
+                }
+                val badgeColor = when (f.kind) {
+                    Favorite.Kind.Route -> busRouteColor(f.extra)
+                    Favorite.Kind.Stop -> busRouteColor(first?.routeType)
+                    Favorite.Kind.Station -> ModeColor.Subway
+                }
                 if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable { onFavorite(f) }.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -316,16 +327,36 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
                         else Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     }
                     Spacer(Modifier.width(12.dp))
-                    Text(
-                        if (f.kind == Favorite.Kind.Route) (f.sub ?: "노선") else f.name,
-                        Modifier.weight(1f),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (eta?.text != null) {
-                        Text(eta.text, fontFamily = NumberFont, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = red)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (f.kind == Favorite.Kind.Route) (f.sub ?: "노선") else f.name,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // 정류장: 여기 서는 노선을 모두, 노선마다 가장 빨리 오는 버스. 역: 지나는 노선
+                        if (f.kind == Favorite.Kind.Stop && routes.isNotEmpty()) {
+                            androidx.compose.foundation.layout.FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(top = 4.dp),
+                            ) {
+                                routes.forEach { r ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            r.routeNo,
+                                            Modifier.background(busRouteColor(r.routeType), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                                            fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1,
+                                        )
+                                        if (r.text != null) Text(" ${r.text}", fontFamily = NumberFont, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = red)
+                                    }
+                                }
+                            }
+                        }
+                        if (f.kind == Favorite.Kind.Station && !f.sub.isNullOrBlank()) {
+                            Text(f.sub, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }

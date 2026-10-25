@@ -165,25 +165,6 @@ object ItsRoadParser {
             )
         }
 
-    fun dangerousCars(xml: String): List<ItsRoadFeature> =
-        parseItems(xml, "위험물 사고") { item ->
-            val lng = item.text("xcrdnt")?.toDoubleOrNull() ?: return@parseItems null
-            val lat = item.text("ycrdnt")?.toDoubleOrNull() ?: return@parseItems null
-            feature(
-                layer = "its_dangerous_cars",
-                id = item.text("sntcManageNo") ?: "danger-$lat-$lng",
-                title = "위험물 운송차량 사고",
-                details = listOfNotNull(
-                    item.text("acdntOccrrncDt")?.let { "발생 $it" },
-                    item.text("acdntAt")?.let { "사고 ${if (it == "Y") "발생" else "미발생"}" },
-                    item.text("acdntEndAt")?.let { "종료 ${if (it == "Y") "완료" else "진행 중"}" },
-                    item.text("streDt")?.let { "접수 $it" },
-                ),
-                lat = lat,
-                lng = lng,
-            )
-        }
-
     fun vdsFacilities(text: String): List<ItsRoadFeature> =
         text.lineSequence().mapNotNull { line ->
             val fields = line.split('\t')
@@ -355,7 +336,6 @@ class ItsRoadRepository(
             "its_vsl" -> request("vslInfo")
             "its_vms" -> request("vmsInfo")
             "its_safe_driving" -> request("posIncidentInfo", south, west, north, east)
-            "its_dangerous_cars" -> request("dangerousCarInfo")
             else -> throw IOException("지원하지 않는 ITS 지도 레이어입니다: $layer")
         }
         val xml = UticHttp.get(request, providerName = "ITS $layer")
@@ -366,7 +346,6 @@ class ItsRoadRepository(
                 "its_vsl" -> ItsRoadParser.vsl(xml)
                 "its_vms" -> ItsRoadParser.vms(xml)
                 "its_safe_driving" -> ItsRoadParser.safeDriving(xml)
-                "its_dangerous_cars" -> ItsRoadParser.dangerousCars(xml)
                 else -> emptyList()
             }
         }

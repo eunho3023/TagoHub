@@ -17,7 +17,7 @@ data class Favorite(
     /** 정류장 번호(ARS) / 노선 종류 */
     val extra: String? = null,
 ) {
-    enum class Kind { Stop, Route }
+    enum class Kind { Stop, Route, Station }
 
     fun toStop() = BusStop(cityCode, id, name, extra, lat, lng)
 
@@ -28,6 +28,9 @@ data class Favorite(
 
     companion object {
         fun of(s: BusStop) = Favorite(Kind.Stop, s.nodeId, s.name, s.nodeNo, s.cityCode, s.lat, s.lng, s.nodeNo)
+
+        /** 지하철·기차역: id = 역 묶음 id, sub = 지나는 노선들("2호선·신분당선") */
+        fun of(g: StationGroup) = Favorite(Kind.Station, g.id, g.name, g.displayLines.joinToString("·"), "", g.lat, g.lng)
 
         fun of(routeId: String, routeNo: String, routeType: String?, cityCode: String, start: String?, end: String?) =
             Favorite(Kind.Route, routeId, routeNo, if (start != null && end != null) "$start ↔ $end" else null, cityCode, extra = routeType)
