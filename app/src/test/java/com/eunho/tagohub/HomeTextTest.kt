@@ -26,6 +26,14 @@ class HomeTextTest {
     }
 
     @Test
+    fun routeEtasListsEveryRouteSoonestFirstWithOneEntryPerRoute() {
+        val list = HomeText.routeEtas(listOf(arr("300", 600, "간선"), arr("5", 190, "지선"), arr("5", 400, "지선"), arr("9", null)))
+        assertEquals(listOf("5", "300", "9"), list.map { it.routeNo })
+        assertEquals("4분", list[0].text)   // 5번은 두 대 중 빠른 쪽
+        assertNull(list[2].text)            // 도착 시각을 모르는 노선도 목록에는 나옴
+    }
+
+    @Test
     fun shortEtaRoundsUpAndSaysSoonUnderHalfAMinute() {
         assertEquals("곧", HomeText.shortEta(0))
         assertEquals("곧", HomeText.shortEta(30))

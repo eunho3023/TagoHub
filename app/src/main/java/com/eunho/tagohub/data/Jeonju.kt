@@ -178,7 +178,10 @@ data class TripLeg(
     val vehicleType: String? = null,
     /** 같은 구간을 가는 다른 노선 (카카오: "76" 외 "76-1" 등) */
     val alternatives: List<String> = emptyList(),
-)
+) {
+    /** 시외·고속버스 구간 (카카오 노선 종류에 '시외'·'고속'). 아니면 시내버스 */
+    val intercity: Boolean get() = !subway && vehicleType?.let { "시외" in it || "고속" in it } == true
+}
 
 /** 출발지 → (걷기) → 버스 1~2개 (환승 시 걸어서 갈아탈 수 있음) → (걷기) → 도착지 */
 data class TripPlan(

@@ -39,7 +39,21 @@ class TimetableController(
     private val delayLoader: (suspend (trips: List<Trip>) -> TagoResult<Map<String, DelayNote>>)? = null,
     /** 선택 화면의 거리순·지역별에 쓰는 위치·시·도 표 (있으면 가나다순·거리순·지역별로 고르기) */
     val geo: com.eunho.tagohub.data.PlaceGeo? = null,
+    /** 한쪽을 골랐을 때 다른 쪽에 고를 수 있는 곳의 이름들 (fixedIsDep: 고른 쪽이 출발지). 모르면 null → 전체 목록 */
+    private val connectedNames: (suspend (fixed: Place, fixedIsDep: Boolean) -> List<String>?)? = null,
 ) {
+    /** 출발(pickDep=true)·도착을 고를 때의 목록. 다른 쪽이 이미 정해져 있으면 그곳과 이어지는 곳만 */
+    suspend fun placesFor(pickDep: Boolean, q: String): TagoResult<List<Place>> {
+        val base = placeLoader(q)
+        val fixed = (if (pickDep) arr.value else dep.value) ?: return base
+        val loader = connectedNames ?: return base
+        val names = runCatching { loader(fixed, !pickDep) }.getOrNull() ?: return base
+        return (base as? TagoResult.Success)?.let { TagoResult.Success(com.eunho.tagohub.data.PlaceNames.keepConnected(it.data, names)) } ?: base
+    }
+
+    /** 다른 쪽에 맞춰 목록이 줄어드는 화면인지 (그러면 전체 둘러보기는 끔) */
+    val restrictsPicker: Boolean get() = connectedNames != null
+
     val supportsTransfer: Boolean get() = transferLoader != null
     val supportsStops: Boolean get() = stopsLoader != null
     val supportsHistory: Boolean get() = historyLoader != null

@@ -163,7 +163,11 @@ object ExMapLayers {
     const val IC = "ex_ic"
     const val VMS = "ex_vms"
     const val CONGEST = "ex_congest"
-    val IDS = listOf(REST, TOLL, IC, VMS, CONGEST)
+    /** 고속도로 돌발(사고·작업·강우 등 문자정보) */
+    const val BURST = "ex_burst"
+    /** 안전주행 안내(작업 중·사고·낙하물 등 앞쪽 주의) */
+    const val SAFE = "ex_safe"
+    val IDS = listOf(REST, TOLL, IC, VMS, CONGEST, BURST, SAFE)
 
     /** VDS(차량 검지기) 위치 파일 assets/ex_vds.json 내용을 읽는 방법. 앱 시작 때 지정 (pipeline/build_ex_vds.py 가 만듦) */
     @Volatile var vdsJson: (() -> String)? = null
@@ -173,6 +177,8 @@ object ExMapLayers {
     private fun cacheMs(layer: String) = when (layer) {
         VMS -> 3 * 60_000L
         CONGEST -> 2 * 60_000L
+        BURST -> 2 * 60_000L
+        SAFE -> 3 * 60_000L
         else -> 10 * 60_000L
     }
     private val cache = HashMap<String, Pair<Long, List<ItsRoadFeature>>>()
@@ -187,6 +193,8 @@ object ExMapLayers {
             IC -> ic(repo.all("/openapi/locationinfo/locationinfoIc"))
             VMS -> vms(repo.all("/openapi/vms/vmsMessageSrch"))
             CONGEST -> congest(repo.all("/openapi/odtraffic/trafficAmountByCongest"), vdsCoords())
+            BURST -> burst(repo.all("/openapi/burstInfo/realTimeSms"))
+            SAFE -> safe(repo.all("/openapi/safeDriving/safeDrivingSupport"))
             else -> emptyList()
         }
         synchronized(cache) { cache[layer] = now to list }
@@ -228,6 +236,52 @@ object ExMapLayers {
                 ).joinToString("\n"),
                 lat = pos.first,
                 lng = pos.second,
+            )
+        }
+
+    /**
+     * 실시간 돌발 문자정보: 좌표(latitude 가 위도, altitude 가 경도 — 이름과 달리)가 있는 것만 지도에 찍음.
+     * 이벤트/홍보 문구(상황실 전화 안내 등)는 지도에 쓸모가 없어 뺀다.
+     */
+    fun burst(rows: List<Map<String, String>>): List<ItsRoadFeature> = rows.mapNotNull { r ->
+        if (r["accType"] == "이벤트/홍보") return@mapNotNull null
+        val lat = lat(r["latitude"]) ?: return@mapNotNull null
+        val lng = lng(r["altitude"]) ?: return@mapNotNull null
+        val text = r["smsText"]?.replace("*", "")?.trim().orEmpty()
+        ItsRoadFeature(
+            id = "$BURST:${r["nosunNM"]}:${r["seriesNM"] ?: "$lat,$lng"}",
+            layer = BURST,
+            title = listOfNotNull(r["accType"], r["roadNM"]).joinToString(" · ").ifBlank { "고속도로 돌발" },
+            details = listOfNotNull(
+                text.takeIf { it.isNotEmpty() },
+                r["accPointNM"]?.takeIf { it.isNotBlank() }?.let { "위치: $it" },
+                r["startEndTypeCode"]?.let { "방향: $it" },
+                r["lateLength"]?.let { "정체 ${it}m" },
+                r["accProcessNM"]?.let { "상태: $it" },
+                listOfNotNull(r["accDate"], r["accHour"]?.take(5)).joinToString(" ").takeIf { it.isNotBlank() },
+            ).joinToString("\n"),
+            lat = lat,
+            lng = lng,
+        )
+    }
+
+    /** 안전주행 안내: 같은 사건(incId)은 메시지를 받는 곳마다 여러 줄로 오므로 사건 위치(startX·startY) 하나로 합침 */
+    fun safe(rows: List<Map<String, String>>): List<ItsRoadFeature> =
+        rows.filter { !it["incId"].isNullOrBlank() }.groupBy { it["incId"] }.values.mapNotNull { group ->
+            val r = group.first()
+            val lat = lat(r["startY"]) ?: return@mapNotNull null
+            val lng = lng(r["startX"]) ?: return@mapNotNull null
+            val at = r["analDtmc"]?.takeIf { it.length >= 12 }?.let { "${it.substring(4, 6)}.${it.substring(6, 8)} ${it.substring(8, 10)}:${it.substring(10, 12)} 기준" }
+            ItsRoadFeature(
+                id = "$SAFE:${r["incId"]}",
+                layer = SAFE,
+                title = r["contentMsg"]?.trim().orEmpty().ifBlank { "안전주행 안내" },
+                details = listOfNotNull(
+                    r["routeName"]?.let { n -> "노선: $n" + (r["updownDiv"]?.let { d -> if (d == "S") " (기점 방향)" else " (종점 방향)" }.orEmpty()) },
+                    at,
+                ).joinToString("\n"),
+                lat = lat,
+                lng = lng,
             )
         }
 

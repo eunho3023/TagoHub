@@ -61,11 +61,6 @@ class ItsRoadParserTest {
         ).single()
         assertEquals(37.0, safeDriving.lat, 0.000001)
 
-        val dangerousCar = ItsRoadParser.dangerousCars(
-            "<response><item><sntcManageNo>d1</sntcManageNo><xcrdnt>127.2</xcrdnt><ycrdnt>37.2</ycrdnt></item></response>",
-        ).single()
-        assertEquals(127.2, dangerousCar.lng, 0.000001)
-
         val ice = ItsRoadParser.iceSections(
             "id,a,b,c,road,length,startLat,startLng,endLat,endLng\n1,a,b,c,국도1호선,2,37.0,127.0,37.2,127.2",
         ).single()

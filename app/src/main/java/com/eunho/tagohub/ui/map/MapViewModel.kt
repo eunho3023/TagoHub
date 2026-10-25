@@ -175,7 +175,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val removedOverlays = setOf(
         "cctv", "utic_safety", "utic_road_risk", "its_safe_driving", "its_disasters",
-        "its_ice_sections", "its_vms", "its_vsl", "ex_vms",
+        "its_ice_sections", "its_vms", "its_vsl", "ex_vms", "its_dangerous_cars",
     )
     val overlays = MutableStateFlow(savedOverlays - removedOverlays)
 
@@ -951,6 +951,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun openFavorite(f: com.eunho.tagohub.data.Favorite) = when (f.kind) {
         com.eunho.tagohub.data.Favorite.Kind.Stop -> pickStop(f.toStop())
         com.eunho.tagohub.data.Favorite.Kind.Route -> pickRoute(f.toRoute())
+        com.eunho.tagohub.data.Favorite.Kind.Station -> { index?.group(f.id)?.let { focusStation(it) }; Unit }
     }
     val busCity = MutableStateFlow(
         prefs.getString("cityCode", null)?.let { City(it, prefs.getString("cityName", null).orEmpty()) }
@@ -2112,7 +2113,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 val pts = d.stops.value.valueOrNull()?.mapNotNull { s -> s.lat?.let { la -> s.lng?.let { LatLng(la, it) } } }.orEmpty()
                 // 노선 선: 카카오 지도 도로를 따라 (카카오 대중교통 경로에서 이 노선 번호 구간).
                 // 카카오가 못 찾은 구간은 지역 공식 모양(서울시·경기·전주시)으로, 그것도 없으면 OSRM.
+                // 저장해 둔 모양도 지금 정류장과 맞을 때만 씀 (예전에 잘못 저장됐거나 노선이 바뀌었으면 새로 만듦)
                 val saved = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
+                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) }
                 val shape = saved ?: run {
                     val official: List<LatLng>? = when {
                         com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) ->
@@ -2120,13 +2123,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                             withContext(Dispatchers.IO) { com.eunho.tagohub.data.RouteShapes.seoul(getApplication(), d.routeId) }
                                 ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts) }
                                 ?: (Graph.seoulBus.path(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 120.0, 0.8) }
                         com.eunho.tagohub.data.Gyeonggi.isGyeonggi(d.routeId) ->
                             // 앱 안 노선 모양(경기 경로이력 2025-10). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (노선이 바뀌었으면 경기 API)
                             stopDb?.let { db -> withContext(Dispatchers.IO) { db.gyeonggiShape(d.routeId) } }
                                 ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts) }
                                 ?: (Graph.gyeonggi.line(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 120.0, 0.8) }
                         com.eunho.tagohub.data.Jeonju.isJeonju(d.routeId) ->
                             (Graph.jeonju.drawing(d.routeId) as? TagoResult.Success)?.data?.takeIf { it.size >= 2 }
+                                ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 120.0, 0.8) }
                         else -> null
                     }
                     RoadShapeClient.shape(d.routeId, pts, d.routeNo, official)
@@ -2374,7 +2380,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val path = GpsTracker.path(g, d.geom?.line ?: shape)
             val dur = g.durMs.toDouble()
             val k = if (g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
-            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeLast(4).orEmpty(), "")
+            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "")
         })
         pushKlidBuses()
     }
@@ -2425,7 +2431,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "its_vsl",
             "its_vms",
             "its_safe_driving",
-            "its_dangerous_cars",
             "its_vds",
             "its_ice_sections",
             "ex_rest",
@@ -2433,6 +2438,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "ex_ic",
             "ex_vms",
             "ex_congest",
+            "ex_burst",
+            "ex_safe",
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

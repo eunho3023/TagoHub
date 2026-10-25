@@ -396,7 +396,6 @@ class KakaoCanvas(
             val st = styles("itsRoad:${feature.layer}") {
                 val marker = when (feature.layer) {
                     "its_events", "its_safe_driving" -> icons.triangleBadge(AMBER)
-                    "its_dangerous_cars" -> icons.triangleBadge(UTIC_ORANGE)
                     "its_disasters" -> icons.letterBadge(0xFF7B1FA2.toInt(), "재")
                     "its_vsl" -> icons.letterBadge(0xFF00897B.toInt(), "V")
                     "its_vms" -> icons.letterBadge(0xFF1565C0.toInt(), "전")
@@ -407,6 +406,8 @@ class KakaoCanvas(
                     "ex_ic" -> icons.letterBadge(0xFF6D4C41.toInt(), "IC")
                     "ex_vms" -> icons.letterBadge(0xFFEF6C00.toInt(), "전광")
                     "ex_congest" -> icons.letterBadge(0xFFD32F2F.toInt(), "정체")
+                    "ex_burst" -> icons.letterBadge(0xFFE65100.toInt(), "돌발")
+                    "ex_safe" -> icons.triangleBadge(AMBER)
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))

@@ -91,7 +91,7 @@ object KakaoRoutes {
                     return@use "HTTP ${res.code}" to emptyList()
                 }
                 val r = KakaoTransit.parse(body)
-                r.status to r.routes.mapNotNull(KakaoTransit::toPlan)
+                r.status to KakaoTransit.dedupe(r.routes.mapNotNull(KakaoTransit::toPlan))
             }
         }.onFailure { Log.w("TagoMap", "카카오 길찾기 실패: ${it.message}") }.getOrDefault("ERROR" to emptyList())
     }
