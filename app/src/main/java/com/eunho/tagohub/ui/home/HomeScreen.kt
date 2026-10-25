@@ -186,7 +186,7 @@ fun HomeScreen(
 
 @Composable
 private fun TileSection(title: String, tiles: List<Tile>, columns: Int, dark: Boolean) {
-    Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp, top = 2.dp))
+    Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp, top = 2.dp))
     tiles.chunked(columns).forEach { row ->
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             row.forEach { t -> ModeTile(t, dark, Modifier.weight(1f)) }
@@ -260,7 +260,7 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
 internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val shown = remember(favs) { favs.take(4) }
-    Text("자주 가는 곳", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("자주 가는 곳", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(6.dp))
     if (shown.isEmpty()) {
         Text(
