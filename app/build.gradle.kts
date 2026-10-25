@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 val localProps = Properties().apply {
@@ -118,6 +119,11 @@ dependencies {
 
     // 카카오맵 SDK v2
     implementation("com.kakao.maps.open:android:2.15.2")
+
+    // Firebase: 익명 로그인 + Firestore 로 즐겨찾기·설정 동기화
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
 
     testImplementation("junit:junit:4.13.2")
 }
