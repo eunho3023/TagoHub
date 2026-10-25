@@ -47,6 +47,8 @@ class MainActivity : ComponentActivity() {
             // 카카오 개발자 사이트에 등록할 키 해시 (Logcat 에서 TagoKakao 로 검색)
             if (BuildConfig.DEBUG) android.util.Log.i("TagoKakao", "키 해시: ${com.eunho.tagohub.ui.map.KakaoCanvas.keyHash(this)}")
         }
+        // 즐겨찾기·설정을 계정에 맞춰 둠 (로그인·네트워크가 안 되면 조용히 건너뜀)
+        com.eunho.tagohub.data.CloudSync.start(applicationContext)
         com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
         com.eunho.tagohub.data.CoachTerminalGeo.init(applicationContext)
         com.eunho.tagohub.data.TrainTimetable.init(applicationContext)
