@@ -54,6 +54,17 @@ object CloudSync {
         }.onFailure { Log.w(TAG, "Firebase 시작 실패", it) }
     }
 
+    /** 계정이 바뀐 뒤(구글 연결·로그아웃) 새 계정 기준으로 다시 맞춤. 클라우드에 값이 있으면 그것이 이기도록 기록을 지움 */
+    fun restart(context: Context) {
+        val app = context.applicationContext
+        handler.removeCallbacksAndMessages(null)
+        for ((file, l) in listeners) app.getSharedPreferences(file, Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(l)
+        listeners.clear()
+        app.getSharedPreferences(META, Context.MODE_PRIVATE).edit().remove(KEY_LAST).apply()
+        started = false
+        start(app)
+    }
+
     private fun doc(uid: String) = FirebaseFirestore.getInstance().collection("users").document(uid)
 
     private fun pull(app: Context, uid: String) {
@@ -106,7 +117,7 @@ object CloudSync {
     }
 
     /** 바뀌면 잠시 모았다가 한 번에 올림 (참조를 들고 있어야 해서 보관) */
-    private val listeners = ArrayList<SharedPreferences.OnSharedPreferenceChangeListener>()
+    private val listeners = ArrayList<Pair<String, SharedPreferences.OnSharedPreferenceChangeListener>>()
 
     private fun watch(app: Context, uid: String) {
         val wanted = CloudSyncSpec.items.groupBy({ it.first }, { it.second })
@@ -118,7 +129,7 @@ object CloudSync {
                     handler.postDelayed(pushLater, 2000)
                 }
             }
-            listeners += l
+            listeners += file to l
             app.getSharedPreferences(file, Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(l)
         }
     }

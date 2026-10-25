@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.ui.ModeJump
+import kotlinx.coroutines.launch
 import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.ThemeMode
 import com.eunho.tagohub.ui.theme.ThemeSettings
@@ -132,6 +133,7 @@ fun MorePage(
                     modifier = Modifier.padding(top = 6.dp),
                 )
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                AccountRow()
                 MoreRow("공지사항", Icons.Outlined.Info, onNotices)
                 MoreRow("앱 제보", Icons.Outlined.Email, onReport)
                 // 앱이 비정상 종료된 적이 있으면 원인을 보고 공유할 수 있음
@@ -162,6 +164,48 @@ fun MorePage(
         }
         AppBottomNav(AppTab.Settings, onTab)
     }
+}
+
+/** 구글 계정 연결: 연결하면 즐겨찾기·설정이 계정에 이어져서 앱을 지우거나 폰을 바꿔도 유지됨 */
+@Composable
+private fun AccountRow() {
+    val context = LocalContext.current
+    val account by com.eunho.tagohub.data.CloudAccount.state.collectAsStateWithLifecycle()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val activity = remember(context) {
+        var c = context
+        while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
+        c as? android.app.Activity
+    }
+    val email = account.email
+    Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+        Text("계정", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (email != null) "$email 연결됨 · 즐겨찾기와 설정이 계정에 저장돼요" else "구글 계정을 연결하면 앱을 지우거나 폰을 바꿔도 즐겨찾기와 설정이 이어져요",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.material3.OutlinedButton(
+            enabled = !busy && activity != null,
+            onClick = {
+                val a = activity ?: return@OutlinedButton
+                if (email != null) {
+                    com.eunho.tagohub.data.CloudAccount.signOut(a)
+                } else {
+                    busy = true
+                    scope.launch {
+                        val msg = com.eunho.tagohub.data.CloudAccount.signInWithGoogle(a)
+                        busy = false
+                        if (msg != null) android.widget.Toast.makeText(a, msg, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+        ) { Text(if (email != null) "로그아웃" else if (busy) "연결 중…" else "구글 계정 연결") }
+    }
+    HorizontalDivider(Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
