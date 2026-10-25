@@ -384,6 +384,7 @@ class TripController(
 
     fun plan() {
         val d = dest.value ?: return
+        com.eunho.tagohub.data.RecentDestinations.add(d.name, d.sub, d.lat, d.lng)
         planJob?.cancel()
         selected.value = null
         live.value = null

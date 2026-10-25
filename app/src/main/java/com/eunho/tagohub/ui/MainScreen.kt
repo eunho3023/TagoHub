@@ -199,6 +199,11 @@ fun MainScreen() {
                             onPlanRoute = { openMap(MapMode.Transit); mapVm.openPlanner() },
                             onShowMap = { openMap(MapMode.Transit) },
                             onRoadInfo = { openKind(ModeJump.Kind.Road) },
+                            onGoRecent = { place ->
+                                openMap(MapMode.Transit)
+                                mapVm.openPlanner()
+                                mapVm.trip.goTo(place)
+                            },
                         )
                     }
                     Dest.Road -> PageScaffold(ModeJump.Kind.Road, AppTab.Navi, ::onTab) { RoadInfoScreen(mapVm) }

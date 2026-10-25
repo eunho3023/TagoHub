@@ -225,3 +225,20 @@ fun CalendarSheet(
         }
     }
 }
+
+/** 설정용 스위치: 48×28 알약, 켜면 파랑 바탕에 흰 손잡이 */
+@Composable
+fun ClearSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    val cs = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .size(width = 48.dp, height = 28.dp)
+            .clip(CircleShape)
+            .background(if (checked) cs.primary else cs.outlineVariant)
+            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch) { onCheckedChange(!checked) }
+            .padding(3.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+    ) {
+        Box(Modifier.size(22.dp).clip(CircleShape).background(if (checked) cs.onPrimary else cs.surface))
+    }
+}
