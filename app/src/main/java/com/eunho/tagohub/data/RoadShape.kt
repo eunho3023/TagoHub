@@ -213,6 +213,12 @@ object Shapes {
         return p
     }
 
+    /** 정류장 중 선에서 maxM 안에 있는 것의 비율 (0~1) */
+    fun coverage(path: List<LatLng>, stops: List<LatLng>, maxM: Double): Double {
+        if (path.size < 2 || stops.isEmpty()) return 0.0
+        return stops.count { s -> project(path, s).second <= maxM }.toDouble() / stops.size
+    }
+
     /** 이 선이 정류장들 곁(maxM 안)을 모두 지나는지 — 카카오 경로가 이 노선 길이 맞는지 확인 */
     fun passesStops(path: List<LatLng>, stops: List<LatLng>, maxM: Double): Boolean {
         if (path.size < 2) return false

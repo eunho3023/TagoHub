@@ -491,6 +491,8 @@ private fun MapLayerSheet(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
         MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
+        MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
+        MapLayerOption(listOf("ex_safe"), "안전주행 안내", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_rest"), "휴게소", Icons.Filled.Place),
         MapLayerOption(listOf("ex_toll", "ex_ic"), "영업소·IC", Icons.Filled.Directions),
         MapLayerOption(listOf("bicycle_road"), "자전거도로", Icons.AutoMirrored.Filled.DirectionsBike),

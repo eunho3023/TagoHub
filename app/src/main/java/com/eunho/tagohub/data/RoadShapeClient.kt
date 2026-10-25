@@ -33,10 +33,30 @@ object RoadShapeClient {
     suspend fun shape(routeId: String, stops: List<LatLng>, routeNo: String? = null, fallback: List<LatLng>? = null): List<LatLng>? {
         if (stops.size < 2) return fallback
         synchronized(cache) { cache[routeId]?.let { return it } }
-        if (fallback != null && (routeNo == null || !KakaoExtra.available)) return fallback
+        // 지역 공식 모양은 정류장과 맞을 때만 그대로 씀 (노선이 바뀌었거나 모양이 어긋나 있으면 아래에서 새로 만듦)
+        val officialFits = fallback != null && Shapes.fitsStops(fallback, stops, FIT_M, FIT_RATIO)
+        if (fallback != null && officialFits && (routeNo == null || !KakaoExtra.available)) return fallback
+        val usable = fallback?.takeIf { officialFits }
+        val first = build(stops, routeNo, usable, KakaoExtra.available)
+        // 만든 선이 정류장들과 어긋나면(카카오가 다른 길을 줬거나 OSRM 이 엉뚱하게 돌았을 때) 도로 탐색만으로 다시 만들어 더 잘 맞는 쪽을 씀
+        var best = first
+        if (first == null || !Shapes.fitsStops(first, stops, FIT_M, FIT_RATIO)) {
+            val second = build(stops, null, null, false)
+            best = listOfNotNull(first, second, usable).maxByOrNull { Shapes.coverage(it, stops, FIT_M) } ?: first
+        }
+        if (best == null) return fallback
+        synchronized(cache) { cache[routeId] = best }
+        return best
+    }
+
+    /** 정류장 곁(이 거리 안)을 지나야 "정류장과 맞는" 선으로 보는 기준 */
+    private const val FIT_M = 100.0
+    private const val FIT_RATIO = 0.85
+
+    private suspend fun build(stops: List<LatLng>, routeNo: String?, fallback: List<LatLng>?, kakaoAvailable: Boolean): List<LatLng>? {
         val out = ArrayList<LatLng>()
         var anyRoad = false
-        val kakao = routeNo != null && KakaoExtra.available
+        val kakao = routeNo != null && kakaoAvailable
         val chunks = if (kakao) Osrm.chunks(stops, KAKAO_CHUNK) else Osrm.chunks(stops)
         for ((i, part) in chunks.withIndex()) {
             if (i > 0) delay(if (kakao) 120 else 250) // 서버 예의상 간격
@@ -58,9 +78,7 @@ object RoadShapeClient {
             val seg = piece ?: part
             out += if (out.isEmpty()) seg else seg.drop(1)
         }
-        if (!anyRoad) return fallback
-        synchronized(cache) { cache[routeId] = out }
-        return out
+        return if (anyRoad) out else fallback
     }
 
     /** 카카오 경로는 정류장 6개(5구간)씩 — 너무 길면 카카오가 다른 노선·환승을 먼저 제안함 */
