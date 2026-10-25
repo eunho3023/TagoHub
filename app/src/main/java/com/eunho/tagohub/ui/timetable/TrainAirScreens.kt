@@ -20,16 +20,6 @@ import com.eunho.tagohub.ui.theme.ModeColor
 class TrainViewModel : ViewModel() {
     private val repo = Graph.repo
 
-    /** 내 위치에서 가까운 역 두 곳 (위치를 알 때) */
-    val nearby = kotlinx.coroutines.flow.MutableStateFlow<List<QuickPick>>(emptyList())
-
-    fun loadNearby(lat: Double, lng: Double) {
-        viewModelScope.launch {
-            val stations = (repo.trainStationsAll() as? com.eunho.tagohub.core.TagoResult.Success)?.data ?: return@launch
-            nearby.value = com.eunho.tagohub.data.TrainStationGeo.nearest(stations, lat, lng, 2)
-                .map { (p, m) -> QuickPick(p, if (m >= 1000) "%.1fkm".format(m / 1000.0) else "${m.toInt()}m") }
-        }
-    }
     val table = TimetableController(
         scope = viewModelScope,
         placeLoader = { q -> repo.trainStationPlaces(q) },
@@ -107,18 +97,9 @@ fun TrainScreen(vm: TrainViewModel = viewModel()) {
             }
         }
     }
-    // 내 위치 가까운 역: 위치 권한이 이미 있을 때만 (여기서 따로 묻지 않음)
-    val context = androidx.compose.ui.platform.LocalContext.current
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        if (!com.eunho.tagohub.ui.bus.hasLocationPermission(context)) return@LaunchedEffect
-        val loc = com.eunho.tagohub.ui.bus.lastKnownLocation(context) ?: com.eunho.tagohub.ui.bus.currentLocation(context)
-        loc?.let { vm.loadNearby(it.latitude, it.longitude) }
-    }
-    val nearby by vm.nearby.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize()) {
         TimetablePane(
             vm.table, ModeColor.Train,
-            quickPicks = nearby,
             pickerNoun = "역",
             gradeAllLabel = "전체 차종",
             idleText = "출발역과 도착역을 고르면 시간표가 표시됩니다. 직통이 없으면 환승 경로를 찾고, 열차마다 정차역을 볼 수 있습니다.\n처음 한 번은 전국 역 목록을 받느라 몇 초 걸립니다.",
