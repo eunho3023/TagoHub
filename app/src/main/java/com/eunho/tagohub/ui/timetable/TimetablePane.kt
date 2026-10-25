@@ -3,6 +3,7 @@ package com.eunho.tagohub.ui.timetable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,12 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
@@ -90,59 +96,113 @@ fun TimetablePane(
     val notes by c.delayNotes.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf<Boolean?>(null) } // true 출발, false 도착
 
+    var searched by remember { mutableStateOf(false) }
+    var sort by remember { mutableStateOf(TripSort.Dep) }
+    var sorting by remember { mutableStateOf(false) }
+    val ready = dep != null && arr != null
+
     LaunchedEffect(c) { c.ensureGrades() }
 
     Column(Modifier.fillMaxSize()) {
-        // 출발·도착: 화면 바탕과 같은 색 위에 흰 칸 두 개 (위의 기차·고속·항공 탭과는 떨어뜨림)
-        Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
-            Column(Modifier.padding(top = 14.dp, bottom = 12.dp)) {
-                OdSelector(
-                    dep, arr, accent, "출발", "도착",
-                    onDep = { picking = true },
-                    onArr = { picking = false },
-                    onSwap = c::swap,
-                )
-            }
-        }
-        if (quickPicks.isNotEmpty()) {
-            // 가까운 역: 누르면 출발역(아직 없으면) → 도착역 순서로 채움
-            androidx.compose.foundation.lazy.LazyRow(
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                item { Text("가까운 역", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                itemsIndexed(quickPicks) { _, q ->
-                    androidx.compose.material3.AssistChip(
-                        onClick = { if (dep == null) c.setDep(q.place) else c.setArr(q.place) },
-                        label = { Text("${q.place.name} · ${q.label}") },
+        if (!searched) {
+            // 조회 전: 출발·도착, 가는날, 등급을 고르고 아래 큰 버튼으로 조회
+            Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
+                Column(Modifier.padding(top = 14.dp, bottom = 12.dp)) {
+                    OdSelector(
+                        dep, arr, accent, "출발", "도착",
+                        onDep = { picking = true },
+                        onArr = { picking = false },
+                        onSwap = c::swap,
                     )
                 }
             }
+            if (quickPicks.isNotEmpty()) {
+                // 가까운 역: 누르면 출발역(아직 없으면) → 도착역 순서로 채움
+                androidx.compose.foundation.lazy.LazyRow(
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    item { Text("가까운 역", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    itemsIndexed(quickPicks) { _, q ->
+                        androidx.compose.material3.AssistChip(
+                            onClick = { if (dep == null) c.setDep(q.place) else c.setArr(q.place) },
+                            label = { Text("${q.place.name} · ${q.label}") },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            DateStrip(date, c::setDate)
+            (grades as? Load.Ok)?.value?.takeIf { it.isNotEmpty() }?.let { list ->
+                GradeStrip(list, grade, accent, gradeAllLabel, c::setGrade)
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = { c.search(); searched = true },
+                enabled = ready,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(50.dp),
+            ) {
+                Text(if (ready) "시간표 조회" else "출발과 도착을 먼저 골라 주세요", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold)
+            }
+        } else {
+            // 조회 후: 구간 요약과 수정, 날짜·등급, 정렬, 운행편 카드
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(accent))
+                Text(
+                    "${dep?.name ?: "-"} → ${arr?.name ?: "-"}",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                )
+                Surface(
+                    modifier = Modifier.clip(CircleShape).clickable { searched = false },
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text("수정", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+            DateStrip(date, c::setDate)
+            (grades as? Load.Ok)?.value?.takeIf { it.isNotEmpty() }?.let { list ->
+                GradeStrip(list, grade, accent, gradeAllLabel, c::setGrade)
+            }
+            Row(
+                Modifier.fillMaxWidth().clickable { sorting = true }.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(sort.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "정렬 바꾸기", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.weight(1f))
+                (trips as? Load.Ok)?.value?.let {
+                    Text("${it.size}개", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            val shown = (trips as? Load.Ok)?.let { Load.Ok(sort.apply(it.value)) } ?: trips
+            TripList(
+                shown, accent, idleText, onRetry = c::search,
+                stops = stopsMap,
+                stopsKey = c::stopsKey,
+                onStops = if (c.supportsStops) c::toggleStops else null,
+                history = historyMap,
+                onHistory = if (c.supportsHistory) c::toggleHistory else null,
+                notes = notes,
+                footer = if (c.supportsTransfer) ({ TransferFooter(c, accent) }) else null,
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        DateStrip(date, c::setDate)
-        (grades as? Load.Ok)?.value?.takeIf { it.isNotEmpty() }?.let { list ->
-            GradeStrip(list, grade, accent, gradeAllLabel, c::setGrade)
-        }
-        Spacer(Modifier.height(4.dp))
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("출발 빠른 순", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        TripList(
-            trips, accent, idleText, onRetry = c::search,
-            stops = stopsMap,
-            stopsKey = c::stopsKey,
-            onStops = if (c.supportsStops) c::toggleStops else null,
-            history = historyMap,
-            onHistory = if (c.supportsHistory) c::toggleHistory else null,
-            notes = notes,
-            footer = if (c.supportsTransfer) ({ TransferFooter(c, accent) }) else null,
-        )
+    }
+
+    if (sorting) {
+        SortSheet(sort, onPick = { sort = it; sorting = false }, onDismiss = { sorting = false })
     }
 
     picking?.let { isDep ->
@@ -205,9 +265,50 @@ fun TripList(
     }
 }
 
+/** 목록 정렬 방식 */
+enum class TripSort(val label: String) {
+    Dep("출발 빠른 순"), Arr("도착 빠른 순"), Short("최단 시간 순");
+
+    fun apply(list: List<Trip>): List<Trip> = when (this) {
+        Dep -> list
+        Arr -> list.sortedBy { it.arr ?: LocalDateTime.MAX }
+        Short -> list.sortedBy { if (it.dep != null && it.arr != null) ChronoUnit.MINUTES.between(it.dep, it.arr) else Long.MAX_VALUE }
+    }
+}
+
+/** 정렬 기준 고르는 아래 시트: 고른 줄은 파랑 바탕에 체크 */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun SortSheet(current: TripSort, onPick: (TripSort) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text("정렬 기준", Modifier.padding(horizontal = 4.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            TripSort.entries.forEach { s ->
+                val on = s == current
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp).height(56.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (on) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                        .clickable { onPick(s) }
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        s.label, Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = if (on) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (on) Icon(Icons.Filled.Check, contentDescription = "선택됨", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
 /**
- * 운행편 카드: 위 줄에 차종 배지·편명과 오른쪽 소요시간, 아래 줄에 큰 출발 → 도착 시각과 오른쪽 요금.
- * 역·공항 이름은 시각 아래에 줄바꿈해서 끝까지 보여준다.
+ * 운행편 카드: 위 줄에 차종 배지·편명, 가운데에 출발 ──(소요시간)── 도착 시각을 선으로 이은 줄,
+ * 그 아래 역 이름, 맨 아래 요금 칸. 역·공항 이름은 줄바꿈해서 끝까지 보여준다.
  */
 @Composable
 fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
@@ -215,57 +316,59 @@ fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
     Surface(
         Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .alpha(if (past) 0.4f else 1f),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(if (next) 2.dp else 1.dp, if (next) accent else MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (t.kind.isNotBlank()) Pill(t.kind, accent)
-                t.number?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.Bold) }
-                if (next) Text("다음 출발", style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.ExtraBold)
+                t.number?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold) }
                 Spacer(Modifier.weight(1f))
-                Fmt.duration(t.dep, t.arr)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = variant) }
+                if (next) Text("다음 출발", style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.ExtraBold)
             }
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.Top) {
-                val dayShift = if (t.dep != null && t.arr != null) ChronoUnit.DAYS.between(t.dep.toLocalDate(), t.arr.toLocalDate()) else 0
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            t.dep?.let(TagoTime::hm) ?: "--:--",
-                            style = MaterialTheme.typography.headlineSmall.merge(Tnum),
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "에서",
-                            tint = variant,
-                            modifier = Modifier.padding(horizontal = 10.dp).size(18.dp),
-                        )
-                        Text(
-                            (t.arr?.let(TagoTime::hm) ?: "--:--") + if (dayShift > 0) " +${dayShift}일" else "",
-                            style = MaterialTheme.typography.headlineSmall.merge(Tnum),
-                            fontWeight = FontWeight.ExtraBold,
-                        )
+            Spacer(Modifier.height(8.dp))
+            val dayShift = if (t.dep != null && t.arr != null) ChronoUnit.DAYS.between(t.dep.toLocalDate(), t.arr.toLocalDate()) else 0
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    t.dep?.let(TagoTime::hm) ?: "--:--",
+                    style = MaterialTheme.typography.headlineSmall.merge(Tnum),
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Column(Modifier.weight(1f).padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Fmt.duration(t.dep, t.arr)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = variant, fontWeight = FontWeight.Bold) }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).border(2.dp, accent, CircleShape))
+                        Box(Modifier.weight(1f).height(3.dp).background(accent.copy(alpha = 0.5f)))
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(accent))
                     }
-                    Text(
-                        listOf(t.depName, t.arrName).filter { it.isNotBlank() }.joinToString(" → "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = variant,
-                    )
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(horizontalAlignment = Alignment.End) {
-                    if (t.prices.isEmpty()) {
-                        Text("요금 정보 없음", style = MaterialTheme.typography.bodySmall, color = variant)
-                    } else {
-                        t.prices.forEach { (label, won) ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (t.prices.size > 1) Text(label, style = MaterialTheme.typography.bodySmall, color = variant)
-                                Text(Fmt.won(won), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold)
-                            }
+                Text(
+                    (t.arr?.let(TagoTime::hm) ?: "--:--") + if (dayShift > 0) " +${dayShift}일" else "",
+                    style = MaterialTheme.typography.headlineSmall.merge(Tnum),
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(t.depName, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = variant)
+                Text(t.arrName, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = variant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            }
+            Spacer(Modifier.height(10.dp))
+            if (t.prices.isEmpty()) {
+                Text("요금 정보 없음", style = MaterialTheme.typography.bodySmall, color = variant)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    t.prices.forEach { (label, won) ->
+                        Row(
+                            Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (t.prices.size > 1) Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = variant)
+                            else Spacer(Modifier.weight(1f))
+                            Text(Fmt.won(won), style = MaterialTheme.typography.titleSmall.merge(Tnum), fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }
