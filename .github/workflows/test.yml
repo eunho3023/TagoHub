@@ -30,6 +30,22 @@ jobs:
       - name: 열차 시간표 만드는 프로그램 시험 (파이썬, 인터넷 없이)
         run: python3 pipeline/test_train_timetable.py
 
+      - name: Firebase 설정 파일 (가짜 값)
+        # app/google-services.json 은 저장소에 올리지 않는다. 빌드 플러그인이 파일을 요구하므로 테스트용 가짜 값으로 채운다 (실제 서버에 연결하지 않음)
+        run: |
+          cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {"project_number": "1", "project_id": "ci-placeholder", "storage_bucket": "ci-placeholder.appspot.com"},
+            "client": [{
+              "client_info": {"mobilesdk_app_id": "1:1:android:0000000000000000", "android_client_info": {"package_name": "com.eunho.tagohub"}},
+              "oauth_client": [{"client_id": "1-ci.apps.googleusercontent.com", "client_type": 3}],
+              "api_key": [{"current_key": "ci-placeholder-key"}],
+              "services": {"appinvite_service": {"other_platform_oauth_client": [{"client_id": "1-ci.apps.googleusercontent.com", "client_type": 3}]}}
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+
       - name: 단위 테스트
         # local.properties 가 없어도 빌드되도록 되어 있음(키는 빈 문자열). 테스트는 인터넷·키 없이 돈다
         run: |
