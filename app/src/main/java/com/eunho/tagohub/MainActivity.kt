@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.SubwayCongestion.init(applicationContext)
         com.eunho.tagohub.data.RailFacilities.init(applicationContext)
         com.eunho.tagohub.data.TripCache.init(filesDir)
+        com.eunho.tagohub.data.TrainKinds.init(filesDir)
         lifecycleScope.launch {
             StopDb.get(applicationContext)
             // 정류장·노선 데이터 자동 업데이트 (데이터 저장소, 하루 한 번·와이파이에서만)

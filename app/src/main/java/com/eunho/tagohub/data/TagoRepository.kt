@@ -297,6 +297,7 @@ class TagoRepository(private val api: TagoApi) {
             val have = tago.map { it.number to it.dep }.toSet()
             tago + localTrainTrips(dep, arr, date).filter { (it.number to it.dep) !in have && tago.none { t -> t.number == it.number } }
         } else tago
+        TrainKinds.learn(tago)
         merged.sortedBy { it.dep ?: LocalDateTime.MAX }
             .also { if (tago.isNotEmpty()) TripCache.put(TripCache.key(dep, arr, date, grade), it) }   // 다음에 같은 조회를 하면 받는 동안 먼저 보여줌
     }
@@ -305,7 +306,16 @@ class TagoRepository(private val api: TagoApi) {
         val stations = runCatching { trainStationList() }.getOrNull() ?: return emptyList()
         val d = stations.firstOrNull { it.id == dep } ?: return emptyList()
         val a = stations.firstOrNull { it.id == arr } ?: return emptyList()
-        return TrainTimetable.tripsBetween(d.name, a.name, date).map { it.copy(depId = dep, arrId = arr) }
+        var list = TrainTimetable.tripsBetween(d.name, a.name, date)
+        // 시간표 파일에는 열차 이름이 없으니, 이름을 모르는 열차가 있으면 같은 구간의 다른 날(내일) TAGO 조회에서 번호별 이름을 배워 붙임
+        if (list.any { it.kind == TrainKinds.UNKNOWN }) {
+            val learned = runCatching { trainLeg(dep, arr, date.plusDays(1)) }.getOrDefault(emptyList())
+            if (learned.isNotEmpty()) {
+                TrainKinds.learn(learned)
+                list = TrainTimetable.tripsBetween(d.name, a.name, date)
+            }
+        }
+        return list.map { it.copy(depId = dep, arrId = arr) }
     }
 
     /** 마지막으로 받아 둔 같은 조회의 결과 (없으면 null) */
@@ -319,6 +329,7 @@ class TagoRepository(private val api: TagoApi) {
     private suspend fun trainLeg(dep: String, arr: String, date: LocalDate): List<Trip> = cached("trainLeg:$dep:$arr:$date") {
         all(listOf(300, 100), 5) { p, n -> api.trainTrips(dep, arr, TagoTime.ymd(date), null, p, n) }
             .map(Mappers::trainTrip).map { it.copy(depId = dep, arrId = arr) }.sortedBy { it.dep ?: LocalDateTime.MAX }
+            .also { TrainKinds.learn(it) }
     }
 
     /** 직통이 없을 때: 주요 환승역을 거치는 환승 1회 경로 (환승역마다 두 구간을 조회해 이어 붙임) */

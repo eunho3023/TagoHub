@@ -131,7 +131,7 @@ object TrainTimetable {
             val j = t.keys.indexOf(ak)
             if (i < 0 || j <= i) return@mapNotNull null
             Trip(
-                kind = t.kind.ifBlank { "열차" }, number = t.no, depName = depName, arrName = arrName,
+                kind = t.kind.ifBlank { TrainKinds.get(t.no) ?: TrainKinds.UNKNOWN }, number = t.no, depName = depName, arrName = arrName,
                 dep = start.plusMinutes(t.stops[i].second.toLong()), arr = start.plusMinutes(t.stops[j].second.toLong()),
                 prices = emptyList(),
             )
