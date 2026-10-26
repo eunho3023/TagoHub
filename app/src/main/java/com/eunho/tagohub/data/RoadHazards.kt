@@ -30,6 +30,10 @@ object RoadHazards {
                 async { part { itsLayer("its_disasters", RoadAlertKind.Disaster, "재난 정보") } },
                 async { part { itsLayer("its_safe_driving", RoadAlertKind.Caution, "주의운전 구간") } },
                 async { part { safety(app) } },
+                async { part { exLayer(ExMapLayers.BURST, RoadAlertKind.Incident) } },
+                async { part { exLayer(ExMapLayers.SAFE, RoadAlertKind.Caution) } },
+                async { part { exLayer(ExMapLayers.CONGEST, RoadAlertKind.Congest) } },
+                async { part { exLayer(ExMapLayers.REST, RoadAlertKind.Rest) } },
             )
             parts.flatMap { it.await() }
         }
@@ -51,6 +55,12 @@ object RoadHazards {
         ExMapLayers.features(ExMapLayers.TOLL).map { f ->
             val t = f.title.trim()
             RoadHazard(RoadAlertKind.Toll, if (t.endsWith("톨게이트") || t.endsWith("영업소")) t else "$t 톨게이트", null, f.lat, f.lng, f.id)
+        }
+
+    /** 한국도로공사 지도 레이어를 안내용 위험·시설로 (제목이 곧 이름, 본문 첫 줄이 설명) */
+    private suspend fun exLayer(layer: String, kind: RoadAlertKind): List<RoadHazard> =
+        ExMapLayers.features(layer).map { f ->
+            RoadHazard(kind, f.title.trim().ifBlank { kind.label }, f.details.lineSequence().firstOrNull { it.isNotBlank() }, f.lat, f.lng, f.id)
         }
 
     private suspend fun risks(): List<RoadHazard> =

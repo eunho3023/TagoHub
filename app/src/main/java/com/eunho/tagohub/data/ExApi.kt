@@ -167,7 +167,9 @@ object ExMapLayers {
     const val BURST = "ex_burst"
     /** 안전주행 안내(작업 중·사고·낙하물 등 앞쪽 주의) */
     const val SAFE = "ex_safe"
-    val IDS = listOf(REST, TOLL, IC, VMS, CONGEST, BURST, SAFE)
+    /** 고속도로 소통: 모든 구간의 속도를 색으로 (초록 원활·주황 서행·빨강 정체) */
+    const val FLOW = "ex_flow"
+    val IDS = listOf(REST, TOLL, IC, VMS, CONGEST, BURST, SAFE, FLOW)
 
     /** VDS(차량 검지기) 위치 파일 assets/ex_vds.json 내용을 읽는 방법. 앱 시작 때 지정 (pipeline/build_ex_vds.py 가 만듦) */
     @Volatile var vdsJson: (() -> String)? = null
@@ -178,6 +180,7 @@ object ExMapLayers {
         VMS -> 3 * 60_000L
         CONGEST -> 2 * 60_000L
         BURST -> 2 * 60_000L
+        FLOW -> 2 * 60_000L
         SAFE -> 3 * 60_000L
         else -> 10 * 60_000L
     }
@@ -194,6 +197,7 @@ object ExMapLayers {
             VMS -> vms(repo.all("/openapi/vms/vmsMessageSrch"))
             CONGEST -> congest(repo.all("/openapi/odtraffic/trafficAmountByCongest"), vdsCoords())
             BURST -> burst(repo.all("/openapi/burstInfo/realTimeSms"))
+            FLOW -> flow(repo.all("/openapi/odtraffic/trafficAmountByRealtime"), vdsCoords())
             SAFE -> safe(repo.all("/openapi/safeDriving/safeDrivingSupport"))
             else -> emptyList()
         }
@@ -264,6 +268,31 @@ object ExMapLayers {
             lng = lng,
         )
     }
+
+    /**
+     * 고속도로 소통 전체: 구간(콘존·방향)마다 가장 느린 검지기 하나의 속도와 소통등급(1 원활·2 서행·3 정체)을 점으로.
+     * 지도에서는 등급 색으로 칠한다. id 는 "ex_flow:{등급}:{구간}:{방향}". 위치를 모르는 검지기는 건너뜀.
+     */
+    fun flow(rows: List<Map<String, String>>, coords: Map<String, Pair<Double, Double>>): List<ItsRoadFeature> =
+        rows.filter { it["grade"] in setOf("1", "2", "3") }
+            .groupBy { (it["conzoneId"] ?: it["vdsId"]) + ":" + (it["updownTypeCode"] ?: "") }.values.mapNotNull { group ->
+                val r = group.minByOrNull { it["speed"]?.toDoubleOrNull() ?: Double.MAX_VALUE } ?: return@mapNotNull null
+                val pos = coords[r["vdsId"]] ?: group.firstNotNullOfOrNull { coords[it["vdsId"]] } ?: return@mapNotNull null
+                val grade = r["grade"] ?: return@mapNotNull null
+                ItsRoadFeature(
+                    id = "$FLOW:$grade:${r["conzoneId"] ?: r["vdsId"]}:${r["updownTypeCode"].orEmpty()}",
+                    layer = FLOW,
+                    title = listOfNotNull(r["routeName"], r["conzoneName"]).joinToString(" "),
+                    details = listOfNotNull(
+                        r["speed"]?.let { "속도 ${it}km/h" },
+                        r["timeAvg"]?.let { "통행시간 ${it}초" },
+                        r["updownTypeCode"]?.let { d -> if (d == "S") "기점 방향" else "종점 방향" },
+                        when (grade) { "1" -> "소통 원활"; "2" -> "서행"; else -> "정체" },
+                    ).joinToString("\n"),
+                    lat = pos.first,
+                    lng = pos.second,
+                )
+            }
 
     /** 안전주행 안내: 같은 사건(incId)은 메시지를 받는 곳마다 여러 줄로 오므로 사건 위치(startX·startY) 하나로 합침 */
     fun safe(rows: List<Map<String, String>>): List<ItsRoadFeature> =

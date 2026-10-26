@@ -254,7 +254,7 @@ class StationIndex(val stations: List<MetroStation>) {
         stations.groupBy { it.norm }.values.forEach { same ->
             val local = ArrayList<MutableList<MetroStation>>()
             same.forEach { s ->
-                val hit = local.firstOrNull { g -> g.any { Geo.meters(it.lat, it.lng, s.lat, s.lng) < 500 } }
+                val hit = local.firstOrNull { g -> g.any { Geo.meters(it.lat, it.lng, s.lat, s.lng) < SAME_STATION_M } }
                 if (hit != null) hit += s else local += mutableListOf(s)
             }
             buckets += local
@@ -271,6 +271,12 @@ class StationIndex(val stations: List<MetroStation>) {
     }
 
     companion object {
+        /**
+         * 같은 이름의 역을 한 역으로 묶는 거리(m). 표준데이터의 일부 노선(6호선 등) 좌표가 환승역에서 800~1,100m 어긋나 있어서
+         * (약수·신당·합정·삼각지 …) 500m 로는 환승역이 둘로 갈라져 한 노선만 보였음. 다른 도시의 같은 이름 역은 수 km 이상 떨어져 있어 안전.
+         */
+        const val SAME_STATION_M = 1300.0
+
         /** 실시간 API 역명 → 표준데이터 역명 (정규화 후) */
         private val NAME_ALIASES = mapOf(
             "지제" to "평택지제",

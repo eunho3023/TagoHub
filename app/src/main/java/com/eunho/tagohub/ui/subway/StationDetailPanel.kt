@@ -3,6 +3,7 @@
 package com.eunho.tagohub.ui.subway
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -163,6 +164,7 @@ private fun StationDetailBody(
     LaunchedEffect(d, refreshKey) { c.runArrivals(d) }
 
     val selectedLine by d.line.collectAsStateWithLifecycle()
+    val tagoOptions = (d.tagoLines.collectAsStateWithLifecycle().value as? Load.Ok)?.value.orEmpty()
     val route by d.kricRoute.collectAsStateWithLifecycle()
     val codes by d.kricCodes.collectAsStateWithLifecycle()
     // 이전·다음 역(노선 띠에 표시)을 알려면 노선 역 목록이 필요함 — 노선이 정해지면 한 번 받아 둠
@@ -186,15 +188,28 @@ private fun StationDetailBody(
                     Text(operatorLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                lines.forEach {
-                    Text(
-                        it,
-                        Modifier.background(subwayLineColor(it), CircleShape).padding(horizontal = 12.dp, vertical = 4.dp),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                    )
+            // 호선 알약: 한 줄에 2개씩. 여러 노선이 서는 역이면 누르는 노선으로 넘어가고, 고른 노선은 또렷하게
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                lines.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { name ->
+                            val option = tagoOptions.firstOrNull { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) }
+                            val chosen = selectedLine?.let { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) } == true
+                            val dim = lines.size > 1 && selectedLine != null && !chosen
+                            Text(
+                                name,
+                                Modifier
+                                    .background(subwayLineColor(name).copy(alpha = if (dim) 0.55f else 1f), CircleShape)
+                                    .then(if (chosen && lines.size > 1) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                                    .then(if (option != null && !chosen) Modifier.clickable { c.selectLine(d, option) } else Modifier)
+                                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
             Spacer(Modifier.width(10.dp))

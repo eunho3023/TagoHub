@@ -2439,6 +2439,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "ex_vms",
             "ex_congest",
             "ex_burst",
+            "ex_flow",
             "ex_safe",
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")

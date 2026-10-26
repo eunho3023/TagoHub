@@ -257,6 +257,7 @@ object KacIntlClient {
                 .addQueryParameter("schDeptCityCode", dep).addQueryParameter("schArrvCityCode", arr)
                 .build()
             val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
+            DataGoError.check(body, "한국공항공사 국제선 운항 스케줄")
             val got = KacIntl.parse(body)
             out += got
             val total = Regex("\"totalCount\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toIntOrNull() ?: 0
@@ -293,6 +294,7 @@ object KacIntlClient {
                     .addQueryParameter("schDeptCityCode", dep).addQueryParameter("schArrvCityCode", arr)
                     .build()
                 val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
+                DataGoError.check(body, "한국공항공사 국내선 운항 스케줄")
                 val got = KacDom.parse(body)
                 out += got
                 if (got.isEmpty() || out.size >= KacDom.totalCount(body)) break
@@ -318,6 +320,7 @@ object KacIntlClient {
             .addQueryParameter("passengerOrCargo", "P").addQueryParameter("airportCode", other)
             .build()
         val body = client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string().orEmpty() }
+        DataGoError.check(body, "인천국제공항공사 운항 현황")
         IcnFlights.toTrips(IcnFlights.parse(body).filter { it.airportCode == other }, departure, date)
     }
 }

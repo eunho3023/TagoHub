@@ -68,6 +68,11 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -275,6 +280,21 @@ fun CalendarDialog(
     min: LocalDate = LocalDate.now(),
     max: LocalDate = LocalDate.now().plusYears(1),
 ) = CalendarSheet(initial, onPick, onDismiss, min, max)
+
+/**
+ * 입력칸 바깥을 누르면 입력칸의 포커스(커서·키보드)를 풀어 준다.
+ * 자식(버튼·입력칸 등)이 이미 처리한 터치와, 끌기·스크롤은 건드리지 않는다.
+ */
+fun Modifier.clearFocusOnTapOutside(): Modifier = composed {
+    val focus = LocalFocusManager.current
+    pointerInput(focus) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = true, pass = androidx.compose.ui.input.pointer.PointerEventPass.Final)
+            val up = waitForUpOrCancellation(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+            if (up != null) focus.clearFocus()
+        }
+    }
+}
 
 /** "2026.10.23 (금)" */
 fun dateLabel(d: LocalDate): String =

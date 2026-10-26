@@ -69,7 +69,8 @@ class AirViewModel : ViewModel() {
             val rows = (sched as? com.eunho.tagohub.core.TagoResult.Success)?.data
                 ?.filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind) }
             if (!rows.isNullOrEmpty()) return com.eunho.tagohub.core.TagoResult.Success(rows)
-            if (sched is com.eunho.tagohub.core.TagoResult.Error && tago == null) return sched
+            // 시간표 조회가 오류(키 미등록 등)인데 실시간 쪽도 비어 있으면, 빈 목록 대신 오류 이유를 보여 줌
+            if (sched is com.eunho.tagohub.core.TagoResult.Error && (tago as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) return sched
         }
         return tago ?: com.eunho.tagohub.core.TagoResult.Success(emptyList())
     }

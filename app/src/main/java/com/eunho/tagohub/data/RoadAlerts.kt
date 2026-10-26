@@ -14,6 +14,11 @@ enum class RoadAlertKind(val label: String, val announceM: Double, val maxOffset
     Caution("주의운전 구간", 1000.0, 150.0),
     Safety("교통안전 지점", 500.0, 80.0),
     Toll("톨게이트", 2000.0, 150.0),
+    /** 한국도로공사 실시간 돌발(사고·작업·낙하물 등) */
+    Incident("고속도로 돌발", 2500.0, 150.0),
+    /** 한국도로공사 정체 구간 */
+    Congest("고속도로 정체 구간", 3000.0, 250.0),
+    Rest("휴게소", 2000.0, 250.0),
 }
 
 /** 지도 위의 위험·시설 한 곳 */
