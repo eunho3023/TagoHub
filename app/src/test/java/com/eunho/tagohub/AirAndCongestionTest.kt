@@ -58,6 +58,17 @@ class AirAndCongestionTest {
     }
 
     @Test
+    fun domesticListsAndPairChecksComeFromTheFile() {
+        load()
+        assertEquals(listOf("GMP", "CJU"), AirSchedule.domesticAirports().map { it.id })
+        assertEquals("김포공항", AirSchedule.domesticAirports()[0].name)
+        assertEquals(listOf("대한항공", "제주항공"), AirSchedule.domesticAirlines().map { it.name })
+        assertTrue(AirSchedule.hasPair("GMP", "HND"))
+        assertTrue(AirSchedule.hasPair("CJU", "GMP"))       // 이 날짜엔 없어도 구간은 파일에 있음
+        assertFalse(AirSchedule.hasPair("GMP", "XXX"))
+    }
+
+    @Test
     fun congestionSlotsFollowHalfHours() {
         assertEquals(0, SubwayCongestion.slotOf(LocalTime.of(5, 30)))
         assertEquals(0, SubwayCongestion.slotOf(LocalTime.of(5, 0)))     // 영업 전

@@ -38,55 +38,21 @@ class TrainViewModel : ViewModel() {
 }
 
 class AirViewModel : ViewModel() {
-    private val repo = Graph.repo
+    /**
+     * 국내선: 앱에 든 한국공항공사 스케줄 파일(CSV)만 쓴다 — 공항 목록·항공사·운항편 모두 파일에서, API 는 부르지 않음.
+     * 파일 기간(2026-10-24)이 지난 날짜는 마지막 한 주의 요일 패턴으로 만든 "예상"으로 보인다.
+     */
     val table = TimetableController(
         scope = viewModelScope,
-        placeLoader = { q -> repo.airportPlaces(q) },
-        gradeLoader = { repo.airlines() },
-        tripLoader = { d, a, date, g -> domesticTrips(d, a, date, g) },
+        placeLoader = { q -> com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.PlaceFilter.filter(com.eunho.tagohub.data.AirSchedule.domesticAirports(), q)) },
+        gradeLoader = { com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.AirSchedule.domesticAirlines()) },
+        tripLoader = { d, a, date, g ->
+            com.eunho.tagohub.core.TagoResult.Success(
+                com.eunho.tagohub.data.AirSchedule.trips(d.id, a.id, date).trips.filter { g == null || it.kind.startsWith(g.name) },
+            )
+        },
         geo = com.eunho.tagohub.data.AirportGeo,
     )
-
-    /**
-     * 국내선: 한국공항공사 스케줄 파일(CSV)에 있으면 그것(API 는 안 부름). 없으면 오늘·내일은 TAGO 실시간 운항 정보(운임 포함), 그 밖의 날짜는 한국공항공사 정기 운항 스케줄 API.
-     * (TAGO 는 오늘·내일만 제대로 주고 다른 날은 한두 편만 섞여 나옴.) 한쪽이 비면 다른 쪽으로 채움.
-     */
-    private suspend fun domesticTrips(
-        d: com.eunho.tagohub.data.Place,
-        a: com.eunho.tagohub.data.Place,
-        date: java.time.LocalDate,
-        grade: com.eunho.tagohub.data.Grade?,
-    ): com.eunho.tagohub.core.TagoResult<List<com.eunho.tagohub.data.Trip>> {
-        // 앱에 든 한국공항공사 스케줄 파일(CSV)에 이 구간이 있으면 그것만 쓰고 API 는 부르지 않음 (파일 기간 밖 날짜는 "예상").
-        // 파일에 이 구간이 없을 때만 아래 API 로 조회
-        val csvDep = com.eunho.tagohub.data.KacDom.codeOf(d.name)
-        val csvArr = com.eunho.tagohub.data.KacDom.codeOf(a.name)
-        val csv = if (csvDep != null && csvArr != null) com.eunho.tagohub.data.AirSchedule.trips(csvDep, csvArr, date) else null
-        fun csvTrips() = csv?.trips.orEmpty()
-            .filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind.substringBefore(" · ")) }
-        if (csvTrips().isNotEmpty()) return com.eunho.tagohub.core.TagoResult.Success(csvTrips())
-        val today = java.time.LocalDate.now()
-        val live = date == today || date == today.plusDays(1)
-        var tago: com.eunho.tagohub.core.TagoResult<List<com.eunho.tagohub.data.Trip>>? = null
-        if (live) {
-            tago = repo.flights(d.id, a.id, date, grade?.id)
-            if (!(tago as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) return tago
-        }
-        val dep = com.eunho.tagohub.data.KacDom.codeOf(d.name)
-        val arr = com.eunho.tagohub.data.KacDom.codeOf(a.name)
-        var schedError: com.eunho.tagohub.core.TagoResult.Error? = null
-        if (dep != null && arr != null) {
-            val sched = com.eunho.tagohub.data.KacIntlClient.domesticTrips(dep, arr, date)
-            val rows = (sched as? com.eunho.tagohub.core.TagoResult.Success)?.data
-                ?.filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind) }
-            if (!rows.isNullOrEmpty()) return com.eunho.tagohub.core.TagoResult.Success(rows)
-            if (sched is com.eunho.tagohub.core.TagoResult.Error) schedError = sched
-        }
-        val result = tago ?: com.eunho.tagohub.core.TagoResult.Success(emptyList())
-        // 시간표 조회가 오류(키 미등록 등)이고 앱에 든 스케줄에도 없으면, 빈 목록 대신 오류 이유를 보여 줌
-        if (schedError != null && (result as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) return schedError
-        return result
-    }
 
     /** 국내선 / 국제선 */
     val intlMode = kotlinx.coroutines.flow.MutableStateFlow(false)

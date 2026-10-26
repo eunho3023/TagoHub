@@ -268,12 +268,11 @@ object KacIntlClient {
 
     /** dep→arr 의 date 운항편. 출발이 한국공항공사 공항이면 출발편(OUT), 아니면 도착편(IN) */
     /**
-     * 앱에 든 한국공항공사 스케줄 파일(CSV)에 이 구간이 있으면 그것만 쓰고 API 는 부르지 않는다 (출발·도착 시각 모두;
-     * 파일 기간 밖 날짜는 요일 패턴으로 만든 "예상"). 파일에 이 구간이 없을 때만 운항 API 로 조회한다.
+     * 앱에 든 한국공항공사 스케줄 파일(CSV)에 이 구간이 있으면 그날 운항편이 없더라도 파일만 쓰고 API 는 부르지 않는다
+     * (출발·도착 시각 모두; 파일 기간 밖 날짜는 요일 패턴으로 만든 "예상"). 파일에 이 구간이 아예 없을 때만 운항 API 로 조회한다.
      */
     suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> {
-        val local = AirSchedule.trips(dep, arr, date).trips
-        if (local.isNotEmpty()) return com.eunho.tagohub.core.TagoResult.Success(local)
+        if (AirSchedule.hasPair(dep, arr)) return com.eunho.tagohub.core.TagoResult.Success(AirSchedule.trips(dep, arr, date).trips)
         return apiTrips(dep, arr, date)
     }
 

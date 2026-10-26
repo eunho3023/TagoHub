@@ -93,6 +93,31 @@ object AirSchedule {
         return Result(list, projected && list.isNotEmpty())
     }
 
+    /** 이 구간(어느 날짜든)이 파일에 있는지 */
+    fun hasPair(dep: String, arr: String): Boolean {
+        ensure()
+        return rows.any { it.dep == dep && it.arr == arr }
+    }
+
+    /** 국내선에 나오는 공항 (김포·제주 … 많이 쓰는 순). id = 공항 코드 */
+    fun domesticAirports(): List<Place> {
+        ensure()
+        val codes = rows.filter { !it.intl }.flatMap { listOf(it.dep, it.arr) }.toSet()
+        val infos = appContext?.let { AirportInfo.all(it) }.orEmpty()
+        return codes.map { c ->
+            val short = airportName(c)
+            Place(c, infos.firstOrNull { it.code == c }?.name ?: "${short}공항", c)
+        }.sortedBy { p -> PREFERRED.indexOf(p.id).let { if (it < 0) PREFERRED.size else it } }
+    }
+
+    /** 국내선을 운항하는 항공사 (id = 항공사 ICAO 코드) */
+    fun domesticAirlines(): List<Grade> {
+        ensure()
+        return rows.filter { !it.intl }.map { it.airline }.distinct().map { Grade(it, airlines[it] ?: it) }.sortedBy { it.name }
+    }
+
+    private val PREFERRED = listOf("GMP", "CJU", "PUS", "TAE", "CJJ", "KWJ", "MWX", "YNY", "USN", "RSU", "HIN", "KPO", "KUV", "WJU", "ICN")
+
     fun airportName(code: String): String = airports[code] ?: KacIntl.KAC.firstOrNull { it.first == code }?.second ?: code
 
     /** 파일에 든 스케줄의 마지막 날 (없으면 null) */
