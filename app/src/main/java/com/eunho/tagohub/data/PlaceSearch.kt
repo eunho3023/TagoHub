@@ -267,7 +267,15 @@ object KacIntlClient {
     }
 
     /** dep→arr 의 date 운항편. 출발이 한국공항공사 공항이면 출발편(OUT), 아니면 도착편(IN) */
-    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
+    /** 운항 API 가 실패하거나 비면(키 미등록·시즌 밖 등) 앱에 든 한국공항공사 정기 스케줄로 보충 (출발·도착 시각 모두, 시즌 밖이면 "예상") */
+    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> {
+        val api = apiTrips(dep, arr, date)
+        if (api is com.eunho.tagohub.core.TagoResult.Success && api.data.isNotEmpty()) return api
+        val local = AirSchedule.trips(dep, arr, date).trips
+        return if (local.isNotEmpty()) com.eunho.tagohub.core.TagoResult.Success(local) else api
+    }
+
+    private suspend fun apiTrips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
         if (dep == "ICN" || arr == "ICN") return@runCatching icn(dep, arr, date)
         val outbound = KacIntl.isKac(dep)
         if (!outbound && !KacIntl.isKac(arr)) error("출발·도착 중 하나는 인천·김포·김해·제주·청주·대구·무안·양양이어야 합니다")

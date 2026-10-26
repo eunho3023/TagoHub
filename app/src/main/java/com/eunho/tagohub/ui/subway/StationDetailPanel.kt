@@ -265,7 +265,7 @@ private fun StationDetailBody(
             ) {
                 listOf(
                     StationTab.Live to "실시간", StationTab.Timetable to "시간표", StationTab.Route to "노선도",
-                    StationTab.Exits to "출구", StationTab.Facilities to "편의정보",
+                    StationTab.Exits to "출구", StationTab.Facilities to "편의정보", StationTab.Congestion to "혼잡도",
                 ).forEach { (t, label) ->
                     val on = tab == t
                     Surface(
@@ -294,6 +294,7 @@ private fun StationDetailBody(
                 StationTab.Route -> RouteTab(d, c)
                 StationTab.Exits -> ExitsTab(d, c)
                 StationTab.Facilities -> FacilitiesTab(d)
+                StationTab.Congestion -> CongestionTab(d)
             }
         }
         // 아래: 파란 [출발][도착] 알약 (이 역을 길찾기 출발지·도착지로)

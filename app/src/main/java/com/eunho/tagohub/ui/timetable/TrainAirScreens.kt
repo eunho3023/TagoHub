@@ -3,6 +3,8 @@ package com.eunho.tagohub.ui.timetable
 import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.Column
@@ -64,15 +66,24 @@ class AirViewModel : ViewModel() {
         }
         val dep = com.eunho.tagohub.data.KacDom.codeOf(d.name)
         val arr = com.eunho.tagohub.data.KacDom.codeOf(a.name)
+        var schedError: com.eunho.tagohub.core.TagoResult.Error? = null
         if (dep != null && arr != null) {
             val sched = com.eunho.tagohub.data.KacIntlClient.domesticTrips(dep, arr, date)
             val rows = (sched as? com.eunho.tagohub.core.TagoResult.Success)?.data
                 ?.filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind) }
             if (!rows.isNullOrEmpty()) return com.eunho.tagohub.core.TagoResult.Success(rows)
-            // 시간표 조회가 오류(키 미등록 등)인데 실시간 쪽도 비어 있으면, 빈 목록 대신 오류 이유를 보여 줌
-            if (sched is com.eunho.tagohub.core.TagoResult.Error && (tago as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) return sched
+            if (sched is com.eunho.tagohub.core.TagoResult.Error) schedError = sched
         }
-        return tago ?: com.eunho.tagohub.core.TagoResult.Success(emptyList())
+        // 실시간·시간표 API 모두 비었거나 실패하면 앱에 든 정기 스케줄로 (시즌 밖 날짜는 "예상" 표시)
+        val result = tago ?: com.eunho.tagohub.core.TagoResult.Success(emptyList())
+        if (dep != null && arr != null && (result as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) {
+            val local = com.eunho.tagohub.data.AirSchedule.trips(dep, arr, date).trips
+                .filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind.substringBefore(" · ")) }
+            if (local.isNotEmpty()) return com.eunho.tagohub.core.TagoResult.Success(local)
+        }
+        // 시간표 조회가 오류(키 미등록 등)이고 앱에 든 스케줄에도 없으면, 빈 목록 대신 오류 이유를 보여 줌
+        if (schedError != null && (result as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) return schedError
+        return result
     }
 
     /** 국내선 / 국제선 */
@@ -124,9 +135,18 @@ fun AirScreen(vm: AirViewModel = viewModel()) {
     }
     Column(Modifier.fillMaxSize()) {
         val intl by vm.intlMode.collectAsStateWithLifecycle()
-        androidx.compose.foundation.layout.Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+        var showInfo by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
             androidx.compose.material3.FilterChip(selected = !intl, onClick = { vm.intlMode.value = false }, label = { Text("국내선") })
             androidx.compose.material3.FilterChip(selected = intl, onClick = { vm.intlMode.value = true }, label = { Text("국제선") })
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            androidx.compose.material3.TextButton(onClick = { showInfo = true }) { Text("공항 정보") }
+        }
+        if (showInfo) {
+            // 출발 공항(없으면 도착 공항)이 한국공항공사 공항이면 그 공항부터
+            val table = if (intl) vm.intl else vm.table
+            val picked = table.dep.value?.name ?: table.arr.value?.name
+            AirportInfoSheet(initial = picked, onDismiss = { showInfo = false })
         }
         if (intl) {
             TimetablePane(
