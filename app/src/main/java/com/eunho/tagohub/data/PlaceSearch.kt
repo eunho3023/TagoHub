@@ -246,7 +246,7 @@ object KacIntlClient {
     private val client = Http.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
 
     private suspend fun fetch(dep: String, arr: String, date: java.time.LocalDate): List<KacIntl.Flight> = withContext(Dispatchers.IO) {
-        val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+        val raw = BuildConfig.KAC_API_KEY.trim()
         val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
         val out = ArrayList<KacIntl.Flight>()
         for (page in 1..5) {
@@ -293,7 +293,7 @@ object KacIntlClient {
      */
     suspend fun domesticTrips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
         val rows = withContext(Dispatchers.IO) {
-            val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+            val raw = BuildConfig.KAC_API_KEY.trim()
             val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
             val out = ArrayList<KacDom.Flight>()
             for (page in 1..5) {
