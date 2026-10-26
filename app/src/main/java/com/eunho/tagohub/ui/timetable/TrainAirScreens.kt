@@ -57,14 +57,14 @@ class AirViewModel : ViewModel() {
         date: java.time.LocalDate,
         grade: com.eunho.tagohub.data.Grade?,
     ): com.eunho.tagohub.core.TagoResult<List<com.eunho.tagohub.data.Trip>> {
-        // 앱에 든 한국공항공사 스케줄 파일(CSV)에 이 구간·날짜가 있으면 그것만 쓰고 API 는 부르지 않음. 파일에 없을 때만 아래 API 로
+        // 앱에 든 한국공항공사 스케줄 파일(CSV)이 이 구간·날짜를 실제로 담고 있으면(겹치면) 그것만 쓰고 API 는 부르지 않음.
+        // 파일 기간 밖이면 아래 API 로 조회하고, API 도 비었을 때만 파일 패턴으로 만든 "예상"을 보여 줌
         val csvDep = com.eunho.tagohub.data.KacDom.codeOf(d.name)
         val csvArr = com.eunho.tagohub.data.KacDom.codeOf(a.name)
-        if (csvDep != null && csvArr != null) {
-            val fromCsv = com.eunho.tagohub.data.AirSchedule.trips(csvDep, csvArr, date).trips
-                .filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind.substringBefore(" · ")) }
-            if (fromCsv.isNotEmpty()) return com.eunho.tagohub.core.TagoResult.Success(fromCsv)
-        }
+        val csv = if (csvDep != null && csvArr != null) com.eunho.tagohub.data.AirSchedule.trips(csvDep, csvArr, date) else null
+        fun csvTrips() = csv?.trips.orEmpty()
+            .filter { grade == null || it.kind.contains(grade.name) || grade.name.contains(it.kind.substringBefore(" · ")) }
+        if (csv != null && !csv.projected && csvTrips().isNotEmpty()) return com.eunho.tagohub.core.TagoResult.Success(csvTrips())
         val today = java.time.LocalDate.now()
         val live = date == today || date == today.plusDays(1)
         var tago: com.eunho.tagohub.core.TagoResult<List<com.eunho.tagohub.data.Trip>>? = null
@@ -83,6 +83,10 @@ class AirViewModel : ViewModel() {
             if (sched is com.eunho.tagohub.core.TagoResult.Error) schedError = sched
         }
         val result = tago ?: com.eunho.tagohub.core.TagoResult.Success(emptyList())
+        // API 가 모두 비었거나 실패하면 파일 패턴으로 만든 "예상"
+        if ((result as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty() && csvTrips().isNotEmpty()) {
+            return com.eunho.tagohub.core.TagoResult.Success(csvTrips())
+        }
         // 시간표 조회가 오류(키 미등록 등)이고 앱에 든 스케줄에도 없으면, 빈 목록 대신 오류 이유를 보여 줌
         if (schedError != null && (result as? com.eunho.tagohub.core.TagoResult.Success)?.data.isNullOrEmpty()) return schedError
         return result
