@@ -246,7 +246,7 @@ object KacIntlClient {
     private val client = Http.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
 
     private suspend fun fetch(dep: String, arr: String, date: java.time.LocalDate): List<KacIntl.Flight> = withContext(Dispatchers.IO) {
-        val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+        val raw = BuildConfig.KAC_API_KEY.trim()
         val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
         val out = ArrayList<KacIntl.Flight>()
         for (page in 1..5) {
@@ -267,7 +267,16 @@ object KacIntlClient {
     }
 
     /** dep→arr 의 date 운항편. 출발이 한국공항공사 공항이면 출발편(OUT), 아니면 도착편(IN) */
-    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
+    /**
+     * 앱에 든 한국공항공사 스케줄 파일(CSV)에 이 구간이 있으면 그날 운항편이 없더라도 파일만 쓰고 API 는 부르지 않는다
+     * (출발·도착 시각 모두; 파일 기간 밖 날짜는 요일 패턴으로 만든 "예상"). 파일에 이 구간이 아예 없을 때만 운항 API 로 조회한다.
+     */
+    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> {
+        if (AirSchedule.hasPair(dep, arr)) return com.eunho.tagohub.core.TagoResult.Success(AirSchedule.trips(dep, arr, date).trips)
+        return apiTrips(dep, arr, date)
+    }
+
+    private suspend fun apiTrips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
         if (dep == "ICN" || arr == "ICN") return@runCatching icn(dep, arr, date)
         val outbound = KacIntl.isKac(dep)
         if (!outbound && !KacIntl.isKac(arr)) error("출발·도착 중 하나는 인천·김포·김해·제주·청주·대구·무안·양양이어야 합니다")
@@ -283,7 +292,7 @@ object KacIntlClient {
      */
     suspend fun domesticTrips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {
         val rows = withContext(Dispatchers.IO) {
-            val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
+            val raw = BuildConfig.KAC_API_KEY.trim()
             val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
             val out = ArrayList<KacDom.Flight>()
             for (page in 1..5) {

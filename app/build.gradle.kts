@@ -35,7 +35,9 @@ android {
             "String", "KLID_BUS_KEY",
             "\"${localProps.getProperty("KLID_BUS_KEY", localProps.getProperty("TAGO_SERVICE_KEY", ""))}\""
         )
-        buildConfigField("String", "KRIC_SUBWAY_KEY", "\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
+        // 한국공항공사 항공 스케줄 API (공공데이터포털 flight-schedule). 비우면 TAGO_SERVICE_KEY 를 대신 씀
+        buildConfigField("String", "KAC_API_KEY", "\"${localProps.getProperty("KAC_API_KEY", localProps.getProperty("TAGO_SERVICE_KEY", ""))}\"")
+        buildConfigField("String", "KRIC_SUBWAY_KEY","\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
         buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
         // 한국도로공사 고속도로 공공데이터(data.ex.co.kr) 인증키
         buildConfigField("String", "EX_API_KEY", "\"${localProps.getProperty("EX_API_KEY", "")}\"")

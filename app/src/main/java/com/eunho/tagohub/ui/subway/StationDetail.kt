@@ -63,7 +63,7 @@ enum class DayType(val code: String, val kricCode: String, val label: String) {
 }
 
 enum class StationTab(val label: String) {
-    Live("역 정보·도착"), Timetable("시간표"), Route("노선"), Exits("출구정보"), Facilities("편의정보")
+    Live("역 정보·도착"), Timetable("시간표"), Route("노선"), Exits("출구정보"), Facilities("편의정보"), Congestion("혼잡도")
 }
 
 enum class SubwayTimetableSource { Tago, Kric }

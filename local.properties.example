@@ -6,6 +6,8 @@
 
 # 공공데이터포털 — 국토교통부 TAGO(버스·기차·지하철·항공) 및 지역 버스·공항 API 공통 (서비스마다 활용신청 필요)
 TAGO_SERVICE_KEY=여기에_서비스키
+# 한국공항공사 항공 스케줄(flight-schedule). 비우면 TAGO_SERVICE_KEY 를 대신 씀
+KAC_API_KEY=
 # 초정밀 버스(KLID). 비우면 TAGO_SERVICE_KEY 를 대신 씀
 KLID_BUS_KEY=
 

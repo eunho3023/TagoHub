@@ -52,6 +52,8 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
         com.eunho.tagohub.data.CoachTerminalGeo.init(applicationContext)
         com.eunho.tagohub.data.TrainTimetable.init(applicationContext)
+        com.eunho.tagohub.data.AirSchedule.init(applicationContext)
+        com.eunho.tagohub.data.SubwayCongestion.init(applicationContext)
         com.eunho.tagohub.data.RailFacilities.init(applicationContext)
         com.eunho.tagohub.data.TripCache.init(filesDir)
         lifecycleScope.launch {
