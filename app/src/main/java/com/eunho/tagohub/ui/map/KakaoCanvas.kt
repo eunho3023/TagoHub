@@ -393,8 +393,14 @@ class KakaoCanvas(
         if (itsRoadFeatures.isEmpty()) return
         val l = layer(ITS_ROAD_LAYER) ?: return
         itsRoadFeatures.forEach { feature ->
-            val st = styles("itsRoad:${feature.layer}") {
+            // 고속도로 소통은 등급(id 의 두 번째 칸)마다 색이 다른 점
+            val flowGrade = if (feature.layer == "ex_flow") feature.id.split(':').getOrNull(1) else null
+            val st = styles("itsRoad:${feature.layer}${flowGrade.orEmpty()}") {
                 val marker = when (feature.layer) {
+                    "ex_flow" -> icons.routeDot(
+                        when (flowGrade) { "3" -> 0xFFD32F2F.toInt(); "2" -> 0xFFF9A825.toInt(); else -> 0xFF2E9E4F.toInt() },
+                        true,
+                    )
                     "its_events", "its_safe_driving" -> icons.triangleBadge(AMBER)
                     "its_disasters" -> icons.letterBadge(0xFF7B1FA2.toInt(), "재")
                     "its_vsl" -> icons.letterBadge(0xFF00897B.toInt(), "V")
@@ -627,9 +633,10 @@ class KakaoCanvas(
         for (v in list) {
             if (v.path.isEmpty()) continue
             val sel = v.id == selected
-            val key = "v${v.color}${v.glyph}$sel"
+            val isTrain = layerId == TRAIN_LAYER
+            val key = "${if (isTrain) "t" else "v"}${v.color}${v.glyph}$sel"
             val st = styles(key) {
-                val b = icons.vehicle(v.color, v.glyph, sel)
+                val b = if (isTrain) icons.train(v.color, v.glyph, sel) else icons.vehicle(v.color, v.glyph, sel)
                 LabelStyles.from(icon(b, 0.5f, 0.5f), withText(icon(b, 0.5f, 0.5f, 14), 10f))
             }
             val start = Shapes.along(v.path, v.startFrac)

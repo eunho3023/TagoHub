@@ -39,6 +39,7 @@ import com.eunho.tagohub.ui.home.SearchActions
 import com.eunho.tagohub.ui.home.SubwayTab
 import com.eunho.tagohub.ui.home.TabScaffold
 import com.eunho.tagohub.ui.navi.NavigationScreen
+import com.eunho.tagohub.ui.common.clearFocusOnTapOutside
 import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.home.PageScaffold
 import com.eunho.tagohub.ui.map.MapMode
@@ -147,7 +148,7 @@ fun MainScreen() {
         )
     }
 
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).clearFocusOnTapOutside()) {
         // 지도 탭: 지도 아래에 하단 탭 (달리는 중에는 숨김)
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {

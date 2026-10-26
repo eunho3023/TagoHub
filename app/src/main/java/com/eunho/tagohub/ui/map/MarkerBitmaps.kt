@@ -92,6 +92,48 @@ class MarkerBitmaps(private val density: Float) {
         return forKakao(b)
     }
 
+    /**
+     * 지하철 열차: 동그라미 대신 작은 전동차 모양 (노선색 몸통 + 흰 테두리, 앞유리, 아래 두 개의 바퀴).
+     * [glyph] 가 있으면(급행·막차) 앞유리 자리에 글자. 선택하면 조금 크게. anchor (0.5, 0.5)
+     */
+    fun train(color: Int, glyph: String, selected: Boolean): Bitmap {
+        val w = if (selected) 22f else 17f
+        val h = if (selected) 26f else 20f
+        val b = bmp(w + 4f, h + 4f)
+        val c = Canvas(b)
+        val left = px(2f)
+        val top = px(2f)
+        val right = px(2f + w)
+        val bottom = px(2f + h)
+        val corner = px(if (selected) 6f else 5f)
+        fill.color = color
+        c.drawRoundRect(left, top, right, bottom, corner, corner, fill)
+        stroke.color = Color.WHITE
+        stroke.strokeWidth = px(if (selected) 2.5f else 2f)
+        c.drawRoundRect(left, top, right, bottom, corner, corner, stroke)
+        // 앞유리
+        val wl = left + px(w * 0.18f)
+        val wr = right - px(w * 0.18f)
+        val wt = top + px(h * 0.16f)
+        val wb = top + px(h * 0.52f)
+        fill.color = Color.WHITE
+        c.drawRoundRect(wl, wt, wr, wb, px(2f), px(2f), fill)
+        if (glyph.isNotBlank()) {
+            val t = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                textAlign = Paint.Align.CENTER
+                textSize = px(if (selected) 10f else 8f)
+                isFakeBoldText = true
+            }
+            c.drawText(glyph, (wl + wr) / 2f, (wt + wb) / 2f - (t.ascent() + t.descent()) / 2, t)
+        }
+        // 전조등(바퀴) 두 개
+        val ly = bottom - px(h * 0.2f)
+        c.drawCircle(left + px(w * 0.3f), ly, px(if (selected) 2.2f else 1.8f), fill)
+        c.drawCircle(right - px(w * 0.3f), ly, px(if (selected) 2.2f else 1.8f), fill)
+        return forKakao(b)
+    }
+
     /** 내 위치: 파란 원 + 흰 테두리 */
     fun me(): Bitmap {
         val b = bmp(20f, 20f)

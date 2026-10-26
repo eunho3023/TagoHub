@@ -490,6 +490,7 @@ private fun MapLayerSheet(
     val layers = listOf(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
         MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
+        MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_safe"), "안전주행 안내", Icons.Filled.Warning),

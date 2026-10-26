@@ -102,6 +102,42 @@ object TrainTimetable {
         }
     }
 
+    /** 운행요일 표기("실적평일"·"실적토"·"실적일"·"금토일"·"월화수" …)가 이 날짜에 다니는 열차인지 */
+    fun runsOn(remark: String, date: java.time.LocalDate): Boolean {
+        val dow = date.dayOfWeek
+        val weekend = dow == java.time.DayOfWeek.SATURDAY || dow == java.time.DayOfWeek.SUNDAY
+        val r = remark.removePrefix("실적")
+        return when {
+            r == "평일" -> !weekend
+            r == "토" -> dow == java.time.DayOfWeek.SATURDAY
+            r == "일" -> dow == java.time.DayOfWeek.SUNDAY
+            r.isNotEmpty() && r.all { it in "월화수목금토일" } -> "월화수목금토일"[dow.value - 1] in r
+            else -> false
+        }
+    }
+
+    /**
+     * 한국철도공사 시간표만으로 만든 [depName]→[arrName] 그날 열차 (출발 시각순). 국토교통부(TAGO) 조회가 비는 날(오늘 등)을 채우는 용도라
+     * 요금·열차 종류는 모르고, 실제 운행기록 기준 시간표라 임시 증편·운휴는 반영되지 않는다.
+     */
+    fun tripsBetween(depName: String, arrName: String, date: java.time.LocalDate): List<Trip> {
+        ensure()
+        val dk = norm(depName)
+        val ak = norm(arrName)
+        val start = date.atStartOfDay()
+        return trains.mapNotNull { t ->
+            if (!runsOn(t.remark, date)) return@mapNotNull null
+            val i = t.keys.indexOf(dk)
+            val j = t.keys.indexOf(ak)
+            if (i < 0 || j <= i) return@mapNotNull null
+            Trip(
+                kind = t.kind.ifBlank { "열차" }, number = t.no, depName = depName, arrName = arrName,
+                dep = start.plusMinutes(t.stops[i].second.toLong()), arr = start.plusMinutes(t.stops[j].second.toLong()),
+                prices = emptyList(),
+            )
+        }.distinctBy { it.number to it.dep }.sortedBy { it.dep }
+    }
+
     /** 시간표에 이 역이 나오는지 */
     fun knows(name: String): Boolean = run { ensure(); norm(name) }.let { key -> trains.any { key in it.keys } }
 

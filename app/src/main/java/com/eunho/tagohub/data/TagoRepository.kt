@@ -283,9 +283,29 @@ class TagoRepository(private val api: TagoApi) {
     }
 
     suspend fun trainTrips(dep: String, arr: String, date: LocalDate, grade: String?) = run {
-        all(listOf(300, 100), 5) { p, n -> api.trainTrips(dep, arr, TagoTime.ymd(date), grade, p, n) }
-            .map(Mappers::trainTrip).map { it.copy(depId = dep, arrId = arr) }.sortedBy { it.dep ?: LocalDateTime.MAX }
-            .also { TripCache.put(TripCache.key(dep, arr, date, grade), it) }   // 다음에 같은 조회를 하면 받는 동안 먼저 보여줌
+        // 국토교통부(TAGO) 열차 조회는 당일 열차를 주지 않거나 비는 날이 있어서, 비면 한국철도공사 시간표(앱 안)로 채움. 차종을 고른 경우는 종류를 몰라 채우지 않음
+        val tago = try {
+            all(listOf(300, 100), 5) { p, n -> api.trainTrips(dep, arr, TagoTime.ymd(date), grade, p, n) }
+                .map(Mappers::trainTrip).map { it.copy(depId = dep, arrId = arr) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (grade != null) throw e
+            emptyList<Trip>().also { if (localTrainTrips(dep, arr, date).isEmpty()) throw e }
+        }
+        val merged = if (grade == null && (tago.isEmpty() || date == LocalDate.now())) {
+            val have = tago.map { it.number to it.dep }.toSet()
+            tago + localTrainTrips(dep, arr, date).filter { (it.number to it.dep) !in have && tago.none { t -> t.number == it.number } }
+        } else tago
+        merged.sortedBy { it.dep ?: LocalDateTime.MAX }
+            .also { if (tago.isNotEmpty()) TripCache.put(TripCache.key(dep, arr, date, grade), it) }   // 다음에 같은 조회를 하면 받는 동안 먼저 보여줌
+    }
+
+    private suspend fun localTrainTrips(dep: String, arr: String, date: LocalDate): List<Trip> {
+        val stations = runCatching { trainStationList() }.getOrNull() ?: return emptyList()
+        val d = stations.firstOrNull { it.id == dep } ?: return emptyList()
+        val a = stations.firstOrNull { it.id == arr } ?: return emptyList()
+        return TrainTimetable.tripsBetween(d.name, a.name, date).map { it.copy(depId = dep, arrId = arr) }
     }
 
     /** 마지막으로 받아 둔 같은 조회의 결과 (없으면 null) */
@@ -406,20 +426,26 @@ class TagoRepository(private val api: TagoApi) {
 
     // ───────────────────────── 고속버스 실시간 도착 ─────────────────────────
 
+    /** 같은 이름의 터미널이 여러 개면(코드만 다름) 목록에서 구분되도록 코드를 덧붙임 */
+    private fun disambiguate(list: List<Place>): List<Place> {
+        val dup = list.groupBy { it.name }.filterValues { it.size > 1 }.keys
+        return list.map { if (it.name in dup) it.copy(sub = listOfNotNull(it.sub, "코드 ${it.id}").joinToString(" · ")) else it }
+    }
+
     suspend fun expArrDepPlaces(q: String) = run {
         val list = cached("expArrTerminals") {
             all { p, n -> api.expArrTerminals(null, p, n) }.map(Mappers::expArrTerminal).filter { it.id.isNotBlank() }
         }
         if (list.isEmpty() && q.isNotBlank()) {
             all(listOf(100)) { p, n -> api.expArrTerminals(q, p, n) }.map(Mappers::expArrTerminal)
-        } else search(list, q)
+        } else search(disambiguate(list), q)
     }
 
     suspend fun expArrDestPlaces(depCode: String, q: String) = run {
         search(
-            cached("expArrDest:$depCode") {
+            disambiguate(cached("expArrDest:$depCode") {
                 all(listOf(300, 100)) { p, n -> api.expArrDestinations(depCode, p, n) }.map(Mappers::expArrTerminal)
-            },
+            }),
             q,
         )
     }
