@@ -300,43 +300,20 @@ fun DateField(
 }
 
 /**
- * 날짜 고르기 줄: 오늘부터 [days]일은 칩으로 바로, 그 밖의 날은 맨 앞 달력 버튼으로 (1년 뒤까지).
- * 달력에서 고른 날이 칩 줄 밖이면 그 날짜 칩이 줄 맨 앞에 따로 보인다.
+ * 날짜 고르기 한 줄: 고른 날짜(처음엔 오늘)를 보여 주고, 누르면 달력이 열려 1년 뒤까지 고를 수 있다.
+ * 오늘이면 날짜 뒤에 "오늘"을 붙인다.
  */
 @Composable
-fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit, days: Int = 7) {
-    val today = remember { LocalDate.now() }
+fun DateStrip(selected: LocalDate, onSelect: (LocalDate) -> Unit) {
     var calendar by remember { mutableStateOf(false) }
-    val outside = selected.isBefore(today) || !selected.isBefore(today.plusDays(days.toLong()))
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    val isToday = selected == LocalDate.now()
+    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp)) {
         item {
             PillChip(
-                label = if (outside) dateLabel(selected) else "날짜 선택",
-                selected = outside,
+                label = dateLabel(selected) + if (isToday) " · 오늘" else "",
+                selected = true,
                 onClick = { calendar = true },
                 dropdown = true,
-            )
-        }
-        items((0 until days).toList()) { i ->
-            val d = today.plusDays(i.toLong())
-            val dow = d.dayOfWeek.getDisplayName(JTextStyle.SHORT, Locale.KOREAN)
-            val label = when (i) {
-                0 -> "오늘"
-                1 -> "내일"
-                else -> "${d.monthValue}/${d.dayOfMonth}"
-            }
-            PillChip(
-                label = "$label $dow",
-                selected = d == selected,
-                onClick = { onSelect(d) },
-                textColor = when (d.dayOfWeek) {
-                    DayOfWeek.SUNDAY -> Color(0xFFC0392B)
-                    DayOfWeek.SATURDAY -> Color(0xFF2E6BC4)
-                    else -> Color.Unspecified
-                },
             )
         }
     }
