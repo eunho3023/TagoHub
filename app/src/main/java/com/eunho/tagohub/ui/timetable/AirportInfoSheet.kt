@@ -31,7 +31,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.Color
 import com.eunho.tagohub.data.AirportInfo
+import com.eunho.tagohub.data.AirportLive
+import com.eunho.tagohub.data.AirportLiveClient
+import com.eunho.tagohub.data.AirportLiveInfo
 
 /**
  * 공항 정보: 공항을 고르면 연락처·주소, 시설, 지연·결항 통계, 대중교통, 라운지, 층별 입점업체, 문화 행사를 보여 준다.
@@ -61,6 +66,13 @@ fun AirportInfoSheet(initial: String?, onDismiss: () -> Unit) {
                     Text("대표전화 $tel")
                 }
             }
+
+            var refresh by remember { mutableStateOf(0) }
+            val live by produceState<AirportLiveInfo?>(null, a.code, refresh) {
+                value = null
+                value = AirportLiveClient.load(a.code)
+            }
+            LiveSection(live) { refresh++ }
 
             Section("시설") {
                 a.facility["주 활주로 규격(미터)"]?.let { Line("주 활주로", "$it m") }
@@ -129,10 +141,77 @@ fun AirportInfoSheet(initial: String?, onDismiss: () -> Unit) {
                 Section("문화 행사") { a.events.forEach { (month, what) -> Line(month, what) } }
             }
             Text(
-                "한국공항공사 공공데이터 기준이며 실시간 정보가 아닙니다. 운영 시간·매장은 바뀔 수 있어요.",
+                "'실시간' 항목은 한국공항공사 운영 정보 API, 그 아래는 공공데이터 파일 기준이라 운영 시간·매장은 바뀔 수 있어요.",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp),
             )
         }
+    }
+}
+
+private fun levelColor(level: Int?): Color = when (level) {
+    1 -> Color(0xFF027A48)
+    2 -> Color(0xFFB54708)
+    3 -> Color(0xFFD92D20)
+    4 -> Color(0xFF912018)
+    else -> Color.Unspecified
+}
+
+private fun lotColor(label: String?): Color = when {
+    label == null -> Color.Unspecified
+    "만차" in label -> levelColor(4)
+    "혼잡" in label -> levelColor(3)
+    "보통" in label -> levelColor(2)
+    else -> levelColor(1)
+}
+
+/** 실시간 혼잡도·소요시간·주차·택시 (한국공항공사 API). 항목이 없는 공항은 줄이 안 나온다 */
+@Composable
+private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
+    Section("실시간") {
+        when {
+            info == null -> Text("불러오는 중…", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            info.isEmpty -> {
+                Text("이 공항은 실시간 정보가 없거나 받지 못했습니다.", fontSize = 14.sp)
+                info.errors.firstOrNull()?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            else -> {
+                info.congestion?.let { c ->
+                    LiveLine("혼잡도", "전체 ${AirportLive.Congestion.label(c.all)}", levelColor(c.all))
+                }
+                info.process?.let { p ->
+                    val total = AirportLive.minutes(p.totalSec)
+                    if (p.open == false) LiveLine("소요시간", "지금은 운영하지 않음", Color.Unspecified)
+                    else if (total != null) {
+                        LiveLine("평균 소요", total, Color.Unspecified)
+                    }
+                }
+                info.lots.forEach { l ->
+                    val amount = if (l.used != null && l.total != null) "${l.used}/${l.total}대" else null
+                    LiveLine(l.name, listOfNotNull(l.label, l.percent, amount).joinToString(" · "), lotColor(l.label))
+                }
+                info.valet?.let { v ->
+                    LiveLine("발렛파킹", listOfNotNull(v.label, v.total?.let { "대기 ${it}대" }).joinToString(" · "), lotColor(v.label))
+                }
+                if (info.indoor.isNotEmpty()) {
+                    LiveLine("실내주차장 빈 자리", "${info.indoor.sumOf { it.empty }}대", Color.Unspecified)
+                }
+                info.taxi?.let { t ->
+                    LiveLine("택시승강장", listOfNotNull(t.taxis?.let { "대기 택시 ${it}대" }, t.passengers?.let { "대기 승객 ${it}명" }, t.waitMin?.let { "예상 ${it}분" }).joinToString(" · "), Color.Unspecified)
+                }
+                val at = info.congestion?.time ?: info.lots.firstOrNull()?.time ?: info.taxi?.time ?: info.valet?.time
+                at?.let { Text("기준 $it", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                if (info.errors.isNotEmpty()) Text("일부 항목 조회 실패: ${info.errors.first()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        TextButton(onClick = onRefresh) { Text("새로고침") }
+    }
+}
+
+@Composable
+private fun LiveLine(label: String, value: String, color: Color) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = androidx.compose.ui.Alignment.Top) {
+        Text(label, Modifier.padding(end = 12.dp), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, Modifier.weight(1f), fontSize = 14.sp, color = color, fontWeight = if (color != Color.Unspecified) FontWeight.Bold else null)
     }
 }
 
