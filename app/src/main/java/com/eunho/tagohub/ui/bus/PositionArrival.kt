@@ -4,6 +4,7 @@ import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.data.BusArrival
 import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.RouteLive
+import com.eunho.tagohub.data.RouteSpeed
 import com.eunho.tagohub.data.TagoRepository
 import com.eunho.tagohub.data.TripPlanner
 import kotlinx.coroutines.coroutineScope
@@ -40,7 +41,8 @@ internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: S
     val (target, away) = best
     val seconds = if (away == 0) 0 else {
         val line = TripPlanner.Line(d.routeId, d.routeNo, stops)
-        Math.round(TripPlanner.minutesBetween(line, stops[target - away].ord, stops[target].ord) * 60).toInt()
+        val usual = TripPlanner.minutesBetween(line, stops[target - away].ord, stops[target].ord)
+        Math.round(usual * RouteSpeed.factor(d.routeId) * 60).toInt()
     }
     return BusArrival(
         routeId = row.routeId, routeNo = row.routeNo, routeType = row.routeType,

@@ -12,6 +12,8 @@ import com.eunho.tagohub.data.LatLng
 import com.eunho.tagohub.data.RouteStop
 import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.core.valueOrNull
+import com.eunho.tagohub.data.RouteSpeed
+import com.eunho.tagohub.data.TripPlanner
 import com.eunho.tagohub.data.RouteGeom
 import com.eunho.tagohub.data.StaleGuard
 import com.eunho.tagohub.data.StopMerge
@@ -535,6 +537,15 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
  * 2) TAGO 가 안 되면 전주시 API (정류장 단위, GPS 없음)
  */
 internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
+    fetchBusData(repo, d)
+    // 버스가 정류장을 옮겨 간 실제 시간으로 이 노선의 도로 상황(평소 대비 느림/빠름)을 갱신
+    val buses = d.buses.value
+    if (buses.isEmpty()) return
+    val line by lazy { TripPlanner.Line(d.routeId, d.routeNo, d.stops.value.valueOrNull().orEmpty()) }
+    RouteSpeed.observe(d.routeId, buses) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+}
+
+private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
     if (Gyeonggi.isGyeonggi(d.routeId)) {
         val g = Graph.gyeonggi.buses(d.routeId)
         if (g is TagoResult.Success) {
