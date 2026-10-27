@@ -1369,7 +1369,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                 if (s.nodeId == d.focusNodeId && focusArrival != null) focusArrival
                 else com.eunho.tagohub.data.RouteLive.stopsAway(i, busIndexes)?.let { n ->
                     val from = list[i - n]
-                    val mins = if (n > 0) Math.round(TripPlanner.minutesBetween(routeLine, from.ord, s.ord)).toInt() else null
+                    val mins = if (n > 0) Math.round(TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId)).toInt() else null
                     com.eunho.tagohub.data.RouteLive.text(n, mins)
                 }
             }

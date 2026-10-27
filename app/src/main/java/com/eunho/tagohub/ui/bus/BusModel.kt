@@ -12,6 +12,8 @@ import com.eunho.tagohub.data.LatLng
 import com.eunho.tagohub.data.RouteStop
 import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.core.valueOrNull
+import com.eunho.tagohub.data.RouteSpeed
+import com.eunho.tagohub.data.TripPlanner
 import com.eunho.tagohub.data.RouteGeom
 import com.eunho.tagohub.data.StaleGuard
 import com.eunho.tagohub.data.StopMerge
@@ -74,6 +76,9 @@ sealed class BusDest {
         val updated = MutableStateFlow<LocalTime?>(null)
 
         internal var lastArrivals: List<BusArrival>? = null
+
+        /** 도착정보에 없는 노선을 버스 위치로 어림한 결과 (노선 → 시각, 결과) */
+        internal val estimated = HashMap<String, Pair<Long, BusArrival?>>()
 
         /** 같은 자리의 다른 시군 정류장과 그 도착정보·경유노선 */
         internal var companions: List<BusStop>? = preset
@@ -390,8 +395,12 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         }
     }
 
-    val main = mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
-        .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
+    val main = fillFromPositions(
+        repo, d.stop,
+        mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
+            .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) },
+        d.estimated,
+    )
     val mainNos = main.map { it.routeNo }.toSet()
     val others = entries.flatMap { c ->
         mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
@@ -528,6 +537,15 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
  * 2) TAGO 가 안 되면 전주시 API (정류장 단위, GPS 없음)
  */
 internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
+    fetchBusData(repo, d)
+    // 버스가 정류장을 옮겨 간 실제 시간으로 이 노선의 도로 상황(평소 대비 느림/빠름)을 갱신
+    val buses = d.buses.value
+    if (buses.isEmpty()) return
+    val line by lazy { TripPlanner.Line(d.routeId, d.routeNo, d.stops.value.valueOrNull().orEmpty()) }
+    RouteSpeed.observe(d.routeId, buses) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+}
+
+private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
     if (Gyeonggi.isGyeonggi(d.routeId)) {
         val g = Graph.gyeonggi.buses(d.routeId)
         if (g is TagoResult.Success) {

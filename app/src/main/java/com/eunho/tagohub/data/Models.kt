@@ -46,6 +46,8 @@ data class BusArrival(
     val atStop: String? = null,
     /** 방면 (전주시 API brtVianame 의 종점) */
     val towards: String? = null,
+    /** 도착 예측 API 가 아니라 버스 위치로 어림한 값 (그러면 "약 5분"으로 표시) */
+    val estimated: Boolean = false,
 )
 
 data class RouteStop(
