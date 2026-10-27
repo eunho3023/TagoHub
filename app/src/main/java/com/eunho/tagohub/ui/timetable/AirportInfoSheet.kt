@@ -176,17 +176,13 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
             }
             else -> {
                 info.congestion?.let { c ->
-                    val parts = c.levels.mapIndexedNotNull { i, l -> l?.let { "${i + 1}구간 ${AirportLive.Congestion.label(it)}" } }
                     LiveLine("혼잡도", "전체 ${AirportLive.Congestion.label(c.all)}", levelColor(c.all))
-                    if (parts.isNotEmpty()) LiveLine("", parts.joinToString(" · "), Color.Unspecified)
                 }
                 info.process?.let { p ->
                     val total = AirportLive.minutes(p.totalSec)
                     if (p.open == false) LiveLine("소요시간", "지금은 운영하지 않음", Color.Unspecified)
                     else if (total != null) {
                         LiveLine("평균 소요", total, Color.Unspecified)
-                        val secs = p.sectionSec.mapIndexedNotNull { i, s -> AirportLive.minutes(s)?.let { "${i + 1}구간 $it" } }
-                        if (secs.isNotEmpty()) LiveLine("", secs.joinToString(" · "), Color.Unspecified)
                     }
                 }
                 info.lots.forEach { l ->
@@ -194,12 +190,10 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
                     LiveLine(l.name, listOfNotNull(l.label, l.percent, amount).joinToString(" · "), lotColor(l.label))
                 }
                 info.valet?.let { v ->
-                    val zones = v.zones.mapIndexedNotNull { i, z -> z?.let { "${i + 1}구역 $it" } }.joinToString(" · ")
-                    LiveLine("발렛파킹", listOfNotNull(v.label, v.total?.let { "대기 ${it}대" }, zones.ifEmpty { null }).joinToString(" · "), lotColor(v.label))
+                    LiveLine("발렛파킹", listOfNotNull(v.label, v.total?.let { "대기 ${it}대" }).joinToString(" · "), lotColor(v.label))
                 }
                 if (info.indoor.isNotEmpty()) {
                     LiveLine("실내주차장 빈 자리", "${info.indoor.sumOf { it.empty }}대", Color.Unspecified)
-                    info.indoor.forEach { f -> LiveLine("", "${f.lot} ${f.level} ${f.empty}/${f.total}", Color.Unspecified) }
                 }
                 info.taxi?.let { t ->
                     LiveLine("택시승강장", listOfNotNull(t.taxis?.let { "대기 택시 ${it}대" }, t.passengers?.let { "대기 승객 ${it}명" }, t.waitMin?.let { "예상 ${it}분" }).joinToString(" · "), Color.Unspecified)
