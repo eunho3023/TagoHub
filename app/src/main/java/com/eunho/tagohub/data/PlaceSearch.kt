@@ -272,8 +272,22 @@ object KacIntlClient {
      * (출발·도착 시각 모두; 파일 기간 밖 날짜는 요일 패턴으로 만든 "예상"). 파일에 이 구간이 아예 없을 때만 운항 API 로 조회한다.
      */
     suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> {
-        if (AirSchedule.hasPair(dep, arr)) return com.eunho.tagohub.core.TagoResult.Success(AirSchedule.trips(dep, arr, date).trips)
+        if (AirSchedule.hasPair(dep, arr)) return fileOrLive(AirSchedule.trips(dep, arr, date)) { apiTrips(dep, arr, date) }
         return apiTrips(dep, arr, date)
+    }
+
+    /**
+     * 파일 기간 안이면 파일 그대로. 기간이 지나 "예상"이 된 날짜는 실시간 운항 API 가 실제 스케줄을 주면 그것을 쓰고,
+     * API 가 안 되거나 비어 있으면 예상을 그대로 보여 준다.
+     */
+    internal suspend fun fileOrLive(
+        file: AirSchedule.Result,
+        live: suspend () -> com.eunho.tagohub.core.TagoResult<List<Trip>>,
+    ): com.eunho.tagohub.core.TagoResult<List<Trip>> {
+        if (!file.projected) return com.eunho.tagohub.core.TagoResult.Success(file.trips)
+        val got = live()
+        return if (got is com.eunho.tagohub.core.TagoResult.Success && got.data.isNotEmpty()) got
+        else com.eunho.tagohub.core.TagoResult.Success(file.trips)
     }
 
     private suspend fun apiTrips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> = runCatching {

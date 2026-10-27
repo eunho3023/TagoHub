@@ -39,17 +39,21 @@ class TrainViewModel : ViewModel() {
 
 class AirViewModel : ViewModel() {
     /**
-     * 국내선: 앱에 든 한국공항공사 스케줄 파일(CSV)만 쓴다 — 공항 목록·항공사·운항편 모두 파일에서, API 는 부르지 않음.
-     * 파일 기간(2026-10-24)이 지난 날짜는 마지막 한 주의 요일 패턴으로 만든 "예상"으로 보인다.
+     * 국내선: 앱에 든 한국공항공사 스케줄 파일(CSV)을 우선 쓴다 — 공항 목록·항공사·운항편 모두 파일에서.
+     * 파일 기간(2026-10-24)이 지난 날짜만 실시간 운항 API 로 받고, 안 되면 마지막 한 주 요일 패턴의 "예상"을 보인다.
      */
     val table = TimetableController(
         scope = viewModelScope,
         placeLoader = { q -> com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.PlaceFilter.filter(com.eunho.tagohub.data.AirSchedule.domesticAirports(), q)) },
         gradeLoader = { com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.AirSchedule.domesticAirlines()) },
         tripLoader = { d, a, date, g ->
-            com.eunho.tagohub.core.TagoResult.Success(
-                com.eunho.tagohub.data.AirSchedule.trips(d.id, a.id, date).trips.filter { g == null || it.kind.startsWith(g.name) },
-            )
+            val all = com.eunho.tagohub.data.KacIntlClient.fileOrLive(com.eunho.tagohub.data.AirSchedule.trips(d.id, a.id, date)) {
+                com.eunho.tagohub.data.KacIntlClient.domesticTrips(d.id, a.id, date)
+            }
+            when (all) {
+                is com.eunho.tagohub.core.TagoResult.Success -> com.eunho.tagohub.core.TagoResult.Success(all.data.filter { g == null || it.kind.startsWith(g.name) })
+                else -> all
+            }
         },
         geo = com.eunho.tagohub.data.AirportGeo,
     )
