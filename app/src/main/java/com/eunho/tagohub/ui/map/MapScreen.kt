@@ -144,6 +144,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoTime
+import com.eunho.tagohub.data.TripPlanner
 import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.ui.bus.BusDest
 import com.eunho.tagohub.ui.bus.StopRouteItem
@@ -1294,6 +1295,14 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val updated by d.updated.collectAsStateWithLifecycle()
     val r = info.valueOrNull()
     val color = busRouteColor(d.routeType ?: r?.routeType)
+    // 정류장에서 들어왔으면 그 정류장의 도착정보(정류장 화면과 같은 값)를 목록에도 그대로 보여 줌
+    val selectedStop by vm.selected.collectAsStateWithLifecycle()
+    val noRows = remember { kotlinx.coroutines.flow.MutableStateFlow<com.eunho.tagohub.core.Load<List<com.eunho.tagohub.ui.bus.StopRouteRow>>>(com.eunho.tagohub.core.Load.Idle) }
+    val stopRows by (selectedStop?.rows ?: noRows).collectAsStateWithLifecycle()
+    val focusArrival = remember(stopRows, d.routeId, d.focusNodeId, selectedStop) {
+        if (selectedStop?.stop?.nodeId != d.focusNodeId) null
+        else stopRows.valueOrNull()?.firstOrNull { it.routeId == d.routeId }?.arrivals?.firstOrNull()?.let { com.eunho.tagohub.data.ArrivalText.line(it) }
+    }
 
     PanelSurface {
         RouteBandHeader(
@@ -1353,6 +1362,17 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val busesAt = remember(buses) {
                 { s: RouteStop -> buses.filter { b -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId } }
             }
+            // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
+            val busIndexes = remember(buses, list) { buses.mapNotNull { b -> list.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }.takeIf { it >= 0 } } }
+            val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
+            val liveOf = { i: Int, s: RouteStop ->
+                if (s.nodeId == d.focusNodeId && focusArrival != null) focusArrival
+                else com.eunho.tagohub.data.RouteLive.stopsAway(i, busIndexes)?.let { n ->
+                    val from = list[i - n]
+                    val mins = if (n > 0) Math.round(TripPlanner.minutesBetween(routeLine, from.ord, s.ord)).toInt() else null
+                    com.eunho.tagohub.data.RouteLive.text(n, mins)
+                }
+            }
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
             list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1394,6 +1414,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         buses = busesAt(s),
                         focused = s.nodeId == d.focusNodeId,
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
+                        live = liveOf(i, s),
                     ) { vm.focusRouteStop(s.nodeId) }
                 }
             }
