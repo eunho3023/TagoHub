@@ -75,6 +75,9 @@ sealed class BusDest {
 
         internal var lastArrivals: List<BusArrival>? = null
 
+        /** 도착정보에 없는 노선을 버스 위치로 어림한 결과 (노선 → 시각, 결과) */
+        internal val estimated = HashMap<String, Pair<Long, BusArrival?>>()
+
         /** 같은 자리의 다른 시군 정류장과 그 도착정보·경유노선 */
         internal var companions: List<BusStop>? = preset
         internal val compArrivals = HashMap<String, List<BusArrival>>()
@@ -390,8 +393,12 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         }
     }
 
-    val main = mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
-        .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
+    val main = fillFromPositions(
+        repo, d.stop,
+        mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
+            .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) },
+        d.estimated,
+    )
     val mainNos = main.map { it.routeNo }.toSet()
     val others = entries.flatMap { c ->
         mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
