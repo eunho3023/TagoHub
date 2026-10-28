@@ -20,8 +20,6 @@ private const val ESTIMATE_TTL_MS = 30_000L
 private const val ESTIMATE_TIMEOUT_MS = 8_000L
 private const val MAX_ESTIMATE_ROUTES = 6
 
-/** 도착 예정이 이 정류장 수 이하로 임박하면, 버스가 벌써 정류장에 와 있는지 위치로 한 번 더 확인 */
-private const val RECONCILE_MAX_STOPS = 1
 
 private fun clockMinutes(t: String?): Int? =
     t?.let { Regex("(\\d{1,2}):?(\\d{2})").find(it) }?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() }
@@ -95,7 +93,7 @@ internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: S
  * 도착정보(API)와 버스 위치를 맞춰 본다. 최대 [MAX_ESTIMATE_ROUTES] 개 노선, 동시에.
  *  1) 도착정보가 비었는데(운행종료도 아님) 달리고 있는 노선: 위치로 "N정류장 전 · 약 M분"을 어림해 채운다.
  *     같은 번호의 다른 변형 노선에 이미 실제 도착정보가 있으면 그 노선의 버스일 가능성이 커서 어림하지 않는다.
- *  2) 도착정보가 "곧 도착·1정류장 전"인데 위치상 버스가 이미 정류장에 와 있으면 "정류장 도착"으로 고친다
+ *  2) 도착정보와 위치가 어긋나면 위치를 따른다: 이미 정류장에 와 있으면 "정류장 도착", 도착정보의 첫 버스보다 [RouteLive.NEARER_GAP] 정류장 이상 가까운 버스가 위치에 있으면(API 가 빠뜨림) 그 버스를 앞에 끼운다
  *     (도착 예측 API 가 버스 위치보다 느리게 갱신됨).
  * [cache] 는 정류장 화면이 들고 있는 (노선 → 시각, 결과) 표.
  */
@@ -108,7 +106,7 @@ internal suspend fun fillFromPositions(
 ): List<StopRouteRow> {
     val liveNumbers = rows.filter { r -> r.arrivals.any { !it.estimated } }.map { it.routeNo }.toSet()
     fun needsEstimate(r: StopRouteRow) = r.arrivals.isEmpty() && !r.ended && r.routeNo !in liveNumbers
-    fun needsCheck(r: StopRouteRow) = r.arrivals.firstOrNull()?.let { a -> !a.estimated && (a.prevStops ?: Int.MAX_VALUE) in 1..RECONCILE_MAX_STOPS } == true
+    fun needsCheck(r: StopRouteRow) = r.arrivals.firstOrNull()?.let { a -> !a.estimated && (a.prevStops ?: 0) >= 1 } == true
     val targets = rows.filter { needsEstimate(it) || needsCheck(it) }.take(MAX_ESTIMATE_ROUTES)
     if (targets.isEmpty()) return rows
     val found: Map<String, BusArrival?> = coroutineScope {
@@ -128,6 +126,8 @@ internal suspend fun fillFromPositions(
         when {
             r.arrivals.isEmpty() -> r.copy(arrivals = listOf(pos))
             pos.prevStops == 0 -> r.copy(arrivals = listOf(r.arrivals.first().copy(prevStops = 0, arrSeconds = 0)) + r.arrivals.drop(1))
+            // 위치에는 훨씬 가까운 버스가 보이는데 도착정보에는 없음(도착 예측 API 가 일부 버스만 줌): 그 버스를 맨 앞에 끼움
+            RouteLive.preferPosition(r.arrivals.first().prevStops, pos.prevStops) -> r.copy(arrivals = (listOf(pos) + r.arrivals).take(2))
             else -> r
         }
     }

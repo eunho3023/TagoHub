@@ -1334,10 +1334,11 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val selectedStop by vm.selected.collectAsStateWithLifecycle()
     val noRows = remember { kotlinx.coroutines.flow.MutableStateFlow<com.eunho.tagohub.core.Load<List<com.eunho.tagohub.ui.bus.StopRouteRow>>>(com.eunho.tagohub.core.Load.Idle) }
     val stopRows by (selectedStop?.rows ?: noRows).collectAsStateWithLifecycle()
-    val focusArrival = remember(stopRows, d.routeId, d.focusNodeId, selectedStop) {
+    val focusArr = remember(stopRows, d.routeId, d.focusNodeId, selectedStop) {
         if (selectedStop?.stop?.nodeId != d.focusNodeId) null
-        else stopRows.valueOrNull()?.firstOrNull { it.routeId == d.routeId }?.arrivals?.firstOrNull()?.let { com.eunho.tagohub.data.ArrivalText.line(it) }
+        else stopRows.valueOrNull()?.firstOrNull { it.routeId == d.routeId }?.arrivals?.firstOrNull()
     }
+    val focusArrival = focusArr?.let { com.eunho.tagohub.data.ArrivalText.line(it) }
 
     PanelSurface {
         RouteBandHeader(
@@ -1401,9 +1402,10 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val busIndexes = remember(buses, list) { buses.mapNotNull { b -> list.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }.takeIf { it >= 0 } } }
             val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
             val liveOf = { i: Int, s: RouteStop ->
-                // 버스 위치가 이 정류장이면(이미 와 있음) 도착 예측 API 가 아직 "1정류장 전"이라고 해도 위치를 믿음
-                if (s.nodeId == d.focusNodeId && focusArrival != null && i !in busIndexes) focusArrival
-                else com.eunho.tagohub.data.RouteLive.stopsAway(i, busIndexes)?.let { n ->
+                // 도착정보(API)와 버스 위치가 어긋나면 위치를 믿음: 이미 와 있는데 "1정류장 전", 가까이 버스가 보이는데 "7정류장 전"(API 가 그 버스를 빠뜨림)
+                val away = com.eunho.tagohub.data.RouteLive.stopsAway(i, busIndexes)
+                if (s.nodeId == d.focusNodeId && focusArrival != null && !com.eunho.tagohub.data.RouteLive.preferPosition(focusArr?.prevStops, away)) focusArrival
+                else away?.let { n ->
                     val from = list[i - n]
                     val mins = if (n > 0) Math.round(TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId)).toInt() else null
                     com.eunho.tagohub.data.RouteLive.text(n, mins)
