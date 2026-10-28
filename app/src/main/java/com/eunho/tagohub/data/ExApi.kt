@@ -197,7 +197,7 @@ object ExMapLayers {
             VMS -> vms(repo.all("/openapi/vms/vmsMessageSrch"))
             CONGEST -> congest(repo.all("/openapi/odtraffic/trafficAmountByCongest"), vdsCoords())
             BURST -> burst(repo.all("/openapi/burstInfo/realTimeSms"))
-            FLOW -> flow(repo.all("/openapi/odtraffic/trafficAmountByRealtime"), vdsCoords())
+            FLOW -> flowFeatures(repo.all("/openapi/odtraffic/trafficAmountByRealtime"), vdsCoords())
             SAFE -> safe(repo.all("/openapi/safeDriving/safeDrivingSupport"))
             else -> emptyList()
         }
@@ -293,6 +293,78 @@ object ExMapLayers {
                     lng = pos.second,
                 )
             }
+
+    /** 이웃한 검지기끼리 이만큼(m) 넘게 떨어져 있으면 사이를 선으로 잇지 않음 (정보가 없는 구간을 가로질러 긋지 않게) */
+    private const val FLOW_MAX_GAP_M = 6_000.0
+
+    /** 한 선이 이 점 수를 넘으면 끊음 (화면에 보이는 만큼만 그리게, 긴 도로 하나가 통째로 안 보이는 일 방지) */
+    private const val FLOW_MAX_POINTS = 9
+
+    /**
+     * 고속도로 소통을 도로 위의 색 선으로. 검지기 ID(노선·방향 + 순번)가 같은 노선·방향끼리 순번대로 이어지므로,
+     * 이웃한 두 검지기 사이를 가운데에서 반씩 나눠 각자 자기 소통등급 색으로 칠한다. 선으로 못 잇는 검지기(이웃이 없음)는 [flow] 의 점으로.
+     */
+    fun flowFeatures(rows: List<Map<String, String>>, coords: Map<String, Pair<Double, Double>>): List<ItsRoadFeature> {
+        val (lines, used) = flowLines(rows, coords)
+        return lines + flow(rows.filter { it["vdsId"] !in used }, coords)
+    }
+
+    fun flowLines(rows: List<Map<String, String>>, coords: Map<String, Pair<Double, Double>>): Pair<List<ItsRoadFeature>, Set<String>> {
+        // 검지기마다 가장 나쁜 등급(같으면 가장 느린 것) 한 줄
+        val byVds = rows.filter { it["grade"] in setOf("1", "2", "3") && (it["vdsId"]?.length ?: 0) > 5 && it["vdsId"] in coords }
+            .groupBy { it["vdsId"]!! }
+            .mapValues { (_, g) -> g.maxByOrNull { (it["grade"]?.toIntOrNull() ?: 0) * 1000 - (it["speed"]?.toIntOrNull() ?: 0) }!! }
+        val out = ArrayList<ItsRoadFeature>()
+        val used = HashSet<String>()
+
+        for ((prefix, ids) in byVds.keys.groupBy { it.dropLast(5) }) {
+            val chain = ids.sorted()
+            var path = ArrayList<LatLng>()
+            var grade = 0
+            var first: Map<String, String>? = null
+            var part = 0
+            fun flush() {
+                if (path.size >= 2 && first != null) {
+                    val r = first!!
+                    val mid = path[path.size / 2]
+                    out += ItsRoadFeature(
+                        id = "$FLOW:$grade:$prefix:${part++}",
+                        layer = FLOW,
+                        title = listOfNotNull(r["routeName"], r["conzoneName"]).joinToString(" "),
+                        details = listOfNotNull(
+                            r["speed"]?.let { "속도 ${it}km/h" },
+                            r["updownTypeCode"]?.let { d -> if (d == "S") "기점 방향" else "종점 방향" },
+                            when (grade) { 1 -> "소통 원활"; 2 -> "서행"; else -> "정체" },
+                        ).joinToString("\n"),
+                        lat = mid.lat, lng = mid.lng, path = path.toList(),
+                    )
+                }
+                path = ArrayList()
+                first = null
+            }
+            fun add(g: Int, row: Map<String, String>, pts: List<LatLng>) {
+                if (path.isNotEmpty() && (g != grade || path.size >= FLOW_MAX_POINTS || path.last() != pts.first())) flush()
+                if (path.isEmpty()) { grade = g; first = row; path.add(pts.first()) }
+                path.addAll(pts.drop(1))
+            }
+            for (i in 0 until chain.size - 1) {
+                val a = chain[i]
+                val b = chain[i + 1]
+                val pa = coords[a]!!
+                val pb = coords[b]!!
+                if (com.eunho.tagohub.core.Geo.meters(pa.first, pa.second, pb.first, pb.second) > FLOW_MAX_GAP_M) { flush(); continue }
+                val ra = byVds[a]!!
+                val rb = byVds[b]!!
+                val mid = LatLng((pa.first + pb.first) / 2, (pa.second + pb.second) / 2)
+                add(ra["grade"]!!.toInt(), ra, listOf(LatLng(pa.first, pa.second), mid))
+                add(rb["grade"]!!.toInt(), rb, listOf(mid, LatLng(pb.first, pb.second)))
+                used += a
+                used += b
+            }
+            flush()
+        }
+        return out to used
+    }
 
     /** 안전주행 안내: 같은 사건(incId)은 메시지를 받는 곳마다 여러 줄로 오므로 사건 위치(startX·startY) 하나로 합침 */
     fun safe(rows: List<Map<String, String>>): List<ItsRoadFeature> =

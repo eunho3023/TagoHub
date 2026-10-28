@@ -493,16 +493,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 val features = itsRoadItems[id].orEmpty().filter {
                     it.lat in (box[0] - latMargin)..(box[2] + latMargin) &&
                         it.lng in (box[1] - lngMargin)..(box[3] + lngMargin)
-                }.take(ITS_ROAD_MAX_PER_LAYER)
+                }.take(if (id == "ex_flow") ITS_ROAD_MAX_FLOW_LINES else ITS_ROAD_MAX_PER_LAYER)
                 counts[id] = features.size
                 features
             }.take(ITS_ROAD_MAX_MARKERS)
-            .map { ItsRoadFeaturePin(it.id, it.layer, it.title, it.lat, it.lng) }
+            .map { ItsRoadFeaturePin(it.id, it.layer, it.title, it.lat, it.lng, it.path) }
         itsRoadCounts.value = counts
         canvas?.setItsRoadFeatures(visible)
     }
 
     private fun persistItsRoadCache(id: String, features: List<ItsRoadFeature>, bounds: DoubleArray) {
+        if (id == "ex_flow") return   // 실시간 소통은 저장해 두면 오래된 색이 보이므로 저장하지 않음
         val saved = features.asSequence().filter {
             it.lat in bounds[0]..bounds[2] && it.lng in bounds[1]..bounds[3]
         }.take(ITS_ROAD_CACHE_MAX_FEATURES).toList()
@@ -2456,7 +2457,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val ITS_ROAD_MAX_LAT_SPAN = 4.0
         const val ITS_ROAD_MAX_LNG_SPAN = 4.0
         const val ITS_ROAD_MAX_PER_LAYER = 300
-        const val ITS_ROAD_MAX_MARKERS = 1_000
+        const val ITS_ROAD_MAX_MARKERS = 2_000
+        /** 고속도로 소통은 짧은 선이 많아서 한 화면에 이만큼까지 */
+        const val ITS_ROAD_MAX_FLOW_LINES = 1_500
         const val ITS_ROAD_CACHE_MAX_FEATURES = 150
         const val ITS_ROAD_CACHE_TTL_MS = 24L * 60 * 60 * 1_000
         /** 도시철도 평균 속도 (정차 포함) m/s ≈ 40km/h */

@@ -18,6 +18,8 @@ data class ItsRoadFeature(
     val details: String,
     val lat: Double,
     val lng: Double,
+    /** 점이 아니라 선으로 그릴 때(고속도로 소통): 도로를 따라가는 좌표들. [lat]·[lng] 는 그 가운데 */
+    val path: List<LatLng>? = null,
 )
 
 data class ItsTrafficRow(

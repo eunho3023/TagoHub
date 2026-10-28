@@ -16,7 +16,7 @@ data class UticIncidentPin(val id: String, val title: String, val lat: Double, v
 data class UticRoadRiskPin(val id: String, val title: String, val lat: Double, val lng: Double)
 data class UticSafetyPin(val id: String, val title: String, val category: String, val lat: Double, val lng: Double)
 data class ItsCctvPin(val id: String, val title: String, val lat: Double, val lng: Double)
-data class ItsRoadFeaturePin(val id: String, val layer: String, val title: String, val lat: Double, val lng: Double)
+data class ItsRoadFeaturePin(val id: String, val layer: String, val title: String, val lat: Double, val lng: Double, val path: List<LatLng>? = null)
 /**
  * 움직이는 차량. path 위에서 startFrac(지금) → endFrac 까지 durationMs 동안 이동한다.
  * 정지 차량은 path 가 점 하나.
