@@ -14,7 +14,7 @@ object RouteLive {
         busIndexes.filter { it in 0..stopIndex }.maxOrNull()?.let { stopIndex - it }
 
     fun text(stopsAway: Int, minutes: Int?): String = when {
-        stopsAway <= 0 -> "정류장에 정차 중"
+        stopsAway <= 0 -> "정류장 도착"
         minutes != null -> "${stopsAway}정류장 전 · 약 ${minutes.coerceAtLeast(1)}분"
         else -> "${stopsAway}정류장 전"
     }

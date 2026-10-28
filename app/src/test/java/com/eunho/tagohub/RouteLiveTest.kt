@@ -21,6 +21,6 @@ class RouteLiveTest {
         assertEquals("7정류장 전 · 약 9분", RouteLive.text(7, 9))
         assertEquals("3정류장 전", RouteLive.text(3, null))
         assertEquals("1정류장 전 · 약 1분", RouteLive.text(1, 0))
-        assertEquals("정류장에 정차 중", RouteLive.text(0, null))
+        assertEquals("정류장 도착", RouteLive.text(0, null))
     }
 }

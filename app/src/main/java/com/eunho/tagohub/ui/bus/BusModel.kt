@@ -51,6 +51,9 @@ data class StopRouteRow(
     val cityCode: String? = null,
     /** 도착 정보가 없고 지금이 첫차~막차 시간 밖이면 운행종료 */
     val ended: Boolean = false,
+    /** 첫차·막차 (기점 출발 시각). 같은 번호의 변형 노선이 버스 위치를 공유할 때 지금 달리는 노선인지 가리는 데 씀 */
+    val firstTime: String? = null,
+    val lastTime: String? = null,
 )
 
 /** 지금(분)이 첫차~막차 시간 밖인지. 막차가 자정을 넘기면(첫차보다 이르면) 다음 날로 본다 */
@@ -453,7 +456,7 @@ internal fun mergeStopRows(
         // 도착 정보에는 항상 지금 노선 번호가 와서 그걸 먼저 (앱 안 노선 자료가 예전 번호일 수 있음: 경기 707-1 → 1200)
         val live = a.firstOrNull()
         StopRouteRow(r.routeId, live?.routeNo?.takeIf { it.isNotBlank() } ?: r.routeNo, r.routeType ?: live?.routeType, r.startName, r.endName, a,
-            ended = a.isEmpty() && outsideService(r.firstTime, r.lastTime, nowMin))
+            ended = a.isEmpty() && outsideService(r.firstTime, r.lastTime, nowMin), firstTime = r.firstTime, lastTime = r.lastTime)
     }
     val ids = routes.map { it.routeId }.toSet()
     // 경유노선 목록에 없지만 도착정보에는 있는 노선도 놓치지 않게
@@ -538,6 +541,9 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
  */
 internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
     fetchBusData(repo, d)
+    // 같은 번호 노선(기점·종점이 다른 변형)이 버스 위치를 공유하는 지역이 있어서(전주: 변형마다 같은 버스가 옴, 번호로 TAGO 노선을 고르는 세종·원주·포항),
+    // 운행 시각이 지난 변형 노선에는 다른 변형의 버스가 잡힘 → 그 노선의 운행 시각 밖이면 버스를 비움
+    if (d.buses.value.isNotEmpty() && !variantRunning(d)) d.buses.value = emptyList()
     // 버스가 정류장을 옮겨 간 실제 시간으로 이 노선의 도로 상황(평소 대비 느림/빠름)을 갱신
     val buses = d.buses.value
     if (buses.isEmpty()) return
