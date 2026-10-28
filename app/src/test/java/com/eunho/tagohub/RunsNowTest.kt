@@ -24,3 +24,14 @@ class RunsNowTest {
         assertEquals(true, runsNow(null, null, at(3, 0), 60))           // 시각을 모르면 막지 않음
     }
 }
+
+class VariantGraceTest {
+    @Test
+    fun otherRegionsGetAGenerousWindowSoRealBusesAreNotHidden() {
+        // 전주(JUB…)는 빠듯하게, 다른 지역은 막차 + 한 바퀴 + 70분까지
+        assertEquals(10, com.eunho.tagohub.ui.bus.variantGraceMin("JUB305001140"))
+        assertEquals(70, com.eunho.tagohub.ui.bus.variantGraceMin("DJB30300002"))
+        assertEquals(false, runsNow("600", "600", 7 * 60 + 3, 45, com.eunho.tagohub.ui.bus.variantGraceMin("JUB305001520")))
+        assertEquals(true, runsNow("600", "600", 7 * 60 + 3, 45, com.eunho.tagohub.ui.bus.variantGraceMin("DJB30300002")))
+    }
+}

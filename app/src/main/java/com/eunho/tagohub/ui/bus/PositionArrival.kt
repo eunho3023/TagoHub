@@ -31,12 +31,27 @@ private fun clockMinutes(t: String?): Int? =
  * 전주처럼 같은 번호의 변형 노선(예: 06:00 한 번만 다니는 "효자로전북도청 → 전주동물원")이 버스 위치를 공유하는 경우,
  * 운행이 끝난 변형 노선에 다른 변형 노선의 버스가 잡히는 것을 걸러내는 데 쓴다. 시각을 모르면 true.
  */
-internal fun runsNow(first: String?, last: String?, nowMin: Int, tripMinutes: Int): Boolean {
+internal fun runsNow(first: String?, last: String?, nowMin: Int, tripMinutes: Int, graceMin: Int = 10): Boolean {
     val f = clockMinutes(first) ?: return true
     var l = clockMinutes(last) ?: return true
     var n = nowMin
     if (l < f) { l += 1440; if (n < f) n += 1440 }
-    return n >= f - 15 && n <= l + tripMinutes + 10
+    return n >= f - 15 && n <= l + tripMinutes + graceMin
+}
+
+/**
+ * 변형 노선의 운행 시각 판정에 더하는 여유(분). 전주는 변형마다 같은 버스가 오는 게 확인돼서 빠듯하게(10분),
+ * 다른 지역은 시각 자료가 부정확해도 실제 버스를 숨기지 않게 넉넉하게(70분).
+ */
+internal fun variantGraceMin(routeId: String) = if (com.eunho.tagohub.data.Jeonju.isJeonju(routeId)) 10 else 70
+
+/** 이 노선(변형)에 지금 버스가 달릴 수 있는 시각인지. 정류장·시각 정보가 아직 없으면 true */
+internal fun variantRunning(d: BusDest.Route): Boolean {
+    val stops = d.stops.value.valueOrNull().orEmpty()
+    val info = d.info.value.valueOrNull() ?: return true
+    if (stops.isEmpty()) return true
+    val nowMin = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+    return runsNow(info.firstTime, info.lastTime, nowMin, tripMinutes(TripPlanner.Line(d.routeId, d.routeNo, stops), stops), variantGraceMin(d.routeId))
 }
 
 /** 이 노선 한 번 도는 데 걸리는 시간(분): 첫 정류장 → 끝 정류장. 좌표를 모르면 정류장 수 기준 */
@@ -56,7 +71,7 @@ internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: S
     val line = TripPlanner.Line(d.routeId, d.routeNo, stops)
     // 같은 번호의 다른 기점·종점 노선과 버스 위치를 공유하는 도시가 있어서, 운행 시각 밖의 변형 노선은 버스가 있어도 여기 버스가 아님
     val nowMin = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
-    if (!runsNow(row.firstTime, row.lastTime, nowMin, tripMinutes(line, stops))) return null
+    if (!runsNow(row.firstTime, row.lastTime, nowMin, tripMinutes(line, stops), variantGraceMin(row.routeId))) return null
     refreshBusData(repo, d)
     val buses = d.buses.value
     if (buses.isEmpty()) return null

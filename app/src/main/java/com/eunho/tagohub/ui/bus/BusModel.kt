@@ -541,6 +541,9 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
  */
 internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
     fetchBusData(repo, d)
+    // 같은 번호 노선(기점·종점이 다른 변형)이 버스 위치를 공유하는 지역이 있어서(전주: 변형마다 같은 버스가 옴, 번호로 TAGO 노선을 고르는 세종·원주·포항),
+    // 운행 시각이 지난 변형 노선에는 다른 변형의 버스가 잡힘 → 그 노선의 운행 시각 밖이면 버스를 비움
+    if (d.buses.value.isNotEmpty() && !variantRunning(d)) d.buses.value = emptyList()
     // 버스가 정류장을 옮겨 간 실제 시간으로 이 노선의 도로 상황(평소 대비 느림/빠름)을 갱신
     val buses = d.buses.value
     if (buses.isEmpty()) return
@@ -578,13 +581,7 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
         // 버스 목록·정류장 순번·저상 여부: 전주시 API (GPS 없음 → 지도에는 안 그리고 패널 목록에만)
         val j = Graph.jeonju.positions(d.routeId)
         if (j is TagoResult.Success) {
-            // 전주 API 는 같은 번호 노선(기점·종점이 다른 변형)의 버스를 모두 돌려줘서, 운행이 끝난 변형 노선에도 다른 변형의 버스가 잡힘 → 운행 시각 밖이면 비움
-            val all = JeonjuMappers.buses(j.data) { null }
-            val stopList = d.stops.value.valueOrNull().orEmpty()
-            val info = d.info.value.valueOrNull()
-            val nowMin = LocalTime.now().let { it.hour * 60 + it.minute }
-            val buses = if (stopList.isNotEmpty() && info != null &&
-                !runsNow(info.firstTime, info.lastTime, nowMin, tripMinutes(TripPlanner.Line(d.routeId, d.routeNo, stopList), stopList))) emptyList() else all
+            val buses = JeonjuMappers.buses(j.data) { null }
             d.buses.value = mergeWithGrace(d, guard(d, buses))
             updateGps(d)
             d.updated.value = LocalTime.now()
