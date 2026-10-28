@@ -48,6 +48,13 @@ data class StationGroup(
 ) {
     val seoulLineIds: Set<String> get() = stations.mapNotNull { it.seoulLine?.id }.toSet()
     val displayLines: List<String> get() = stations.map { it.displayLine }.distinct()
+
+    /**
+     * 이 역에서 [lat],[lng] 까지의 거리(m): 노선별 역 중 가장 가까운 곳 기준.
+     * 환승역은 [lat]·[lng] 가 노선별 역의 평균이라(당산 2호선·9호선처럼 100m 넘게 떨어진 경우) 중심점으로 재면 실제 역 앞에서도 멀게 나온다.
+     */
+    fun distanceTo(lat: Double, lng: Double): Double =
+        stations.minOfOrNull { Geo.meters(lat, lng, it.lat, it.lng) } ?: Geo.meters(lat, lng, this.lat, this.lng)
 }
 
 /** 서울 realtimePosition 한 행 */
@@ -243,9 +250,17 @@ class StationIndex(val stations: List<MetroStation>) {
     /** 지도 POI 는 역 출입구 좌표일 수 있어 역 중심점과 차이가 난다. 이름이 맞는 가까운 역만 연결한다. */
     fun matchPoi(name: String, lat: Double, lng: Double, maxDistanceM: Double = 1_000.0): StationGroup? =
         groups.asSequence()
-            .map { group -> group to Geo.meters(lat, lng, group.lat, group.lng) }
+            .map { group -> group to group.distanceTo(lat, lng) }
             .filter { (_, distance) -> distance <= maxDistanceM }
             .filter { (group, _) -> PoiMatch.similar(name, group.name) }
+            .minByOrNull { (_, distance) -> distance }
+            ?.first
+
+    /** 이름 없이 역 아이콘만 눌렀을 때: [maxDistanceM] 안에서 가장 가까운 역 */
+    fun nearestGroup(lat: Double, lng: Double, maxDistanceM: Double = 80.0): StationGroup? =
+        groups.asSequence()
+            .map { group -> group to group.distanceTo(lat, lng) }
+            .filter { (_, distance) -> distance <= maxDistanceM }
             .minByOrNull { (_, distance) -> distance }
             ?.first
 

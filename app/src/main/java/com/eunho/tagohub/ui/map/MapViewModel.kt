@@ -789,13 +789,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
             val near = (dbStops + cachedStops).distinctBy { it.nodeId }
             val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
-            val station = index?.matchPoi(name, lat, lng)
+            // 이름 없이 역 아이콘만 눌렀을 때도(이름이 비면 이름 매칭이 안 됨) 바로 앞(80m)에 있는 역이면 그 역
+            val station = index?.matchPoi(name, lat, lng) ?: if (name.isBlank()) index?.nearestGroup(lat, lng) else null
             val stopDistance = stop?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat ?: lat, it.lng ?: lng) }
-            val stationDistance = station?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) }
+            // 환승역은 중심점이 아니라 노선별 역 중 가까운 곳으로 잼 (중심점으로 재면 실제 역 앞에서도 근처 정류장이 이겼음)
+            val stationDistance = station?.distanceTo(lat, lng)
             val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
             // 이름이 지하철역("강남역", "강남역 2호선")이면 같은 이름의 정류장이 더 가까워도 역을 연다
             val useStop = stop != null && (
-                station == null || busPoi || (!com.eunho.tagohub.data.PoiMatch.looksLikeStation(name) && stopDistance!! <= stationDistance!!)
+                station == null || busPoi ||
+                    (!com.eunho.tagohub.data.PoiMatch.looksLikeStation(name) && stopDistance!! <= stationDistance!! && stationDistance > STATION_FIRST_M)
             )
             if (useStop) {
                 val matchedStop = stop!!
@@ -2460,6 +2463,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val ITS_ROAD_MAX_MARKERS = 2_000
         /** 고속도로 소통은 짧은 선이 많아서 한 화면에 이만큼까지 */
         const val ITS_ROAD_MAX_FLOW_LINES = 1_500
+
+        /** 눌린 곳이 역(노선별 역 위치)에서 이 거리(m) 안이면, 이름이 정류장 같아도(예: "당산역.지하철2호선") 같은 자리의 정류장보다 역을 먼저 엶 */
+        const val STATION_FIRST_M = 30.0
         const val ITS_ROAD_CACHE_MAX_FEATURES = 150
         const val ITS_ROAD_CACHE_TTL_MS = 24L * 60 * 60 * 1_000
         /** 도시철도 평균 속도 (정차 포함) m/s ≈ 40km/h */
