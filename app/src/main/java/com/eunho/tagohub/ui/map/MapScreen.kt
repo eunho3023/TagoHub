@@ -416,7 +416,7 @@ fun MapScreen(
                             onArrivalClick = { a -> vm.showArrivalPath(d.group, a) },
                             onUseStation = { asOrigin -> vm.useStationAs(d.group, asOrigin) },
                             onStationName = { n -> vm.stationGroupNear(n, d.group)?.let { vm.focusStation(it) } },
-                            neighborFill = { line, p, n -> vm.fillNeighbors(d.group, line, p, n) },
+                            neighborResolver = { line, all, code -> vm.neighborsOf(d.group, line, all, code) },
                             favorite = favs.any { it.kind == Favorite.Kind.Station && it.id == d.group.id },
                             onFavorite = { vm.toggleFavorite(Favorite.of(d.group)) },
                             railStationName = railName,
