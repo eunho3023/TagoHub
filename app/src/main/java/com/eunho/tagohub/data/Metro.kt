@@ -261,50 +261,59 @@ class StationIndex(val stations: List<MetroStation>) {
 
     /**
      * KRIC 노선 목록([all], 같은 운영기관·노선)에서 [curCode] 역의 이전·다음 역.
-     * 목록의 순서 번호는 지선이 본선과 같은 번호를 나눠 써서(경의중앙선: 서울역·신촌 지선이 수색·디지털미디어시티 본선과 21·22번을 공유)
-     * 번호순으로 줄 세우면 엉뚱한 역이 이웃이 된다. 그래서 번호가 1 차이 나는 후보 중 위치가 가장 가까운 역을 이웃으로 하고,
-     * 양쪽 이웃이 같은 방향에 있으면(지선의 끝) 먼 쪽은 버린다. 이웃이 하나뿐이면 다음 역 쪽에 두고(처음 역처럼), 목록 맨 끝 역이면 이전 역 쪽에 둔다.
-     * 위치를 모르면 번호순으로 돌아간다. 마지막에 [completeNeighbor] 로 다른 운영기관 구간의 빠진 이웃을 채운다.
+     *
+     * 목록의 순서 번호는 지선이 본선과 같은 번호를 나눠 써서(경의중앙선: 서울역·신촌 지선이 수색·디지털미디어시티와 21·22번,
+     * 1호선: 가산디지털단지·독산·금천구청 지선이 구일·개봉·오류동과 46~48번) 번호순으로 줄 세우면 엉뚱한 역이 이웃이 된다.
+     * 역 코드 앞 글자(K·P·X…)가 같은 역끼리 한 가지(줄기)로 보고, 이웃은 같은 가지 안에서만 찾는다.
+     * 가장 큰 가지를 본선으로 하고, 지선의 첫 역 앞은 본선에서 가장 가까운 역(갈라지는 곳)이다.
+     * 이웃이 [NEIGHBOR_MAX_GAP_M] 보다 멀리 있으면 이어지지 않는 구간(GTX-A 서울역↔구성처럼 따로 운영되는 구간)이라 비운다.
+     * 지선의 끝 역은 이웃을 다음 역 쪽에 둔다(처음 역처럼). 마지막에 [completeNeighbor] 로 다른 운영기관 구간의 빠진 이웃을 채운다.
      */
     fun neighborsOf(group: StationGroup, lineName: String, all: List<KricRouteStation>, curCode: String?): Around? {
         val cur = all.firstOrNull { it.stationCode == curCode } ?: return null
+        fun key(r: KricRouteStation) = r.stationCode.takeWhile { !it.isDigit() }
+        val branches = all.groupBy(::key)
+        val mainKey = branches.maxByOrNull { it.value.size }!!.key
         val curSt = group.stations.firstOrNull { StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName) }
         fun pos(r: KricRouteStation): MetroStation? = curSt?.let { c ->
             stations.asSequence()
                 .filter { it.norm == StationName.norm(r.stationName) && (StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName)) }
-                .filter { Geo.meters(c.lat, c.lng, it.lat, it.lng) <= NEIGHBOR_RANGE_M }
+                .filter { Geo.meters(c.lat, c.lng, it.lat, it.lng) <= NEIGHBOR_LOOKUP_M }
                 .minByOrNull { Geo.meters(c.lat, c.lng, it.lat, it.lng) }
         }
-        val sorted = all.sortedBy { it.stationOrder }
-        // 바로 아래·위 번호의 역들 (번호가 건너뛰어도 가장 가까운 번호). 같은 번호의 다른 역(다른 가지)은 이웃이 아님
-        val lowOrder = sorted.filter { it.stationOrder < cur.stationOrder }.maxOfOrNull { it.stationOrder }
-        val upOrder = sorted.filter { it.stationOrder > cur.stationOrder }.minOfOrNull { it.stationOrder }
-        val lowers = sorted.filter { it.stationOrder == lowOrder }
-        val uppers = sorted.filter { it.stationOrder == upOrder }
-        val here = curSt?.let { pos(cur) ?: it }
-        val located = (lowers + uppers).all { pos(it) != null }
+        fun meters(a: KricRouteStation, b: KricRouteStation): Double? {
+            val pa = pos(a) ?: return null
+            val pb = pos(b) ?: return null
+            return Geo.meters(pa.lat, pa.lng, pb.lat, pb.lng)
+        }
+        /** 같은 번호의 후보가 여럿이면(같은 가지 안에서는 드묾) 현재 역에서 가까운 쪽 */
+        fun nearestTo(list: List<KricRouteStation>, from: KricRouteStation): KricRouteStation? =
+            list.minByOrNull { meters(from, it) ?: Double.MAX_VALUE }
+
+        val myKey = key(cur)
+        val mine = branches[myKey].orEmpty().sortedBy { it.stationOrder }
         var prev: KricRouteStation?
         var next: KricRouteStation?
-        if (here == null || !located || (lowers.size <= 1 && uppers.size <= 1)) {
-            // 위치를 모르거나 갈림길이 없으면 번호순 그대로
-            prev = lowers.firstOrNull()
-            next = uppers.firstOrNull()
+        if (myKey == mainKey) {
+            val lowOrder = mine.filter { it.stationOrder < cur.stationOrder }.maxOfOrNull { it.stationOrder }
+            val upOrder = mine.filter { it.stationOrder > cur.stationOrder }.minOfOrNull { it.stationOrder }
+            prev = nearestTo(mine.filter { it.stationOrder == lowOrder }, cur)
+            next = nearestTo(mine.filter { it.stationOrder == upOrder }, cur)
         } else {
-            fun dist(r: KricRouteStation) = pos(r)!!.let { Geo.meters(here.lat, here.lng, it.lat, it.lng) }
-            prev = lowers.minByOrNull(::dist)
-            next = uppers.minByOrNull(::dist)
-            if (prev != null && next != null) {
-                val a = pos(prev)!!
-                val b = pos(next)!!
-                val kx = Math.cos(Math.toRadians(here.lat))
-                val ax = (a.lng - here.lng) * kx; val ay = a.lat - here.lat
-                val bx = (b.lng - here.lng) * kx; val by = b.lat - here.lat
-                val cos = (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by)).coerceAtLeast(1e-12)
-                if (cos > 0.5) { if (dist(prev) <= dist(next)) next = null else prev = null }   // 같은 방향: 먼 쪽은 이웃이 아님
-            }
-            // 이웃이 하나뿐인데 목록 끝이 아니면 가지의 끝(처음 역)이라 다음 역 쪽에 둠
-            if (prev != null && next == null && sorted.last() !== cur) { next = prev; prev = null }
+            // 지선: 가지 안 순서대로, 첫 역의 앞은 본선에서 가장 가까운 역
+            val i = mine.indexOf(cur)
+            val main = branches[mainKey].orEmpty()
+            // 갈라지는 곳: 지선 번호 바로 아래·위의 본선 역 중 지선 첫 역에 가까운 쪽 (경의선 신촌 지선은 가좌, 1호선 가산디지털단지 지선은 구로)
+            val below = main.filter { it.stationOrder < mine.first().stationOrder }.maxOfOrNull { it.stationOrder }
+            val above = main.filter { it.stationOrder > mine.last().stationOrder }.minOfOrNull { it.stationOrder }
+            val junction = nearestTo(main.filter { it.stationOrder == below || it.stationOrder == above }, mine.first())
+            prev = mine.getOrNull(i - 1) ?: junction
+            next = mine.getOrNull(i + 1)
         }
+        if (prev != null && (meters(cur, prev) ?: 0.0) > NEIGHBOR_MAX_GAP_M) prev = null
+        if (next != null && (meters(cur, next) ?: 0.0) > NEIGHBOR_MAX_GAP_M) next = null
+        // 지선의 맨 끝 역(경의선 서울역)은 줄기의 처음 역처럼 보이게 이웃(신촌)을 다음 역 쪽에 둠
+        if (myKey != mainKey && prev != null && next == null) { next = prev; prev = null }
         val listed = all.map { StationName.norm(it.stationName) }.toSet()
         val (p, n) = completeNeighbor(group, lineName, prev?.stationName, next?.stationName, listed)
         return Around(p, cur.stationName, n)
@@ -371,6 +380,12 @@ class StationIndex(val stations: List<MetroStation>) {
     companion object {
         /** 노선 띠의 이웃 역을 찾을 때 같은 이름·노선의 역을 이 거리(m) 안에서만 봄 (다른 도시의 같은 호선 이름 제외) */
         private const val NEIGHBOR_RANGE_M = 25_000.0
+
+        /** 이웃 사이 거리를 잴 때 같은 이름의 역을 찾는 범위(m): 서로 이어지지 않는 먼 구간(GTX-A 서울역↔구성)도 거리를 알아야 걸러짐 */
+        private const val NEIGHBOR_LOOKUP_M = 80_000.0
+
+        /** 이웃 역이 이보다 멀면 이어지지 않는 구간으로 봄 (GTX-A 서울역↔구성 약 22km, 노선 안 인접 역 간격은 최대 약 11km) */
+        private const val NEIGHBOR_MAX_GAP_M = 14_000.0
 
         /**
          * 같은 이름의 역을 한 역으로 묶는 거리(m). 표준데이터의 일부 노선(6호선 등) 좌표가 환승역에서 800~1,100m 어긋나 있어서
