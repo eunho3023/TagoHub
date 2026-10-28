@@ -14,6 +14,10 @@ object ArrivalText {
 
     fun line(a: BusArrival, elapsedSec: Int = 0): String {
         val sec = a.arrSeconds?.minus(elapsedSec)?.coerceAtLeast(0)
+        // 이번 정류장이면(0정류장 전) 이미 와 있는 것: "곧 도착 · 이번 정류장" 대신 한 마디로
+        if (a.prevStops == 0 && (sec == null || sec <= 30)) {
+            return listOfNotNull("정류장 도착", a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" }).joinToString(" · ")
+        }
         return listOfNotNull(
             if (a.estimated && sec != null && sec > 30) "약 ${((sec + 30) / 60).coerceAtLeast(1)}분" else time(sec),
             a.prevStops?.let { if (it <= 0) "이번 정류장" else "${it}정류장 전" },

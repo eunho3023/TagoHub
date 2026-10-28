@@ -1401,7 +1401,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val busIndexes = remember(buses, list) { buses.mapNotNull { b -> list.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }.takeIf { it >= 0 } } }
             val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
             val liveOf = { i: Int, s: RouteStop ->
-                if (s.nodeId == d.focusNodeId && focusArrival != null) focusArrival
+                // 버스 위치가 이 정류장이면(이미 와 있음) 도착 예측 API 가 아직 "1정류장 전"이라고 해도 위치를 믿음
+                if (s.nodeId == d.focusNodeId && focusArrival != null && i !in busIndexes) focusArrival
                 else com.eunho.tagohub.data.RouteLive.stopsAway(i, busIndexes)?.let { n ->
                     val from = list[i - n]
                     val mins = if (n > 0) Math.round(TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId)).toInt() else null

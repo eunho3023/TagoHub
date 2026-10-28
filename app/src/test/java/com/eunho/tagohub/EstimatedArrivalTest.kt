@@ -12,7 +12,7 @@ class EstimatedArrivalTest {
     fun estimatedArrivalsShowRoundedMinutesInsteadOfExactSeconds() {
         assertEquals("약 10분 · 7정류장 전", ArrivalText.line(arr(573, 7, estimated = true)))
         assertEquals("약 1분 · 1정류장 전", ArrivalText.line(arr(40, 1, estimated = true)))
-        assertEquals("곧 도착 · 이번 정류장", ArrivalText.line(arr(0, 0, estimated = true)))
+        assertEquals("정류장 도착", ArrivalText.line(arr(0, 0, estimated = true)))
     }
 
     @Test

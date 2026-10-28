@@ -51,6 +51,9 @@ data class StopRouteRow(
     val cityCode: String? = null,
     /** 도착 정보가 없고 지금이 첫차~막차 시간 밖이면 운행종료 */
     val ended: Boolean = false,
+    /** 첫차·막차 (기점 출발 시각). 같은 번호의 변형 노선이 버스 위치를 공유할 때 지금 달리는 노선인지 가리는 데 씀 */
+    val firstTime: String? = null,
+    val lastTime: String? = null,
 )
 
 /** 지금(분)이 첫차~막차 시간 밖인지. 막차가 자정을 넘기면(첫차보다 이르면) 다음 날로 본다 */
@@ -453,7 +456,7 @@ internal fun mergeStopRows(
         // 도착 정보에는 항상 지금 노선 번호가 와서 그걸 먼저 (앱 안 노선 자료가 예전 번호일 수 있음: 경기 707-1 → 1200)
         val live = a.firstOrNull()
         StopRouteRow(r.routeId, live?.routeNo?.takeIf { it.isNotBlank() } ?: r.routeNo, r.routeType ?: live?.routeType, r.startName, r.endName, a,
-            ended = a.isEmpty() && outsideService(r.firstTime, r.lastTime, nowMin))
+            ended = a.isEmpty() && outsideService(r.firstTime, r.lastTime, nowMin), firstTime = r.firstTime, lastTime = r.lastTime)
     }
     val ids = routes.map { it.routeId }.toSet()
     // 경유노선 목록에 없지만 도착정보에는 있는 노선도 놓치지 않게
@@ -575,7 +578,13 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
         // 버스 목록·정류장 순번·저상 여부: 전주시 API (GPS 없음 → 지도에는 안 그리고 패널 목록에만)
         val j = Graph.jeonju.positions(d.routeId)
         if (j is TagoResult.Success) {
-            val buses = JeonjuMappers.buses(j.data) { null }
+            // 전주 API 는 같은 번호 노선(기점·종점이 다른 변형)의 버스를 모두 돌려줘서, 운행이 끝난 변형 노선에도 다른 변형의 버스가 잡힘 → 운행 시각 밖이면 비움
+            val all = JeonjuMappers.buses(j.data) { null }
+            val stopList = d.stops.value.valueOrNull().orEmpty()
+            val info = d.info.value.valueOrNull()
+            val nowMin = LocalTime.now().let { it.hour * 60 + it.minute }
+            val buses = if (stopList.isNotEmpty() && info != null &&
+                !runsNow(info.firstTime, info.lastTime, nowMin, tripMinutes(TripPlanner.Line(d.routeId, d.routeNo, stopList), stopList))) emptyList() else all
             d.buses.value = mergeWithGrace(d, guard(d, buses))
             updateGps(d)
             d.updated.value = LocalTime.now()
