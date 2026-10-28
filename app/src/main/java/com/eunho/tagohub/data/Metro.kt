@@ -50,6 +50,15 @@ data class StationGroup(
     val displayLines: List<String> get() = stations.map { it.displayLine }.distinct()
 
     /**
+     * 이 묶음 안에서 [lineName] 노선의 역. 노선을 모르면 [near] 에서 가장 가까운 역, 그것도 없으면 첫 역.
+     * 환승역은 노선마다 역 위치가 달라서(당산 2·9호선 약 180m) 지도 핀은 평균 좌표가 아니라 이 역의 좌표에 꽂는다.
+     */
+    fun stationOn(lineName: String?, near: Pair<Double, Double>? = null): MetroStation? =
+        lineName?.let { w -> stations.firstOrNull { StationName.sameLine(it.displayLine, w) || StationName.sameLine(it.line, w) } }
+            ?: near?.let { t -> stations.minByOrNull { Geo.meters(t.first, t.second, it.lat, it.lng) } }
+            ?: stations.firstOrNull()
+
+    /**
      * 이 역에서 [lat],[lng] 까지의 거리(m): 노선별 역 중 가장 가까운 곳 기준.
      * 환승역은 [lat]·[lng] 가 노선별 역의 평균이라(당산 2호선·9호선처럼 100m 넘게 떨어진 경우) 중심점으로 재면 실제 역 앞에서도 멀게 나온다.
      */
