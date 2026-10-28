@@ -392,7 +392,15 @@ fun MapScreen(
 
         // ── 하단 패널 ── (imePadding: 키보드가 올라오면 패널도 키보드 위로, 내려가면 다시 아래로)
         val pickedPlace by vm.picked.collectAsStateWithLifecycle()
-        if (!driving) Column(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
+        // 태블릿·폴더블·가로 화면처럼 폭이 넓으면 패널이 화면 전체 폭으로 퍼지지 않게 왼쪽에 폭을 제한해 붙임
+        val wideScreen = maxWidth >= 600.dp
+        if (!driving) Column(
+            Modifier
+                .align(if (wideScreen) Alignment.BottomStart else Alignment.BottomCenter)
+                .then(if (wideScreen) Modifier.widthIn(max = 440.dp) else Modifier)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .imePadding(),
+        ) {
             pickedPlace?.let { PickCard(vm, it) }
             when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
@@ -952,7 +960,11 @@ private val SNAPS = listOf(0.22f, 0.45f, 0.88f, 1.0f)   // 1.0 = 맨 위까지 �
 private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
     val sheet = LocalSheet.current
     val density = LocalDensity.current
-    val heightDp = sheet?.let { with(density) { (it.maxPx * it.frac.floatValue).toDp() } } ?: 340.dp
+    // 가로 화면처럼 세로가 짧으면 비율만으로는 패널이 너무 낮아져서(내용이 안 보임) 최소 높이를 보장 (화면보다 크진 않게)
+    val heightDp = sheet?.let {
+        val full = with(density) { it.maxPx.toDp() }
+        with(density) { (it.maxPx * it.frac.floatValue).toDp() }.coerceAtLeast(minOf(190.dp, full))
+    } ?: 340.dp
     val drag = rememberDraggableState { delta ->
         sheet?.let { it.frac.floatValue = (it.frac.floatValue - delta / it.maxPx).coerceIn(0.15f, 1.0f) }
     }

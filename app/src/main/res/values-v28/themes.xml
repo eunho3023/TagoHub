@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.TagoHub" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- 노치·카메라 구멍이 있는 화면: 가로로 눕혀도 검은 띠 없이 끝까지 그리고, 안쪽 여백은 앱이 인셋으로 처리 -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
