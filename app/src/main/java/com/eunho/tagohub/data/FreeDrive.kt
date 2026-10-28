@@ -82,14 +82,14 @@ class FreeDriveAnnouncer {
         if (a.distance > announceDistance(z)) return null
         if (!said.add(key)) return null
         val limit = z.limitKmh?.takeIf { z.kind.isCamera }?.let { " 제한속도 ${it}킬로미터" }.orEmpty()
-        return "${NavText.distance(a.distance)} 앞 ${z.kind.label}${limit}"
+        return "${NavText.ahead(a.distance)} ${z.kind.label}${limit}"
     }
 
     /** 앞쪽 위험·시설: 알릴 거리 안에 들어왔고 아직 말하지 않았으면 문구 */
     fun speakForHazard(a: FreeDrive.HazardAhead): String? {
         val h = a.hazard
         if (!said.add("h:${h.kind}:${h.id}")) return null
-        return "${NavText.distance(a.distance)} 앞 ${h.name}"
+        return "${NavText.ahead(a.distance)} ${h.name}"
     }
 
     /** 지나간 지점의 기록을 비워 같은 길을 다시 달릴 때 또 말하게 함 */

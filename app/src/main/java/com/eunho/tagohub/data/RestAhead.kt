@@ -59,7 +59,7 @@ class RestTracker(private val stops: List<RestStop>) {
         var speak: String? = null
         val label = RestAhead.root(r.name) + "휴게소"
         if (dist <= RestAhead.ANNOUNCE_M && remainingM - dist > 2000.0 && said.add(r.name)) {
-            speak = "${NavText.distance(dist)} 앞 ${label}입니다."
+            speak = "${NavText.ahead(dist)} ${label}입니다."
         }
         return RestStatus(label, dist, speak)
     }

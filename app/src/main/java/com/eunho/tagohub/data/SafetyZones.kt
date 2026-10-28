@@ -217,7 +217,7 @@ class ZoneTracker(private val zones: List<RouteZone>) {
     }
 
     private fun sentence(z: SafetyZone, dist: Double): String {
-        val lead = "${NavText.distance(dist)} 앞"
+        val lead = NavText.ahead(dist)
         return when (z.kind) {
             ZoneKind.ChildZone -> "$lead 어린이 보호구역입니다. 속도를 줄이세요."
             ZoneKind.SectionCamera -> "$lead 구간단속 구간입니다." + (z.limitKmh?.let { " 제한속도 ${it}킬로미터." } ?: "")

@@ -402,9 +402,10 @@ class NavEngine(private val route: NavRoute) {
     private fun sentence(index: Int, afterIndex: Int?, distance: Double): String {
         val g = route.guides[index]
         val lead = NavText.distance(distance)
-        if (g.isDestination) return "$lead 앞이 목적지입니다."
-        if (g.isWaypoint) return "$lead 앞이 경유지입니다."
-        var text = "$lead 앞, ${TurnKind.text(g)}"
+        val soon = distance <= NavText.SOON_M
+        if (g.isDestination) return if (soon) "잠시 후 목적지입니다." else "$lead 앞이 목적지입니다."
+        if (g.isWaypoint) return if (soon) "잠시 후 경유지입니다." else "$lead 앞이 경유지입니다."
+        var text = if (soon) "잠시 후, ${TurnKind.text(g)}" else "$lead 앞, ${TurnKind.text(g)}"
         // 바로 이어지는 동작(200m 안)은 함께 알려줌
         if (afterIndex != null) {
             val nextG = route.guides[afterIndex]
@@ -431,13 +432,19 @@ class NavEngine(private val route: NavRoute) {
 object NavText {
     /** 말하기 좋은 거리: 1000m 미만은 50m 단위, 이상은 0.5km 단위 → "300미터", "1.5킬로미터" */
     fun distance(meters: Double): String {
-        if (meters < 1000) {
+        if (meters < 975) {
             val m = (meters / 50.0).roundToInt() * 50
             return "${max(m, 50)}미터"
         }
         val km = (meters / 500.0).roundToInt() / 2.0
         return if (abs(km - km.toInt()) < 1e-9) "${km.toInt()}킬로미터" else "${km}킬로미터"
     }
+
+    /** 이 거리 안이면 숫자 대신 "잠시 후"라고 말함 */
+    const val SOON_M = 150.0
+
+    /** 앞쪽 지점까지 말하는 거리: "잠시 후" 또는 "300미터 앞" */
+    fun ahead(meters: Double): String = if (meters <= SOON_M) "잠시 후" else "${distance(meters)} 앞"
 
     /** 화면용: "42km", "850m" */
     fun short(meters: Double): String =

@@ -198,7 +198,14 @@ object KakaoExtra {
     }
 
     /** Kakao Mobility car route; uses the Kakao REST key and the same origin/destination coordinates. */
-    suspend fun drive(a: LatLng, b: LatLng, option: DriveOption = DriveOption.Recommend, vias: List<LatLng> = emptyList()): Pair<String, KakaoDriveRoute?> = withContext(Dispatchers.IO) {
+    suspend fun drive(
+        a: LatLng,
+        b: LatLng,
+        option: DriveOption = DriveOption.Recommend,
+        vias: List<LatLng> = emptyList(),
+        /** 달리는 중이면 가고 있는 방향(도, 북 0). 주면 그 방향으로 출발하는 경로를 줘서 반대 방향·유턴 안내를 막음 */
+        bearing: Double? = null,
+    ): Pair<String, KakaoDriveRoute?> = withContext(Dispatchers.IO) {
         val key = key()
         if (key.isEmpty()) return@withContext "NO_KEY" to null
         runCatching {
@@ -206,7 +213,7 @@ object KakaoExtra {
                 .scheme("https")
                 .host("apis-navi.kakaomobility.com")
                 .addPathSegments("v1/directions")
-                .addQueryParameter("origin", "${a.lng},${a.lat}")
+                .addQueryParameter("origin", "${a.lng},${a.lat}" + (bearing?.let { ",angle=${((it % 360 + 360) % 360).toInt()}" } ?: ""))
                 .addQueryParameter("destination", "${b.lng},${b.lat}")
                 .addQueryParameter("car_fuel", "GASOLINE")
                 .addQueryParameter("car_hipass", "false")
