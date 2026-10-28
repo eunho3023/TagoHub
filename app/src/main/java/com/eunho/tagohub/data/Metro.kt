@@ -256,21 +256,81 @@ class StationIndex(val stations: List<MetroStation>) {
             .minByOrNull { (_, distance) -> distance }
             ?.first
 
+    /** 노선 띠: 이전 역 · 이 역 · 다음 역 */
+    data class Around(val prev: String?, val cur: String, val next: String?)
+
+    /**
+     * KRIC 노선 목록([all], 같은 운영기관·노선)에서 [curCode] 역의 이전·다음 역.
+     * 목록의 순서 번호는 지선이 본선과 같은 번호를 나눠 써서(경의중앙선: 서울역·신촌 지선이 수색·디지털미디어시티 본선과 21·22번을 공유)
+     * 번호순으로 줄 세우면 엉뚱한 역이 이웃이 된다. 그래서 번호가 1 차이 나는 후보 중 위치가 가장 가까운 역을 이웃으로 하고,
+     * 양쪽 이웃이 같은 방향에 있으면(지선의 끝) 먼 쪽은 버린다. 이웃이 하나뿐이면 다음 역 쪽에 두고(처음 역처럼), 목록 맨 끝 역이면 이전 역 쪽에 둔다.
+     * 위치를 모르면 번호순으로 돌아간다. 마지막에 [completeNeighbor] 로 다른 운영기관 구간의 빠진 이웃을 채운다.
+     */
+    fun neighborsOf(group: StationGroup, lineName: String, all: List<KricRouteStation>, curCode: String?): Around? {
+        val cur = all.firstOrNull { it.stationCode == curCode } ?: return null
+        val curSt = group.stations.firstOrNull { StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName) }
+        fun pos(r: KricRouteStation): MetroStation? = curSt?.let { c ->
+            stations.asSequence()
+                .filter { it.norm == StationName.norm(r.stationName) && (StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName)) }
+                .filter { Geo.meters(c.lat, c.lng, it.lat, it.lng) <= NEIGHBOR_RANGE_M }
+                .minByOrNull { Geo.meters(c.lat, c.lng, it.lat, it.lng) }
+        }
+        val sorted = all.sortedBy { it.stationOrder }
+        // 바로 아래·위 번호의 역들 (번호가 건너뛰어도 가장 가까운 번호). 같은 번호의 다른 역(다른 가지)은 이웃이 아님
+        val lowOrder = sorted.filter { it.stationOrder < cur.stationOrder }.maxOfOrNull { it.stationOrder }
+        val upOrder = sorted.filter { it.stationOrder > cur.stationOrder }.minOfOrNull { it.stationOrder }
+        val lowers = sorted.filter { it.stationOrder == lowOrder }
+        val uppers = sorted.filter { it.stationOrder == upOrder }
+        val here = curSt?.let { pos(cur) ?: it }
+        val located = (lowers + uppers).all { pos(it) != null }
+        var prev: KricRouteStation?
+        var next: KricRouteStation?
+        if (here == null || !located || (lowers.size <= 1 && uppers.size <= 1)) {
+            // 위치를 모르거나 갈림길이 없으면 번호순 그대로
+            prev = lowers.firstOrNull()
+            next = uppers.firstOrNull()
+        } else {
+            fun dist(r: KricRouteStation) = pos(r)!!.let { Geo.meters(here.lat, here.lng, it.lat, it.lng) }
+            prev = lowers.minByOrNull(::dist)
+            next = uppers.minByOrNull(::dist)
+            if (prev != null && next != null) {
+                val a = pos(prev)!!
+                val b = pos(next)!!
+                val kx = Math.cos(Math.toRadians(here.lat))
+                val ax = (a.lng - here.lng) * kx; val ay = a.lat - here.lat
+                val bx = (b.lng - here.lng) * kx; val by = b.lat - here.lat
+                val cos = (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by)).coerceAtLeast(1e-12)
+                if (cos > 0.5) { if (dist(prev) <= dist(next)) next = null else prev = null }   // 같은 방향: 먼 쪽은 이웃이 아님
+            }
+            // 이웃이 하나뿐인데 목록 끝이 아니면 가지의 끝(처음 역)이라 다음 역 쪽에 둠
+            if (prev != null && next == null && sorted.last() !== cur) { next = prev; prev = null }
+        }
+        val listed = all.map { StationName.norm(it.stationName) }.toSet()
+        val (p, n) = completeNeighbor(group, lineName, prev?.stationName, next?.stationName, listed)
+        return Around(p, cur.stationName, n)
+    }
+
     /**
      * 노선 띠의 이전·다음 역 중 한쪽이 비었을 때(KRIC 노선 목록이 운영 구간에서 끊기는 역: 서울교통공사 1호선의 서울역은 코레일 쪽 목록이 없어 다음 역이 비었음)
      * 표준데이터의 같은 노선 역 위치로 빠진 쪽 이웃을 채운다: 알려진 이웃의 반대 방향에서 가장 가까운 같은 노선 역.
+     * [listed] 에 든 역(KRIC 목록에 이미 있는 같은 운영기관 역)은 후보에서 뺀다 — 목록에 있는데 이웃이 아니라면 진짜 이웃이 아님(경의중앙선 서울역 ↔ 용산).
      * 그쪽에 역이 없으면(진짜 종점) 비운 채로 둔다. 둘 다 비었거나 둘 다 있으면 그대로.
      */
-    fun completeNeighbor(group: StationGroup, lineName: String, prev: String?, next: String?): Pair<String?, String?> {
+    fun completeNeighbor(group: StationGroup, lineName: String, prev: String?, next: String?, listed: Set<String> = emptySet()): Pair<String?, String?> {
         if ((prev == null) == (next == null)) return prev to next
-        val onLine = stations.filter { StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName) }
-        val cur = group.stations.firstOrNull { it in onLine } ?: return prev to next
-        val known = onLine.firstOrNull { it.norm == StationName.norm((prev ?: next)!!) } ?: return prev to next
+        val cur = group.stations.firstOrNull { StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName) } ?: return prev to next
+        // 노선 이름 비교는 도시 접두사("인천1호선"·"부산1호선")를 떼서 다른 도시의 같은 호선이 섞이므로 가까운 역만 봄
+        val onLine = stations.filter {
+            (StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName)) &&
+                Geo.meters(cur.lat, cur.lng, it.lat, it.lng) <= NEIGHBOR_RANGE_M
+        }
+        val knownName = StationName.norm((prev ?: next)!!)
+        val known = onLine.filter { it.norm == knownName }.minByOrNull { Geo.meters(cur.lat, cur.lng, it.lat, it.lng) } ?: return prev to next
         val kx = 111_000.0 * Math.cos(Math.toRadians(cur.lat))
         val vx = (cur.lng - known.lng) * kx
         val vy = (cur.lat - known.lat) * 111_000.0
         val far = onLine.asSequence()
-            .filter { it.norm != cur.norm && it.norm != known.norm }
+            .filter { it.norm != cur.norm && it.norm != known.norm && it.norm !in listed }
             .filter { c -> (c.lng - cur.lng) * kx * vx + (c.lat - cur.lat) * 111_000.0 * vy > 0 }   // 알려진 이웃의 반대쪽
             .map { it to Geo.meters(cur.lat, cur.lng, it.lat, it.lng) }
             .filter { it.second <= 5_000.0 }
@@ -309,6 +369,9 @@ class StationIndex(val stations: List<MetroStation>) {
     }
 
     companion object {
+        /** 노선 띠의 이웃 역을 찾을 때 같은 이름·노선의 역을 이 거리(m) 안에서만 봄 (다른 도시의 같은 호선 이름 제외) */
+        private const val NEIGHBOR_RANGE_M = 25_000.0
+
         /**
          * 같은 이름의 역을 한 역으로 묶는 거리(m). 표준데이터의 일부 노선(6호선 등) 좌표가 환승역에서 800~1,100m 어긋나 있어서
          * (약수·신당·합정·삼각지 …) 500m 로는 환승역이 둘로 갈라져 한 노선만 보였음. 다른 도시의 같은 이름 역은 수 km 이상 떨어져 있어 안전.

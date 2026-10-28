@@ -1750,9 +1750,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         openStation(g, line)
     }
 
-    /** 노선 띠의 이전·다음 역 중 빈 쪽을 표준데이터의 같은 노선 역으로 채움 */
-    fun fillNeighbors(g: StationGroup, line: String, prev: String?, next: String?): Pair<String?, String?> =
-        index?.completeNeighbor(g, line, prev, next) ?: (prev to next)
+    /** 노선 띠의 이전·다음 역: 지선이 있는 노선도 위치로 맞게, 운영기관 구간이 끊긴 쪽은 표준데이터로 채움 */
+    fun neighborsOf(g: StationGroup, line: String, all: List<com.eunho.tagohub.data.KricRouteStation>, code: String?): StationIndex.Around? =
+        index?.neighborsOf(g, line, all, code)
 
     /** 환승역에서 눌린 노선: POI 이름에 노선이 들어 있으면 그 노선, 아니면 눌린 곳에서 가장 가까운 노선의 역 */
     private fun tappedLine(g: StationGroup, name: String, lat: Double, lng: Double): String? {

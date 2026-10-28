@@ -74,6 +74,7 @@ import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoTime
 import com.eunho.tagohub.data.ExitInfo
 import com.eunho.tagohub.data.KricRouteStation
+import com.eunho.tagohub.data.StationIndex
 import com.eunho.tagohub.data.KricTrainStop
 import com.eunho.tagohub.data.SeoulLines
 import com.eunho.tagohub.data.SubwayArrival
@@ -110,8 +111,8 @@ fun StationDetailPanel(
     onRailJump: ((Boolean) -> Unit)? = null,
     /** 노선 띠의 이전·다음 역 이름을 누르면 그 역으로 */
     onStationName: ((String) -> Unit)? = null,
-    /** 노선 띠에서 이전·다음 역이 비면(노선 목록이 운영 구간에서 끊긴 역) 채워 줌: (노선, 이전, 다음) → (이전, 다음) */
-    neighborFill: ((String, String?, String?) -> Pair<String?, String?>)? = null,
+    /** 노선 띠의 이전·다음 역을 찾는 방법: (노선, 노선 역 목록, 이 역 코드) → 이전·이 역·다음. 없으면 목록 번호순 */
+    neighborResolver: ((String, List<KricRouteStation>, String?) -> StationIndex.Around?)? = null,
     /** ★ 자주 가는 곳에 넣기 */
     favorite: Boolean = false,
     onFavorite: (() -> Unit)? = null,
@@ -119,7 +120,7 @@ fun StationDetailPanel(
     val base = MaterialTheme.typography
     val smaller = remember(base) { base.scaled(0.92f) }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = smaller) {
-        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName, neighborFill, favorite, onFavorite)
+        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName, neighborResolver, favorite, onFavorite)
     }
 }
 
@@ -154,7 +155,7 @@ private fun StationDetailBody(
     railStationName: String? = null,
     onRailJump: ((Boolean) -> Unit)? = null,
     onStationName: ((String) -> Unit)? = null,
-    neighborFill: ((String, String?, String?) -> Pair<String?, String?>)? = null,
+    neighborResolver: ((String, List<KricRouteStation>, String?) -> StationIndex.Around?)? = null,
     favorite: Boolean = false,
     onFavorite: (() -> Unit)? = null,
 ) {
@@ -174,10 +175,14 @@ private fun StationDetailBody(
     LaunchedEffect(selectedLine?.id) {
         if (selectedLine != null && d.kricRoute.value is Load.Idle) c.loadKricRoute(d)
     }
-    val neighbors = remember(route, codes) {
-        (route as? Load.Ok)?.value?.sortedBy { it.stationOrder }?.let { all ->
-            val i = all.indexOfFirst { it.stationCode == codes?.stationCode }
-            if (i >= 0) Triple(all.getOrNull(i - 1)?.stationName, all[i].stationName, all.getOrNull(i + 1)?.stationName) else null
+    val neighbors = remember(route, codes, selectedLine?.routeName) {
+        (route as? Load.Ok)?.value?.let { list ->
+            // 갈림길(지선)이 있는 노선은 번호순으로 줄 세우면 엉뚱한 역이 이웃이 되므로 위치로 찾음
+            neighborResolver?.invoke(selectedLine?.routeName ?: lines.first(), list, codes?.stationCode)?.let { Triple(it.prev, it.cur, it.next) }
+                ?: list.sortedBy { it.stationOrder }.let { all ->
+                    val i = all.indexOfFirst { it.stationCode == codes?.stationCode }
+                    if (i >= 0) Triple(all.getOrNull(i - 1)?.stationName, all[i].stationName, all.getOrNull(i + 1)?.stationName) else null
+                }
         }
     }
     val stripColor = subwayLineColor(selectedLine?.routeName ?: lines.first())
@@ -232,9 +237,7 @@ private fun StationDetailBody(
             }
         }
         // 노선 띠: 이전 역 ‹  [ 이 역 ]  › 다음 역
-        neighbors?.let { (prev0, cur, next0) ->
-            // 노선 목록이 이 역에서 끊긴 경우(예: 1호선 서울역 → 코레일 구간) 빠진 쪽 이웃 역을 채움
-            val (prev, next) = neighborFill?.invoke(selectedLine?.routeName ?: lines.first(), prev0, next0) ?: (prev0 to next0)
+        neighbors?.let { (prev, cur, next) ->
             Box(
                 Modifier
                     .fillMaxWidth()
