@@ -28,16 +28,28 @@ class RouteLiveTest {
 class PreferPositionTest {
     @Test
     fun positionWinsWhenTheBusIsAlreadyHereOrMuchNearerThanTheArrivalApiSays() {
-        assertEquals(true, RouteLive.preferPosition(1, 0))      // 이미 와 있는데 API 는 1정류장 전
-        assertEquals(true, RouteLive.preferPosition(7, 3))      // 74번 풍남중: API 7정류장 전, 위치엔 3정류장 앞에 버스
-        assertEquals(true, RouteLive.preferPosition(null, 5))   // API 에 값이 없음
+        assertEquals(true, RouteLive.preferPosition(1, listOf(0)))          // 이미 와 있는데 API 는 1정류장 전
+        assertEquals(true, RouteLive.preferPosition(7, listOf(3)))          // 74번 풍남중: API 7정류장 전, 위치엔 3정류장 앞에 버스
+        assertEquals(true, RouteLive.preferPosition(null, listOf(5)))       // API 에 값이 없음
     }
 
     @Test
-    fun smallDifferencesAreTheSameBusCountedSlightlyDifferently() {
-        assertEquals(false, RouteLive.preferPosition(3, 2))
-        assertEquals(false, RouteLive.preferPosition(3, 1))
-        assertEquals(false, RouteLive.preferPosition(5, null))  // 위치에 오는 버스가 없음
-        assertEquals(false, RouteLive.preferPosition(2, 6))     // 위치가 더 멀면 도착정보
+    fun aNearerBusIsExtraWhenAnotherBusSitsWhereTheApiSaysItIs() {
+        // 2번 노선 풍남중: API 5정류장 전, 위치엔 3정류장·5정류장 전 버스가 있음 → 3정류장 전 버스는 API 가 빠뜨린 것
+        assertEquals(true, RouteLive.preferPosition(5, listOf(3, 5, 12)))
+        assertEquals(true, RouteLive.preferPosition(5, listOf(3, 6)))
+    }
+
+    @Test
+    fun smallDifferencesWithoutASecondBusAreTheSameBusCountedDifferently() {
+        assertEquals(false, RouteLive.preferPosition(5, listOf(3)))
+        assertEquals(false, RouteLive.preferPosition(3, listOf(2)))
+        assertEquals(false, RouteLive.preferPosition(5, emptyList()))       // 위치에 오는 버스가 없음
+        assertEquals(false, RouteLive.preferPosition(2, listOf(6)))         // 위치가 더 멀면 도착정보
+    }
+
+    @Test
+    fun allAwayListsEveryBusBehindTheStopNearestFirst() {
+        assertEquals(listOf(0, 2, 7), RouteLive.allAway(10, listOf(3, 10, 8, 12)))
     }
 }
