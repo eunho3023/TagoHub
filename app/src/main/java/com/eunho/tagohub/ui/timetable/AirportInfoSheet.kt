@@ -74,14 +74,7 @@ fun AirportInfoSheet(initial: String?, onDismiss: () -> Unit) {
             }
             LiveSection(live) { refresh++ }
 
-            Section("시설") {
-                a.facility["주 활주로 규격(미터)"]?.let { Line("주 활주로", "$it m") }
-                a.facility["보조 활주로 규격(미터)"]?.let { Line("보조 활주로", "$it m") }
-                a.facility["연간처리능력(회)"]?.let { Line("연간 처리능력", "$it 회") }
-                a.facility["25년 활용률(퍼센트)"]?.let { Line("25년 활용률", "$it%") }
-                a.facility["슬롯"]?.let { Line("슬롯", it) }
-                a.facility["비고"]?.let { Line("관리", it) }
-                a.parking["동시주차능력(대)"]?.let { Line("주차장 동시 주차", "$it 대") }
+            if (a.counters.isNotEmpty()) Section("체크인") {
                 a.counters.forEach { (kind, c) ->
                     val parts = listOfNotNull(c["카운터"]?.let { "카운터 $it" }, c["발권데스크"]?.let { "발권데스크 $it" }, c["셀프체크인 키오스크"]?.let { "셀프체크인 $it" })
                     if (parts.isNotEmpty()) Line("$kind 청사", parts.joinToString(" · "))
