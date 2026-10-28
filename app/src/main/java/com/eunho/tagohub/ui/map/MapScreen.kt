@@ -416,6 +416,7 @@ fun MapScreen(
                             onArrivalClick = { a -> vm.showArrivalPath(d.group, a) },
                             onUseStation = { asOrigin -> vm.useStationAs(d.group, asOrigin) },
                             onStationName = { n -> vm.stationGroupNear(n, d.group)?.let { vm.focusStation(it) } },
+                            neighborFill = { line, p, n -> vm.fillNeighbors(d.group, line, p, n) },
                             favorite = favs.any { it.kind == Favorite.Kind.Station && it.id == d.group.id },
                             onFavorite = { vm.toggleFavorite(Favorite.of(d.group)) },
                             railStationName = railName,
@@ -888,9 +889,11 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 IconButton(onClick = vm::closePick) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
             Row(Modifier.padding(top = 6.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { vm.usePicked(asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("여기서 출발") }
-                OutlinedButton(onClick = vm::usePickedAsVia, modifier = Modifier.weight(1f)) { Text("경유지로") }
-                Button(onClick = { vm.usePicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("여기로 도착") }
+                // 버튼 이름이 두 줄로 꺾이지 않게 한 줄로 (자리가 모자라면 글자를 줄임)
+                val tight = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                OutlinedButton(onClick = { vm.usePicked(asOrigin = true) }, modifier = Modifier.weight(1f), contentPadding = tight) { com.eunho.tagohub.ui.common.FitText("여기서 출발", maxSizeSp = 15f) }
+                OutlinedButton(onClick = vm::usePickedAsVia, modifier = Modifier.weight(1f), contentPadding = tight) { com.eunho.tagohub.ui.common.FitText("경유지로", maxSizeSp = 15f) }
+                Button(onClick = { vm.usePicked(asOrigin = false) }, modifier = Modifier.weight(1f), contentPadding = tight) { com.eunho.tagohub.ui.common.FitText("여기로 도착", maxSizeSp = 15f) }
             }
             Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
@@ -916,8 +919,8 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
             // 기차역·터미널·공항: 그 시간표의 출발지·도착지로
             p.kind?.let { k ->
                 Row(Modifier.padding(top = 4.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.jumpPicked(asOrigin = true) }, modifier = Modifier.weight(1f)) { Text("${k.label} 출발") }
-                    OutlinedButton(onClick = { vm.jumpPicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { Text("${k.label} 도착") }
+                    OutlinedButton(onClick = { vm.jumpPicked(asOrigin = true) }, modifier = Modifier.weight(1f)) { com.eunho.tagohub.ui.common.FitText("${k.label} 출발", maxSizeSp = 15f) }
+                    OutlinedButton(onClick = { vm.jumpPicked(asOrigin = false) }, modifier = Modifier.weight(1f)) { com.eunho.tagohub.ui.common.FitText("${k.label} 도착", maxSizeSp = 15f) }
                 }
             }
         }

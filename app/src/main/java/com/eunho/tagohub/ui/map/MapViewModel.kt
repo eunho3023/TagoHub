@@ -790,7 +790,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val near = (dbStops + cachedStops).distinctBy { it.nodeId }
             val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
             // 이름 없이 역 아이콘만 눌렀을 때도(이름이 비면 이름 매칭이 안 됨) 바로 앞(80m)에 있는 역이면 그 역
-            val station = index?.matchPoi(name, lat, lng) ?: if (name.isBlank()) index?.nearestGroup(lat, lng) else null
+            val nameSaysBus = name.contains("정류") || name.contains("버스")
+            val station = index?.matchPoi(name, lat, lng)
+                ?: if (nameSaysBus) null else index?.nearestGroup(lat, lng, if (name.isBlank()) 80.0 else 40.0)
             val stopDistance = stop?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat ?: lat, it.lng ?: lng) }
             // 환승역은 중심점이 아니라 노선별 역 중 가까운 곳으로 잼 (중심점으로 재면 실제 역 앞에서도 근처 정류장이 이겼음)
             val stationDistance = station?.distanceTo(lat, lng)
@@ -817,7 +819,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 closePick()
-                focusStation(station, at = lat to lng)
+                focusStation(station, at = lat to lng, line = tappedLine(station, name, lat, lng))
                 return@launch
             }
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
@@ -1558,8 +1560,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         focusStation(g)
     }
 
-    private fun openStation(g: StationGroup) {
-        if (station.value?.group?.id != g.id) station.value = stations.open(g)
+    private fun openStation(g: StationGroup, line: String? = null) {
+        val existing = station.value?.takeIf { it.group.id == g.id }
+        if (existing == null) station.value = stations.open(g).also { it.preferLine = line }
+        else if (line != null) {
+            existing.preferLine = line
+            (existing.tagoLines.value as? Load.Ok)?.value?.firstOrNull { com.eunho.tagohub.data.StationName.sameLine(it.routeName, line) }
+                ?.let { stations.selectLine(existing, it) }
+        }
         panel.value = MapPanel.Station
         pushSelectedStation()
     }
@@ -1732,11 +1740,25 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 노선도에서 누른 역이 속한 역 묶음 */
     fun groupOfMetro(s: com.eunho.tagohub.data.MetroStation): StationGroup? = index?.groupIdOf(s)?.let { index?.group(it) }
 
-    fun focusStation(g: StationGroup, at: Pair<Double, Double>? = null) {
+    /**
+     * [line] 이 있으면(환승역에서 그 노선의 역을 눌렀을 때) 그 노선으로 연다.
+     */
+    fun focusStation(g: StationGroup, at: Pair<Double, Double>? = null, line: String? = null) {
         if (canvas == null) pendingFocus = g.lat to g.lng
         tappedPin = at
         if (at == null) canvas?.focus(g.lat, g.lng)
-        openStation(g)
+        openStation(g, line)
+    }
+
+    /** 노선 띠의 이전·다음 역 중 빈 쪽을 표준데이터의 같은 노선 역으로 채움 */
+    fun fillNeighbors(g: StationGroup, line: String, prev: String?, next: String?): Pair<String?, String?> =
+        index?.completeNeighbor(g, line, prev, next) ?: (prev to next)
+
+    /** 환승역에서 눌린 노선: POI 이름에 노선이 들어 있으면 그 노선, 아니면 눌린 곳에서 가장 가까운 노선의 역 */
+    private fun tappedLine(g: StationGroup, name: String, lat: Double, lng: Double): String? {
+        if (g.stations.size < 2) return null
+        g.stations.firstOrNull { name.contains(it.displayLine) || name.contains(it.line) }?.let { return it.displayLine }
+        return g.stations.minByOrNull { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) }?.displayLine
     }
 
     // ───────────────────────── 사용자 동작 ─────────────────────────
