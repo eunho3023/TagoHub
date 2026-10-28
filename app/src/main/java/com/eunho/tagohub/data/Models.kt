@@ -48,6 +48,8 @@ data class BusArrival(
     val towards: String? = null,
     /** 도착 예측 API 가 아니라 버스 위치로 어림한 값 (그러면 "약 5분"으로 표시) */
     val estimated: Boolean = false,
+    /** 위치로 어림한 경우, 이 정류장 앞쪽에 달리는 모든 버스의 정류장 수(가까운 순). 도착정보의 버스가 그중 어느 것인지 가려내는 데 씀 */
+    val behind: List<Int> = emptyList(),
 )
 
 data class RouteStop(

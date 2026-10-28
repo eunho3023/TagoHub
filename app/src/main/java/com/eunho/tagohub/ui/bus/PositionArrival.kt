@@ -86,6 +86,7 @@ internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: S
     return BusArrival(
         routeId = row.routeId, routeNo = row.routeNo, routeType = row.routeType,
         vehicleType = null, prevStops = away, arrSeconds = seconds, estimated = true,
+        behind = RouteLive.allAway(target, busIdx),
     )
 }
 
@@ -125,9 +126,10 @@ internal suspend fun fillFromPositions(
         val pos = found[r.routeId] ?: return@map r
         when {
             r.arrivals.isEmpty() -> r.copy(arrivals = listOf(pos))
-            pos.prevStops == 0 -> r.copy(arrivals = listOf(r.arrivals.first().copy(prevStops = 0, arrSeconds = 0)) + r.arrivals.drop(1))
+            // 도착정보의 첫 버스가 바로 앞(1정류장 이내)인데 위치상 이미 와 있으면 같은 버스: 도착으로 고침 (더 먼 버스면 다른 버스라 아래에서 끼움)
+            pos.prevStops == 0 && (r.arrivals.first().prevStops ?: 0) <= 1 -> r.copy(arrivals = listOf(r.arrivals.first().copy(prevStops = 0, arrSeconds = 0)) + r.arrivals.drop(1))
             // 위치에는 훨씬 가까운 버스가 보이는데 도착정보에는 없음(도착 예측 API 가 일부 버스만 줌): 그 버스를 맨 앞에 끼움
-            RouteLive.preferPosition(r.arrivals.first().prevStops, pos.prevStops) -> r.copy(arrivals = (listOf(pos) + r.arrivals).take(2))
+            RouteLive.preferPosition(r.arrivals.first().prevStops, pos.behind) -> r.copy(arrivals = (listOf(pos) + r.arrivals).take(2))
             else -> r
         }
     }
