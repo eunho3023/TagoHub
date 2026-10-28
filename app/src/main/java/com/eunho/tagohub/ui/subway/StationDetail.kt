@@ -91,6 +91,9 @@ class StationDetail(val group: StationGroup) {
     val exits = MutableStateFlow<Load<List<ExitInfo>>>(Load.Idle)
     val facilities = MutableStateFlow<List<StationFacility>>(emptyList())
 
+    /** 지도에서 이 노선의 역을 눌러 열었으면 노선 목록이 오면 이 노선을 먼저 고름 (환승역에서 누른 노선 그대로) */
+    @Volatile var preferLine: String? = null
+
     internal var scheduleJob: Job? = null
     internal var kricTimetableJob: Job? = null
     internal var kricRouteJob: Job? = null
@@ -157,7 +160,8 @@ class StationDetailController(
             )
         }
         d.tagoLines.value = Load.Ok(list)
-        list.firstOrNull()?.let { selectLine(d, it) }
+        val preferred = d.preferLine?.let { p -> list.firstOrNull { com.eunho.tagohub.data.StationName.sameLine(it.routeName, p) } }
+        (preferred ?: list.firstOrNull())?.let { selectLine(d, it) }
     }
 
     fun setTab(d: StationDetail, t: StationTab) {

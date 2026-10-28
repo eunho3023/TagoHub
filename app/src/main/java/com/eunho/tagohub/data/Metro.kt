@@ -256,6 +256,29 @@ class StationIndex(val stations: List<MetroStation>) {
             .minByOrNull { (_, distance) -> distance }
             ?.first
 
+    /**
+     * 노선 띠의 이전·다음 역 중 한쪽이 비었을 때(KRIC 노선 목록이 운영 구간에서 끊기는 역: 서울교통공사 1호선의 서울역은 코레일 쪽 목록이 없어 다음 역이 비었음)
+     * 표준데이터의 같은 노선 역 위치로 빠진 쪽 이웃을 채운다: 알려진 이웃의 반대 방향에서 가장 가까운 같은 노선 역.
+     * 그쪽에 역이 없으면(진짜 종점) 비운 채로 둔다. 둘 다 비었거나 둘 다 있으면 그대로.
+     */
+    fun completeNeighbor(group: StationGroup, lineName: String, prev: String?, next: String?): Pair<String?, String?> {
+        if ((prev == null) == (next == null)) return prev to next
+        val onLine = stations.filter { StationName.sameLine(it.line, lineName) || StationName.sameLine(it.displayLine, lineName) }
+        val cur = group.stations.firstOrNull { it in onLine } ?: return prev to next
+        val known = onLine.firstOrNull { it.norm == StationName.norm((prev ?: next)!!) } ?: return prev to next
+        val kx = 111_000.0 * Math.cos(Math.toRadians(cur.lat))
+        val vx = (cur.lng - known.lng) * kx
+        val vy = (cur.lat - known.lat) * 111_000.0
+        val far = onLine.asSequence()
+            .filter { it.norm != cur.norm && it.norm != known.norm }
+            .filter { c -> (c.lng - cur.lng) * kx * vx + (c.lat - cur.lat) * 111_000.0 * vy > 0 }   // 알려진 이웃의 반대쪽
+            .map { it to Geo.meters(cur.lat, cur.lng, it.lat, it.lng) }
+            .filter { it.second <= 5_000.0 }
+            .minByOrNull { it.second }?.first ?: return prev to next
+        val label = far.name.substringBefore('(').trim()
+        return if (prev == null) label to next else prev to label
+    }
+
     /** 이름 없이 역 아이콘만 눌렀을 때: [maxDistanceM] 안에서 가장 가까운 역 */
     fun nearestGroup(lat: Double, lng: Double, maxDistanceM: Double = 80.0): StationGroup? =
         groups.asSequence()

@@ -110,6 +110,8 @@ fun StationDetailPanel(
     onRailJump: ((Boolean) -> Unit)? = null,
     /** 노선 띠의 이전·다음 역 이름을 누르면 그 역으로 */
     onStationName: ((String) -> Unit)? = null,
+    /** 노선 띠에서 이전·다음 역이 비면(노선 목록이 운영 구간에서 끊긴 역) 채워 줌: (노선, 이전, 다음) → (이전, 다음) */
+    neighborFill: ((String, String?, String?) -> Pair<String?, String?>)? = null,
     /** ★ 자주 가는 곳에 넣기 */
     favorite: Boolean = false,
     onFavorite: (() -> Unit)? = null,
@@ -117,7 +119,7 @@ fun StationDetailPanel(
     val base = MaterialTheme.typography
     val smaller = remember(base) { base.scaled(0.92f) }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = smaller) {
-        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName, favorite, onFavorite)
+        StationDetailBody(d, c, onClose, refreshKey, onArrivalClick, onUseStation, railStationName, onRailJump, onStationName, neighborFill, favorite, onFavorite)
     }
 }
 
@@ -152,6 +154,7 @@ private fun StationDetailBody(
     railStationName: String? = null,
     onRailJump: ((Boolean) -> Unit)? = null,
     onStationName: ((String) -> Unit)? = null,
+    neighborFill: ((String, String?, String?) -> Pair<String?, String?>)? = null,
     favorite: Boolean = false,
     onFavorite: (() -> Unit)? = null,
 ) {
@@ -189,24 +192,26 @@ private fun StationDetailBody(
                 }
             }
             // 호선 알약: 한 줄에 2개씩. 여러 노선이 서는 역이면 누르는 노선으로 넘어가고, 고른 노선은 또렷하게
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.weight(1.4f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 lines.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { name ->
                             val option = tagoOptions.firstOrNull { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) }
                             val chosen = selectedLine?.let { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) } == true
                             val dim = lines.size > 1 && selectedLine != null && !chosen
-                            Text(
+                            // 알약 한 개가 줄의 절반 폭: 이름이 길면("경의중앙선", "GTX-A") 잘리지 않게 글자를 줄여 끝까지 보임
+                            com.eunho.tagohub.ui.common.FitText(
                                 name,
                                 Modifier
+                                    .weight(1f, fill = false)
                                     .background(subwayLineColor(name).copy(alpha = if (dim) 0.55f else 1f), CircleShape)
                                     .then(if (chosen && lines.size > 1) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
                                     .then(if (option != null && !chosen) Modifier.clickable { c.selectLine(d, option) } else Modifier)
-                                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
                                 color = Color.White,
-                                style = MaterialTheme.typography.titleSmall,
+                                maxSizeSp = 14f,
+                                minSizeSp = 9f,
                                 fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
                             )
                         }
                     }
@@ -227,7 +232,9 @@ private fun StationDetailBody(
             }
         }
         // 노선 띠: 이전 역 ‹  [ 이 역 ]  › 다음 역
-        neighbors?.let { (prev, cur, next) ->
+        neighbors?.let { (prev0, cur, next0) ->
+            // 노선 목록이 이 역에서 끊긴 경우(예: 1호선 서울역 → 코레일 구간) 빠진 쪽 이웃 역을 채움
+            val (prev, next) = neighborFill?.invoke(selectedLine?.routeName ?: lines.first(), prev0, next0) ?: (prev0 to next0)
             Box(
                 Modifier
                     .fillMaxWidth()
