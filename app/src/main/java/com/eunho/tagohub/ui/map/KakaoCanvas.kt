@@ -89,6 +89,7 @@ class KakaoCanvas(
     private val uticSafetyLabels = ArrayList<Label>()
     private val itsCctvLabels = ArrayList<Label>()
     private val itsRoadLabels = ArrayList<Label>()
+    private val itsRoadLines = ArrayList<RouteLine>()
     private val stationLabels = HashMap<String, Label>()
     private val routeLines = ArrayList<RouteLine>()
     private val routeLabels = ArrayList<Label>()
@@ -167,6 +168,7 @@ class KakaoCanvas(
         }
         km.routeLineManager?.addLayer(ROUTE_LAYER, 10)
         km.routeLineManager?.addLayer(TRIP_LAYER, 5)
+        km.routeLineManager?.addLayer(ITS_FLOW_LAYER, 4)
         km.setOnCameraMoveEndListener { _, position, _ ->
             main.post {
                 // 방위표시: 지도가 북쪽에서 조금이라도 돌아갔을 때만 (각도가 라디안·도 어느 쪽이어도 0.01 넘으면)
@@ -389,10 +391,20 @@ class KakaoCanvas(
     private fun drawItsRoadFeatures() {
         itsRoadLabels.forEach { runCatching { it.remove() } }
         itsRoadLabels.clear()
-        registerMarkers(ITS_ROAD_LAYER, itsRoadFeatures.map { MarkerInfo(ITS_ROAD_LAYER, it.id, it.title, it.lat, it.lng) })
-        if (itsRoadFeatures.isEmpty()) return
+        itsRoadLines.forEach { runCatching { it.remove() } }
+        itsRoadLines.clear()
+        // 선으로 그리는 것(고속도로 소통)은 도로 위에 소통등급 색 선, 나머지는 점·배지
+        val (lineFeatures, pointFeatures) = itsRoadFeatures.partition { it.path != null && it.path.size >= 2 }
+        registerMarkers(ITS_ROAD_LAYER, pointFeatures.map { MarkerInfo(ITS_ROAD_LAYER, it.id, it.title, it.lat, it.lng) })
+        map?.routeLineManager?.getLayer(ITS_FLOW_LAYER)?.let { lineLayer ->
+            lineFeatures.forEach { f ->
+                val color = when (f.id.split(':').getOrNull(1)) { "3" -> 0xFFD32F2F.toInt(); "2" -> 0xFFF9A825.toInt(); else -> 0xFF2E9E4F.toInt() }
+                add(lineLayer, f.path!!, RouteLineStyles.from(RouteLineStyle.from(5f, color, 1f, Color.WHITE)))?.let { itsRoadLines += it }
+            }
+        }
+        if (pointFeatures.isEmpty()) return
         val l = layer(ITS_ROAD_LAYER) ?: return
-        itsRoadFeatures.forEach { feature ->
+        pointFeatures.forEach { feature ->
             // 고속도로 소통은 등급(id 의 두 번째 칸)마다 색이 다른 점
             val flowGrade = if (feature.layer == "ex_flow") feature.id.split(':').getOrNull(1) else null
             val st = styles("itsRoad:${feature.layer}${flowGrade.orEmpty()}") {
@@ -836,6 +848,7 @@ class KakaoCanvas(
         private const val STATION_LAYER = "stations"
         private const val ROUTE_PIN_LAYER = "routePins"
         private const val TRIP_LAYER = "trip"
+        private const val ITS_FLOW_LAYER = "itsFlowLines"
         private const val BUS_LAYER = "buses"
         private const val KLID_BUS_LAYER = "klidBuses"
         private const val TRAIN_LAYER = "trains"
