@@ -286,7 +286,7 @@ class DriveGuidanceService : Service() {
         if (st.remainingMeters < RouteCompare.MIN_REMAINING_M) return
         if (lastSuggestAt != 0L && now - lastSuggestAt < SUGGEST_COOLDOWN_MS) return
         val dest = DriveGuidance.destination ?: return
-        val (_, fresh) = KakaoExtra.drive(LatLng(lastLat, lastLng), dest, DriveGuidance.option, DriveGuidance.vias)
+        val (_, fresh) = KakaoExtra.drive(LatLng(lastLat, lastLng), dest, DriveGuidance.option, DriveGuidance.vias, DriveGuidance.info.value?.bearing)
         fresh ?: return
         val div = withContext(Dispatchers.Default) { RouteCompare.divergence(nav, fresh.points) }
         val saved = RouteCompare.savedSeconds(nav.remainingSeconds(st.progressMeters), fresh.durationSeconds, div) ?: return
@@ -329,7 +329,9 @@ class DriveGuidanceService : Service() {
         val over = if (st.offRoute || st.arrived || DriveGuidance.simulating.value || zone?.overspeed == true) null
         else speedWatch.update(speedKmh.roundToInt(), road?.speedKmh, System.currentTimeMillis())
         val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak) + listOfNotNull(alert?.speak) + listOfNotNull(over)
-        if (lines.isNotEmpty()) v?.speak(lines.joinToString(" "))
+        // 안내마다 따로 차례로 말함(한 번에 이어 붙이면 길어서 중간에 끊기고, 새 안내가 오면 앞 말이 잘렸음). 경로 이탈만 바로 끊고 말함
+        lines.forEach { v?.speak(it, interrupt = st.offRoute) }
+        if (!st.offRoute) rerouteCount = 0   // 다시 경로 위로 돌아오면 재탐색 횟수 제한을 처음부터 (계속 이탈해도 언젠가 막히지 않게)
         if (v != null && v.ready && !v.koreanAvailable && !noted) {
             noted = true
             DriveGuidance.note.value = "이 기기에 한국어 음성이 없어 소리 없이 안내합니다. 설정 > 음성 출력에서 한국어 음성을 설치하세요."
@@ -354,13 +356,23 @@ class DriveGuidanceService : Service() {
         lastRerouteAt = now
         rerouteCount++
         scope.launch {
-            val (status, route) = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest, DriveGuidance.option, DriveGuidance.vias)
+            // 달리고 있으면 가는 방향으로 출발하는 경로를 받음 (반대 방향으로 유턴·회전하라는 안내 방지)
+            val heading = if (loc.hasBearing() && loc.hasSpeed() && loc.speed >= HEADING_MIN_MPS) loc.bearing.toDouble() else null
+            var (status, route) = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest, DriveGuidance.option, DriveGuidance.vias, heading)
+            // 방향을 줘서 못 찾으면(도로 방향과 맞지 않는 곳 등) 방향 없이 한 번 더
+            if (route == null && heading != null) {
+                val retry = KakaoExtra.drive(LatLng(loc.latitude, loc.longitude), dest, DriveGuidance.option, DriveGuidance.vias)
+                status = retry.first
+                route = retry.second
+            }
             rerouting = false
             if (route != null) {
                 install(route)
-                voice?.speak("새 경로로 안내합니다.")
+                voice?.speak("새 경로로 안내합니다.", interrupt = true)
             } else {
                 Log.w(TAG, "재탐색 실패: $status")
+                // 실패한 시도는 횟수에 넣지 않음 (신호가 잠깐 안 좋아서 실패했다고 재탐색 기회가 줄지 않게)
+                rerouteCount = (rerouteCount - 1).coerceAtLeast(0)
             }
         }
     }
@@ -443,6 +455,9 @@ class DriveGuidanceService : Service() {
         private const val MAX_ACCURACY_M = 100f
         private const val REROUTE_MIN_GAP_MS = 12_000L
         private const val MAX_REROUTES = 20
+
+        /** 이 속도(m/s) 이상일 때만 GPS 진행 방향을 믿고 재탐색에 넘김 */
+        private const val HEADING_MIN_MPS = 2f
         private const val ARRIVAL_STOP_DELAY_MS = 8_000L
         private const val SIM_TICK_MS = 200L
         private const val SUGGEST_FIRST_MS = 90_000L

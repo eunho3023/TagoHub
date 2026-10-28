@@ -74,7 +74,7 @@ class RoadAlertTracker(alerts: List<RoadAlert>) {
         val next = sorted.firstOrNull { it.along >= progress - PASSED_M && max(0.0, it.along - progress) <= it.kind.announceM } ?: return null
         val dist = max(0.0, next.along - progress)
         val key = "${next.kind}:${next.id}:${next.along.toInt()}"
-        val speak = if (said.add(key)) "${NavText.distance(dist)} 앞 ${next.name}입니다." else null
+        val speak = if (said.add(key)) "${NavText.ahead(dist)} ${next.name}입니다." else null
         return RoadAlertStatus(next.kind, next.name, next.detail, dist, speak)
     }
 

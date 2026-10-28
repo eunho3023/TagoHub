@@ -13,7 +13,8 @@ import java.util.Locale
  * 경로 안내 음성: 기기에 설치된 음성 합성(TTS)으로 한국어를 읽는다 (인터넷이 없어도 됨).
  * - 말하는 동안 음악·라디오를 잠깐 줄이고(오디오 포커스), 끝나면 되돌린다.
  * - 안내 전용 오디오 속성을 써서 차량 스피커·블루투스가 내비 음성으로 인식하게 한다.
- * - 새 안내가 오면 이전 말은 끊고 최신 안내만 말한다(지난 안내는 이미 늦은 정보).
+ * - 안내는 하나씩 차례로 말한다(앞 말을 끊지 않음). 다만 밀린 말이 [MAX_BACKLOG] 건을 넘으면 늦은 정보라 비우고 최신만 말한다.
+ *   [speak] 의 interrupt 가 true 면(경로 이탈 같은 급한 안내) 앞 말을 끊고 바로 말한다.
  */
 class GuidanceVoice(context: Context) : TextToSpeech.OnInitListener {
     private val app = context.applicationContext
@@ -22,6 +23,9 @@ class GuidanceVoice(context: Context) : TextToSpeech.OnInitListener {
     private var focus: AudioFocusRequest? = null
     private val pending = ArrayDeque<String>()
     private var counter = 0
+
+    /** 말하는 중이거나 차례를 기다리는 안내 번호 */
+    private val queued = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /** 음성 엔진이 준비됐는지 */
     @Volatile var ready = false
@@ -53,30 +57,36 @@ class GuidanceVoice(context: Context) : TextToSpeech.OnInitListener {
         engine.setAudioAttributes(attrs)
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = abandonFocus()
+            override fun onDone(utteranceId: String?) = finished(utteranceId)
             @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) = abandonFocus()
+            override fun onError(utteranceId: String?) = finished(utteranceId)
+            override fun onStop(utteranceId: String?, interrupted: Boolean) = finished(utteranceId)
         })
         ready = true
         while (pending.isNotEmpty()) speak(pending.removeFirst())
     }
 
-    fun speak(text: String) {
+    fun speak(text: String, interrupt: Boolean = false) {
         if (!enabled || text.isBlank()) return
         val engine = tts ?: return
         if (!ready) {
-            // 엔진이 아직 켜지는 중: 최신 한 건만 기억
-            pending.clear()
+            // 엔진이 아직 켜지는 중: 최근 몇 건만 기억
+            while (pending.size >= MAX_BACKLOG) pending.removeFirst()
             pending.addLast(text)
             return
         }
         if (!koreanAvailable) return
         requestFocus()
         val params = android.os.Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume.coerceIn(0f, 1f)) }
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, "nav-${counter++}")
+        val flush = interrupt || queued.size >= MAX_BACKLOG
+        if (flush) queued.clear()
+        val id = "nav-${counter++}"
+        queued += id
+        engine.speak(text, if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, params, id)
     }
 
     fun stopSpeaking() {
+        queued.clear()
         tts?.stop()
         abandonFocus()
     }
@@ -98,11 +108,19 @@ class GuidanceVoice(context: Context) : TextToSpeech.OnInitListener {
         audio.requestAudioFocus(req)
     }
 
+    private fun finished(id: String?) {
+        if (id != null) queued.remove(id)
+        if (queued.isEmpty()) abandonFocus()
+    }
+
     private fun abandonFocus() {
         focus?.let { audio.abandonAudioFocusRequest(it) }
     }
 
     private companion object {
         const val TAG = "TagoGuidance"
+
+        /** 말하는 중 + 기다리는 안내가 이 수에 이르면 비우고 최신만 */
+        const val MAX_BACKLOG = 3
     }
 }
