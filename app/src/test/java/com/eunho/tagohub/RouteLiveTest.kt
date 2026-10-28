@@ -24,3 +24,20 @@ class RouteLiveTest {
         assertEquals("정류장 도착", RouteLive.text(0, null))
     }
 }
+
+class PreferPositionTest {
+    @Test
+    fun positionWinsWhenTheBusIsAlreadyHereOrMuchNearerThanTheArrivalApiSays() {
+        assertEquals(true, RouteLive.preferPosition(1, 0))      // 이미 와 있는데 API 는 1정류장 전
+        assertEquals(true, RouteLive.preferPosition(7, 3))      // 74번 풍남중: API 7정류장 전, 위치엔 3정류장 앞에 버스
+        assertEquals(true, RouteLive.preferPosition(null, 5))   // API 에 값이 없음
+    }
+
+    @Test
+    fun smallDifferencesAreTheSameBusCountedSlightlyDifferently() {
+        assertEquals(false, RouteLive.preferPosition(3, 2))
+        assertEquals(false, RouteLive.preferPosition(3, 1))
+        assertEquals(false, RouteLive.preferPosition(5, null))  // 위치에 오는 버스가 없음
+        assertEquals(false, RouteLive.preferPosition(2, 6))     // 위치가 더 멀면 도착정보
+    }
+}
