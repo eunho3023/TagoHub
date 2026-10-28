@@ -77,6 +77,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -1188,7 +1189,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (ITS_CCTV_OVERLAY in overlays.value) scheduleItsCctvRefresh()
         ITS_ROAD_OVERLAY_IDS.filter { it in overlays.value && it !in STATIC_ITS_ROAD_LAYERS }
             .forEach(::refreshItsRoadLayer)
-        expectedPin(picked.value, panel.value, selected.value, station.value)?.let { c.setPin(it.first, it.second) }
+        expectedPin(picked.value, panel.value, selected.value, station.value, stationLineName.value)?.let { c.setPin(it.first, it.second) }
         pushStations()
         pushStops()
         pushRoute()
@@ -1484,6 +1485,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onStationClick(id: String) {
         val g = index?.group(id) ?: return
+        tappedPin = null
         canvas?.setPin(g.lat, g.lng)
         openStation(g)
         canvas?.focus(g.lat, g.lng)
@@ -2421,20 +2423,39 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         keep.forEach { stops[it.nodeId] = it }
     }
 
+    /** 열린 역 패널에서 고른 노선 이름 (핀을 그 노선 역의 자리에 꽂기 위함) */
+    private val stationLineName = MutableStateFlow<String?>(null)
+
+    /**
+     * 역의 핀 자리: 고른(또는 누른) 노선의 역 좌표. 환승역은 노선마다 역 위치가 다르고, 누른 자리나 역들의 평균 좌표는 실제 역이 아닌 곳일 수 있음.
+     * 노선을 아직 모르면 누른 곳에서 가장 가까운 노선의 역.
+     */
+    private fun stationPin(st: StationDetail, lineName: String?): Pair<Double, Double> {
+        val member = st.group.stationOn(lineName ?: st.preferLine, tappedPin)
+        return member?.let { it.lat to it.lng } ?: (st.group.lat to st.group.lng)
+    }
+
     /** 지도에 꽂을 핀 자리: 고른 장소 → 열린 정류장 → 열린 역. 아무것도 없으면 null */
-    private fun expectedPin(p: PickedPlace?, pn: MapPanel, sel: BusDest.Stop?, st: StationDetail?): Pair<Double, Double>? = when {
+    private fun expectedPin(p: PickedPlace?, pn: MapPanel, sel: BusDest.Stop?, st: StationDetail?, lineName: String? = null): Pair<Double, Double>? = when {
         p != null -> p.lat to p.lng
         pn == MapPanel.Stop && sel?.stop?.lat != null && sel.stop.lng != null -> tappedPin ?: (sel.stop.lat to sel.stop.lng)
-        pn == MapPanel.Station && st != null -> tappedPin ?: (st.group.lat to st.group.lng)
+        pn == MapPanel.Station && st != null -> stationPin(st, lineName)
         else -> null
     }
 
     init {
         // 핀(꾹 누른 곳·고른 정류장·역)은 위 상태에서 계산해서 그림. 닫을 때 일일이 지우던 방식은 빠뜨리는 경로가 있어 아이콘이 남았음
         viewModelScope.launch {
-            combine(picked, panel, selected, station) { p, pn, sel, st -> expectedPin(p, pn, sel, st) }
+            combine(picked, panel, selected, station, stationLineName) { p, pn, sel, st, line -> expectedPin(p, pn, sel, st, line) }
                 .distinctUntilChanged()
                 .collect { pos -> canvas?.setPin(pos?.first, pos?.second) }
+        }
+        // 열린 역에서 노선을 바꾸면(알약 누름·노선 목록이 늦게 도착) 핀도 그 노선 역으로
+        viewModelScope.launch {
+            station.collectLatest { st ->
+                if (st == null) stationLineName.value = null
+                else st.line.collect { stationLineName.value = it?.routeName }
+            }
         }
         // 부가 기능 문구는 화면에 띄우지 않고 로그로만
         viewModelScope.launch { banner.collect { text -> if (text != null) android.util.Log.w("TagoMap", "알림: $text") } }
