@@ -697,27 +697,47 @@ private tailrec fun android.content.Context.findActivity(): android.app.Activity
 private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var playbackError by remember(cctv.id) { mutableStateOf<String?>(null) }
+    // 목록에 든 영상 주소는 시각이 들어 있어 오래되면 안 열림 → 재생 직전에 이 CCTV 의 주소를 새로 받아 씀 (못 받으면 목록의 주소)
+    var streamUrl by remember(cctv.id) { mutableStateOf(cctv.streamUrl) }
     // ExoPlayer: 창을 열자마자 재생 (버퍼 0.3초만 모이면 시작)
     val player = remember(cctv.id) {
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(1500, 6000, 300, 600).build())
             .build().apply {
-                // 주소에 .m3u8 이 없고(서버가 302 로 넘겨 줌) 확장자로는 HLS 인지 알 수 없어서 형식을 직접 지정
-                setMediaItem(
-                    androidx.media3.common.MediaItem.Builder()
-                        .setUri(com.eunho.tagohub.data.CctvProxy.wrap(cctv.streamUrl))
-                        .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
-                        .build(),
-                )
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
                 playWhenReady = true
-                prepare()
             }
     }
+    val repo = remember { com.eunho.tagohub.data.ItsCctvRepository() }
+    var retried by remember(cctv.id) { mutableStateOf(false) }
+    fun play(url: String) {
+        // 주소에 .m3u8 이 없고(서버가 302 로 넘겨 줌) 확장자로는 HLS 인지 알 수 없어서 형식을 직접 지정
+        player.setMediaItem(
+            androidx.media3.common.MediaItem.Builder()
+                .setUri(com.eunho.tagohub.data.CctvProxy.wrap(url))
+                .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+                .build(),
+        )
+        player.prepare()
+    }
+    LaunchedEffect(cctv.id) {
+        streamUrl = repo.freshStreamUrl(cctv) ?: cctv.streamUrl
+        play(streamUrl)
+    }
+    val scope = rememberCoroutineScope()
     DisposableEffect(player) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                playbackError = "앱에서 영상을 재생하지 못했습니다 (${error.errorCodeName}). 외부 플레이어로 시도해 보세요."
+                if (!retried) {
+                    // 한 번은 주소를 다시 받아 재시도 (처음 받은 주소가 그 사이 만료됐을 수 있음)
+                    retried = true
+                    scope.launch {
+                        repo.freshStreamUrl(cctv)?.let { streamUrl = it }
+                        play(streamUrl)
+                    }
+                } else {
+                    playbackError = "앱에서 영상을 재생하지 못했습니다 (${error.errorCodeName}). 외부 플레이어로 시도해 보세요."
+                }
             }
         }
         player.addListener(listener)
@@ -834,7 +854,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                 ) {
                     TextButton(
                         onClick = {
-                            val uri = Uri.parse(com.eunho.tagohub.data.CctvProxy.wrap(cctv.streamUrl))
+                            val uri = Uri.parse(com.eunho.tagohub.data.CctvProxy.wrap(streamUrl))
                             try {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.apple.mpegurl"),

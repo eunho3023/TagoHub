@@ -116,6 +116,29 @@ class ItsCctvRepository(
         }
     }
 
+    /**
+     * 이 CCTV 의 지금 쓸 수 있는 영상 주소. 영상 주소에는 시각이 들어 있어서 목록을 받은 지 한참 지나면(저장본은 일주일까지 씀) 열리지 않는다.
+     * 그래서 재생 직전에 이 CCTV 주변만 공공 API 로 새로 받아 같은 이름의 주소를 쓴다. 못 받으면 null (원래 주소를 그대로 시도).
+     */
+    suspend fun freshStreamUrl(cctv: ItsCctv): String? {
+        if (key.isBlank()) return null
+        val d = 0.0008
+        val url = HttpUrl.Builder()
+            .scheme("https").host("openapi.its.go.kr").port(9443).addPathSegment("cctvInfo")
+            .addQueryParameter("apiKey", key)
+            .addQueryParameter("type", cctv.roadType)
+            .addQueryParameter("cctvType", "1")
+            .addQueryParameter("minX", (cctv.lng - d).toString()).addQueryParameter("maxX", (cctv.lng + d).toString())
+            .addQueryParameter("minY", (cctv.lat - d).toString()).addQueryParameter("maxY", (cctv.lat + d).toString())
+            .addQueryParameter("getType", "xml")
+            .build()
+        return runCatching {
+            val xml = UticHttp.get(Request.Builder().url(url).build(), providerName = "ITS CCTV")
+            val list = ItsCctvParser.parse(xml, cctv.roadType)
+            (list.firstOrNull { it.name == cctv.name } ?: list.minByOrNull { (it.lat - cctv.lat) * (it.lat - cctv.lat) + (it.lng - cctv.lng) * (it.lng - cctv.lng) })?.streamUrl
+        }.getOrNull()
+    }
+
     private companion object {
         const val MAX_CCTVS = 500
         /** CCTV 위치 목록은 거의 안 바뀌어서 일주일 된 저장본도 먼저 보여주고 뒤에서 새로 받음 */
