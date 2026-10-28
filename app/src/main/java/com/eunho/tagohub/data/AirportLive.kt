@@ -31,9 +31,21 @@ object AirportLive {
 
     data class Lot(val airport: String, val name: String, val label: String?, val percent: String?, val used: Int?, val total: Int?, val time: String?)
 
-    data class Valet(val time: String?, val zones: List<Int?>, val total: Int?, val label: String?)
+    data class Valet(val time: String?, val zones: List<Int?>, val total: Int?, val label: String?, val at: java.time.LocalDateTime? = null)
 
-    data class Taxi(val time: String?, val taxis: Int?, val passengers: Int?, val waitMin: Int?)
+    data class Taxi(val time: String?, val taxis: Int?, val passengers: Int?, val waitMin: Int?, val at: java.time.LocalDateTime? = null)
+
+    /** 이 시각보다 오래된 값은 "지금" 정보로 보여 주지 않음(발렛파킹·택시는 API 가 오래전 기록 하나만 주는 때가 있음) */
+    const val FRESH_MINUTES = 180L
+
+    fun isFresh(at: java.time.LocalDateTime?, now: java.time.LocalDateTime = java.time.LocalDateTime.now()): Boolean =
+        at != null && !at.isAfter(now.plusMinutes(10)) && java.time.Duration.between(at, now).toMinutes() <= FRESH_MINUTES
+
+    private fun stamp(date: String?, time: String?): java.time.LocalDateTime? = runCatching {
+        val d = date ?: return@runCatching null
+        val t = (time ?: "000000").padStart(6, '0')
+        java.time.LocalDateTime.of(d.substring(0, 4).toInt(), d.substring(4, 6).toInt(), d.substring(6, 8).toInt(), t.substring(0, 2).toInt(), t.substring(2, 4).toInt(), t.substring(4, 6).toInt())
+    }.getOrNull()
 
     /** 김포 실내주차장: 층별 빈 주차면 / 전체 주차면 */
     data class IndoorFloor(val lot: String, val level: String, val empty: Int, val total: Int)
@@ -83,7 +95,7 @@ object AirportLive {
     fun valet(text: String): Valet? = rows(text).maxByOrNull { (it.s("crtDt") ?: "") + (it.s("crtTime") ?: "") }?.let { m ->
         Valet(
             time = valetTime(m.s("crtDt"), m.s("crtTime")), zones = listOf(m.n("cam1"), m.n("cam2"), m.n("cam3")),
-            total = m.n("total"), label = m.s("cdgr"),
+            total = m.n("total"), label = m.s("cdgr"), at = stamp(m.s("crtDt"), m.s("crtTime")),
         )
     }
 
@@ -98,6 +110,7 @@ object AirportLive {
         Taxi(
             time = m.s("prcdtm")?.takeIf { it.length >= 12 }?.let { "${it.substring(4, 6)}-${it.substring(6, 8)} ${it.substring(8, 10)}:${it.substring(10, 12)}" },
             taxis = m.n("witTaxiCT"), passengers = m.n("witPaxCT"), waitMin = m.n("xptBdgMi"),
+            at = m.s("prcdtm")?.takeIf { it.length >= 12 }?.let { stamp(it.substring(0, 8), it.substring(8)) },
         )
     }
 
@@ -126,6 +139,8 @@ data class AirportLiveInfo(
 
 object AirportLiveClient {
     private const val BASE = "https://apis.data.go.kr/B551178/"
+    private const val INDOOR_PAGE_ROWS = 100
+    private const val INDOOR_MAX_PAGES = 30
     private val client = Http.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
 
     // 혼잡도 API 는 공항에 따라 v1(김포·제주) / v2(김해·청주·대구) 로 나뉨
@@ -160,30 +175,27 @@ object AirportLiveClient {
             }
             val valet = async {
                 if (iata != "GMP") return@async null
-                // 이력이 만 건 넘게 쌓인 목록이라 정렬 방향을 알 수 없음 → 첫 건과 마지막 건 중 더 최근 것을 씀
+                // 전체 건수는 만 건이 넘게 나오지만 실제로 받아지는 건 첫 쪽의 한 건뿐이고 그 시각이 오래된 경우가 있음 → 최근 3시간 안의 기록만 보여 줌
                 guarded {
-                    val first = get("parking-valet-congestion/gmp-dom", "한국공항공사 김포 발렛파킹 혼잡도", "pageNo" to "1", "numOfRows" to "1")
-                    val total = AirportLive.totalCount(first)
-                    val last = if (total > 1) get("parking-valet-congestion/gmp-dom", "한국공항공사 김포 발렛파킹 혼잡도", "pageNo" to total.toString(), "numOfRows" to "1") else first
-                    listOfNotNull(AirportLive.valet(first), AirportLive.valet(last)).maxByOrNull { it.time.orEmpty() }
-                }
+                    AirportLive.valet(get("parking-valet-congestion/gmp-dom", "한국공항공사 김포 발렛파킹 혼잡도", "pageNo" to "1", "numOfRows" to "1"))
+                }?.takeIf { AirportLive.isFresh(it.at) }
             }
             val indoor = async {
                 if (iata != "GMP") return@async emptyList()
                 guarded {
-                    val all = ArrayList<Map<*, *>>()
-                    for (page in 1..4) {
-                        val body = get("parking-available-spaces/gmp-int-indoor", "한국공항공사 김포 실내주차장", "pageNo" to page.toString(), "numOfRows" to "1000")
-                        val got = AirportLive.rows(body)
-                        all += got
-                        if (got.isEmpty() || all.size >= AirportLive.totalCount(body)) break
-                    }
-                    AirportLive.indoor(all)
+                    // 이 API 는 한 번에 300행부터는 "HTTP_ERROR(04)" 로 거절함(100행은 됨) → 100행씩 첫 쪽의 전체 건수만큼 이어서 받음 (약 25쪽, 한 쪽 0.1초 안팎)
+                    fun page(n: Int) = get("parking-available-spaces/gmp-int-indoor", "한국공항공사 김포 실내주차장", "pageNo" to n.toString(), "numOfRows" to INDOOR_PAGE_ROWS.toString())
+                    val first = page(1)
+                    val total = AirportLive.totalCount(first)
+                    val lastPage = ((total + INDOOR_PAGE_ROWS - 1) / INDOOR_PAGE_ROWS).coerceIn(1, INDOOR_MAX_PAGES)
+                    val rest = (2..lastPage).mapNotNull { n -> runCatching { page(n) }.getOrNull() }
+                    AirportLive.indoor((listOf(first) + rest).flatMap { AirportLive.rows(it) })
                 }.orEmpty()
             }
             val taxi = async {
                 if (iata != "CJU") return@async null
                 guarded { AirportLive.taxi(get("airport-taxi-wait/cju", "한국공항공사 제주 택시승강장", "pageNo" to "1", "numOfRows" to "1")) }
+                    ?.takeIf { AirportLive.isFresh(it.at) }   // 제주 택시는 호출했을 때 한 달 반 전 기록이 오기도 함
             }
             AirportLiveInfo(congestion.await(), process.await(), lots.await(), valet.await(), indoor.await(), taxi.await(), errors.distinct())
         }
