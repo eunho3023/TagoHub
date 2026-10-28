@@ -71,3 +71,53 @@ class NeighborFillTest {
         assertEquals(StationIndex.Around("디지털미디어시티", "가좌", "홍대입구"), a)
     }
 }
+
+class BranchNeighborTest {
+    private fun st(code: String, name: String, line: String, lat: Double, lng: Double) = MetroStation(code, name, line, lat, lng, "x")
+    private fun kr(order: Int, code: String, name: String, op: String = "KR", line: String = "K4") =
+        KricRouteStation("01", "1", "x", order, op, line, code, name)
+
+    private val gyeongui = StationIndex(listOf(
+        st("K317", "수색", "경의중앙선", 37.5826, 126.8956),
+        st("K316", "디지털미디어시티", "경의중앙선", 37.5770, 126.9006),
+        st("K315", "가좌", "경의중앙선", 37.5685, 126.9157),
+        st("P314", "신촌", "경의중앙선", 37.5598, 126.9429),
+        st("P313", "서울역", "경의중앙선", 37.5560, 126.9713),
+        st("K314", "홍대입구", "경의중앙선", 37.5576, 126.9238),
+    ))
+    private val k4 = listOf(
+        kr(21, "P314", "신촌"), kr(21, "K317", "수색"), kr(22, "P313", "서울역"), kr(22, "K316", "디지털미디어시티"),
+        kr(23, "K315", "가좌"), kr(24, "K314", "홍대입구"),
+    )
+
+    private fun around(name: String, code: String) =
+        gyeongui.neighborsOf(gyeongui.groups.first { it.name.startsWith(name.removeSuffix("역")) }, "경의중앙선", k4, code)!!
+
+    @Test
+    fun branchStationsFollowTheBranchAndJoinTheMainLineAtTheJunction() {
+        assertEquals(StationIndex.Around("가좌", "신촌", "서울역"), around("신촌", "P314"))
+        assertEquals(StationIndex.Around(null, "서울역", "신촌"), around("서울역", "P313"))
+    }
+
+    @Test
+    fun mainLineStationsIgnoreBranchStationsWithTheSameNumber() {
+        assertEquals(StationIndex.Around("수색", "디지털미디어시티", "가좌"), around("디지털미디어시티", "K316"))
+        assertEquals(StationIndex.Around("디지털미디어시티", "가좌", "홍대입구"), around("가좌", "K315"))
+    }
+
+    // GTX-A: 수서·성남·구성(남부 구간)과 서울역·연신내…(북부 구간)은 따로 운영되어 서울역과 구성은 이어지지 않음
+    private val gtx = StationIndex(listOf(
+        st("X110", "구성", "GTX-A", 37.2995, 127.1081),
+        st("X106", "서울역", "GTX-A", 37.5558, 126.9727),
+        st("X105", "연신내", "GTX-A", 37.6190, 126.9206),
+        st("X103", "대곡", "GTX-A", 37.6313, 126.8115),
+    ))
+    private fun gx(order: Int, code: String, name: String) = KricRouteStation("01", "A", "GTX-A", order, "GX", "A", code, name)
+
+    @Test
+    fun gtxSeoulStationIsTheEndOfItsSectionNotNextToGuseong() {
+        val list = listOf(gx(3, "X110", "구성"), gx(5, "X106", "서울역"), gx(6, "X105", "연신내"), gx(7, "X103", "대곡"))
+        val a = gtx.neighborsOf(gtx.groups.first { it.name == "서울" }, "GTX-A", list, "X106")!!
+        assertEquals(StationIndex.Around(null, "서울역", "연신내"), a)
+    }
+}
