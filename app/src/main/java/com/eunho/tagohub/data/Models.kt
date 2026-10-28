@@ -148,6 +148,13 @@ data class KricTrainStop(
     val departureTime: String?,
 )
 
+/** 한 열차가 서는 역과 시각 (KRIC 역별 시각표에서 그 열차번호를 모아 만듦) */
+data class KricStopTime(
+    val stationName: String,
+    val arrivalTime: String?,
+    val departureTime: String?,
+)
+
 data class SubwayDeparture(
     /** 운행일 기준 분 (00~02시는 +24h) */
     val serviceMinute: Int,

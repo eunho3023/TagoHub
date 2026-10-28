@@ -3,8 +3,14 @@ package com.eunho.tagohub.data
 import com.eunho.tagohub.BuildConfig
 import com.eunho.tagohub.core.TagoApiException
 import com.eunho.tagohub.core.TagoResult
+import com.eunho.tagohub.core.TagoTime
 import com.eunho.tagohub.core.TagoXml
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import retrofit2.Retrofit
@@ -179,6 +185,44 @@ class KricSubwayRepository(
             .map(Mappers::kricRouteStation)
             .sortedBy { it.stationOrder }
             .also { if (it.isNotEmpty()) routeCache[cacheKey] = it }
+    }
+
+    /** (운영기관:노선:요일:역) → 그 역을 지나는 열차번호별 시각. 같은 노선의 다른 열차를 펼칠 때 다시 받지 않게 */
+    private val stationTables = ConcurrentHashMap<String, Map<String, KricTrainStop>>()
+
+    private suspend fun stationTable(operator: String, line: String, dayCode: String, station: String): Map<String, KricTrainStop> {
+        val key = "$operator:$line:$dayCode:$station"
+        stationTables[key]?.let { return it }
+        val rows = Mappers.cleanKricTimetable(TagoXml.parse(api.timetable(operator, dayCode, line, station)).rows)
+        return rows.groupBy { it.trainNo }
+            .mapValues { (_, list) -> list.first().copy(arrivalTime = list.firstNotNullOfOrNull { it.arrivalTime }, departureTime = list.firstNotNullOfOrNull { it.departureTime }) }
+            .also { stationTables[key] = it }
+    }
+
+    /**
+     * 한 열차의 정차역(시각순). KRIC 시각표는 역마다 따로라서, 이 노선의 역([stations])마다 시각표를 받아(동시에 8개, 한 번 받으면 기억)
+     * 그 열차번호가 있는 역을 모은다. 처음 한 열차는 역 수만큼(노선 하나 30~60회) 걸리고 그다음 열차부터는 바로 나온다.
+     */
+    suspend fun trainStops(codes: KricSubwayCodes, dayCode: String, trainNo: String, stations: List<KricRouteStation>): TagoResult<List<KricStopTime>> = run {
+        val mine = stations.filter { it.operatorCode == codes.operatorCode && it.lineCode == codes.lineCode }.distinctBy { it.stationCode }
+        if (mine.isEmpty()) throw TagoApiException("EMPTY", "이 노선의 역 목록을 찾지 못했습니다.")
+        val gate = Semaphore(8)
+        val failed = java.util.concurrent.atomic.AtomicInteger()
+        val found = coroutineScope {
+            mine.map { st ->
+                async {
+                    gate.withPermit {
+                        runCatching { stationTable(codes.operatorCode, codes.lineCode, dayCode, st.stationCode)[trainNo] }
+                            .onFailure { if (it is CancellationException) throw it; failed.incrementAndGet() }
+                            .getOrNull()?.let { KricStopTime(st.stationName, it.arrivalTime, it.departureTime) }
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }
+        if (found.size < 2) {
+            throw TagoApiException("EMPTY", if (failed.get() > 0) "정차역을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요." else "이 열차의 정차역을 시각표에서 찾지 못했습니다.")
+        }
+        found.sortedBy { TagoTime.minutesOfDay(it.departureTime ?: it.arrivalTime)?.let(TagoTime::serviceMinute) ?: Int.MAX_VALUE }
     }
 
     suspend fun timetable(codes: KricSubwayCodes, dayCode: String): TagoResult<List<KricTrainStop>> = run {

@@ -629,6 +629,7 @@ private fun TimetableTab(d: StationDetail, c: StationDetailController) {
         val source by d.timetableSource.collectAsStateWithLifecycle()
         val schedule by d.schedule.collectAsStateWithLifecycle()
         val kricSchedule by d.kricTimetable.collectAsStateWithLifecycle()
+        val kricStops by d.kricStops.collectAsStateWithLifecycle()
         val lineColor = subwayLineColor(line.routeName)
         Column(Modifier.fillMaxSize()) {
             SingleChoiceSegmentedButtonRow(
@@ -678,14 +679,19 @@ private fun TimetableTab(d: StationDetail, c: StationDetailController) {
                     onRetry = { c.loadKricTimetable(d) },
                     isEmpty = { it.isEmpty() },
                     emptyText = "이 역의 열차별 운행시각 정보가 없습니다.",
-                ) { list -> KricTimetableBoard(list, lineColor) }
+                ) { list -> KricTimetableBoard(list, lineColor, kricStops) { trainNo -> c.toggleKricStops(d, trainNo) } }
             }
         }
     }
 }
 
 @Composable
-private fun KricTimetableBoard(list: List<KricTrainStop>, lineColor: Color) {
+private fun KricTimetableBoard(
+    list: List<KricTrainStop>,
+    lineColor: Color,
+    stops: Map<String, Load<List<com.eunho.tagohub.data.KricStopTime>>> = emptyMap(),
+    onToggleStops: (String) -> Unit = {},
+) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(
@@ -721,6 +727,33 @@ private fun KricTimetableBoard(list: List<KricTrainStop>, lineColor: Color) {
                     textAlign = TextAlign.End,
                     style = MaterialTheme.typography.bodyLarge.merge(Tnum),
                 )
+            }
+            // 정차역 보기: 이 열차가 서는 역을 시각과 함께 (역마다 따로인 KRIC 시각표를 모아 만들어 처음 한 번은 몇 초 걸림)
+            if (stop.trainNo.isNotBlank()) {
+                val open = stops[stop.trainNo]
+                androidx.compose.material3.TextButton(onClick = { onToggleStops(stop.trainNo) }, Modifier.padding(horizontal = 8.dp)) {
+                    Text(if (open == null) "정차역 보기" else "정차역 닫기", color = lineColor, fontWeight = FontWeight.Bold)
+                }
+                when (open) {
+                    null, is Load.Idle -> Unit
+                    is Load.Loading -> Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("이 열차의 정차역을 찾는 중…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    is Load.Fail -> Text(open.message, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    is Load.Ok -> Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+                        open.value.forEach { s ->
+                            Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(s.stationName, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    (s.departureTime ?: s.arrivalTime)?.let(TagoTime::clockText).orEmpty().ifBlank { "—" },
+                                    style = MaterialTheme.typography.bodyMedium.merge(Tnum),
+                                )
+                            }
+                        }
+                    }
+                }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }

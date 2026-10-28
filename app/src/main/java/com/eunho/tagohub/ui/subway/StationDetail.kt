@@ -8,6 +8,7 @@ import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.data.KricRouteStation
 import com.eunho.tagohub.data.KricSubwayCodes
 import com.eunho.tagohub.data.KricSubwayRepository
+import com.eunho.tagohub.data.KricStopTime
 import com.eunho.tagohub.data.KricSubwayRegion
 import com.eunho.tagohub.data.KricTrainStop
 import com.eunho.tagohub.data.MetroStation
@@ -87,6 +88,9 @@ class StationDetail(val group: StationGroup) {
     val timetableSource = MutableStateFlow(SubwayTimetableSource.Tago)
     val kricTimetable = MutableStateFlow<Load<List<KricTrainStop>>>(Load.Idle)
     val kricRoute = MutableStateFlow<Load<List<KricRouteStation>>>(Load.Idle)
+
+    /** 열차별 시각표에서 정차역을 펼친 열차: 열차번호 → 정차역 */
+    val kricStops = MutableStateFlow<Map<String, Load<List<KricStopTime>>>>(emptyMap())
     val kricCodes = MutableStateFlow<KricSubwayCodes?>(null)
     val exits = MutableStateFlow<Load<List<ExitInfo>>>(Load.Idle)
     val facilities = MutableStateFlow<List<StationFacility>>(emptyList())
@@ -179,6 +183,7 @@ class StationDetailController(
         d.kricTimetableJob?.cancel()
         d.kricRouteJob?.cancel()
         d.kricTimetable.value = Load.Idle
+        d.kricStops.value = emptyMap()
         d.kricRoute.value = Load.Idle
         d.kricCodes.value = null
         loadSchedule(d)
@@ -189,6 +194,7 @@ class StationDetailController(
 
     fun setDay(d: StationDetail, t: DayType) {
         d.dayType.value = t
+        d.kricStops.value = emptyMap()
         if (d.timetableSource.value == SubwayTimetableSource.Kric) loadKricTimetable(d) else loadSchedule(d)
     }
     fun setUpDown(d: StationDetail, v: String) { d.upDown.value = v; loadSchedule(d) }
@@ -225,6 +231,26 @@ class StationDetailController(
                     kric.timetable(route.data.codes, d.dayType.value.kricCode).toLoad()
                 }
             }
+        }
+    }
+
+    /** 열차별 시각표의 "정차역 보기": 누르면 그 열차가 서는 역을 시각과 함께 펼치고, 다시 누르면 접음 */
+    fun toggleKricStops(d: StationDetail, trainNo: String) {
+        if (d.kricStops.value.containsKey(trainNo)) {
+            d.kricStops.value = d.kricStops.value - trainNo
+            return
+        }
+        d.kricStops.value = d.kricStops.value + (trainNo to Load.Loading)
+        val s = d.line.value
+        val regionCode = s?.let { kricRegionCode(d, it) }
+        scope.launch {
+            val r: Load<List<KricStopTime>> = if (s == null || regionCode == null) Load.Fail("이 노선의 KRIC 정보를 찾지 못했습니다.") else {
+                when (val route = kric.routeForStation(s, regionCode, kricStationCodes(d, s, regionCode))) {
+                    is TagoResult.Error -> route.toLoad()
+                    is TagoResult.Success -> kric.trainStops(route.data.codes, d.dayType.value.kricCode, trainNo, route.data.stations).toLoad()
+                }
+            }
+            if (d.kricStops.value.containsKey(trainNo)) d.kricStops.value = d.kricStops.value + (trainNo to r)
         }
     }
 
