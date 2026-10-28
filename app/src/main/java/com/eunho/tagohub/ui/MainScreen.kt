@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -148,7 +152,7 @@ fun MainScreen() {
         )
     }
 
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).clearFocusOnTapOutside()) {
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))).clearFocusOnTapOutside()) {
         // 지도 탭: 지도 아래에 하단 탭 (달리는 중에는 숨김)
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
