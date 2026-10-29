@@ -50,8 +50,8 @@ object AirportLive {
     /** 김포 실내주차장: 층별 빈 주차면 / 전체 주차면 */
     data class IndoorFloor(val lot: String, val level: String, val empty: Int, val total: Int)
 
-    private fun Map<*, *>.s(k: String) = this[k]?.toString()?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
-    private fun Map<*, *>.n(k: String) = s(k)?.toDoubleOrNull()?.toInt()
+    internal fun Map<*, *>.s(k: String) = this[k]?.toString()?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+    internal fun Map<*, *>.n(k: String) = s(k)?.toDoubleOrNull()?.toInt()
 
     /** 응답 JSON 의 items → 행 목록 (item 이 하나면 객체, 여럿이면 배열; items 가 바로 배열일 수도 있음) */
     internal fun rows(text: String): List<Map<*, *>> {
@@ -83,7 +83,7 @@ object AirportLive {
     }
 
     /** 주차장 혼잡도 응답에 나오는 공항 이름 (IATA → airportKor) */
-    private val LOT_AIRPORT = mapOf(
+    internal val LOT_AIRPORT = mapOf(
         "GMP" to "김포", "PUS" to "김해", "CJU" to "제주", "TAE" to "대구", "KWJ" to "광주", "RSU" to "여수", "USN" to "울산",
         "KUV" to "군산", "WJU" to "원주", "CJJ" to "청주", "MWX" to "무안", "HIN" to "사천", "YNY" to "양양",
     )
@@ -159,7 +159,7 @@ object AirportLiveClient {
     private val V1 = setOf("GMP", "CJU")
     private val V2 = setOf("PUS", "CJJ", "TAE")
 
-    private fun get(path: String, name: String, vararg params: Pair<String, String>): String {
+    internal fun get(path: String, name: String, vararg params: Pair<String, String>): String {
         val raw = BuildConfig.KAC_API_KEY.trim()
         val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
         val url = (BASE + path).toHttpUrl().newBuilder().addEncodedQueryParameter("serviceKey", key).addQueryParameter("type", "json")
