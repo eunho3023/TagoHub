@@ -278,9 +278,23 @@ object KacIntlClient {
      * 앱에 든 한국공항공사 스케줄 파일(CSV)에 이 구간이 있으면 그날 운항편이 없더라도 파일만 쓰고 API 는 부르지 않는다
      * (출발·도착 시각 모두; 파일 기간 밖 날짜는 요일 패턴으로 만든 "예상"). 파일에 이 구간이 아예 없을 때만 운항 API 로 조회한다.
      */
-    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> {
+    suspend fun trips(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> =
+        withStatus(dep, arr, date, scheduled(dep, arr, date))
+
+    private suspend fun scheduled(dep: String, arr: String, date: java.time.LocalDate): com.eunho.tagohub.core.TagoResult<List<Trip>> {
         if (AirSchedule.hasPair(dep, arr)) return fileOrLive(AirSchedule.trips(dep, arr, date)) { apiTrips(dep, arr, date) }
         return apiTrips(dep, arr, date)
+    }
+
+    /** 정기 스케줄 위에 그날의 실제 운항 상태·변경 시각을 얹음(한국공항공사 실시간 운항정보). 인천공항 편은 인천공항공사 API 가 이미 상태를 줌 */
+    suspend fun withStatus(
+        dep: String, arr: String, date: java.time.LocalDate, base: com.eunho.tagohub.core.TagoResult<List<Trip>>,
+    ): com.eunho.tagohub.core.TagoResult<List<Trip>> {
+        if (base !is com.eunho.tagohub.core.TagoResult.Success) return base
+        val withState = if (dep == "ICN" || arr == "ICN") base.data else KacStatusClient.apply(dep, arr, date, base.data)
+        // 노선 비행시간·거리를 각 편 끝에 붙임
+        val route = AirRoutesClient.find(dep, arr) ?: return com.eunho.tagohub.core.TagoResult.Success(withState)
+        return com.eunho.tagohub.core.TagoResult.Success(withState.map { it.copy(kind = it.kind + " · 비행 " + route.time()) })
     }
 
     /**
