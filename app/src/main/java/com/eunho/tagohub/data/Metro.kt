@@ -7,6 +7,17 @@ import java.time.LocalDateTime
 
 // ───────────────────────── 모델 ─────────────────────────
 
+/**
+ * 표준데이터에서 확인된 좌표 오류. (노선, 역 코드) → (위도, 경도).
+ * 6호선 연신내(2615)는 경도가 127.0914(신내 근처)로 잘못 적혀 있어 3호선 연신내(126.9209)와 14km 떨어진 다른 역으로 보였음.
+ * 자료를 다시 만들어도 유지되게 앱에서 고친다.
+ */
+object StationDataFixes {
+    private val fixes = mapOf(("6호선" to "2615") to (37.6190 to 126.9212))
+
+    fun apply(s: MetroStation): MetroStation = fixes[s.line to s.code]?.let { (la, lo) -> s.copy(lat = la, lng = lo) } ?: s
+}
+
 /** 전국도시철도역사정보표준데이터 한 행 */
 data class MetroStation(
     val code: String,
@@ -164,7 +175,10 @@ object SeoulLines {
 
 // ───────────────────────── 역 색인 ─────────────────────────
 
-class StationIndex(val stations: List<MetroStation>) {
+class StationIndex(rawStations: List<MetroStation>) {
+    /** 표준데이터의 알려진 좌표 오류를 고친 역 목록 */
+    val stations: List<MetroStation> = rawStations.map(StationDataFixes::apply)
+
 
     /** (서울 노선ID, 정규화 역명) → 역. 같은 역이 두 번 실린 경우(용산 경부선/경원선) 첫 행 사용 */
     private val bySeoulKey: Map<Pair<String, String>, MetroStation> = buildMap {

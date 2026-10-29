@@ -59,3 +59,18 @@ class AirportLiveTest {
         assertEquals(2, floors.last().total)
     }
 }
+
+class AirportLiveFreshTest {
+    private val now = java.time.LocalDateTime.of(2026, 10, 29, 8, 40)
+
+    @Test
+    fun oldValetAndTaxiRecordsAreNotShownAsCurrent() {
+        val body = """{"response":{"header":{"resultCode":"00"},"body":{"totalCount":1,"items":{"item":[{"crtDt":"20260812","crtTime":"044921","cam1":6,"cam2":4,"cam3":1,"total":11,"cdgr":"여유(원활)"}]}}}}"""
+        val valet = AirportLive.valet(body)!!
+        assertEquals(false, AirportLive.isFresh(valet.at, now))                       // 두 달 반 전
+        val taxi = AirportLive.taxi("""{"response":{"body":{"items":{"item":{"prcdtm":"20260916235846","witTaxiCT":1}}}}}""")!!
+        assertEquals(false, AirportLive.isFresh(taxi.at, now))
+        assertEquals(true, AirportLive.isFresh(java.time.LocalDateTime.of(2026, 10, 29, 7, 30), now))
+        assertEquals(false, AirportLive.isFresh(null, now))
+    }
+}
