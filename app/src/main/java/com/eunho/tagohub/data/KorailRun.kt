@@ -26,7 +26,7 @@ object KorailRunClient {
 
     private fun key(): String {
         val raw = BuildConfig.TAGO_SERVICE_KEY.trim()
-        require(raw.isNotEmpty()) { "서비스키가 없습니다. local.properties 에 TAGO_SERVICE_KEY=... 를 추가하세요." }
+        require(raw.isNotEmpty()) { com.eunho.tagohub.core.DevMode.msg("서비스키가 없습니다. local.properties 에 TAGO_SERVICE_KEY=... 를 추가하세요.") }
         return if ('%' in raw) raw else URLEncoder.encode(raw, "UTF-8")
     }
 

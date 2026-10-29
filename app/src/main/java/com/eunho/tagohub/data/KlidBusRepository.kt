@@ -77,7 +77,7 @@ class KlidBusRepository(
     }
 
     private fun request(endpoint: String, stdgCode: String?, page: Int, rows: Int = PAGE_SIZE): KlidBusPage {
-        if (serviceKey.isBlank()) throw IOException("local.properties에 KLID_BUS_KEY 또는 TAGO_SERVICE_KEY를 설정하세요.")
+        if (serviceKey.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 KLID_BUS_KEY 또는 TAGO_SERVICE_KEY를 설정하세요."))
         val encodedKey = if ('%' in serviceKey) serviceKey else URLEncoder.encode(serviceKey, Charsets.UTF_8.name())
         val url = "$BASE_URL$endpoint".toHttpUrl().newBuilder()
             .addEncodedQueryParameter("serviceKey", encodedKey)

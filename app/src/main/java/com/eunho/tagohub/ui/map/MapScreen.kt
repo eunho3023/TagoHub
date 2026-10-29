@@ -225,7 +225,7 @@ fun MapScreen(
     var mapFailed by remember { mutableStateOf(false) }
     val osm: MapEngine = remember(mapAttempt) {
         mapFailed = false
-        if (!KakaoCanvas.available) vm.onMapProblem("카카오맵 앱 키가 없습니다. local.properties 에 KAKAO_NATIVE_KEY 를 넣고 다시 빌드하세요.")
+        if (!KakaoCanvas.available) vm.onMapProblem(com.eunho.tagohub.core.DevMode.msg("카카오맵 앱 키가 없습니다. local.properties 에 KAKAO_NATIVE_KEY 를 넣고 다시 빌드하세요.", "지도를 불러오지 못했어요. 잠시 뒤 새로고침 버튼을 눌러 주세요."))
         KakaoCanvas(context, vm) { reason ->
             mapFailed = true
             vm.onKakaoFailed(reason, context.packageName, KakaoCanvas.keyHash(context))
@@ -1220,7 +1220,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             if (tt != null) {
                 StopTimetable(vm, tt)
             } else {
-                LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류소를 지나는 노선 정보가 없습니다.") { list ->
+                LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없습니다.") { list ->
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(list) { row ->
                             // 노선을 누르면 지도에 노선 + 실시간 버스 위치
@@ -1325,7 +1325,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                 LaunchedEffect(cur.routeId, cur.loaded) { if (!cur.loaded) vm.ensureTimes(cur.routeId) }
                 Text(
                     if (cur.estimated) "첫차·막차와 배차간격으로 계산한 예상 시각이라 실제와 다를 수 있습니다."
-                    else "운행 시각표와 정류장 거리로 계산한 예상 시각이라 실제와 다를 수 있습니다.",
+                    else "운행 시간표와 정류장 거리로 계산한 예상 시각이라 실제와 다를 수 있습니다.",
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1421,7 +1421,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             ).joinToString(" · "),
             color = color,
             onClose = vm::closePanel,
-            switchLabel = if (hasStop) "정류소" else null,
+            switchLabel = if (hasStop) "정류장" else null,
             onSwitch = { vm.openPanel(MapPanel.Stop) },
             favorite = favs.any { it.kind == Favorite.Kind.Route && it.id == d.routeId },
             onFavorite = { vm.toggleFavorite(vm.routeFavorite(d)) },
@@ -1430,7 +1430,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
         r?.let { RouteInfoCard(it) }
         r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
         val dir by d.dir.collectAsStateWithLifecycle()
-        LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류소 정보가 없습니다.") { all ->
+        LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없습니다.") { all ->
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
             val labels = remember(all) { vm.routeDirLabels(d) }
             labels?.let { names ->
@@ -1739,7 +1739,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                                 }
                             }
                             if (r.stops.isNotEmpty()) {
-                                item { SectionHeader("정류소 ${r.stops.size}") }
+                                item { SectionHeader("정류장 ${r.stops.size}") }
                                 items(r.stops) { st ->
                                     val dir by produceState<String?>(null, st.nodeId) { value = vm.stopDirection(st.nodeId)?.let { "$it 방면" } }
                                     StopListRow(st, dir, names[st.cityCode], vm.stopNumbers(st)) {

@@ -111,7 +111,7 @@ class ExRepository(
 
     suspend fun call(path: String, params: Map<String, String> = emptyMap(), page: Int = 1, rows: Int = 30): ExResult =
         withContext(Dispatchers.IO) {
-            if (key.isBlank()) throw IOException("local.properties에 EX_API_KEY를 설정하세요. (한국도로공사 인증키)")
+            if (key.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 EX_API_KEY를 설정하세요. (한국도로공사 인증키)"))
             val url = (BASE + path).toHttpUrl().newBuilder().apply {
                 addQueryParameter("key", key)
                 addQueryParameter("type", "json")

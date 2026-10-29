@@ -94,7 +94,7 @@ class UticIncidentRepository(
     suspend fun incidents(): List<UticIncident> {
         // 집 PC 가 받아 둔 저장본이 있으면 그것 (공공 API 를 직접 부르지 않음)
         OverlaySnapshot.get("ov_utic_incidents.xml") { UticIncidentParser.parse(it) }?.let { return it }
-        if (key.isBlank()) throw IOException("local.properties에 UTIC_API_KEY를 설정하세요.")
+        if (key.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 UTIC_API_KEY를 설정하세요."))
         val request = Request.Builder().url(UticFeeds.incidents.url(key)).build()
         return UticHttp.get(request).let(UticIncidentParser::parse)
     }
@@ -124,7 +124,7 @@ internal object UticHttp {
                                 .trim()
                                 .take(240)
                             val message = if (providerName == "ITS CCTV" && it.code == 401) {
-                                "ITS CCTV 인증 실패 (HTTP 401). local.properties의 ITS_API_KEY가 ITS 오픈API CCTV 키인지, CCTV 서비스 활용신청이 승인됐는지 확인하세요."
+                                com.eunho.tagohub.core.DevMode.msg("ITS CCTV 인증 실패 (HTTP 401). local.properties의 ITS_API_KEY가 ITS 오픈API CCTV 키인지, CCTV 서비스 활용신청이 승인됐는지 확인하세요.")
                             } else {
                                 "$providerName 요청 실패 (HTTP ${it.code})."
                             }

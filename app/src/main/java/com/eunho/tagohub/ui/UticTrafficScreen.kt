@@ -48,7 +48,7 @@ fun UticTrafficScreen() {
             fontWeight = FontWeight.Bold,
         )
         Text(
-            if (key.isBlank()) "local.properties 에 UTIC_API_KEY 를 설정하세요."
+            if (key.isBlank()) com.eunho.tagohub.core.DevMode.msg("local.properties 에 UTIC_API_KEY 를 설정하세요.")
             else "항목을 누르면 UTIC 원본 데이터를 브라우저에서 엽니다.",
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             style = MaterialTheme.typography.bodyMedium,

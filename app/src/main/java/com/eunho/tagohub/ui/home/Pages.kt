@@ -160,6 +160,21 @@ fun MorePage(
                         },
                     )
                 }
+                // 버전을 7번 누르면 개발자 모드(키 설정 안내·모의주행 같은 개발자용 표시)가 켜지고 꺼짐
+                val devContext = LocalContext.current
+                var taps by remember { mutableStateOf(0) }
+                Text(
+                    "앱 버전 ${com.eunho.tagohub.BuildConfig.VERSION_NAME}" + if (com.eunho.tagohub.core.DevMode.on) " · 개발자 모드" else "",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).clickable {
+                        taps += 1
+                        if (taps >= 7) {
+                            taps = 0
+                            val on = com.eunho.tagohub.core.DevMode.toggle(devContext)
+                            android.widget.Toast.makeText(devContext, if (on) "개발자 모드를 켰어요" else "개발자 모드를 껐어요", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                )
             }
         }
         AppBottomNav(AppTab.Settings, onTab)

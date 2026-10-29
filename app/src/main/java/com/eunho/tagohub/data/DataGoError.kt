@@ -22,10 +22,17 @@ object DataGoError {
         throw IOException(message(reason, apiName))
     }
 
+    /** 개발자 모드가 아니면 키 등록·주소 같은 개발자용 이유 대신 사용자 안내만 */
     fun message(reason: String, apiName: String): String = when {
-        "NOT_REGISTERED" in reason -> "$apiName: 인증키가 이 API에 등록되지 않았습니다. 공공데이터포털에서 이 API의 활용신청을 하고 승인된 키를 local.properties 에 넣어 주세요."
+        "NOT_REGISTERED" in reason -> com.eunho.tagohub.core.DevMode.msg(
+            "$apiName: 인증키가 이 API에 등록되지 않았습니다. 공공데이터포털에서 이 API의 활용신청을 하고 승인된 키를 local.properties 에 넣어 주세요.",
+            "$apiName 정보를 지금은 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.",
+        )
         "LIMITED_NUMBER_OF_SERVICE_REQUESTS" in reason -> "$apiName: 오늘 호출 한도를 넘었습니다. 내일 다시 시도해 주세요."
-        "NO_OPENAPI_SERVICE" in reason -> "$apiName: 이 API 주소가 없어졌거나 바뀌었습니다."
-        else -> "$apiName: 공공데이터포털 오류 ($reason)"
+        "NO_OPENAPI_SERVICE" in reason -> com.eunho.tagohub.core.DevMode.msg(
+            "$apiName: 이 API 주소가 없어졌거나 바뀌었습니다.",
+            "$apiName 정보를 지금은 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.",
+        )
+        else -> com.eunho.tagohub.core.DevMode.msg("$apiName: 공공데이터포털 오류 ($reason)", "$apiName 정보를 지금은 불러올 수 없어요. 잠시 뒤 다시 시도해 주세요.")
     }
 }

@@ -142,7 +142,7 @@ object KakaoExtra {
      * "키 확인" 같은 짐작 대신 실제 원인(권한 없음·네트워크·바다 위 좌표 …)을 알 수 있음.
      */
     suspend fun legalCodeOrReason(lat: Double, lng: Double): Pair<String?, String?> = withContext(Dispatchers.IO) {
-        if (key().isEmpty()) return@withContext null to "local.properties 에 KAKAO_REST_KEY 가 없습니다."
+        if (key().isEmpty()) return@withContext null to com.eunho.tagohub.core.DevMode.msg("local.properties 에 KAKAO_REST_KEY 가 없습니다.")
         val url = KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
         try {
             client.newCall(Request.Builder().url(url).header("Authorization", "KakaoAK ${key()}").build()).execute().use { res ->

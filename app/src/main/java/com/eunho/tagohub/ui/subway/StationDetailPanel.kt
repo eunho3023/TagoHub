@@ -227,7 +227,7 @@ private fun StationDetailBody(
                 androidx.compose.material3.IconButton(onClick = onFavorite) {
                     Icon(
                         if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                        contentDescription = if (favorite) "자주 가는 곳에서 빼기" else "자주 가는 곳에 넣기",
+                        contentDescription = if (favorite) "즐겨찾기에서 빼기" else "즐겨찾기에 넣기",
                         tint = if (favorite) androidx.compose.ui.graphics.Color(0xFFF5B301) else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -637,7 +637,7 @@ private fun TimetableTab(d: StationDetail, c: StationDetailController) {
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
-                listOf(SubwayTimetableSource.Tago to "역별 시간표", SubwayTimetableSource.Kric to "열차별 시각표")
+                listOf(SubwayTimetableSource.Tago to "역별 시간표", SubwayTimetableSource.Kric to "열차별 시간표")
                     .forEachIndexed { i, (option, label) ->
                         SegmentedButton(
                             selected = source == option,

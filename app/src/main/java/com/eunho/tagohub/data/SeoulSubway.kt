@@ -40,7 +40,7 @@ class SeoulSubwayRepository(private val api: SeoulSubwayApi) {
     val hasKey: Boolean get() = key.isNotEmpty()
 
     private suspend fun <T> run(block: suspend () -> T): TagoResult<T> {
-        if (!hasKey) return TagoResult.Error("서울 실시간 지하철 키가 없습니다. local.properties 에 SEOUL_SUBWAY_KEY 를 추가하세요.")
+        if (!hasKey) return TagoResult.Error(com.eunho.tagohub.core.DevMode.msg("서울 실시간 지하철 키가 없습니다. local.properties 에 SEOUL_SUBWAY_KEY 를 추가하세요."))
         return try {
             TagoResult.Success(block())
         } catch (e: CancellationException) {

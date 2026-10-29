@@ -30,7 +30,7 @@ class TagoRepository(private val api: TagoApi) {
 
     private suspend fun <T> run(block: suspend () -> T): TagoResult<T> {
         if (!Network.hasKey) {
-            return TagoResult.Error("서비스키가 없습니다. local.properties 에 TAGO_SERVICE_KEY=... 를 추가하고 다시 빌드하세요.")
+            return TagoResult.Error(com.eunho.tagohub.core.DevMode.msg("서비스키가 없습니다. local.properties 에 TAGO_SERVICE_KEY=... 를 추가하고 다시 빌드하세요."))
         }
         return try {
             TagoResult.Success(block())

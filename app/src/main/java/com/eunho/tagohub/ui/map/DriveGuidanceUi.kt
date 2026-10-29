@@ -664,7 +664,8 @@ private fun DriveStartBar(plan: RidePlan) {
                 colors = ButtonDefaults.buttonColors(containerColor = BoardColor.Danger, contentColor = Color.White),
             ) { Text("안내 종료", fontWeight = FontWeight.ExtraBold, fontSize = 17.sp) }
         } else {
-            Button(
+            // 모의주행은 개발자용 시험 기능: 개발자 모드에서만
+            if (com.eunho.tagohub.core.DevMode.on) Button(
                 onClick = { begin(true) },
                 modifier = Modifier.weight(1f).height(58.dp),
                 shape = RoundedCornerShape(0.dp),

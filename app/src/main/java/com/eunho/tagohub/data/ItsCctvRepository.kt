@@ -92,7 +92,7 @@ class ItsCctvRepository(
                     OverlaySnapshot.get("ov_its_cctv_$type.xml", staleOkSec = CCTV_STALE_OK_SEC) { ItsCctvParser.parse(it, type) }?.let { all ->
                         return@async all.filter { it.lat in south..north && it.lng in west..east }
                     }
-                    if (key.isBlank()) throw IOException("local.properties에 ITS_API_KEY를 설정하세요.")
+                    if (key.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 ITS_API_KEY를 설정하세요."))
                     val url = HttpUrl.Builder()
                         .scheme("https")
                         .host("openapi.its.go.kr")
