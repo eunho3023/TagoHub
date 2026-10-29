@@ -47,9 +47,10 @@ class AirViewModel : ViewModel() {
         placeLoader = { q -> com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.PlaceFilter.filter(com.eunho.tagohub.data.AirSchedule.domesticAirports(), q)) },
         gradeLoader = { com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.AirSchedule.domesticAirlines()) },
         tripLoader = { d, a, date, g ->
-            val all = com.eunho.tagohub.data.KacIntlClient.fileOrLive(com.eunho.tagohub.data.AirSchedule.trips(d.id, a.id, date)) {
-                com.eunho.tagohub.data.KacIntlClient.domesticTrips(d.id, a.id, date)
-            }
+            val all = com.eunho.tagohub.data.KacIntlClient.withStatus(d.id, a.id, date,
+                com.eunho.tagohub.data.KacIntlClient.fileOrLive(com.eunho.tagohub.data.AirSchedule.trips(d.id, a.id, date)) {
+                    com.eunho.tagohub.data.KacIntlClient.domesticTrips(d.id, a.id, date)
+                })
             when (all) {
                 is com.eunho.tagohub.core.TagoResult.Success -> com.eunho.tagohub.core.TagoResult.Success(all.data.filter { g == null || it.kind.startsWith(g.name) })
                 else -> all
