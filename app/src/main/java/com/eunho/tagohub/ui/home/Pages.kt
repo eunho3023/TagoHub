@@ -107,7 +107,7 @@ fun TabScaffold(
     }
 }
 
-/** 설정: 화면 모드, 공지사항, 앱 제보 */
+/** 설정: 화면 모드, 길안내(안내 음성·크기·알릴 항목), 계정, 정보(공지사항·앱 제보·최근 오류) */
 @Composable
 fun MorePage(
     onOpen: (ModeJump.Kind) -> Unit,
@@ -122,24 +122,29 @@ fun MorePage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text("설정", fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
-                Text("화면 모드", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(8.dp))
+                Text("설정", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                SettingsLabel("화면 모드")
                 ThemeModePicker()
-                Text(
-                    "시스템을 고르면 기기의 라이트·다크 설정을 따라 바뀝니다.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                AccountRow()
-                MoreRow("공지사항", Icons.Outlined.Info, onNotices)
-                MoreRow("앱 제보", Icons.Outlined.Email, onReport)
+
+                SettingsLabel("길안내")
+                GuidanceSettings()
+
+                SettingsLabel("계정")
+                SettingsCard { AccountRow() }
+
+                SettingsLabel("정보")
                 // 앱이 비정상 종료된 적이 있으면 원인을 보고 공유할 수 있음
                 var crash by remember { mutableStateOf(com.eunho.tagohub.data.CrashLog.last()) }
                 var showCrash by remember { mutableStateOf(false) }
-                if (crash != null) MoreRow("최근 오류 보고서", Icons.Outlined.Info) { showCrash = true }
+                SettingsCard {
+                    MoreRow("공지사항", onNotices)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    MoreRow("앱 제보", onReport)
+                    if (crash != null) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        MoreRow("최근 오류") { showCrash = true }
+                    }
+                }
                 if (showCrash) crash?.let { text ->
                     val context = androidx.compose.ui.platform.LocalContext.current
                     androidx.compose.material3.AlertDialog(
@@ -150,13 +155,14 @@ fun MorePage(
                             androidx.compose.material3.TextButton(onClick = {
                                 context.startActivity(
                                     android.content.Intent.createChooser(
-                                        android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "오류 보고서 공유",
+                                        android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text),
+                                        "오류 보고서 공유",
                                     ),
                                 )
                             }) { Text("공유") }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { com.eunho.tagohub.data.CrashLog.clear(); crash = null; showCrash = false }) { Text("지우고 닫기") }
+                            androidx.compose.material3.TextButton(onClick = { com.eunho.tagohub.data.CrashLog.clear(); crash = null; showCrash = false }) { Text("지우기") }
                         },
                     )
                 }
@@ -181,6 +187,64 @@ fun MorePage(
     }
 }
 
+@Composable
+private fun SettingsLabel(text: String) {
+    Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp))
+}
+
+@Composable
+private fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) { Column(content = content) }
+}
+
+/** 길안내 설정: 안내 음성 켜고 끄기, 음성 크기, 안내받을 항목 (자주 쓰는 4개 먼저, 나머지는 펼쳐서) */
+@Composable
+private fun GuidanceSettings() {
+    val context = LocalContext.current
+    val voiceOn by com.eunho.tagohub.guidance.DriveGuidance.voiceOn.collectAsStateWithLifecycle()
+    val volume by com.eunho.tagohub.guidance.DriveGuidance.voiceVolume.collectAsStateWithLifecycle()
+    val groups by com.eunho.tagohub.guidance.DriveGuidance.zoneGroups.collectAsStateWithLifecycle()
+    var more by remember { mutableStateOf(false) }
+    val main = listOf(
+        com.eunho.tagohub.data.ZoneGroup.Camera, com.eunho.tagohub.data.ZoneGroup.Parking,
+        com.eunho.tagohub.data.ZoneGroup.Protect, com.eunho.tagohub.data.ZoneGroup.Bump,
+    )
+    val rest = com.eunho.tagohub.data.ZoneGroup.entries - main.toSet()
+    SettingsCard {
+        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("안내 음성", Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            com.eunho.tagohub.ui.common.ClearSwitch(voiceOn, { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = it })
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text("음성 크기", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            androidx.compose.material3.Slider(
+                value = volume,
+                onValueChange = { com.eunho.tagohub.guidance.DriveGuidance.voiceVolume.value = it },
+                enabled = voiceOn,
+            )
+        }
+        (main + if (more) rest else emptyList()).forEach { g ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(g.label, Modifier.weight(1f).padding(end = 10.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                com.eunho.tagohub.ui.common.ClearSwitch(g in groups, { com.eunho.tagohub.guidance.DriveGuidance.setZoneGroup(context, g, it) })
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text(
+            if (more) "접기" else "그 밖의 안내 항목 ${rest.size}개 보기",
+            Modifier.fillMaxWidth().clickable { more = !more }.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 14.dp),
+            fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
 /** 구글 계정 연결: 연결하면 즐겨찾기·설정이 계정에 이어져서 앱을 지우거나 폰을 바꿔도 유지됨 */
 @Composable
 private fun AccountRow() {
@@ -194,9 +258,7 @@ private fun AccountRow() {
         c as? android.app.Activity
     }
     val email = account.email
-    Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-        Text("계정", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(6.dp))
+    Column(Modifier.fillMaxWidth().padding(14.dp)) {
         Text(
             if (email != null) "$email 연결됨 · 즐겨찾기와 설정이 계정에 저장돼요" else "구글 계정을 연결하면 앱을 지우거나 폰을 바꿔도 즐겨찾기와 설정이 이어져요",
             fontSize = 13.sp,
@@ -220,18 +282,16 @@ private fun AccountRow() {
             },
         ) { Text(if (email != null) "로그아웃" else if (busy) "연결 중…" else "구글 계정 연결") }
     }
-    HorizontalDivider(Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
-private fun MoreRow(label: String, icon: ImageVector, onClick: () -> Unit) {
+private fun MoreRow(label: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = onClick),
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = onClick).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
