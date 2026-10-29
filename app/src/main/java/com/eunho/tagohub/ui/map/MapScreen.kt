@@ -1278,7 +1278,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
     Column(Modifier.fillMaxSize()) {
         LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(com.eunho.tagohub.data.DayKind.entries) { k ->
-                FilterChip(selected = k == day, onClick = { vm.openStopTimetable(k) }, label = { Text(k.label) })
+                com.eunho.tagohub.ui.common.PillChip(k.label, k == day, { vm.openStopTimetable(k) })
             }
         }
         LoadView(state, onRetry = { vm.openStopTimetable() }, isEmpty = { it.isEmpty() }, emptyText = "시간표가 없습니다.") { list ->
@@ -1367,16 +1367,16 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                                     Text(
                                         String.format(java.util.Locale.ROOT, "%02d", m % 60),
                                         Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(if (isNext) busRouteColor(cur.routeType) else Color.Transparent)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                                        style = MaterialTheme.typography.titleMedium.merge(Tnum),
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(if (isNext) busRouteColor(cur.routeType) else MaterialTheme.colorScheme.surfaceVariant)
+                                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.titleSmall.merge(Tnum),
                                         color = when {
                                             isNext -> Color.White
                                             next != null && m < next -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                             else -> MaterialTheme.colorScheme.onSurface
                                         },
-                                        fontWeight = if (isNext) FontWeight.Bold else FontWeight.Normal,
+                                        fontWeight = if (isNext) FontWeight.ExtraBold else FontWeight.SemiBold,
                                     )
                                 }
                             }

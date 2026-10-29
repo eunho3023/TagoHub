@@ -1,5 +1,7 @@
 package com.eunho.tagohub.ui.home
 
+import androidx.compose.foundation.background
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
@@ -58,6 +60,8 @@ fun BusTab(
             SearchPanel(vm, SearchScope.Bus, query, { query = it }, search)
             if (query.isBlank()) {
                 Spacer(Modifier.height(16.dp))
+                NearbyStops(search.onStop)
+                Spacer(Modifier.height(16.dp))
                 Favorites(vm, onFavorite)
                 Spacer(Modifier.height(16.dp))
                 androidx.compose.material3.Surface(
@@ -68,6 +72,83 @@ fun BusTab(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("지도에서 보기", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 내 주변 정류장: 지금 위치에서 700m 안의 가까운 정류장 3곳과 오는 버스·남은 시간 (45초마다 새로 받음).
+ * 위치 권한이 없거나 위치를 모르면 아무것도 보이지 않음 (여기서 권한을 새로 묻지 않음).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val stops by androidx.compose.runtime.produceState<List<Pair<com.eunho.tagohub.data.BusStop, Double>>>(emptyList()) {
+        if (!com.eunho.tagohub.ui.bus.hasLocationPermission(context)) return@produceState
+        val loc = com.eunho.tagohub.ui.bus.lastKnownLocation(context) ?: com.eunho.tagohub.ui.bus.currentLocation(context) ?: return@produceState
+        val db = com.eunho.tagohub.data.StopDb.get(context) ?: return@produceState
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            db.near(loc.latitude, loc.longitude, 700.0, 30)
+                .filter { it.first.name.isNotBlank() }
+                .distinctBy { it.first.nodeId }
+                .take(3)
+        }
+    }
+    if (stops.isEmpty()) return
+    val etas by androidx.compose.runtime.produceState(emptyMap<String, List<RouteEta>>(), stops) {
+        while (true) {
+            com.eunho.tagohub.core.AppState.awaitForeground()
+            val got = LinkedHashMap<String, List<RouteEta>>(value)
+            kotlinx.coroutines.coroutineScope {
+                stops.forEach { (s, _) ->
+                    launch {
+                        got[s.nodeId] = when (val r = runCatching { com.eunho.tagohub.ui.bus.arrivalsFor(com.eunho.tagohub.data.Graph.repo, s) }.getOrNull()) {
+                            is com.eunho.tagohub.core.TagoResult.Success -> HomeText.routeEtas(r.data)
+                            else -> got[s.nodeId] ?: emptyList()
+                        }
+                        value = LinkedHashMap(got)
+                    }
+                }
+            }
+            kotlinx.coroutines.delay(45_000L)
+        }
+    }
+    val red = if (com.eunho.tagohub.ui.theme.LocalDarkTheme.current) androidx.compose.ui.graphics.Color(0xFFFF8A80) else androidx.compose.ui.graphics.Color(0xFFD92D20)
+    Text("내 주변 정류장", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(6.dp))
+    androidx.compose.material3.Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            stops.forEachIndexed { i, (s, meters) ->
+                if (i > 0) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(Modifier.fillMaxWidth().clickable { onStop(s) }.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text(s.name, Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(if (meters >= 1000) "%.1fkm".format(meters / 1000.0) else "${meters.toInt()}m", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    s.nodeNo?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    val routes = etas[s.nodeId].orEmpty()
+                    if (routes.isNotEmpty()) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            routes.forEach { r ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        r.routeNo,
+                                        Modifier.background(com.eunho.tagohub.ui.theme.busRouteColor(r.routeType), RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
+                                        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1,
+                                    )
+                                    if (r.text != null) Text(" ${r.text}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = red)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
