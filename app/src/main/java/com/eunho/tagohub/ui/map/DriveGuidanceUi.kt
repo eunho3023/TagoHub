@@ -431,7 +431,7 @@ private fun TurnBanner(guide: DriveGuide, meters: Double) {
             Column(Modifier.weight(1f)) {
                 Text(NavText.short(meters), color = Color.White, fontSize = 44.sp, lineHeight = 48.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    if (guide.isDestination) "목적지" else TurnKind.text(guide),
+                    if (guide.isDestination) "목적지" else TurnKind.bannerText(guide),
                     color = Color.White.copy(alpha = 0.92f),
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,

@@ -57,6 +57,9 @@ class TurnKindTest {
         assertEquals("서초IC에서 오른쪽 방향", TurnKind.text(guide("2시 방향", name = "서초IC")))
         // 일반 문구는 그대로
         assertEquals("양재역 방면으로 좌회전", TurnKind.text(guide("양재역 방면으로 좌회전", type = 1)))
+        assertEquals("좌회전 · 양재역 방면", TurnKind.bannerText(guide("양재역 방면으로 좌회전", type = 1)))
+        assertEquals("오른쪽 방향 · 서초IC", TurnKind.bannerText(guide("2시 방향", name = "서초IC")))
+        assertEquals("직진", TurnKind.bannerText(guide("직진")))
     }
 
     @Test
