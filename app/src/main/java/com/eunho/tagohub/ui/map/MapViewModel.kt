@@ -317,7 +317,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 pushUticIncidents()
             } catch (e: IOException) {
                 uticRequestedAt = 0L
-                banner.value = "UTIC 돌발정보를 불러오지 못했습니다: ${e.message}"
+                banner.value = "UTIC 돌발정보를 불러오지 못했어요: ${e.message}"
             } finally {
                 if (generation == uticGeneration) {
                     uticLoading.value = false
@@ -403,7 +403,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: IOException) {
                 itsCctvRequestedAt = 0L
-                banner.value = "ITS CCTV를 불러오지 못했습니다: ${e.message}"
+                banner.value = "ITS CCTV를 불러오지 못했어요: ${e.message}"
             } finally {
                 if (generation == itsCctvGeneration) {
                     itsCctvLoading.value = false
@@ -470,7 +470,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: IOException) {
                 itsRoadRequestedAt[id] = 0L
-                banner.value = "ITS 도로정보를 불러오지 못했습니다: ${e.message}"
+                banner.value = "ITS 도로정보를 불러오지 못했어요: ${e.message}"
             } finally {
                 if (itsRoadGenerations[id] == generation) {
                     itsRoadJobs.remove(id)
@@ -560,7 +560,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
             CachedItsRoadLayer(rows, bounds)
         } catch (e: org.json.JSONException) {
-            android.util.Log.w("TagoITS", "저장된 ITS $id 캐시를 읽지 못했습니다.", e)
+            android.util.Log.w("TagoITS", "저장된 ITS $id 캐시를 읽지 못했어요.", e)
             prefs.edit().remove(itsRoadCacheKey(id)).apply()
             null
         }
@@ -587,14 +587,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
         runItsQuery {
             itsTrafficRows.value = itsRoadRepo.traffic(box[0], box[1], box[2], box[3])
-            itsQueryError.value = if (itsTrafficRows.value.isEmpty()) "현재 지도 범위에 조회된 교통소통 정보가 없습니다." else null
+            itsQueryError.value = if (itsTrafficRows.value.isEmpty()) "현재 지도 범위에 조회된 교통소통 정보가 없어요." else null
         }
     }
 
     fun loadItsForecast(sectionId: String, date: String, hour: Int) {
         runItsQuery {
             itsForecastRows.value = itsRoadRepo.forecast(sectionId, date, hour)
-            itsQueryError.value = if (itsForecastRows.value.isEmpty()) "선택한 구간의 예측정보가 없습니다." else null
+            itsQueryError.value = if (itsForecastRows.value.isEmpty()) "선택한 구간의 예측정보가 없어요." else null
         }
     }
 
@@ -609,7 +609,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: IOException) {
-                itsQueryError.value = "ITS 정보를 불러오지 못했습니다: ${e.message}"
+                itsQueryError.value = "ITS 정보를 불러오지 못했어요: ${e.message}"
             } finally {
                 if (generation == itsQueryGeneration) {
                     itsQueryLoading.value = false
@@ -636,10 +636,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 uticRoadRisks = uticRoadRiskRepo.roadRisks()
                 pushUticRoadRisks()
-                if (uticRoadRisks.isEmpty()) banner.value = "현재 UTIC 도로위험예보 데이터가 없습니다. 기상·예보 조건에 따라 달라집니다."
+                if (uticRoadRisks.isEmpty()) banner.value = "현재 UTIC 도로위험예보 데이터가 없어요. 기상·예보 조건에 따라 달라집니다."
             } catch (e: IOException) {
                 uticRiskRequestedAt = 0L
-                banner.value = "UTIC 도로위험예보를 불러오지 못했습니다: ${e.message}"
+                banner.value = "UTIC 도로위험예보를 불러오지 못했어요: ${e.message}"
             } finally {
                 if (generation == uticRiskGeneration) {
                     uticRiskLoading.value = false
@@ -693,7 +693,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 pushUticSafetyPoints()
             } catch (e: IOException) {
                 uticSafetyRequestedAt = 0L
-                banner.value = "UTIC 교통안전정보를 불러오지 못했습니다: ${e.message}"
+                banner.value = "UTIC 교통안전정보를 불러오지 못했어요: ${e.message}"
             } finally {
                 if (generation == uticSafetyGeneration) {
                     uticSafetyLoading.value = false
@@ -878,7 +878,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun saveHomeWork(kind: com.eunho.tagohub.data.SavedKind) {
         val p = picked.value ?: return
         trip.homeWork.set(kind, com.eunho.tagohub.data.SavedPlace(p.name, p.lat, p.lng))
-        banner.value = "${kind.label}으로 저장했습니다: ${p.name}"
+        banner.value = "${kind.label}으로 저장했어요: ${p.name}"
     }
 
     fun usePicked(asOrigin: Boolean) {
@@ -1071,7 +1071,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 itsFogSections.value = staticData.fog
                 pushItsRoadFeatures()
             } catch (e: IOException) {
-                banner.value = "ITS 구간 자료를 읽지 못했습니다: ${e.message}"
+                banner.value = "ITS 구간 자료를 읽지 못했어요: ${e.message}"
             }
         }
         viewModelScope.launch {
@@ -1082,7 +1082,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } catch (e: IOException) {
-                banner.value = "KRIC 역 코드 데이터를 읽지 못했습니다: ${e.message}"
+                banner.value = "KRIC 역 코드 데이터를 읽지 못했어요: ${e.message}"
                 null
             }
             kricCodes?.let(Graph.kricSubway::updateStationCodeIndex)
@@ -1094,14 +1094,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 stations.setFacilityIndex(facilityIndex)
             } catch (e: IOException) {
-                banner.value = "역 편의정보 데이터를 읽지 못했습니다: ${e.message}"
+                banner.value = "역 편의정보 데이터를 읽지 못했어요: ${e.message}"
             }
             index = withContext(Dispatchers.IO) {
                 runCatching {
                     app.assets.open("subway_stations.tsv").bufferedReader().use { StationIndex.parseTsv(it.readText()) }
                 }.getOrNull()
             }
-            if (index == null) banner.value = "지하철역 데이터를 읽지 못했습니다."
+            if (index == null) banner.value = "지하철역 데이터를 읽지 못했어요."
             pushStations()
             // 지도가 역 데이터보다 먼저 준비돼 화면 범위를 이미 알려줬으면, 지금 실시간 열차를 시작
             updateTrainLines()
@@ -1414,7 +1414,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     val activeRegion = region ?: run {
                         val c = lastView ?: throw IOException("지도 위치를 아직 모릅니다.")
                         val (legal, why) = com.eunho.tagohub.data.KakaoExtra.legalCodeOrReason(c.first, c.second)
-                        if (legal == null) throw IOException(why ?: "지역 코드를 찾지 못했습니다.")
+                        if (legal == null) throw IOException(why ?: "지역 코드를 찾지 못했어요.")
                         withContext(Dispatchers.IO) { repository.resolveByLegalCode(legal) }
                     }
                     if (activeRegion == null) {
@@ -1425,7 +1425,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     clearKlidBusError()
                     pushKlidBuses()
                 } catch (e: IOException) {
-                    banner.value = "초정밀 버스 위치를 불러오지 못했습니다: ${e.message}"
+                    banner.value = "초정밀 버스 위치를 불러오지 못했어요: ${e.message}"
                 }
                 delay(KLID_BUS_REFRESH_MS)
             }
@@ -1611,7 +1611,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val wantRoutes = k.any(Char::isDigit)
             busResult.value = Load.Ok(BusSearch(stopsSorted, emptyList()))
             if (!wantRoutes) {
-                if (db == null) busResult.value = Load.Fail("저장된 정류장 데이터를 열지 못했습니다.")
+                if (db == null) busResult.value = Load.Fail("저장된 정류장 데이터를 열지 못했어요.")
                 return@launch
             }
 
@@ -1665,7 +1665,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                                 routes = foundRoutes.sortedWith(
                                     compareBy<BusRoute>({ rank[it.cityCode] ?: Int.MAX_VALUE }).thenBy(com.eunho.tagohub.core.naturalOrder) { it.routeNo }
                                 ),
-                                warning = if (failed > 0) "${failed}개 지역은 노선 응답이 없어 빠졌을 수 있습니다." else null,
+                                warning = if (failed > 0) "${failed}개 지역은 노선 응답이 없어 빠졌을 수 있어요." else null,
                             )
                         )
                     }
@@ -1948,7 +1948,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 loaded = false, estimated = true, cityCode = it.cityCode ?: d.stop.cityCode)
         }
         val list = jeonju + others
-        if (list.isEmpty()) return Load.Fail("이 정류장을 지나는 노선을 아직 불러오지 못했습니다. 잠시 후 다시 눌러주세요.")
+        if (list.isEmpty()) return Load.Fail("이 정류장을 지나는 노선을 아직 불러오지 못했어요. 잠시 후 다시 눌러주세요.")
         return Load.Ok(list)
     }
 
@@ -2110,7 +2110,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 서울처럼 TAGO 실시간은 없어도 앱 안 노선 데이터가 있으면 노선 목록은 보여준다
             stopDb?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(d.stop.nodeId) } }.isNullOrEmpty()) {
             val name = cityNames.value[d.stop.cityCode] ?: "이 지역"
-            d.rows.value = Load.Fail("$name 은(는) 국토교통부 TAGO 실시간 버스 서비스 지역이 아니라 도착정보를 받을 수 없습니다. 정류장 위치만 표시합니다.")
+            d.rows.value = Load.Fail("$name 은(는) 국토교통부 TAGO 실시간 버스 서비스 지역이 아니라 도착정보를 받을 수 없어요. 정류장 위치만 표시해요.")
             return
         }
         var first = true

@@ -244,7 +244,7 @@ private fun NoticesDialog(onClose: () -> Unit) {
                 val l = list
                 when {
                     l == null -> item { }
-                    l.isEmpty() -> item { Text("공지사항이 없습니다. (인터넷 연결을 확인하세요)") }
+                    l.isEmpty() -> item { Text("공지사항이 없어요. (인터넷 연결을 확인하세요)") }
                     else -> items(l.size) { i ->
                         val n = l[i]
                         Column(Modifier.padding(vertical = 8.dp)) {

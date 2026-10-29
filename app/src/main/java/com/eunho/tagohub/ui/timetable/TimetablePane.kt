@@ -326,7 +326,7 @@ fun TripList(
         state,
         onRetry = onRetry,
         isEmpty = { it.isEmpty() && footer == null },
-        emptyText = "해당 날짜에 운행편이 없습니다.",
+        emptyText = "해당 날짜에 운행편이 없어요.",
         idle = { MessageBox(idleText) },
     ) { trips ->
         val now = remember(trips) { LocalDateTime.now() }
@@ -334,7 +334,7 @@ fun TripList(
         val listState = rememberLazyListState()
         LaunchedEffect(trips) { if (next > 0) listState.scrollToItem(next) }
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (trips.isEmpty()) item { MessageBox("해당 날짜에 직통 운행편이 없습니다.") }
+            if (trips.isEmpty()) item { MessageBox("해당 날짜에 직통 운행편이 없어요.") }
             itemsIndexed(trips) { i, t ->
                 Column {
                     TripRow(t, accent, past = t.dep?.isBefore(now) == true, next = i == next)
@@ -524,7 +524,7 @@ private fun TransferFooter(c: TimetableController, accent: Color) {
             }
             is Load.Ok -> if (s.value.isEmpty()) {
                 MinWaitChips(c)
-                MessageBox("환승 1회로 갈 수 있는 열차를 찾지 못했습니다. 2회 이상 환승이 필요하거나 그날 운행이 없을 수 있어요.")
+                MessageBox("환승 1회로 갈 수 있는 열차를 찾지 못했어요. 2회 이상 환승이 필요하거나 그날 운행이 없을 수 있어요.")
             } else {
                 Text("환승해서 가기  ·  1회 환승만", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
                 MinWaitChips(c)

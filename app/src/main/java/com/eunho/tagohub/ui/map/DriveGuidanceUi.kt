@@ -89,6 +89,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -209,7 +211,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
         ) {
             when {
                 st == null -> StatusBanner("위치를 찾는 중…")
-                st.arrived -> StatusBanner("목적지에 도착했습니다")
+                st.arrived -> StatusBanner("목적지에 도착했어요")
                 st.offRoute -> StatusBanner("경로를 다시 찾는 중", warn = true)
                 st.nextGuide != null -> {
                     TurnBanner(st.nextGuide, st.distanceToNext)
@@ -478,7 +480,8 @@ private fun NoteChip(text: String, container: Color, content: Color) {
 /** 남은 길의 소통 상태를 세로 막대로: 위가 목적지, 아래(내 위치)에서 위로 올라감 */
 @Composable
 private fun TrafficBar(spans: List<com.eunho.tagohub.data.TrafficSpan>, marker: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier.width(14.dp)) {
+    val description = trafficBarText(spans)
+    Canvas(modifier.width(14.dp).semantics { contentDescription = description }) {
         val w = size.width * 0.55f
         val x = (size.width - w) / 2f
         val markerR = size.width / 2f

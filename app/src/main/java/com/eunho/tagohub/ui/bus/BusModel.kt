@@ -481,7 +481,7 @@ private suspend fun jeonjuCoords(rows: List<Row>): Map<String, LatLng> {
 internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
     if (Jeju.isJeju(d.routeId)) {
         val st = cachedStops(d.routeId) { (Graph.jeju.routeStops(d.routeId) as? TagoResult.Success)?.data }
-        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("제주 노선 정류장을 받지 못했습니다.")
+        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("제주 노선 정류장을 받지 못했어요.")
         d.info.value = Load.Ok(cachedInfo(d.routeId) { Graph.jeju.routeInfo(d.routeId) })
         return
     }
@@ -492,7 +492,7 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
         val local = StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.routeStops(d.routeId) } }.orEmpty()
         val st = if (local.isNotEmpty() && GyeonggiRouteBook.sameStop(local.first().name, info?.startName)) local
             else cachedStops(d.routeId) { (Graph.gyeonggi.routeStops(d.routeId) as? TagoResult.Success)?.data }
-        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("경기 노선 정류장을 받지 못했습니다.")
+        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("경기 노선 정류장을 받지 못했어요.")
         d.info.value = Load.Ok(info)
         return
     }
@@ -503,7 +503,7 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
                 JeonjuMappers.routeStops(rows) { coords[it] }
             }
         }
-        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("전주 노선 정류장을 받지 못했습니다.")
+        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("전주 노선 정류장을 받지 못했어요.")
         d.info.value = Load.Ok(cachedInfo(d.routeId) { (Graph.jeonju.routeInfo(d.routeId) as? TagoResult.Success)?.data })
         return
     }
@@ -529,7 +529,7 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
         launch {
             if (d.stops.value !is Load.Ok) d.stops.value = Load.Loading
             val st = cachedStops(d.routeId) { (repo.routeStops(d.cityCode, d.routeId) as? TagoResult.Success)?.data }
-            d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했습니다.")
+            d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했어요.")
         }
     }
 }

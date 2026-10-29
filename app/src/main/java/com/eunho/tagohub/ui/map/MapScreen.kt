@@ -225,7 +225,7 @@ fun MapScreen(
     var mapFailed by remember { mutableStateOf(false) }
     val osm: MapEngine = remember(mapAttempt) {
         mapFailed = false
-        if (!KakaoCanvas.available) vm.onMapProblem(com.eunho.tagohub.core.DevMode.msg("카카오맵 앱 키가 없습니다. local.properties 에 KAKAO_NATIVE_KEY 를 넣고 다시 빌드하세요.", "지도를 불러오지 못했어요. 잠시 뒤 새로고침 버튼을 눌러 주세요."))
+        if (!KakaoCanvas.available) vm.onMapProblem(com.eunho.tagohub.core.DevMode.msg("카카오맵 앱 키가 없어요. local.properties 에 KAKAO_NATIVE_KEY 를 넣고 다시 빌드하세요.", "지도를 불러오지 못했어요. 잠시 뒤 새로고침 버튼을 눌러 주세요."))
         KakaoCanvas(context, vm) { reason ->
             mapFailed = true
             vm.onKakaoFailed(reason, context.packageName, KakaoCanvas.keyHash(context))
@@ -252,14 +252,15 @@ fun MapScreen(
     fun locate() {
         scope.launch {
             val loc = currentLocation(context)
-            if (loc == null) android.widget.Toast.makeText(context, "현재 위치를 가져오지 못했습니다. 위치 서비스가 켜져 있는지 확인하세요.", android.widget.Toast.LENGTH_SHORT).show()
+            if (loc == null) android.widget.Toast.makeText(context, "현재 위치를 가져오지 못했어요. 위치 서비스가 켜져 있는지 확인하세요.", android.widget.Toast.LENGTH_SHORT).show()
             else vm.setMe(loc.latitude, loc.longitude, center = true)
         }
     }
 
     var locationKey by remember { mutableStateOf(0) }
+    var showLocationWhy by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if (granted.values.any { it }) { locate(); locationKey++ } else android.widget.Toast.makeText(context, "위치 권한이 없어 현재 위치를 표시할 수 없습니다.", android.widget.Toast.LENGTH_SHORT).show()
+        if (granted.values.any { it }) { locate(); locationKey++ } else android.widget.Toast.makeText(context, "위치 권한이 없어 현재 위치를 표시할 수 없어요.", android.widget.Toast.LENGTH_SHORT).show()
     }
     // 내 위치: 화면이 보이는 동안 GPS 를 따라 계속 움직임 (앱이 뒤로 가면 멈춰 배터리 아낌)
     val compass = remember { com.eunho.tagohub.core.HeadingSensor(context) { vm.onCompass(it) } }
@@ -283,14 +284,29 @@ fun MapScreen(
         onDispose { lifecycle.removeObserver(obs); stop(); compass.stop() }
     }
 
+    if (showLocationWhy) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showLocationWhy = false },
+            title = { Text("내 위치를 사용할게요") },
+            text = { Text("내 주변 정류장과 역, 가까운 버스·지하철을 보여 드리려면 위치 권한이 필요해요. 위치는 주변 정보를 찾는 데만 써요.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showLocationWhy = false
+                    permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                }) { Text("계속") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showLocationWhy = false }) { Text("나중에") } },
+        )
+    }
+
     // 시작: 저장된 자리가 있으면 그대로 두고 내 위치 점만, 없으면 내 위치로 이동.
     // 휴대폰이 알고 있는 마지막 위치를 먼저 바로 쓰고, 새 위치는 뒤에서 받아 보정 (GPS 를 기다리지 않음)
     LaunchedEffect(wantsLocate) {
         if (wantsLocate) {
             vm.wantsLocate.value = false
             if (!hasLocationPermission(context) && !vm.startsAtSaved && vm.askLocationOnce()) {
-                // 앱을 처음 켰을 때 현재 위치로 띄우려면 권한이 필요 → 한 번만 묻는다 (허용하면 locate() 가 내 위치로 이동)
-                permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                // 앱을 처음 켰을 때 현재 위치로 띄우려면 권한이 필요 → 이유를 먼저 설명하고 한 번만 묻는다 (허용하면 locate() 가 내 위치로 이동)
+                showLocationWhy = true
             } else if (hasLocationPermission(context)) {
                 val center = !vm.startsAtSaved
                 val quick = lastKnownLocation(context)
@@ -346,6 +362,12 @@ fun MapScreen(
             }
             // 지도를 아예 못 띄울 때의 안내만 보임 (부가 기능의 경고·'확대하면 …' 안내는 지움)
             mapFailure?.let { Banner(it) { vm.mapFailure.value = null } }
+            // 숨은 조작(지도 길게 누르기)은 처음 한 번만 짧게 알려 줌
+            var longPressHint by remember { mutableStateOf(!hintSeen(context, "map_long_press")) }
+            if (longPressHint && mapFailure == null) Banner("지도를 길게 누르면 그 곳으로 길찾기를 시작할 수 있어요.", info = true) {
+                markHintSeen(context, "map_long_press")
+                longPressHint = false
+            }
             val itsRoadLabels = mapOf(
                 "its_events" to "ITS 돌발정보",
                 "its_disasters" to "ITS 재난정보",
@@ -629,7 +651,7 @@ private fun RestAreaDialog(feature: com.eunho.tagohub.data.ItsRoadFeature, onDis
                 }
                 when {
                     d == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    d.isEmpty -> Text("등록된 상세 정보가 없습니다.", style = MaterialTheme.typography.bodyMedium)
+                    d.isEmpty -> Text("등록된 상세 정보가 없어요.", style = MaterialTheme.typography.bodyMedium)
                     else -> {
                         d.gas?.let { g ->
                             RestSection("주유 가격" + (g.company?.let { " · $it" } ?: "")) {
@@ -739,7 +761,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                         play(streamUrl)
                     }
                 } else {
-                    playbackError = "앱에서 영상을 재생하지 못했습니다 (${error.errorCodeName}). 외부 플레이어로 시도해 보세요."
+                    playbackError = "앱에서 영상을 재생하지 못했어요 (${error.errorCodeName}). 외부 플레이어로 시도해 보세요."
                 }
             }
         }
@@ -847,7 +869,7 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 Text(
-                    "ITS가 제공하는 고속도로·국도 CCTV입니다. 기기 또는 영상 제공 상태에 따라 재생되지 않을 수 있습니다.",
+                    "ITS가 제공하는 고속도로·국도 CCTV입니다. 기기 또는 영상 제공 상태에 따라 재생되지 않을 수 있어요.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -866,12 +888,12 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
                                 try {
                                     context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                                 } catch (_: ActivityNotFoundException) {
-                                    playbackError = "이 영상을 열 수 있는 외부 플레이어가 설치되어 있지 않습니다."
+                                    playbackError = "이 영상을 열 수 있는 외부 플레이어가 설치되어 있지 않아요."
                                 } catch (_: SecurityException) {
-                                    playbackError = "외부 플레이어를 실행할 권한이 없습니다."
+                                    playbackError = "외부 플레이어를 실행할 권한이 없어요."
                                 }
                             } catch (_: SecurityException) {
-                                playbackError = "외부 플레이어를 실행할 권한이 없습니다."
+                                playbackError = "외부 플레이어를 실행할 권한이 없어요."
                             }
                         },
                     ) { Text("외부 플레이어") }
@@ -957,8 +979,8 @@ private fun Hint(text: String) {
 }
 
 @Composable
-private fun Banner(text: String, onClose: () -> Unit) {
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer, shadowElevation = 2.dp) {
+private fun Banner(text: String, info: Boolean = false, onClose: () -> Unit) {
+    Surface(shape = RoundedCornerShape(12.dp), color = if (info) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer, shadowElevation = 2.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text,
@@ -966,7 +988,7 @@ private fun Banner(text: String, onClose: () -> Unit) {
                     .weight(1f)
                     .padding(start = 14.dp, top = 10.dp, bottom = 10.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = if (info) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
             )
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
         }
@@ -1221,7 +1243,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             if (tt != null) {
                 StopTimetable(vm, tt)
             } else {
-                LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없습니다.") { list ->
+                LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(list) { row ->
                             // 노선을 누르면 지도에 노선 + 실시간 버스 위치
@@ -1282,7 +1304,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                 com.eunho.tagohub.ui.common.PillChip(k.label, k == day, { vm.openStopTimetable(k) })
             }
         }
-        LoadView(state, onRetry = { vm.openStopTimetable() }, isEmpty = { it.isEmpty() }, emptyText = "시간표가 없습니다.") { list ->
+        LoadView(state, onRetry = { vm.openStopTimetable() }, isEmpty = { it.isEmpty() }, emptyText = "시간표가 없어요.") { list ->
             val cur = list.firstOrNull { it.routeId == pick } ?: list.first()
             Column(Modifier.fillMaxSize()) {
                 // 지금 고른 버스 (누르면 "버스 선택" 목록)
@@ -1325,8 +1347,8 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                 // 전국 노선은 고를 때 계산 (첫차·막차·배차간격 + 이 정류장까지 소요시간)
                 LaunchedEffect(cur.routeId, cur.loaded) { if (!cur.loaded) vm.ensureTimes(cur.routeId) }
                 Text(
-                    if (cur.estimated) "첫차·막차와 배차간격으로 계산한 예상 시각이라 실제와 다를 수 있습니다."
-                    else "운행 시간표와 정류장 거리로 계산한 예상 시각이라 실제와 다를 수 있습니다.",
+                    if (cur.estimated) "첫차·막차와 배차간격으로 계산한 예상 시각이라 실제와 다를 수 있어요."
+                    else "운행 시간표와 정류장 거리로 계산한 예상 시각이라 실제와 다를 수 있어요.",
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1338,7 +1360,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                 }
                 if (cur.minutes.isEmpty()) {
                     Text(
-                        "이 노선은 시간 정보가 없습니다.",
+                        "이 노선은 시간 정보가 없어요.",
                         Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1431,7 +1453,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
         r?.let { RouteInfoCard(it) }
         r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
         val dir by d.dir.collectAsStateWithLifecycle()
-        LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없습니다.") { all ->
+        LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없어요.") { all ->
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
             val labels = remember(all) { vm.routeDirLabels(d) }
             labels?.let { names ->
@@ -1672,7 +1694,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                         result,
                         onRetry = { vm.searchBus(query) },
                         isEmpty = { it.stops.isEmpty() && it.routes.isEmpty() && stations.isEmpty() && progress == null },
-                        emptyText = "전국에서 검색 결과가 없습니다.",
+                        emptyText = "전국에서 검색 결과가 없어요.",
                     ) { r ->
                         LazyColumn {
                             r.warning?.let { w ->
@@ -1788,7 +1810,7 @@ private fun TrainPanel(vm: MapViewModel, v: TrainView, hasStation: Boolean) {
         )
         if (v.trainId == null) {
             Text(
-                "이 열차의 실시간 위치를 찾지 못해 경로만 표시합니다.",
+                "이 열차의 실시간 위치를 찾지 못해 경로만 표시해요.",
                 Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2031,7 +2053,7 @@ private fun PlanSearch(t: TripController, field: PlanField) {
             when (val r = results) {
                 is Load.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp), color = ModeColor.Bus) }
                 is Load.Ok -> {
-                    if (r.value.isEmpty()) item { MessageText("검색 결과가 없습니다.") }
+                    if (r.value.isEmpty()) item { MessageText("검색 결과가 없어요.") }
                     items(r.value) { p ->
                         PlanResultRow(if (p.stopId != null) Icons.Filled.DirectionsBus else Icons.Filled.Place, p.name, p.sub) { t.pick(p) }
                     }
@@ -2132,7 +2154,7 @@ private fun PlanList(t: TripController) {
                             )
                         }
                     }
-                    is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었습니다.")
+                    is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었어요.")
                 }
             }
         }
@@ -2148,7 +2170,7 @@ private fun PlanList(t: TripController) {
                     plans,
                     onRetry = t::plan,
                     isEmpty = { it.isEmpty() },
-                    emptyText = "대중교통 경로가 없습니다. 다른 이동수단을 선택해 경로를 확인하세요.",
+                    emptyText = "대중교통 경로가 없어요. 다른 이동수단을 선택해 경로를 확인하세요.",
                     idle = { MessageText("출발지와 도착지를 선택하면 대중교통 경로를 보여줍니다.") },
                 ) { list ->
                     val shown = remember(list, sort) {
@@ -2275,7 +2297,7 @@ private fun PlanDetail(t: TripController, p: TripPlan) {
                         leg.subway -> "실시간 도착은 지도에서 역을 누르면 볼 수 있어요"
                         i > 1 -> "갈아탈 때 정류장에서 확인"
                         live == null -> "도착 정보 확인 중"
-                        arrivals.isNullOrEmpty() -> "지금 오는 버스 정보가 없습니다"
+                        arrivals.isNullOrEmpty() -> "지금 오는 버스 정보가 없어요"
                         else -> arrivals.take(2).joinToString("   ") { a ->
                             com.eunho.tagohub.data.ArrivalText.line(a)
                         }
@@ -2350,4 +2372,12 @@ private fun RouteTitle(r: RouteTimes, modifier: Modifier = Modifier) {
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** 처음 한 번만 보이는 안내를 봤는지 */
+private fun hintSeen(context: android.content.Context, key: String): Boolean =
+    runCatching { context.getSharedPreferences("hints", android.content.Context.MODE_PRIVATE).getBoolean(key, false) }.getOrDefault(true)
+
+private fun markHintSeen(context: android.content.Context, key: String) {
+    runCatching { context.getSharedPreferences("hints", android.content.Context.MODE_PRIVATE).edit().putBoolean(key, true).apply() }
 }

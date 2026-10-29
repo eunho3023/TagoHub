@@ -218,7 +218,7 @@ class StationDetailController(
         val s = d.line.value ?: return
         val regionCode = kricRegionCode(d, s)
         if (regionCode == null) {
-            d.kricTimetable.value = Load.Fail("이 운영기관의 KRIC 광역권 코드를 찾지 못했습니다.")
+            d.kricTimetable.value = Load.Fail("이 운영기관의 KRIC 광역권 코드를 찾지 못했어요.")
             return
         }
         d.kricTimetableJob = scope.launch {
@@ -244,7 +244,7 @@ class StationDetailController(
         val s = d.line.value
         val regionCode = s?.let { kricRegionCode(d, it) }
         scope.launch {
-            val r: Load<List<KricStopTime>> = if (s == null || regionCode == null) Load.Fail("이 노선의 KRIC 정보를 찾지 못했습니다.") else {
+            val r: Load<List<KricStopTime>> = if (s == null || regionCode == null) Load.Fail("이 노선의 KRIC 정보를 찾지 못했어요.") else {
                 when (val route = kric.routeForStation(s, regionCode, kricStationCodes(d, s, regionCode))) {
                     is TagoResult.Error -> route.toLoad()
                     is TagoResult.Success -> kric.trainStops(route.data.codes, d.dayType.value.kricCode, trainNo, route.data.stations).toLoad()
@@ -260,7 +260,7 @@ class StationDetailController(
         val s = d.line.value ?: return
         val regionCode = kricRegionCode(d, s)
         if (regionCode == null) {
-            d.kricRoute.value = Load.Fail("이 운영기관의 KRIC 광역권 코드를 찾지 못했습니다.")
+            d.kricRoute.value = Load.Fail("이 운영기관의 KRIC 광역권 코드를 찾지 못했어요.")
             return
         }
         d.kricRoute.value = Load.Loading
