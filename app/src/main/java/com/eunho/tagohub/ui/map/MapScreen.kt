@@ -149,6 +149,7 @@ import com.eunho.tagohub.data.TripPlanner
 import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.ui.bus.BusDest
 import com.eunho.tagohub.ui.bus.StopRouteItem
+import com.eunho.tagohub.ui.bus.hideDuplicateNumbers
 import com.eunho.tagohub.ui.bus.currentLocation
 import com.eunho.tagohub.ui.bus.lastKnownLocation
 import com.eunho.tagohub.ui.bus.hasLocationPermission
@@ -1215,7 +1216,9 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     val others by d.others.collectAsStateWithLifecycle()
     val direction by d.direction.collectAsStateWithLifecycle()
     // 같은 자리 다른 시군 정류장까지 번호를 모두: "30690 · 3110313"
-    val numbers = (listOf(d.stop) + others).mapNotNull { it.nodeNo }.distinct().joinToString(", ").ifEmpty { null }
+    val numbers = (listOf(d.stop) + others).mapNotNull { it.nodeNo }.distinct()
+        .mapIndexed { i, no -> if (i == 0 && direction != null) "$no (${direction} 방면)" else no }
+        .joinToString(", ").ifEmpty { null }
     // 받은 뒤 지난 초 (매초 갱신) → 도착 시간이 실제로 줄어든다
     val elapsedSec by produceState(0, updated) {
         while (true) {
@@ -1226,7 +1229,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     PanelSurface {
         PanelHeader(
             title = d.stop.name.replace(Regex("\\.지하철(\\d+호선)$"), " (\$1)"),   // "당산역.지하철2호선" → "당산역 (2호선)"
-            subtitle = listOfNotNull(numbers, direction?.let { "$it 방면" }, updated?.let { "${it.hhmm()} 갱신" }).joinToString(" · ").ifEmpty { null },
+            subtitle = listOfNotNull(numbers, updated?.let { "${it.hhmm()} 갱신" }).joinToString(" · ").ifEmpty { null },
             color = ModeColor.Bus,
             onClose = vm::closePanel,
             switchLabel = if (hasRoute) "노선 보기" else null,
@@ -1245,7 +1248,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             } else {
                 LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
                     LazyColumn(Modifier.fillMaxSize()) {
-                        items(list) { row ->
+                        items(hideDuplicateNumbers(list)) { row ->
                             // 노선을 누르면 지도에 노선 + 실시간 버스 위치
                             StopRouteItem(row, elapsedSec, direction) { vm.showRoute(row) }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

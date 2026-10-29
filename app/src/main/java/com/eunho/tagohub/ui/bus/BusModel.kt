@@ -56,6 +56,15 @@ data class StopRouteRow(
     val lastTime: String? = null,
 )
 
+/**
+ * 같은 번호의 변형 노선이 여러 줄로 나올 때, 실시간 도착이 있는 줄이 하나라도 있으면
+ * 실시간이 없는 줄(도착 정보 없음·시간표/위치 추정뿐)은 숨겨 한 노선이 두 줄로 보이지 않게 한다.
+ */
+internal fun hideDuplicateNumbers(rows: List<StopRouteRow>): List<StopRouteRow> {
+    val liveNumbers = rows.filter { r -> r.arrivals.any { !it.estimated } }.map { it.routeNo }.toSet()
+    return rows.filter { r -> r.routeNo !in liveNumbers || r.arrivals.any { !it.estimated } }
+}
+
 /** 지금(분)이 첫차~막차 시간 밖인지. 막차가 자정을 넘기면(첫차보다 이르면) 다음 날로 본다 */
 internal fun outsideService(first: String?, last: String?, nowMin: Int): Boolean {
     fun m(t: String?) = t?.let { Regex("(\\d{1,2}):(\\d{2})").find(it) }?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() }
