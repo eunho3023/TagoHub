@@ -140,7 +140,7 @@ class KricSubwayRepository(
 
     private suspend fun <T> run(block: suspend () -> T): TagoResult<T> {
         if (key.isEmpty()) {
-            return TagoResult.Error("KRIC 도시철도 서비스 키가 없습니다. local.properties 에 KRIC_SUBWAY_KEY 를 추가하세요.")
+            return TagoResult.Error(com.eunho.tagohub.core.DevMode.msg("KRIC 도시철도 서비스 키가 없습니다. local.properties 에 KRIC_SUBWAY_KEY 를 추가하세요."))
         }
         return try {
             TagoResult.Success(block())

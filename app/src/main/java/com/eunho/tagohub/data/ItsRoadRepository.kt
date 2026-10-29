@@ -422,7 +422,7 @@ class ItsRoadRepository(
     }
 
     private fun requireKey() {
-        if (key.isBlank()) throw IOException("local.properties에 ITS_API_KEY를 설정하세요.")
+        if (key.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 ITS_API_KEY를 설정하세요."))
     }
 
     private fun validateBounds(south: Double, west: Double, north: Double, east: Double) {

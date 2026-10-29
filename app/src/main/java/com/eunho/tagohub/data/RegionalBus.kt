@@ -199,7 +199,7 @@ class RegionalBusRepository(
     }
 
     private fun get(base: String, vararg params: Pair<String, String>): String {
-        if (serviceKey.isBlank()) throw IOException("local.properties에 TAGO_SERVICE_KEY를 설정하세요.")
+        if (serviceKey.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 TAGO_SERVICE_KEY를 설정하세요."))
         val encoded = if ('%' in serviceKey) serviceKey else URLEncoder.encode(serviceKey, Charsets.UTF_8.name())
         val url = base.toHttpUrl().newBuilder().apply {
             addEncodedQueryParameter("serviceKey", encoded)

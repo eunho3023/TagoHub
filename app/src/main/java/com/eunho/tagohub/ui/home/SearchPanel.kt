@@ -163,7 +163,7 @@ fun SearchPanel(
                         r.value.routes.take(30).forEach { route -> RouteListRow(route, names[route.cityCode]) { actions.onRoute(route) } }
                     }
                     if (r.value.stops.isNotEmpty()) {
-                        SectionHeader("정류소 ${r.value.stops.size}")
+                        SectionHeader("정류장 ${r.value.stops.size}")
                         r.value.stops.take(30).forEach { st ->
                             val dir by produceState<String?>(null, st.nodeId) { value = vm.stopDirection(st.nodeId)?.let { "$it 방면" } }
                             StopListRow(st, dir, names[st.cityCode], vm.stopNumbers(st)) { actions.onStop(st) }

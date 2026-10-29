@@ -75,7 +75,7 @@ class UticSafetyRepository(
     suspend fun safetyPoints(): List<UticSafetyPoint> {
         // 집 PC 가 엑셀 묶음을 미리 풀어 올려 둔 점 목록이 있으면 그것 (16MB 를 받아 폰에서 푸는 일을 안 함)
         OverlaySnapshot.get(SNAPSHOT, maxAgeSec = SNAPSHOT_MAX_AGE_SEC, staleOkSec = 14 * 24 * 3600L) { UticSafetySnapshot.parse(it) }?.let { return it }
-        if (key.isBlank()) throw IOException("local.properties에 UTIC_API_KEY를 설정하세요.")
+        if (key.isBlank()) throw IOException(com.eunho.tagohub.core.DevMode.msg("local.properties에 UTIC_API_KEY를 설정하세요."))
         val archive = File(cacheDir, "utic-safety-data.zip")
         val cached = archive.isFile && System.currentTimeMillis() - archive.lastModified() < CACHE_TTL_MS
         if (!cached) {

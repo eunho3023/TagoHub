@@ -260,7 +260,7 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
 internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val shown = remember(favs) { favs.take(4) }
-    Text("자주 가는 곳", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("즐겨찾기", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(6.dp))
     if (shown.isEmpty()) {
         Text(

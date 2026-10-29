@@ -119,7 +119,7 @@ object TagoXml {
             "12" -> "해당 OpenAPI 서비스가 없거나 폐기됨"
             "20" -> "서비스 접근 거부: 이 API의 활용신청 승인 여부를 확인하세요"
             "22" -> "일일 트래픽 한도 초과"
-            "30" -> "등록되지 않은 서비스키: local.properties의 키를 확인하세요"
+            "30" -> com.eunho.tagohub.core.DevMode.msg("등록되지 않은 서비스키: local.properties의 키를 확인하세요")
             "31" -> "활용기간이 만료된 서비스키"
             "32" -> "등록되지 않은 IP"
             else -> "API 오류"

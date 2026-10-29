@@ -129,7 +129,7 @@ internal fun StopListRow(s: BusStop, distance: String?, region: String? = null, 
     ) {
         Column(Modifier.weight(1f)) {
             Text(s.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            val sub = listOfNotNull(region, (numbers ?: s.nodeNo)?.let { "정류소번호 $it" }).joinToString("   ")
+            val sub = listOfNotNull(region, (numbers ?: s.nodeNo)?.let { "정류장 번호 $it" }).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         distance?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Tnum), color = ModeColor.Bus) }

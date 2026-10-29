@@ -303,7 +303,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushUticIncidents()
         if (uticJob?.isActive == true) return
         if (com.eunho.tagohub.BuildConfig.UTIC_API_KEY.isBlank()) {
-            banner.value = "UTIC 돌발정보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요."
+            banner.value = com.eunho.tagohub.core.DevMode.msg("UTIC 돌발정보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요.")
             return
         }
         val now = android.os.SystemClock.elapsedRealtime()
@@ -373,7 +373,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushItsCctvs()
         val box = lastBox ?: return
         if (com.eunho.tagohub.BuildConfig.ITS_API_KEY.isBlank()) {
-            banner.value = "ITS CCTV를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요."
+            banner.value = com.eunho.tagohub.core.DevMode.msg("ITS CCTV를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요.")
             return
         }
         if (box[2] - box[0] > ITS_CCTV_MAX_LAT_SPAN || box[3] - box[1] > ITS_CCTV_MAX_LNG_SPAN) {
@@ -447,7 +447,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val box = lastBox ?: return
         if (itsRoadJobs[id]?.isActive == true) return
         if (com.eunho.tagohub.BuildConfig.ITS_API_KEY.isBlank()) {
-            banner.value = "ITS 도로정보를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요."
+            banner.value = com.eunho.tagohub.core.DevMode.msg("ITS 도로정보를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요.")
             return
         }
         if (box[2] - box[0] > ITS_ROAD_MAX_LAT_SPAN || box[3] - box[1] > ITS_ROAD_MAX_LNG_SPAN) return
@@ -624,7 +624,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushUticRoadRisks()
         if (uticRiskJob?.isActive == true) return
         if (com.eunho.tagohub.BuildConfig.UTIC_API_KEY.isBlank()) {
-            banner.value = "UTIC 도로위험예보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요."
+            banner.value = com.eunho.tagohub.core.DevMode.msg("UTIC 도로위험예보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요.")
             return
         }
         val now = android.os.SystemClock.elapsedRealtime()
@@ -679,7 +679,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushUticSafetyPoints()
         if (uticSafetyJob?.isActive == true) return
         if (com.eunho.tagohub.BuildConfig.UTIC_API_KEY.isBlank()) {
-            banner.value = "UTIC 교통안전정보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요."
+            banner.value = com.eunho.tagohub.core.DevMode.msg("UTIC 교통안전정보를 사용하려면 local.properties에 UTIC_API_KEY를 설정하세요.")
             return
         }
         val now = android.os.SystemClock.elapsedRealtime()
@@ -1276,6 +1276,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 카카오맵 인증 실패: 안내를 띄우고, REST 호출로 원인을 점검해 카카오가 보낸 이유까지 덧붙인다 */
     fun onKakaoFailed(reason: String, packageName: String, keyHash: String?) {
+        if (!com.eunho.tagohub.core.DevMode.on) {
+            // 키 해시·패키지명 등록 안내는 개발자용: 사용자에게는 다시 시도만 안내
+            android.util.Log.w("TagoKakao", "지도 오류: $reason")
+            mapFailure.value = "지도를 불러오지 못했어요. 잠시 뒤 새로고침 버튼을 눌러 주세요."
+            return
+        }
         mapFailure.value = "$reason\n\n원인 점검 중…"
         viewModelScope.launch {
             val nativeAsRest = com.eunho.tagohub.data.KakaoProbe.probe(com.eunho.tagohub.BuildConfig.KAKAO_NATIVE_KEY)

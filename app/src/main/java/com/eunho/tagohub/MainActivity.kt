@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // 앱이 비정상 종료되면 원인을 저장해 둠 (더보기 → 최근 오류)
         com.eunho.tagohub.data.CrashLog.install(applicationContext)
+        com.eunho.tagohub.core.DevMode.init(applicationContext)
         enableEdgeToEdge()
         // 전국 정류장 DB 를 화면 그리기와 동시에 준비 (첫 실행 때만 복사, 이후엔 바로 열림)
         // 카카오맵 SDK 초기화 (지도 시작 전에 한 번)
