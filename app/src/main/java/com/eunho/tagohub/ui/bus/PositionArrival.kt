@@ -73,10 +73,10 @@ internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: S
     refreshBusData(repo, d)
     val buses = d.buses.value
     if (buses.isEmpty()) return null
-    val busIdx = buses.mapNotNull { b -> stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }.takeIf { it >= 0 } }
+    val pos = RouteLive.positions(buses, stops)
     // 노선이 같은 정류장을 두 번 지나면(회차) 더 가까이 오는 쪽
     val best = stops.indices.filter { stops[it].nodeId == stop.nodeId }
-        .mapNotNull { t -> RouteLive.stopsAway(t, busIdx)?.takeIf { it <= MAX_ESTIMATE_STOPS }?.let { t to it } }
+        .mapNotNull { t -> RouteLive.stopsAway(t, pos.at, pos.left)?.takeIf { it <= MAX_ESTIMATE_STOPS }?.let { t to it } }
         .minByOrNull { it.second } ?: return null
     val (target, away) = best
     val seconds = if (away == 0) 0 else {
@@ -86,7 +86,7 @@ internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: S
     return BusArrival(
         routeId = row.routeId, routeNo = row.routeNo, routeType = row.routeType,
         vehicleType = null, prevStops = away, arrSeconds = seconds, estimated = true,
-        behind = RouteLive.allAway(target, busIdx),
+        behind = RouteLive.allAway(target, pos.at, pos.left),
     )
 }
 

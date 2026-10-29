@@ -10,15 +10,62 @@ object RouteLive {
      * [stopIndex] 번째 정류장에 가장 가까이 오는 버스(그 정류장 앞쪽, 같은 방향)까지의 정류장 수. 정차 중이면 0, 오는 버스가 없으면 null.
      * [busIndexes] 는 각 버스가 있는 정류장의 목록 안 번호.
      */
-    fun stopsAway(stopIndex: Int, busIndexes: List<Int>): Int? =
-        busIndexes.filter { it in 0..stopIndex }.maxOrNull()?.let { stopIndex - it }
+    fun stopsAway(stopIndex: Int, busIndexes: List<Int>, left: List<Int> = emptyList()): Int? =
+        allAway(stopIndex, busIndexes, left).firstOrNull()
+
+    /** 버스 위치 API 는 마지막으로 지난 정류장만 알려 줘서, 정류장을 떠난 뒤에도 같은 정류장으로 잡힘: GPS 로 본 버스 위치 */
+    class Positions(
+        /** 정류장에 서 있는(떠나지 않은) 버스가 있는 정류장 번호 */
+        val at: List<Int>,
+        /** 그 정류장을 이미 떠나 다음 정류장으로 가는 중인 버스의 정류장 번호 */
+        val left: List<Int>,
+    )
+
+    /** 이 정류장 반경 안은 정차 중으로 봄 */
+    const val AT_STOP_M = 60.0
+
+    /**
+     * 버스가 [here] 정류장을 떠나 [next] 로 가는 중인가: 경기 상태값(정류소 출발)이거나, GPS 가 [here] 에서 [AT_STOP_M] 넘게 떨어져
+     * [next] 쪽으로 가는 선분 위(정류장 사이 거리의 1.2배 안)에 있을 때. 좌표를 모르면 false.
+     */
+    fun departed(bus: BusLocation, here: RouteStop, next: RouteStop?): Boolean {
+        if (bus.state == 2) return true
+        if (bus.state == 1) return false
+        val bLat = bus.lat ?: return false
+        val bLng = bus.lng ?: return false
+        val hLat = here.lat ?: return false
+        val hLng = here.lng ?: return false
+        val nLat = next?.lat ?: return false
+        val nLng = next.lng ?: return false
+        if (com.eunho.tagohub.core.Geo.meters(hLat, hLng, bLat, bLng) <= AT_STOP_M) return false
+        // 정류장 사이 선분에 내린 그림자(0 = here, 1 = next): 평면으로 근사해도 이 거리에서는 충분함
+        val cos = Math.cos(Math.toRadians(hLat))
+        val sx = (nLng - hLng) * cos
+        val sy = nLat - hLat
+        val len2 = sx * sx + sy * sy
+        if (len2 == 0.0) return false
+        val t = ((bLng - hLng) * cos * sx + (bLat - hLat) * sy) / len2
+        return t > 0.0 && t <= 1.2
+    }
+
+    /** [buses] 각각이 [stops] 목록 안 어느 정류장에 있는지, 그리고 그 정류장을 떠났는지 */
+    fun positions(buses: List<BusLocation>, stops: List<RouteStop>): Positions {
+        val at = ArrayList<Int>()
+        val left = ArrayList<Int>()
+        for (b in buses) {
+            val i = stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }
+            if (i < 0) continue
+            if (departed(b, stops[i], stops.getOrNull(i + 1))) left += i else at += i
+        }
+        return Positions(at, left)
+    }
 
     /** 위치상 가장 가까운 버스가 도착정보의 첫 버스보다 이만큼(정류장) 이상 더 가까우면 무조건 도착정보에 빠진 버스로 봄 */
     const val NEARER_GAP = 3
 
     /** 정류장 [stopIndex] 앞쪽에 달리는 모든 버스까지의 정류장 수 (가까운 순). 0 = 이미 와 있음 */
-    fun allAway(stopIndex: Int, busIndexes: List<Int>): List<Int> =
-        busIndexes.filter { it in 0..stopIndex }.map { stopIndex - it }.sorted()
+    fun allAway(stopIndex: Int, busIndexes: List<Int>, left: List<Int> = emptyList()): List<Int> =
+        (busIndexes.filter { it in 0..stopIndex } + left.filter { it in 0 until stopIndex }).map { stopIndex - it }.sorted()
 
     /**
      * 버스 위치([aways], 가까운 순)와 도착정보([apiPrevStops] 정류장 전) 중 어느 쪽을 보일지: 위치가 더 믿을 만한 경우 true.
