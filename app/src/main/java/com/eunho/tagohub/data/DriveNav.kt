@@ -217,6 +217,17 @@ enum class TurnKind {
             else -> Straight
         }
 
+        /**
+         * 배너에 쓸 문구: 핵심 동작을 앞에 ("양재역 방면으로 좌회전" → "좌회전 · 양재역 방면", "서초IC에서 오른쪽 방향" → "오른쪽 방향 · 서초IC").
+         * 음성 안내는 [text] 그대로 읽음.
+         */
+        fun bannerText(g: DriveGuide): String {
+            val t = text(g)
+            Regex("^(.+?) *방면으로 *(.+)$").find(t)?.let { return "${it.groupValues[2]} · ${it.groupValues[1]} 방면" }
+            Regex("^(.+?)에서 *(.+)$").find(t)?.let { return "${it.groupValues[2]} · ${it.groupValues[1]}" }
+            return t
+        }
+
         /** 말하거나 배너에 쓸 문구: "12시 방향" 같은 시계 표현은 읽기 어려워 풀어 쓴다 */
         fun text(g: DriveGuide): String {
             if (g.isDestination) return "목적지"
