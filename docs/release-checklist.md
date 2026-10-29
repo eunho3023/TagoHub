@@ -71,7 +71,7 @@ keytool -exportcert -alias tagohub -keystore tagohub-release.jks | openssl sha1 
 
 ## 8. 2026-10-29 이후 추가된 항목 (⬜ 직접)
 
-- **계정·데이터 삭제**: 구글 로그인·Firestore 가 들어가서 Play 가 요구하는 "앱 안 삭제 경로 + 웹 삭제 안내 주소"가 필요합니다(지금은 이메일 요청뿐). 처리방침·데이터 보안 양식(`docs/play-data-safety.md`)도 이 기준으로 갱신했습니다.
+- **계정·데이터 삭제**: 앱 안 경로는 설정 → 계정 → "내 데이터 삭제"로 만들었습니다(✅, 기기에서는 시험 못 함). Play 에는 **웹 삭제 안내 주소**도 넣어야 하므로 처리방침 페이지를 공개한 주소를 쓰세요.
 - **Firestore 규칙 게시**: `firestore.rules` 의 `/reports` 규칙을 Firebase 에 게시해야 앱 제보가 전송됩니다.
 - **구글 로그인 릴리스 SHA-1**: Firebase 콘솔의 Android 앱에 릴리스(Play 앱 서명) 인증서 SHA-1 을 등록해야 릴리스에서 구글 로그인이 됩니다.
 - **앱 이름**: 아직 "TAGO 교통"(국토교통부 서비스 이름과 같음). 새 이름이 정해지면 `strings.xml` 의 `app_name` 과 스토어 등록 정보를 함께 바꿉니다.

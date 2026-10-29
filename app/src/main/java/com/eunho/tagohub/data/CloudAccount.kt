@@ -71,6 +71,42 @@ object CloudAccount {
         }
     }
 
+    /**
+     * 내 데이터 삭제: 클라우드에 올린 설정 문서(users/{내 ID})와 로그인 계정을 지우고, 이 기기에 저장된 동기화 항목
+     * (즐겨찾기·집/회사·안내 설정 등)도 비운 뒤 새 익명 계정으로 다시 시작함. 성공하면 null, 아니면 사용자에게 보여 줄 안내.
+     * 앱 제보(reports)는 읽기·삭제를 막아 두었으므로 앱에서는 지울 수 없음 — 이메일로 삭제를 요청.
+     */
+    suspend fun deleteMyData(activity: Activity): String? {
+        val app = activity.applicationContext
+        val auth = FirebaseAuth.getInstance()
+        val user = auth.currentUser
+        try {
+            if (user != null) {
+                com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(user.uid).delete().await()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "클라우드 데이터 삭제 실패", e)
+            return "삭제하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요"
+        }
+        CloudSync.stop(app)
+        for ((file, key) in CloudSyncSpec.items) app.getSharedPreferences(file, android.content.Context.MODE_PRIVATE).edit().remove(key).apply()
+        var note: String? = null
+        try {
+            user?.delete()?.await()
+        } catch (e: com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException) {
+            // 오래 전에 로그인한 구글 계정은 보안상 다시 로그인해야 계정 자체를 지울 수 있음. 데이터는 이미 지움
+            runCatching { auth.signOut() }
+            note = "데이터는 지웠어요. 계정 자체를 지우려면 구글 계정을 다시 연결한 뒤 한 번 더 눌러 주세요"
+        } catch (e: Exception) {
+            Log.w(TAG, "계정 삭제 실패", e)
+            runCatching { auth.signOut() }
+            note = "데이터는 지웠지만 계정을 지우지는 못했어요"
+        }
+        refresh()
+        CloudSync.restart(app)
+        return note
+    }
+
     fun signOut(activity: Activity) {
         runCatching { FirebaseAuth.getInstance().signOut() }
         CloudSync.restart(activity.applicationContext)

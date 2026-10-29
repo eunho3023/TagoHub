@@ -54,6 +54,14 @@ object CloudSync {
         }.onFailure { Log.w(TAG, "Firebase 시작 실패", it) }
     }
 
+    /** 올리기·받기를 멈춤 (데이터 삭제 때: 지운 직후에 비운 값이 다시 올라가거나 옛 값이 되돌아오지 않게. [restart] 로 다시 시작) */
+    fun stop(context: Context) {
+        handler.removeCallbacksAndMessages(null)
+        for ((file, l) in listeners) runCatching { context.applicationContext.getSharedPreferences(file, Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(l) }
+        listeners.clear()
+        started = false
+    }
+
     /** 계정이 바뀐 뒤(구글 연결·로그아웃) 새 계정 기준으로 다시 맞춤. 클라우드에 값이 있으면 그것이 이기도록 기록을 지움 */
     fun restart(context: Context) {
         val app = context.applicationContext
