@@ -5,6 +5,17 @@ service cloud.firestore {
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+    // 앱 제보: 로그인(익명 포함)한 사용자가 한 건 쓸 수만 있고, 읽기·고치기·지우기는 관리자(콘솔)만
+    match /reports/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['kind', 'text', 'appVersion', 'device', 'os', 'uid', 'createdAt'])
+        && request.resource.data.kind in ['오류', '추가 요청', '삭제 요청']
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow read, update, delete: if false;
+    }
     // 그 밖의 경로는 모두 막음
     match /{document=**} {
       allow read, write: if false;

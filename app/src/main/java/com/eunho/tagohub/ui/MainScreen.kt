@@ -259,35 +259,46 @@ private fun NoticesDialog(onClose: () -> Unit) {
     )
 }
 
-/** 앱 제보: 오류·추가·삭제 → 깃허브 이슈 쓰기 화면 (제목·내용 채움) */
+/** 앱 제보: 오류·추가·삭제 → 앱에서 바로 보냄 (깃허브 로그인 필요 없음). 못 보내면 깃허브 제보 화면(제목·내용 채움)으로 */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun ReportDialog(onClose: () -> Unit) {
     var kind by rememberSaveable { mutableStateOf("오류") }
     var text by rememberSaveable { mutableStateOf("") }
+    var sending by rememberSaveable { mutableStateOf(false) }
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.material3.AlertDialog(
-        onDismissRequest = onClose,
+        onDismissRequest = { if (!sending) onClose() },
         title = { Text("앱 제보") },
         text = {
             Column {
                 Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
-                    listOf("오류", "추가 요청", "삭제 요청").forEach { k ->
+                    com.eunho.tagohub.data.ReportSender.KINDS.forEach { k ->
                         androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(k) })
                     }
                 }
-                androidx.compose.material3.OutlinedTextField(text, { text = it }, label = { Text("내용 (어디서, 무엇이)") },
+                androidx.compose.material3.OutlinedTextField(text, { text = it.take(com.eunho.tagohub.data.ReportSender.MAX_CHARS) }, label = { Text("내용 (어디서, 무엇이)") },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp), minLines = 4)
-                Text("보내기를 누르면 깃허브 제보 화면이 열려요 (깃허브 로그인 필요).", style = MaterialTheme.typography.bodySmall,
+                Text("앱 버전과 기기 종류가 함께 전달돼요. 개인 정보는 보내지 않아요.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(enabled = text.isNotBlank(), onClick = {
-                runCatching { uri.openUri(com.eunho.tagohub.data.Notices.reportUrl(kind, text)) }
-                onClose()
-            }) { Text("보내기") }
+            androidx.compose.material3.TextButton(enabled = text.isNotBlank() && !sending, onClick = {
+                sending = true
+                com.eunho.tagohub.data.ReportSender.send(context, kind, text) { ok ->
+                    if (ok) {
+                        android.widget.Toast.makeText(context, "제보를 보냈어요. 고맙습니다!", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "바로 보내지 못했어요. 깃허브 제보 화면을 열게요.", android.widget.Toast.LENGTH_LONG).show()
+                        runCatching { uri.openUri(com.eunho.tagohub.data.Notices.reportUrl(kind, text)) }
+                    }
+                    sending = false
+                    onClose()
+                }
+            }) { Text(if (sending) "보내는 중…" else "보내기") }
         },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onClose) { Text("취소") } },
+        dismissButton = { androidx.compose.material3.TextButton(enabled = !sending, onClick = onClose) { Text("취소") } },
     )
 }
