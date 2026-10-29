@@ -180,7 +180,7 @@ class TimetableController(
         stops.value = emptyMap()
         history.value = emptyMap()
         if (d.id == a.id) {
-            trips.value = Load.Fail("출발지와 도착지가 같습니다.")
+            trips.value = Load.Fail("출발지와 도착지가 같어요.")
             return
         }
         delayJob?.cancel()

@@ -62,7 +62,7 @@ fun ExpresswayScreen() {
     BackHandler(enabled = api == null && service != null) { service = null }
 
     when {
-        apis.isEmpty() -> Text("고속도로 API 목록을 읽지 못했습니다.", Modifier.padding(20.dp))
+        apis.isEmpty() -> Text("고속도로 API 목록을 읽지 못했어요.", Modifier.padding(20.dp))
         api != null -> ExApiDetail(api)
         service != null -> {
             val inService = apis.filter { it.service == service }
@@ -78,7 +78,7 @@ fun ExpresswayScreen() {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     Text(
-                        "한국도로공사 고속도로 공공데이터 ${apis.size}개를 조회합니다. (통행요금·통행시간·정체·공사·휴게소·주유 가격 등)",
+                        "한국도로공사 고속도로 공공데이터 ${apis.size}개를 조회해요. (통행요금·통행시간·정체·공사·휴게소·주유 가격 등)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
@@ -148,7 +148,7 @@ private fun ExApiDetail(api: ExApi) {
                 total = res.total
                 page = next
             } catch (e: Exception) {
-                error = e.message ?: "조회하지 못했습니다."
+                error = e.message ?: "조회하지 못했어요."
             } finally {
                 loading = false
             }
@@ -190,7 +190,7 @@ private fun ExApiDetail(api: ExApi) {
             Button(onClick = { load(1) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text(if (loading && page == 0) "조회 중…" else "조회") }
         }
         error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
-        if (page > 0 && rows.isEmpty() && error == null) item { Text("조회 결과가 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (page > 0 && rows.isEmpty() && error == null) item { Text("조회 결과가 없어요.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (rows.isNotEmpty()) {
             item { Text("총 ${total ?: rows.size}건 중 ${rows.size}건", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(rows.size) { i ->

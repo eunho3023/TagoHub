@@ -153,11 +153,11 @@ fun CoachScreen(vm: CoachViewModel = viewModel()) {
         when (mode) {
             CoachMode.Express -> TimetablePane(
                 vm.express, ModeColor.Coach, "터미널", "전체 등급",
-                "출발·도착 터미널을 고르면 배차 시간표가 표시됩니다.",
+                "출발·도착 터미널을 고르면 배차 시간표가 표시돼요.",
             )
             CoachMode.Suburb -> TimetablePane(
                 vm.suburb, ModeColor.Suburb, "터미널", "전체 등급",
-                "출발·도착 터미널을 고르면 배차 시간표가 표시됩니다.",
+                "출발·도착 터미널을 고르면 배차 시간표가 표시돼요.",
             )
             CoachMode.Live -> LivePane(vm)
         }
@@ -211,8 +211,8 @@ private fun LivePane(vm: CoachViewModel) {
             state,
             onRetry = { tick++ },
             isEmpty = { it.isEmpty() },
-            emptyText = "지금 이 구간을 운행 중인 버스가 없습니다.",
-            idle = { MessageBox("출발·도착 터미널을 고르면 이미 출발한 버스의 현재 위치와 도착 예정 시각이 표시됩니다.") },
+            emptyText = "지금 이 구간을 운행 중인 버스가 없어요.",
+            idle = { MessageBox("출발·도착 터미널을 고르면 이미 출발한 버스의 현재 위치와 도착 예정 시각이 표시돼요.") },
         ) { list ->
             LazyColumn(Modifier.fillMaxSize()) {
                 items(list) {

@@ -356,7 +356,7 @@ private fun stationOperatorLabel(operator: String): String = when {
 private fun FacilitiesTab(d: StationDetail) {
     val facilities by d.facilities.collectAsStateWithLifecycle()
     if (facilities.isEmpty()) {
-        MessageBox("등록된 역 편의정보가 없습니다.")
+        MessageBox("등록된 역 편의정보가 없어요.")
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -399,7 +399,7 @@ private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick
         StationInfoCard(d)
         if (!d.realtime) {
             Text(
-                "실시간 도착 대신 오늘 운행 시간표를 표시합니다.",
+                "실시간 도착 대신 오늘 운행 시간표를 표시해요.",
                 Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -437,7 +437,7 @@ private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick
                 schedule,
                 onRetry = { c.loadSchedule(d) },
                 isEmpty = { it.isEmpty() },
-                emptyText = "이 방향의 오늘 시간표가 없습니다.",
+                emptyText = "이 방향의 오늘 시간표가 없어요.",
             ) { departures ->
                 TimetableBoard(departures, color, live = day == DayType.today())
             }
@@ -460,7 +460,7 @@ private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick
                     )
                 }
             }
-            LoadView(state, isEmpty = { it.isEmpty() }, emptyText = "현재 도착·출발 예정인 열차가 없습니다.") { list ->
+            LoadView(state, isEmpty = { it.isEmpty() }, emptyText = "현재 도착·출발 예정인 열차가 없어요.") { list ->
                 val now by produceState(LocalDateTime.now()) {
                     while (true) {
                         delay(1000)
@@ -595,7 +595,7 @@ private fun LinePicker(d: StationDetail, c: StationDetailController, content: @C
     LoadView(
         lines,
         isEmpty = { it.isEmpty() },
-        emptyText = "TAGO 지하철 정보에서 이 역을 찾지 못했습니다.",
+        emptyText = "TAGO 지하철 정보에서 이 역을 찾지 못했어요.",
     ) { list ->
         Column(Modifier.fillMaxSize()) {
             if (list.size > 1) {
@@ -671,14 +671,14 @@ private fun TimetableTab(d: StationDetail, c: StationDetailController) {
                     schedule,
                     onRetry = { c.loadSchedule(d) },
                     isEmpty = { it.isEmpty() },
-                    emptyText = "이 조건의 시간표가 없습니다. 종착역이면 반대 방향을 확인하세요.",
+                    emptyText = "이 조건의 시간표가 없어요. 종착역이면 반대 방향을 확인하세요.",
                 ) { list -> TimetableBoard(list, lineColor, live = day == DayType.today()) }
             } else {
                 LoadView(
                     kricSchedule,
                     onRetry = { c.loadKricTimetable(d) },
                     isEmpty = { it.isEmpty() },
-                    emptyText = "이 역의 열차별 운행시각 정보가 없습니다.",
+                    emptyText = "이 역의 열차별 운행시각 정보가 없어요.",
                 ) { list -> KricTimetableBoard(list, lineColor, kricStops) { trainNo -> c.toggleKricStops(d, trainNo) } }
             }
         }
@@ -773,7 +773,7 @@ private fun RouteTab(d: StationDetail, c: StationDetailController) {
             route,
             onRetry = { c.loadKricRoute(d) },
             isEmpty = { it.isEmpty() },
-            emptyText = "이 노선의 역 정보가 없습니다.",
+            emptyText = "이 노선의 역 정보가 없어요.",
         ) { stations ->
             LazyColumn(Modifier.fillMaxSize()) {
                 items(stations, key = { "${it.stationOrder}_${it.stationCode}" }) { station ->
@@ -903,7 +903,7 @@ private fun ExitsTab(d: StationDetail, c: StationDetailController) {
         val exits by d.exits.collectAsStateWithLifecycle()
         LaunchedEffect(line.id) { if (d.exits.value is Load.Idle) c.loadExits(d) }
         val color = subwayLineColor(line.routeName)
-        LoadView(exits, onRetry = { c.loadExits(d) }, isEmpty = { it.isEmpty() }, emptyText = "출구 정보가 없습니다.") { list ->
+        LoadView(exits, onRetry = { c.loadExits(d) }, isEmpty = { it.isEmpty() }, emptyText = "출구 정보가 없어요.") { list ->
             LazyColumn(Modifier.fillMaxSize()) {
                 items(list) { e ->
                     ExitRow(e, color)

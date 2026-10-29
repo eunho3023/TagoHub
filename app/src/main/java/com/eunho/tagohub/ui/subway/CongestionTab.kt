@@ -57,7 +57,7 @@ internal fun CongestionTab(d: StationDetail) {
     val candidates = d.group.displayLines
     val available = remember(stationName, candidates) { SubwayCongestion.linesOf(stationName, candidates) }
     if (available.isEmpty()) {
-        MessageBox("이 역의 혼잡도 자료가 없습니다. (서울교통공사 1~8호선 역만 제공됩니다)")
+        MessageBox("이 역의 혼잡도 자료가 없어요. (서울교통공사 1~8호선 역만 제공돼요)")
         return
     }
     var day by remember { mutableStateOf(SubwayCongestion.Day.of(LocalDate.now().dayOfWeek)) }

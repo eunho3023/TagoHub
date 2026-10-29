@@ -52,7 +52,7 @@ fun AirportInfoSheet(initial: String?, onDismiss: () -> Unit) {
     var current by remember { mutableStateOf(initial?.let { AirportInfo.match(all, it) } ?: all.firstOrNull()) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         if (all.isEmpty()) {
-            Text("공항 정보를 불러오지 못했습니다.", Modifier.padding(24.dp))
+            Text("공항 정보를 불러오지 못했어요.", Modifier.padding(24.dp))
             return@ModalBottomSheet
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
@@ -171,8 +171,8 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
         when {
             info == null -> Text("불러오는 중…", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             info.isEmpty -> {
-                if (info.errors.isEmpty()) Text("이 공항은 실시간 정보(혼잡도·주차장 등)를 제공하지 않습니다.", fontSize = 14.sp)
-                else Text("실시간 정보를 받지 못했습니다.", fontSize = 14.sp)
+                if (info.errors.isEmpty()) Text("이 공항은 실시간 정보(혼잡도·주차장 등)를 제공하지 않아요.", fontSize = 14.sp)
+                else Text("실시간 정보를 받지 못했어요.", fontSize = 14.sp)
                 info.errors.firstOrNull()?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             else -> {

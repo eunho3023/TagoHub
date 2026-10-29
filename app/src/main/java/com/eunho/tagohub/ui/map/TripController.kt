@@ -66,6 +66,20 @@ internal fun trafficColor(state: Int): Int = when (state) {
     else -> 0xFF3D5BAB.toInt()
 }
 
+/**
+ * 소통 막대를 색으로만 보지 못하는 사용자(색각 이상·화면 낭독)를 위한 말: "남은 길 소통: 정체 20% · 서행 10% · 나머지 원활".
+ * 소통 정보가 없으면 "소통 정보 없음".
+ */
+internal fun trafficBarText(spans: List<com.eunho.tagohub.data.TrafficSpan>): String {
+    fun share(vararg states: Int) = Math.round(spans.filter { it.state in states }.sumOf { (it.to - it.from).toDouble() } * 100).toInt()
+    val heavy = share(1, 2, 6)
+    val slow = share(3)
+    val smooth = share(4)
+    if (heavy == 0 && slow == 0 && smooth == 0) return "소통 정보 없음"
+    val parts = listOfNotNull(if (heavy > 0) "정체 ${heavy}%" else null, if (slow > 0) "서행 ${slow}%" else null)
+    return if (parts.isEmpty()) "남은 길 소통: 원활" else "남은 길 소통: " + parts.joinToString(" · ") + if (smooth > 0) " · 나머지 원활" else ""
+}
+
 /** 이어지는 도로 중 소통 색이 같은 것끼리 한 줄로 묶어 지도에 그릴 선을 만든다 */
 internal fun trafficSegments(roads: List<com.eunho.tagohub.data.DriveRoad>): List<TripSegment> {
     val out = ArrayList<TripSegment>()
@@ -134,7 +148,7 @@ class TripController(
 
     fun addCarVia(p: PlanPoint) {
         if (carVias.value.size >= com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS) {
-            note.value = "경유지는 ${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS}개까지 넣을 수 있습니다."
+            note.value = "경유지는 ${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS}개까지 넣을 수 있어요."
             return
         }
         carVias.value = carVias.value + p
@@ -246,11 +260,11 @@ class TripController(
         rideJob = scope.launch {
             ridePlan.value = Load.Loading
             if (o == null) {
-                ridePlan.value = Load.Fail("출발 위치를 확인할 수 없습니다. 출발지를 선택해주세요.")
+                ridePlan.value = Load.Fail("출발 위치를 확인할 수 없어요. 출발지를 선택해주세요.")
                 return@launch
             }
             if (!com.eunho.tagohub.data.KakaoExtra.available) {
-                ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았어요.")
                 return@launch
             }
             val viaLatLngs = carVias.value.map { LatLng(it.lat, it.lng) }
@@ -259,8 +273,8 @@ class TripController(
                 ridePlan.value = Load.Fail(
                     when {
                         status == "HTTP 401" || status == "HTTP 403" -> "카카오 자동차 길찾기 권한 또는 REST API 키를 확인해주세요."
-                        status.startsWith("HTTP ") -> "카카오 자동차 경로 요청에 실패했습니다. ($status)"
-                        else -> "자동차 경로를 찾지 못했습니다. ($status)"
+                        status.startsWith("HTTP ") -> "카카오 자동차 경로 요청에 실패했어요. ($status)"
+                        else -> "자동차 경로를 찾지 못했어요. ($status)"
                     },
                 )
                 return@launch
@@ -281,16 +295,16 @@ class TripController(
         rideJob = scope.launch {
             ridePlan.value = Load.Loading
             if (o == null) {
-                ridePlan.value = Load.Fail("출발 위치를 확인할 수 없습니다. 출발지를 선택해주세요.")
+                ridePlan.value = Load.Fail("출발 위치를 확인할 수 없어요. 출발지를 선택해주세요.")
                 return@launch
             }
             if (!com.eunho.tagohub.data.KakaoExtra.available) {
-                ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았어요.")
                 return@launch
             }
             val r = tracked { com.eunho.tagohub.data.KakaoExtra.ride(o, LatLng(d.lat, d.lng), bicycle) }
             if (r == null) {
-                ridePlan.value = Load.Fail("${if (bicycle) "자전거" else "도보"} 경로를 카카오에서 찾지 못했습니다.")
+                ridePlan.value = Load.Fail("${if (bicycle) "자전거" else "도보"} 경로를 카카오에서 찾지 못했어요.")
                 return@launch
             }
             val (path, m, sec) = r
@@ -331,7 +345,7 @@ class TripController(
             delay(250)
             results.value = Load.Loading
             if (!PlaceSearch.available) {
-                results.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                results.value = Load.Fail("카카오 REST API 키가 설정되지 않았어요.")
                 return@launch
             }
             val near = me() ?: center()
@@ -399,9 +413,9 @@ class TripController(
                 plans.value = Load.Fail("출발지를 정해주세요.")
                 return@launch
             }
-            note.value = if (origin.value == null && me() == null) "현재 위치를 몰라 지도 중심에서 출발합니다. · 카카오" else "카카오 대중교통 길찾기"
+            note.value = if (origin.value == null && me() == null) "현재 위치를 몰라 지도 중심에서 출발해요. · 카카오" else "카카오 대중교통 길찾기"
             if (!com.eunho.tagohub.data.KakaoRoutes.available) {
-                plans.value = Load.Fail("카카오 REST API 키가 설정되지 않았습니다.")
+                plans.value = Load.Fail("카카오 REST API 키가 설정되지 않았어요.")
                 return@launch
             }
 
@@ -415,7 +429,7 @@ class TripController(
                     canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(v.lat, v.lng), LatLng(d.lat, d.lng)))
                     return@launch
                 }
-                plans.value = Load.Fail("카카오에서 경유 경로를 찾지 못했습니다. ${routeFailure(statusA, statusB)}")
+                plans.value = Load.Fail("카카오에서 경유 경로를 찾지 못했어요. ${routeFailure(statusA, statusB)}")
                 return@launch
             }
             val (status, kakao) = tracked {
@@ -438,11 +452,11 @@ class TripController(
             status == "HTTP 401" || status == "HTTP 403" ->
                 "카카오 길찾기 권한을 확인해주세요. REST API 키와 카카오맵 사용 설정을 확인하세요."
             status.startsWith("HTTP ") ->
-                "카카오 길찾기 요청에 실패했습니다. ($status)"
+                "카카오 길찾기 요청에 실패했어요. ($status)"
             status == "OK" ->
-                "카카오에서 대중교통 경로를 찾지 못했습니다."
+                "카카오에서 대중교통 경로를 찾지 못했어요."
             else -> com.eunho.tagohub.data.KakaoTransit.message(status)
-                ?: "카카오 대중교통 경로를 찾지 못했습니다. ($status)"
+                ?: "카카오 대중교통 경로를 찾지 못했어요. ($status)"
         }
     }
 

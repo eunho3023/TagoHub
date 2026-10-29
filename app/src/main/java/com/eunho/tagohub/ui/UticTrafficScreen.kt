@@ -55,7 +55,7 @@ fun UticTrafficScreen() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            "지도 종류에서 UTIC 돌발정보·도로위험예보·교통안전정보를 켤 수 있습니다. 다른 항목은 아래에서 원본을 열 수 있습니다.",
+            "지도 종류에서 UTIC 돌발정보·도로위험예보·교통안전정보를 켤 수 있어요. 다른 항목은 아래에서 원본을 열 수 있어요.",
             Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -72,7 +72,7 @@ fun UticTrafficScreen() {
                         try {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(feed.url(key))))
                         } catch (_: ActivityNotFoundException) {
-                            error = "데이터 링크를 열 수 있는 브라우저가 없습니다."
+                            error = "데이터 링크를 열 수 있는 브라우저가 없어요."
                         }
                     },
                 )

@@ -226,7 +226,7 @@ fun <T> LoadView(
     state: Load<T>,
     onRetry: (() -> Unit)? = null,
     isEmpty: (T) -> Boolean = { false },
-    emptyText: String = "결과가 없습니다.",
+    emptyText: String = "결과가 없어요.",
     idle: @Composable () -> Unit = {},
     content: @Composable (T) -> Unit,
 ) {
@@ -491,7 +491,7 @@ fun PlacePickerSheet(
                 state,
                 onRetry = { retry++ },
                 isEmpty = { it.isEmpty() },
-                emptyText = "일치하는 항목이 없습니다.",
+                emptyText = "일치하는 항목이 없어요.",
             ) { loaded ->
                 val list = remember(loaded, geo) { geo?.enrich(loaded) ?: loaded }
                 if (browse && query.isEmpty()) {

@@ -87,7 +87,7 @@ fun TrainScreen(vm: TrainViewModel = viewModel()) {
             vm.table, ModeColor.Train,
             pickerNoun = "역",
             gradeAllLabel = "전체 차종",
-            idleText = "출발역과 도착역을 고르면 시간표가 표시됩니다. 직통이 없으면 환승 경로를 찾고, 열차마다 정차역을 볼 수 있습니다.\n처음 한 번은 전국 역 목록을 받느라 몇 초 걸립니다.",
+            idleText = "출발역과 도착역을 고르면 시간표가 표시돼요. 직통이 없으면 환승 경로를 찾고, 열차마다 정차역을 볼 수 있어요.\n처음 한 번은 전국 역 목록을 받느라 몇 초 걸립니다.",
         )
     }
 }
@@ -127,14 +127,14 @@ fun AirScreen(vm: AirViewModel = viewModel()) {
                 recentKey = "air-intl",
                 pickerNoun = "공항",
                 gradeAllLabel = "전체 항공사",
-                idleText = "출발 공항과 도착 공항을 고르면 그날 운항편이 표시됩니다. 한쪽은 김포·김해·제주·청주·대구·무안·양양이어야 합니다.",
+                idleText = "출발 공항과 도착 공항을 고르면 그날 운항편이 표시돼요. 한쪽은 김포·김해·제주·청주·대구·무안·양양이어야 해요.",
             )
         } else {
             TimetablePane(
                 vm.table, ModeColor.Air,
                 pickerNoun = "공항",
                 gradeAllLabel = "전체 항공사",
-                idleText = "출발 공항과 도착 공항을 고르면 운항편이 표시됩니다.",
+                idleText = "출발 공항과 도착 공항을 고르면 운항편이 표시돼요.",
             )
         }
     }

@@ -177,6 +177,6 @@ fun SearchPanel(
         }
         val nothing = settled == query && progress == null && places.isEmpty() && stations.isEmpty() &&
             (scope == SearchScope.Subway || (busResult as? Load.Ok)?.value?.let { it.stops.isEmpty() && it.routes.isEmpty() } == true)
-        if (nothing) MessageBox("검색 결과가 없습니다.")
+        if (nothing) MessageBox("검색 결과가 없어요.")
     }
 }

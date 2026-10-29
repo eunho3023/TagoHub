@@ -51,7 +51,7 @@ fun ItsRoadScreen(vm: MapViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text("ITS 도로정보", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "지도 레이어는 지도 종류 메뉴에서 켜세요. 소통정보는 현재 지도 범위(최대 500건), 예측정보는 본선 구간별로 조회합니다.",
+            "지도 레이어는 지도 종류 메뉴에서 켜세요. 소통정보는 현재 지도 범위(최대 500건), 예측정보는 본선 구간별로 조회해요.",
             Modifier.padding(top = 4.dp, bottom = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -68,7 +68,7 @@ fun ItsRoadScreen(vm: MapViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 CircularProgressIndicator()
-                Text("ITS 데이터를 불러오고 있습니다.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                Text("ITS 데이터를 불러오고 있어요.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
             }
         }
         error?.let {
