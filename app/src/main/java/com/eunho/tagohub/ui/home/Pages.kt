@@ -281,6 +281,27 @@ private fun AccountRow() {
                 }
             },
         ) { Text(if (email != null) "로그아웃" else if (busy) "연결 중…" else "구글 계정 연결") }
+        // 계정·데이터 삭제 (Play 요구: 앱 안에서 지울 수 있어야 함)
+        var confirmDelete by remember { mutableStateOf(false) }
+        androidx.compose.material3.TextButton(enabled = !busy && activity != null, onClick = { confirmDelete = true }) { Text("내 데이터 삭제") }
+        if (confirmDelete) androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("내 데이터를 삭제할까요?") },
+            text = { Text("클라우드에 저장된 즐겨찾기·집/회사·안내 설정과 연결된 계정을 지우고, 이 기기의 즐겨찾기·집/회사·안내 설정도 비워요. 되돌릴 수 없어요. 앱 제보는 앱에서 지울 수 없으니 문의로 요청해 주세요.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmDelete = false
+                    val a = activity ?: return@TextButton
+                    busy = true
+                    scope.launch {
+                        val msg = com.eunho.tagohub.data.CloudAccount.deleteMyData(a)
+                        busy = false
+                        android.widget.Toast.makeText(a, msg ?: "삭제했어요. 앱을 다시 켜면 깨끗한 상태로 시작해요", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("삭제") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("취소") } },
+        )
     }
 }
 
