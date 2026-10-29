@@ -335,6 +335,7 @@ fun MapScreen(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 12.dp, end = 64.dp, top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -364,7 +365,7 @@ fun MapScreen(
         Column(
             Modifier
                 .align(if (driving) Alignment.BottomEnd else Alignment.TopEnd)
-                .then(if (driving) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 96.dp, end = 30.dp) else Modifier.padding(top = 12.dp, end = 12.dp)),
+                .then(if (driving) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 96.dp, end = 30.dp) else Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(top = 12.dp, end = 12.dp)),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (mapFailed) {
@@ -1259,11 +1260,11 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             }
             Spacer(Modifier.weight(1f))
             if (d.stop.lat != null) {
-                Button(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
-                    Text("출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                androidx.compose.material3.OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                    Text("여기서 출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 }
                 Button(onClick = { vm.useStopAs(d.stop, asOrigin = false); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
-                    Text("도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                    Text("여기로 도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 }
             }
         }

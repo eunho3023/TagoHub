@@ -144,7 +144,7 @@ private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
                                         Modifier.background(com.eunho.tagohub.ui.theme.busRouteColor(r.routeType), RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
                                         fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1,
                                     )
-                                    if (r.text != null) Text(" ${r.text}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = red)
+                                    if (r.text != null) Text(" ${r.text}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (r.seconds != null && r.seconds <= 180) red else MaterialTheme.colorScheme.onSurface)
                                 }
                             }
                         }

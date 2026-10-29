@@ -349,7 +349,7 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
                                             Modifier.background(busRouteColor(r.routeType), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                                             fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1,
                                         )
-                                        if (r.text != null) Text(" ${r.text}", fontFamily = NumberFont, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = red)
+                                        if (r.text != null) Text(" ${r.text}", fontFamily = NumberFont, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (r.seconds != null && r.seconds <= 180) red else MaterialTheme.colorScheme.onSurface)
                                     }
                                 }
                             }
