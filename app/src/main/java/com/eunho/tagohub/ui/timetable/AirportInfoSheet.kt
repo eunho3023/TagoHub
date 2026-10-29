@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
+import com.eunho.tagohub.data.AirportGuideClient
+import com.eunho.tagohub.data.AirportGuideInfo
 import com.eunho.tagohub.data.AirportInfo
 import com.eunho.tagohub.data.AirportLive
 import com.eunho.tagohub.data.AirportLiveClient
@@ -73,6 +75,11 @@ fun AirportInfoSheet(initial: String?, onDismiss: () -> Unit) {
                 value = AirportLiveClient.load(a.code)
             }
             LiveSection(live) { refresh++ }
+            val guide by produceState<AirportGuideInfo?>(null, a.code) {
+                value = null
+                value = AirportGuideClient.load(a.code)
+            }
+            GuideSections(guide)
 
             if (a.counters.isNotEmpty()) Section("체크인") {
                 a.counters.forEach { (kind, c) ->
@@ -224,5 +231,29 @@ private fun Line(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = androidx.compose.ui.Alignment.Top) {
         Text(label, Modifier.padding(end = 12.dp), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, Modifier.weight(1f), fontSize = 14.sp)
+    }
+}
+
+/** 주차요금표·공항 버스노선 (한국공항공사 API, 실시간 아님). 자료가 없는 공항은 그 줄을 안 보임 */
+@Composable
+private fun GuideSections(info: AirportGuideInfo?) {
+    if (info == null) return
+    if (info.fees.isNotEmpty()) Section("주차요금 (소형)") {
+        info.fees.forEach { f -> Line(f.lot, f.text()) }
+    }
+    if (info.buses.isNotEmpty()) {
+        var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        Section("공항 버스 ${info.buses.size}개 노선") {
+            TextButton(onClick = { open = !open }) { Text(if (open) "접기" else "노선 보기") }
+            if (open) info.buses.forEach { b ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Text(b.title(), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    b.detail().takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 13.sp) }
+                    b.boarding?.let { Text("승차: $it", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    b.route?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    b.company?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
     }
 }
