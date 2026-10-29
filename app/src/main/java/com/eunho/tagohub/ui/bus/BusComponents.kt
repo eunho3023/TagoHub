@@ -177,11 +177,11 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
             if (first == null) {
                 Text(if (row.ended) "운행종료" else "도착 정보 없음", style = MaterialTheme.typography.bodyLarge, color = variant)
             } else {
-                Text(arrivalLine(first, elapsedSec), style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = soon, fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                Text(
-                    second?.let { arrivalLine(it, elapsedSec) } ?: "정보없음",
+                Text(arrivalLine(first, elapsedSec), style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) MaterialTheme.colorScheme.onSurface else soon, fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                if (second != null) Text(
+                    arrivalLine(second, elapsedSec),
                     style = MaterialTheme.typography.bodyLarge.merge(Tnum),
-                    color = if (second != null) soon else variant,
+                    color = if (second.estimated || (second.arrSeconds ?: 0) - elapsedSec > 180) variant else soon,
                     textAlign = androidx.compose.ui.text.style.TextAlign.End,
                 )
             }

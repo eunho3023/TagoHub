@@ -17,7 +17,7 @@ class EstimatedArrivalTest {
 
     @Test
     fun realArrivalsKeepExactSeconds() {
-        assertEquals("9분 33초 · 7정류장 전", ArrivalText.line(arr(573, 7, estimated = false)))
+        assertEquals("9분 · 7정류장 전", ArrivalText.line(arr(573, 7, estimated = false)))
     }
 
     @Test

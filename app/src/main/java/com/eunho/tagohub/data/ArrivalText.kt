@@ -9,7 +9,8 @@ object ArrivalText {
         sec == null -> "정보없음"
         sec <= 30 -> "곧 도착"
         sec < 60 -> "${sec}초"
-        else -> "${sec / 60}분 %02d초".format(sec % 60)
+        sec < 180 -> "${sec / 60}분 %02d초".format(sec % 60)   // 3분 넘게 남으면 초는 보여주지 않음
+        else -> "${sec / 60}분"
     }
 
     fun line(a: BusArrival, elapsedSec: Int = 0): String {
