@@ -1203,7 +1203,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     }
     PanelSurface {
         PanelHeader(
-            title = d.stop.name,
+            title = d.stop.name.replace(Regex("\\.지하철(\\d+호선)$"), " (\$1)"),   // "당산역.지하철2호선" → "당산역 (2호선)"
             subtitle = listOfNotNull(numbers, direction?.let { "$it 방면" }, updated?.let { "${it.hhmm()} 갱신" }).joinToString(" · ").ifEmpty { null },
             color = ModeColor.Bus,
             onClose = vm::closePanel,

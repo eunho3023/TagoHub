@@ -292,6 +292,8 @@ private fun regionLabel(db: StopDb?, cityCode: String): String? =
 
 /** "전주시완산구" → "전주", "김제시" → "김제", "임실군" → "임실", "중구" → "중구" */
 internal fun shortRegion(n: String): String {
+    // "서울특별시"가 "서울특별"로 잘리지 않게: 특별시·광역시·특별자치시·특별자치도는 앞 이름만
+    Regex("^(.{2,}?)(특별자치시|특별자치도|특별시|광역시)").find(n)?.let { return it.groupValues[1] }
     val head = Regex("^(.{2,}?[시군])").find(n)?.groupValues?.get(1) ?: n
     return if (head.length > 2 && (head.endsWith("시") || head.endsWith("군"))) head.dropLast(1) else head
 }

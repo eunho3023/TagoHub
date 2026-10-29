@@ -67,7 +67,7 @@ internal fun LastBusChips(routeId: String, routeNo: String, cityCode: String, st
     val ask = rememberNotificationAsk()
     Row(modifier.padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("막차 ${ReminderLogic.clock(last)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("막차 알림 · ${ReminderLogic.clock(last)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         listOf(15, 30, 60).forEach { lead ->
             FilterChip(
                 selected = current?.leadMin == lead,
