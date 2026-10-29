@@ -60,7 +60,15 @@ fun BusTab(
                 Spacer(Modifier.height(16.dp))
                 Favorites(vm, onFavorite)
                 Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("지도에서 보기") }
+                androidx.compose.material3.Surface(
+                    onClick = onShowMap,
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { Text("지도에서 보기", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold) }
+                }
             }
         }
     }

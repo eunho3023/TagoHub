@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.VideoView
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -976,11 +977,23 @@ private class Sheet(val frac: MutableFloatState, val maxPx: Float)
 
 private val LocalSheet = compositionLocalOf<Sheet?> { null }
 
+/** 정류장·노선 정보를 지도 위 시트가 아니라 따로 열린 전체 화면으로 보여 줄 때 true */
+private val LocalFullScreen = compositionLocalOf { false }
+
+/** 전체 화면에서 "지도에서 보기"를 누르면 부를 동작 (지도 위 시트에서는 null) */
+private val LocalShowMap = compositionLocalOf<(() -> Unit)?> { null }
+
 private val SNAPS = listOf(0.22f, 0.45f, 0.88f, 1.0f)   // 1.0 = 맨 위까지 끌면 전체화면
 
 /** 위쪽 손잡이를 위아래로 끌면 높이가 바뀌고, 놓으면 가까운 높이(작게·중간·크게)에 맞춰진다. 손잡이를 누르면 중간↔크게 */
 @Composable
 private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
+    if (LocalFullScreen.current) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.windowInsetsPadding(WindowInsets.statusBars)) { content() }
+        }
+        return
+    }
     val sheet = LocalSheet.current
     val density = LocalDensity.current
     // 가로 화면처럼 세로가 짧으면 비율만으로는 패널이 너무 낮아져서(내용이 안 보임) 최소 높이를 보장 (화면보다 크진 않게)
@@ -1052,7 +1065,9 @@ private fun PanelHeader(
     onRefresh: (() -> Unit)? = null,
 ) {
     // 정류소·노선 패널 머리: 큰 굵은 이름, 오른쪽에 회색 원 안의 닫기(X) — 색 띠 없이 깔끔하게
-    Row(Modifier.padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    val full = LocalFullScreen.current
+    Row(Modifier.padding(start = if (full) 6.dp else 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (full) IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
         leading()
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1071,7 +1086,7 @@ private fun PanelHeader(
                 )
             }
         }
-        Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
+        if (!LocalFullScreen.current) Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
         }
     }
@@ -1098,6 +1113,7 @@ private fun RouteBandHeader(
     // 노선 종류 배지 + 큰 노선번호, 오른쪽에 새로고침·즐겨찾기·회색 원 닫기. 아래에 "기점 → 종점", 배차·운행 대수
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (LocalFullScreen.current) IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
             type?.takeIf { it.isNotBlank() }?.let {
                 Pill(it.removeSuffix("버스"), color)
                 Spacer(Modifier.width(10.dp))
@@ -1112,7 +1128,7 @@ private fun RouteBandHeader(
                     tint = if (favorite) FAVORITE_GOLD else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
+            if (!LocalFullScreen.current) Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
         }
@@ -1122,8 +1138,54 @@ private fun RouteBandHeader(
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
+/**
+ * 정류장·노선을 지도 없이 따로 여는 전체 화면 (홈·버스 탭에서 정류장이나 노선을 눌렀을 때).
+ * 정류장 화면에서 노선을 누르면 노선 화면으로, 뒤로 가면 정류장으로 돌아온다.
+ * [runLoops] 가 true 면 도착정보·버스 위치를 여기서 주기적으로 받음 (지도가 이미 떠 있으면 지도 쪽이 받음).
+ */
+@Composable
+fun BusDetailScreen(vm: MapViewModel, runLoops: Boolean, onShowMap: () -> Unit, onLeave: () -> Unit) {
+    val panel by vm.panel.collectAsStateWithLifecycle()
+    val selected by vm.selected.collectAsStateWithLifecycle()
+    val route by vm.route.collectAsStateWithLifecycle()
+    val refreshTick by vm.refreshTick.collectAsStateWithLifecycle()
+    if (runLoops) {
+        LaunchedEffect(selected, refreshTick) { selected?.let { vm.runStop(it) } }
+        LaunchedEffect(route, refreshTick) { route?.let { vm.runRoute(it) } }
+    }
+    BackHandler {
+        vm.closePanel()
+        if (vm.panel.value == MapPanel.None) onLeave()
+    }
+    LaunchedEffect(panel) { if (panel == MapPanel.None) onLeave() }
+    CompositionLocalProvider(LocalFullScreen provides true, LocalShowMap provides onShowMap) {
+        when (panel) {
+            MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
+            MapPanel.Route -> route?.let { d ->
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) { RoutePanel(vm, d, hasStop = selected != null) }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        Surface(
+                            onClick = onShowMap,
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).heightIn(min = 48.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) { Text("지도에서 보기", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall) }
+                        }
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+}
+
 @Composable
 private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
+    val showMap = LocalShowMap.current
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val rows by d.rows.collectAsStateWithLifecycle()
     val updated by d.updated.collectAsStateWithLifecycle()
@@ -1188,12 +1250,19 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                     Text(if (timetable == null) "시간표" else "실시간", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 }
             }
+            if (showMap != null) {
+                Surface(onClick = showMap, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("지도", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+            }
             Spacer(Modifier.weight(1f))
             if (d.stop.lat != null) {
-                Button(onClick = { vm.useStopAs(d.stop, asOrigin = true) }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                Button(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
                     Text("출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 }
-                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false) }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
                     Text("도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 }
             }
