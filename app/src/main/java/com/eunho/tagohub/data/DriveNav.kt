@@ -118,7 +118,7 @@ class NavRoute(
     }
 
     /** 안내 중 실제로 알려줄 동작(회전·입출구·톨게이트·목적지)의 번호. 교차로 직진 등은 뺀다 */
-    val maneuvers: List<Int> = guides.indices.filter { TurnKind.of(guides[it]).isManeuver }
+    val maneuvers: List<Int> = guides.indices.filter { TurnKind.isManeuverGuide(guides[it]) }
 
     /** [progress] 미터 지점부터 목적지까지 소통 상태를 비율로 나눈 구간 (이어지는 같은 상태는 합침) */
     fun trafficSpans(progress: Double): List<TrafficSpan> {
@@ -217,11 +217,44 @@ enum class TurnKind {
             else -> Straight
         }
 
+        /** 회전교차로 안내인지. 카카오는 "회전교차로에서 오른쪽 3시 방향"처럼 나가는 방향을 시계로 알려 줌(종류 70~81) */
+        fun isRoundabout(g: DriveGuide): Boolean = "회전교차로" in g.guidance || "로터리" in g.guidance
+
+        /** 안내할 동작인지: 회전교차로는 곧장 지나가도(12시 방향) 안내함 */
+        fun isManeuverGuide(g: DriveGuide): Boolean = of(g).isManeuver || isRoundabout(g)
+
+        private val towards = Regex("^(.+?) *방면으로")
+
+        private fun roundaboutDirection(g: DriveGuide): String = when (of(g)) {
+            Left, SlightLeft -> "왼쪽"
+            Right, SlightRight -> "오른쪽"
+            UTurn -> "되돌아"
+            else -> "직진"
+        }
+
+        /**
+         * 회전교차로에서는 "좌회전·우회전"이 아니라 나가는 쪽을 말함 ("조치원 방면으로 회전교차로에서 오른쪽으로 나가세요").
+         * 카카오의 방향은 들어가는 길 기준으로 나가는 출구 방향이라, 돌아 들어가는 좌·우회전과 헷갈리게 읽지 않도록 함.
+         */
+        private fun roundaboutText(g: DriveGuide): String {
+            val lead = towards.find(g.guidance)?.let { "${it.groupValues[1]} 방면으로 " }.orEmpty()
+            val dir = roundaboutDirection(g)
+            return lead + "회전교차로에서 " + when (dir) {
+                "직진" -> "직진하세요"
+                "되돌아" -> "되돌아 나가세요"
+                else -> "${dir}으로 나가세요"
+            }
+        }
+
         /**
          * 배너에 쓸 문구: 핵심 동작을 앞에 ("양재역 방면으로 좌회전" → "좌회전 · 양재역 방면", "서초IC에서 오른쪽 방향" → "오른쪽 방향 · 서초IC").
          * 음성 안내는 [text] 그대로 읽음.
          */
         fun bannerText(g: DriveGuide): String {
+            if (isRoundabout(g)) {
+                val where = towards.find(g.guidance)?.let { " · ${it.groupValues[1]} 방면" }.orEmpty()
+                return "회전교차로 ${roundaboutDirection(g)}$where"
+            }
             val t = text(g)
             Regex("^(.+?) *방면으로 *(.+)$").find(t)?.let { return "${it.groupValues[2]} · ${it.groupValues[1]} 방면" }
             Regex("^(.+?)에서 *(.+)$").find(t)?.let { return "${it.groupValues[2]} · ${it.groupValues[1]}" }
@@ -232,6 +265,7 @@ enum class TurnKind {
         fun text(g: DriveGuide): String {
             if (g.isDestination) return "목적지"
             if (g.isWaypoint) return "경유지"
+            if (isRoundabout(g)) return roundaboutText(g)
             if (!clock.containsMatchIn(g.guidance)) return g.guidance
             val phrase = when (of(g)) {
                 SlightLeft -> "왼쪽 방향"
@@ -265,7 +299,7 @@ fun driveSteps(guides: List<DriveGuide>): List<DriveStep> {
     val pos = IntArray(guides.size)
     var acc = 0
     for (i in guides.indices) { acc += guides[i].distanceFromPrev; pos[i] = acc }
-    val keep = guides.indices.filter { val k = TurnKind.of(guides[it]); k.isManeuver || k == TurnKind.Start }
+    val keep = guides.indices.filter { val k = TurnKind.of(guides[it]); TurnKind.isManeuverGuide(guides[it]) || k == TurnKind.Start }
     return keep.mapIndexed { n, i ->
         val g = guides[i]
         val kind = TurnKind.of(g)
