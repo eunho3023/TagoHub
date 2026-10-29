@@ -53,7 +53,8 @@ import com.eunho.tagohub.ui.timetable.AirScreen
 import com.eunho.tagohub.ui.timetable.TrainScreen
 
 /** 앱의 큰 화면들: 홈, 대중교통(버스·지하철·기차·고속시외·항공), 지도, 내비게이션, 도로교통, 설정 */
-enum class Dest { Home, Map, Transit, Navi, Road, Settings }
+/** Bus: 지도 없이 따로 열리는 정류장·노선 화면 */
+enum class Dest { Home, Map, Transit, Navi, Road, Settings, Bus }
 
 /** 지도 등에서 기차·고속시외·항공·도로교통을 열라는 요청이 오면 어느 화면(과 대중교통 갈래)인지 */
 private fun ModeJump.Kind.dest(): Dest = if (this == ModeJump.Kind.Road) Dest.Road else Dest.Transit
@@ -86,7 +87,7 @@ fun MainScreen() {
     var mapStarted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(dest, guiding) { if (dest == Dest.Map || dest == Dest.Road || guiding) mapStarted = true }
     // 지도가 맨 앞에 보일 때만 도착정보·버스 위치를 주기적으로 받음 (홈이 덮고 있거나 앱을 내려놓으면 멈춤)
-    LaunchedEffect(dest) { com.eunho.tagohub.core.AppState.mapVisible.value = dest == Dest.Map }
+    LaunchedEffect(dest) { com.eunho.tagohub.core.AppState.mapVisible.value = dest == Dest.Map || dest == Dest.Bus }
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
 
     /** 다른 화면을 열 때 어디로 돌아올지 기억 (지도에서 열었으면 지도) */
@@ -103,6 +104,8 @@ fun MainScreen() {
         open(Dest.Transit)
     }
     fun openMap(mode: MapMode) { mapMode = mode; dest = Dest.Map }
+    /** 정류장·노선을 지도 없이 따로 열기. 뒤로 가면 지금 보던 화면으로 */
+    fun openBus() { if (dest != Dest.Bus) returnTo = dest; dest = Dest.Bus }
     fun onTab(tab: AppTab) {
         if (tab != AppTab.Home) returnTo = Dest.Home
         dest = when (tab) {
@@ -117,8 +120,8 @@ fun MainScreen() {
     val searchActions = SearchActions(
         onPlace = { mapVm.pickPlace(it); openMap(MapMode.Transit) },
         onStation = { mapVm.focusStation(it); openMap(MapMode.Subway) },
-        onStop = { mapVm.pickStop(it); openMap(MapMode.Bus) },
-        onRoute = { mapVm.pickRoute(it); openMap(MapMode.Bus) },
+        onStop = { mapVm.pickStop(it); openBus() },
+        onRoute = { mapVm.pickRoute(it); openBus() },
     )
 
     LaunchedEffect(Unit) {
@@ -141,7 +144,7 @@ fun MainScreen() {
     // 뒤로 가기: 지도 위 창은 지도 화면이 먼저 닫고(안쪽 핸들러가 우선), 그 뒤 지도→홈, 다른 화면→온 곳, 홈→종료 확인
     BackHandler(enabled = dest == Dest.Home) { askExit = true }
     BackHandler(enabled = dest == Dest.Map) { dest = Dest.Home }
-    BackHandler(enabled = dest != Dest.Home && dest != Dest.Map) { dest = returnTo }
+    BackHandler(enabled = dest != Dest.Home && dest != Dest.Map && dest != Dest.Bus) { dest = returnTo }
 
     if (askExit) {
         androidx.compose.material3.AlertDialog(
@@ -183,7 +186,7 @@ fun MainScreen() {
                                     mapVm.openPlanner()
                                     mapVm.trip.goTo(place)
                                 },
-                                onFavorite = { f -> openMap(MapMode.Transit); mapVm.openFavorite(f) },
+                                onFavorite = { f -> mapVm.openFavorite(f); if (f.kind == com.eunho.tagohub.data.Favorite.Kind.Station) openMap(MapMode.Subway) else openBus() },
                             )
                         }
                         com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Home, ::onTab)
@@ -192,7 +195,7 @@ fun MainScreen() {
                         TransitScreen(
                             mode = transitMode,
                             onMode = { transitMode = it },
-                            bus = { BusTab(mapVm, searchActions, onFavorite = { f -> openMap(MapMode.Bus); mapVm.openFavorite(f) }, onShowMap = { openMap(MapMode.Bus) }) },
+                            bus = { BusTab(mapVm, searchActions, onFavorite = { f -> mapVm.openFavorite(f); if (f.kind == com.eunho.tagohub.data.Favorite.Kind.Station) openMap(MapMode.Subway) else openBus() }, onShowMap = { openMap(MapMode.Bus) }) },
                             subway = { SubwayTab(mapVm, searchActions, onShowMap = { openMap(MapMode.Subway) }) },
                             train = { TrainScreen() },
                             coach = { CoachScreen() },
@@ -212,6 +215,12 @@ fun MainScreen() {
                         onNotices = { showNotices = true },
                         onReport = { showReport = true },
                         onTab = ::onTab,
+                    )
+                    Dest.Bus -> com.eunho.tagohub.ui.map.BusDetailScreen(
+                        vm = mapVm,
+                        runLoops = !mapStarted,
+                        onShowMap = { openMap(MapMode.Bus) },
+                        onLeave = { dest = returnTo },
                     )
                     Dest.Map -> Unit
                 }
