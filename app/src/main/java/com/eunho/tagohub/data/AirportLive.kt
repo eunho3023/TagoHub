@@ -82,6 +82,18 @@ object AirportLive {
         )
     }
 
+    /** 주차장 혼잡도 응답에 나오는 공항 이름 (IATA → airportKor) */
+    private val LOT_AIRPORT = mapOf(
+        "GMP" to "김포", "PUS" to "김해", "CJU" to "제주", "TAE" to "대구", "KWJ" to "광주", "RSU" to "여수", "USN" to "울산",
+        "KUV" to "군산", "WJU" to "원주", "CJJ" to "청주", "MWX" to "무안", "HIN" to "사천", "YNY" to "양양",
+    )
+
+    /** [iata] 공항의 주차장만. 이 API 에 없는 공항(포항경주 등)은 빈 목록 */
+    fun lotsOf(iata: String, all: List<Lot>): List<Lot> {
+        val name = LOT_AIRPORT[iata] ?: return emptyList()
+        return all.filter { it.airport.startsWith(name) }
+    }
+
     fun lots(text: String): List<Lot> = rows(text).mapNotNull { m ->
         Lot(
             airport = m.s("airportKor").orEmpty(), name = m.s("parkingAirportCodeName") ?: return@mapNotNull null,
@@ -171,7 +183,8 @@ object AirportLiveClient {
                 guarded { AirportLive.processTime(get("airport-process-time/v1", "한국공항공사 공항 소요시간", "pageNo" to "1", "numOfRows" to "20")).firstOrNull { it.airport == iata } }
             }
             val lots = async {
-                guarded { AirportLive.lots(get("parking-congestion/info", "한국공항공사 주차장 혼잡도", "pageNo" to "1", "numOfRows" to "50", "schAirportCode" to iata)) }.orEmpty()
+                // schAirportCode 는 무시되고 전국 25개 주차장이 다 오므로 이 공항 것만 거름
+                guarded { AirportLive.lotsOf(iata, AirportLive.lots(get("parking-congestion/info", "한국공항공사 주차장 혼잡도", "pageNo" to "1", "numOfRows" to "100"))) }.orEmpty()
             }
             val valet = async {
                 if (iata != "GMP") return@async null
