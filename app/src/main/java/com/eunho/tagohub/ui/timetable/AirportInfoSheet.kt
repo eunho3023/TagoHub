@@ -164,7 +164,8 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
         when {
             info == null -> Text("불러오는 중…", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             info.isEmpty -> {
-                Text("이 공항은 실시간 정보가 없거나 받지 못했습니다.", fontSize = 14.sp)
+                if (info.errors.isEmpty()) Text("이 공항은 실시간 정보(혼잡도·주차장 등)를 제공하지 않습니다.", fontSize = 14.sp)
+                else Text("실시간 정보를 받지 못했습니다.", fontSize = 14.sp)
                 info.errors.firstOrNull()?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             else -> {
@@ -182,6 +183,7 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
                     val amount = if (l.used != null && l.total != null) "${l.used}/${l.total}대" else null
                     LiveLine(l.name, listOfNotNull(l.label, l.percent, amount).joinToString(" · "), lotColor(l.label))
                 }
+                if (info.lots.isEmpty() && info.errors.isEmpty()) LiveLine("주차장", "실시간 정보 없음", Color.Unspecified)
                 info.valet?.let { v ->
                     LiveLine("발렛파킹", listOfNotNull(v.label, v.total?.let { "대기 ${it}대" }).joinToString(" · "), lotColor(v.label))
                 }
