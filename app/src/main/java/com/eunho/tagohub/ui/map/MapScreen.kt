@@ -2157,6 +2157,58 @@ private fun PlannerPanel(vm: MapViewModel) {
 }
 
 /**
+ * 길찾기 탭 화면: 지도 밖에서 출발·도착을 고르고 경로 목록과 이동 순서를 봄 (지도 패널과 같은 [TripController] 를 씀).
+ * 경로를 골랐거나 자동차·도보 경로가 나오면 "지도에서 보기"로 지도에 그림.
+ */
+@Composable
+fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Modifier) {
+    val t = vm.trip
+    val origin by t.origin.collectAsStateWithLifecycle()
+    val dest by t.dest.collectAsStateWithLifecycle()
+    val editing by t.editing.collectAsStateWithLifecycle()
+    val selected by t.selected.collectAsStateWithLifecycle()
+    val note by t.note.collectAsStateWithLifecycle()
+    val mode by t.mode.collectAsStateWithLifecycle()
+    val ride by t.ridePlan.collectAsStateWithLifecycle()
+    Column(modifier.fillMaxSize()) {
+        Text(
+            note ?: "이동 경로를 미리 살펴보세요.",
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (selected == null) {
+            if (editing == null) HomeWorkChips(t)
+            Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PlanPointField("출발", origin?.name ?: "내 위치", active = editing == PlanField.Origin) { t.edit(PlanField.Origin) }
+                    PlanPointField("도착", dest?.name ?: "목적지를 입력하세요", active = editing == PlanField.Dest, placeholder = dest == null) {
+                        t.edit(PlanField.Dest)
+                    }
+                }
+                IconButton(onClick = t::swap) { Icon(Icons.Filled.SwapVert, contentDescription = "출발·도착 바꾸기") }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        if (selected != null || (mode != PlanMode.Transit && ride is Load.Ok)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (selected != null) TextButton(onClick = { t.select(null) }) { Text("‹ 목록") }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onShowMap) { Text("지도에서 보기") }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Box(Modifier.weight(1f)) {
+            when {
+                editing != null -> PlanSearch(t, editing!!)
+                selected != null -> PlanDetail(t, selected!!)
+                else -> PlanList(t)
+            }
+        }
+    }
+}
+
+/**
  * 집·회사 한 번 길찾기 칩: 누르면 그곳으로 가는 길찾기, 길게 누르면 다시 설정. 아직 없으면 "집 설정".
  * 지금 시각에 갈 가능성이 큰 쪽(아침 회사·저녁 집)을 앞에 둔다.
  */
