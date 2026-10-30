@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Fmt
@@ -275,8 +276,23 @@ private fun StationDetailBody(
             onSelect = { c.setTab(d, StationTab.entries[it]) },
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        Box(Modifier.weight(1f)) {
-            when (tab) {
+        // 탭을 바꾸면 내용이 8dp 옆으로 밀리며 교차 페이드 (220ms). 기기 설정이 애니메이션을 끄면 바로 바뀜
+        val reduce = com.eunho.tagohub.ui.common.rememberReduceMotion()
+        val shift = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
+        androidx.compose.animation.AnimatedContent(
+            targetState = tab,
+            modifier = Modifier.weight(1f),
+            transitionSpec = {
+                if (reduce) androidx.compose.animation.ContentTransform(androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(0)), androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(0)))
+                else {
+                    val dir = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                    (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) + androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { dir * shift }) togetherWith
+                        (androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) + androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(220)) { -dir * shift })
+                }
+            },
+            label = "station-tab",
+        ) { current ->
+            when (current) {
                 StationTab.Live -> LiveTab(d, c, onArrivalClick)
                 StationTab.Timetable -> TimetableTab(d, c)
                 StationTab.Info -> StationInfoContent(d, c)

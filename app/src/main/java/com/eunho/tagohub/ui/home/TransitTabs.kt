@@ -85,7 +85,7 @@ fun BusTab(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
+internal fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit, onShowMap: (() -> Unit)? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val stops by androidx.compose.runtime.produceState<List<Pair<com.eunho.tagohub.data.BusStop, Double>>>(emptyList()) {
         if (!com.eunho.tagohub.ui.bus.hasLocationPermission(context)) return@produceState
@@ -118,7 +118,10 @@ private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
         }
     }
     val red = if (com.eunho.tagohub.ui.theme.LocalDarkTheme.current) androidx.compose.ui.graphics.Color(0xFFFF8A80) else androidx.compose.ui.graphics.Color(0xFFD92D20)
-    Text("내 주변 정류장", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("내 주변 정류장", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+        if (onShowMap != null) Text("지도에서 보기", Modifier.clickable { onShowMap() }.padding(vertical = 8.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+    }
     Spacer(Modifier.height(6.dp))
     androidx.compose.material3.Surface(
         shape = RoundedCornerShape(14.dp),

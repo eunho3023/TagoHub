@@ -17,6 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import com.eunho.tagohub.ui.common.pressScale
+import com.eunho.tagohub.ui.common.riseIn
+import com.eunho.tagohub.ui.map.MapMode
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -62,7 +66,6 @@ import com.eunho.tagohub.data.SavedPlace
 import com.eunho.tagohub.ui.ModeJump
 import com.eunho.tagohub.ui.common.AnimatedValueText
 import com.eunho.tagohub.ui.bus.arrivalsFor
-import com.eunho.tagohub.ui.map.MapMode
 import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.NumberFont
@@ -139,7 +142,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalDarkTheme.current
-    val transit = listOf(
+    val unusedTiles = listOf(
         Tile("버스", Icons.Outlined.DirectionsBus, Color(0xFF1F7A4A), Color(0xFF1F7A4A)) { onOpenTransit(TransitMode.Bus) },
         Tile("지하철", Icons.Outlined.DirectionsSubway, Color(0xFF4B5563), Color(0xFF556070)) { onOpenTransit(TransitMode.Subway) },
         Tile("기차", Icons.Outlined.Train, Color(0xFF1B3E8A), Color(0xFF2F55B5)) { onOpenTransit(TransitMode.Train) },
@@ -159,27 +162,77 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(4.dp))
                 if (query.isBlank()) {
+                    BrandHeader(Modifier.riseIn(0))
+                    Spacer(Modifier.height(18.dp))
                     Text(
-                        "어디로 가시나요?",
-                        fontSize = 26.sp,
-                        lineHeight = 32.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-0.5).sp,
+                        "다음 여정,\n더 또렷하게.",
+                        Modifier.riseIn(1),
+                        fontSize = 30.sp,
+                        lineHeight = 38.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-1.2).sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    Spacer(Modifier.height(12.dp))
-                }
-                SearchPanel(vm, SearchScope.All, query, { query = it }, search)
-                if (query.isBlank()) {
                     Spacer(Modifier.height(16.dp))
-                    TileSection("대중교통", transit, columns, dark)
-                    TileSection("자동차", road, columns, dark)
+                }
+                Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
+                if (query.isBlank()) {
+                    RecentChips(onGoTo, Modifier.riseIn(3))
                     SavedPlaces(vm, onGoTo)
                     Spacer(Modifier.height(10.dp))
-                    Favorites(vm, onFavorite)
+                    Column(Modifier.riseIn(4)) { Favorites(vm, onFavorite) }
+                    Spacer(Modifier.height(16.dp))
+                    Column(Modifier.riseIn(5)) { NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) }) }
                 }
+            }
+        }
+    }
+}
+
+/** 위쪽 로고: 환승 경로 마크 + 앱 이름 */
+@Composable
+private fun BrandHeader(modifier: Modifier = Modifier) {
+    val accent = MaterialTheme.colorScheme.primary
+    Row(modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.Canvas(Modifier.size(34.dp)) {
+            val u = size.width / 48f
+            val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(10f * u, 11f * u); lineTo(24f * u, 11f * u); lineTo(24f * u, 25f * u); lineTo(39f * u, 25f * u)
+                moveTo(24f * u, 25f * u); lineTo(24f * u, 38f * u)
+            }
+            drawPath(path, accent, style = stroke)
+            drawCircle(Color(0xFF13887E), 4.5f * u, androidx.compose.ui.geometry.Offset(10f * u, 11f * u))
+            drawCircle(Color(0xFFF0A33A), 4.5f * u, androidx.compose.ui.geometry.Offset(39f * u, 25f * u))
+            drawCircle(accent, 4.5f * u, androidx.compose.ui.geometry.Offset(24f * u, 38f * u))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text("TagoHub", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("한 번에 연결되는 교통 정보", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** 최근에 길찾기한 목적지 (눌러서 바로 길찾기) */
+@Composable
+private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modifier) {
+    val items by com.eunho.tagohub.data.RecentDestinations.items.collectAsStateWithLifecycle()
+    if (items.isEmpty()) return
+    Row(modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.take(2).forEach { r ->
+            val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Surface(
+                onClick = { onGoTo(SavedPlace(r.name, r.lat, r.lng)) },
+                interactionSource = src,
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.pressScale(src),
+            ) {
+                Text(r.name, Modifier.heightIn(min = 32.dp).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
