@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.ui.ModeJump
+import com.eunho.tagohub.ui.common.ChoiceTabs
 import kotlinx.coroutines.launch
 import com.eunho.tagohub.ui.theme.LocalDarkTheme
 import com.eunho.tagohub.ui.theme.ThemeMode
@@ -150,7 +151,7 @@ fun MorePage(
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { showCrash = false },
                         title = { Text("최근 오류") },
-                        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(text, fontSize = 12.sp) } },
+                        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(text, fontSize = 13.sp) } },
                         confirmButton = {
                             androidx.compose.material3.TextButton(onClick = {
                                 context.startActivity(
@@ -171,7 +172,7 @@ fun MorePage(
                 var taps by remember { mutableStateOf(0) }
                 Text(
                     "앱 버전 ${com.eunho.tagohub.BuildConfig.VERSION_NAME}" + if (com.eunho.tagohub.core.DevMode.on) " · 개발자 모드" else "",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(top = 16.dp).clickable {
                         taps += 1
                         if (taps >= 7) {
@@ -189,7 +190,7 @@ fun MorePage(
 
 @Composable
 private fun SettingsLabel(text: String) {
-    Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp))
+    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
 }
 
 @Composable
@@ -322,29 +323,10 @@ private fun MoreRow(label: String, onClick: () -> Unit) {
 fun ThemeModePicker(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val mode by ThemeSettings.mode.collectAsStateWithLifecycle()
-    // 세 칸 전환: 회색 바탕 위에 고른 칸만 흰 카드로
-    Row(
-        modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)).padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        ThemeMode.entries.forEach { m ->
-            val on = mode == m
-            Surface(
-                onClick = { ThemeSettings.set(context, m) },
-                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = if (on) MaterialTheme.colorScheme.surface else Color.Transparent,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        m.label,
-                        fontSize = 15.sp,
-                        fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
-                        color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
-    }
+    ChoiceTabs(
+        labels = ThemeMode.entries.map { it.label },
+        selectedIndex = mode.ordinal,
+        onSelect = { ThemeSettings.set(context, ThemeMode.entries[it]) },
+        modifier = modifier,
+    )
 }

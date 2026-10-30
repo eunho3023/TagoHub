@@ -80,6 +80,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -993,6 +994,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 정류장 예상 시간표 (null = 안 보는 중) */
     val stopTimetable = MutableStateFlow<Load<List<RouteTimes>>?>(null)
     val timetableDay = MutableStateFlow(DayKind.today())
+    val timetablePreferredRouteId = MutableStateFlow<String?>(null)
     private var timetableJob: Job? = null
 
     /** 버스 길찾기 (전주시 시내버스: 직통 + 1회 환승) */
@@ -1918,20 +1920,37 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     // ───────────────────────── 정류장 예상 시간표 ─────────────────────────
 
-    fun openStopTimetable(day: DayKind = timetableDay.value) {
+    fun openStopTimetable(
+        day: DayKind = timetableDay.value,
+        preferredRouteId: String? = timetablePreferredRouteId.value,
+    ) {
         val d = selected.value ?: return
         timetableDay.value = day
+        timetablePreferredRouteId.value = preferredRouteId
         timetableJob?.cancel()
         stopTimetable.value = Load.Loading
-        timetableJob = viewModelScope.launch { stopTimetable.value = tracked { loadStopTimes(d, day) }
+        timetableJob = viewModelScope.launch {
+            val board = d.rows.first { it !is Load.Loading }
+            if (board !is Load.Ok) {
+                stopTimetable.value = Load.Fail("정류장 노선 정보를 불러오지 못했어요.")
+                return@launch
+            }
+            stopTimetable.value = tracked { loadStopTimes(d, day) }
             // 노선을 고를 때마다 계산하지 않고 열 때 모든 노선을 한꺼번에 (고르면 바로 보이게)
             (stopTimetable.value as? Load.Ok)?.value?.filter { !it.loaded }?.forEach { ensureTimes(it.routeId) }
         }
     }
 
+    /** 노선 상세에서 고른 정류장으로 이동해 해당 노선을 우선 선택한 시간표를 연다. */
+    fun openRouteStopTimetable(nodeId: String, routeId: String) {
+        onStopClick(nodeId)
+        openStopTimetable(preferredRouteId = routeId)
+    }
+
     fun closeStopTimetable() {
         timetableJob?.cancel()
         stopTimetable.value = null
+        timetablePreferredRouteId.value = null
     }
 
     /**

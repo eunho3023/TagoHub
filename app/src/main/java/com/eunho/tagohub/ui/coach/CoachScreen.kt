@@ -20,9 +20,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,7 +45,9 @@ import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.data.ExpArrival
 import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.data.Place
+import com.eunho.tagohub.ui.common.AnimatedValueText
 import com.eunho.tagohub.ui.common.LoadView
+import com.eunho.tagohub.ui.common.ChoiceTabs
 import com.eunho.tagohub.ui.common.MessageBox
 import com.eunho.tagohub.ui.common.OdSelector
 import com.eunho.tagohub.ui.common.Pill
@@ -136,20 +135,13 @@ fun CoachScreen(vm: CoachViewModel = viewModel()) {
     val accent = if (mode == CoachMode.Suburb) ModeColor.Suburb else ModeColor.Coach
 
     Column(Modifier.fillMaxSize()) {
-        SingleChoiceSegmentedButtonRow(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp)
-        ) {
-            CoachMode.entries.forEachIndexed { i, m ->
-                SegmentedButton(
-                    selected = mode == m,
-                    onClick = { vm.mode.value = m },
-                    shape = SegmentedButtonDefaults.itemShape(i, CoachMode.entries.size),
-                ) { Text(m.label, maxLines = 1) }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
+        ChoiceTabs(
+            labels = CoachMode.entries.map { it.label },
+            selectedIndex = mode.ordinal,
+            onSelect = { vm.mode.value = CoachMode.entries[it] },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        Spacer(Modifier.height(4.dp))
         when (mode) {
             CoachMode.Express -> TimetablePane(
                 vm.express, ModeColor.Coach, "터미널", "전체 등급",
@@ -267,19 +259,19 @@ private fun ExpArrivalRow(a: ExpArrival) {
         }
         Column(horizontalAlignment = Alignment.End) {
             if (!a.arrived) {
-                Text(
-                    a.remainMinutes?.let { Fmt.minutes(it) + " 후" } ?: a.remainText,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = ModeColor.Coach,
-                )
+                AnimatedValueText(a.remainMinutes?.let { Fmt.minutes(it) + " 후" } ?: a.remainText, label = "coach-remaining-time") { value ->
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = ModeColor.Coach,
+                    )
+                }
             }
             a.arrPredict?.let {
-                Text(
-                    TagoTime.hm(it) + if (a.arrived) " 도착" else " 도착 예정",
-                    style = MaterialTheme.typography.bodySmall.merge(Tnum),
-                    color = variant,
-                )
+                AnimatedValueText(TagoTime.hm(it) + if (a.arrived) " 도착" else " 도착 예정", label = "coach-arrival-prediction") { value ->
+                    Text(value, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = variant)
+                }
             }
         }
     }

@@ -64,7 +64,11 @@ enum class DayType(val code: String, val kricCode: String, val label: String) {
 }
 
 enum class StationTab(val label: String) {
-    Live("역 정보·도착"), Timetable("시간표"), Route("노선"), Exits("출구정보"), Facilities("편의정보"), Congestion("혼잡도")
+    Live("실시간"), Timetable("시간표"), Info("역 정보")
+}
+
+enum class StationInfoTab(val label: String) {
+    Exits("출구"), Facilities("편의시설"), Route("노선도"), Congestion("혼잡도")
 }
 
 enum class SubwayTimetableSource { Tago, Kric }
@@ -74,6 +78,7 @@ class StationDetail(val group: StationGroup) {
     val realtime: Boolean = group.seoulLineIds.isNotEmpty()
 
     val tab = MutableStateFlow(StationTab.Live)
+    val infoTab = MutableStateFlow(StationInfoTab.Exits)
 
     // 실시간 도착 (서울 API)
     val arrivals = MutableStateFlow<Load<List<SubwayArrival>>>(Load.Loading)
@@ -170,11 +175,19 @@ class StationDetailController(
 
     fun setTab(d: StationDetail, t: StationTab) {
         d.tab.value = t
-        if (t == StationTab.Exits && d.exits.value !is Load.Ok) loadExits(d)
-        if (t == StationTab.Route && d.kricRoute.value !is Load.Ok) loadKricRoute(d)
+        if (t == StationTab.Info) setInfoTab(d, d.infoTab.value)
         if (t == StationTab.Timetable && d.timetableSource.value == SubwayTimetableSource.Kric &&
             d.kricTimetable.value !is Load.Ok
         ) loadKricTimetable(d)
+    }
+
+    fun setInfoTab(d: StationDetail, t: StationInfoTab) {
+        d.infoTab.value = t
+        when (t) {
+            StationInfoTab.Exits -> if (d.exits.value !is Load.Ok) loadExits(d)
+            StationInfoTab.Route -> if (d.kricRoute.value !is Load.Ok) loadKricRoute(d)
+            StationInfoTab.Facilities, StationInfoTab.Congestion -> Unit
+        }
     }
 
     fun selectLine(d: StationDetail, s: SubwayStation) {
@@ -188,8 +201,8 @@ class StationDetailController(
         d.kricCodes.value = null
         loadSchedule(d)
         if (d.timetableSource.value == SubwayTimetableSource.Kric) loadKricTimetable(d)
-        if (d.tab.value == StationTab.Route) loadKricRoute(d)
-        if (d.tab.value == StationTab.Exits) loadExits(d)
+        if (d.tab.value == StationTab.Info && d.infoTab.value == StationInfoTab.Route) loadKricRoute(d)
+        if (d.tab.value == StationTab.Info && d.infoTab.value == StationInfoTab.Exits) loadExits(d)
     }
 
     fun setDay(d: StationDetail, t: DayType) {

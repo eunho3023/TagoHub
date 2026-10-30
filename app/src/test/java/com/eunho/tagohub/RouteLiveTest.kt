@@ -23,6 +23,15 @@ class RouteLiveTest {
         assertEquals("1정류장 전 · 약 1분", RouteLive.text(1, 0))
         assertEquals("정류장 도착", RouteLive.text(0, null))
     }
+
+    @Test
+    fun countdownTextShowsSecondsAndBecomesSoonAtThirtySeconds() {
+        assertEquals("3정류장 전 · 약 4분 59초", RouteLive.countdownText(3, 299))
+        assertEquals("1정류장 전 · 약 45초", RouteLive.countdownText(1, 45))
+        assertEquals("1정류장 전 · 곧 도착", RouteLive.countdownText(1, 30))
+        assertEquals("정류장 도착", RouteLive.countdownText(0, 20))
+        assertEquals("2정류장 전", RouteLive.countdownText(2, null))
+    }
 }
 
 class PreferPositionTest {

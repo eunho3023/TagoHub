@@ -115,7 +115,7 @@ fun NavigationScreen(
         }
         if (recents.isNotEmpty()) {
             Text(
-                "최근 목적지", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                "최근 목적지", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = 8.dp, bottom = 0.dp),
             )
             Surface(
