@@ -1,5 +1,6 @@
 package com.eunho.tagohub.ui.home
 
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,12 +29,14 @@ fun TransitScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize()) {
-        ChoiceTabs(
-            labels = TransitMode.entries.map { it.label },
-            selectedIndex = mode.ordinal,
-            onSelect = { onMode(TransitMode.entries[it]) },
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        ) {
+            items(TransitMode.entries.toList()) { m ->
+                com.eunho.tagohub.ui.common.PillChip(m.label, m == mode, { onMode(m) })
+            }
+        }
         Box(Modifier.weight(1f)) {
             when (mode) {
                 TransitMode.Bus -> bus()
