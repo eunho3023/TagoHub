@@ -43,6 +43,7 @@ import com.eunho.tagohub.ui.home.SearchActions
 import com.eunho.tagohub.ui.home.SubwayTab
 import com.eunho.tagohub.ui.home.TabScaffold
 import com.eunho.tagohub.ui.navi.NavigationScreen
+import com.eunho.tagohub.ui.navi.RouteTab
 import com.eunho.tagohub.ui.common.clearFocusOnTapOutside
 import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.home.PageScaffold
@@ -202,8 +203,8 @@ fun MainScreen() {
                             air = { AirScreen() },
                         )
                     }
-                    Dest.Navi -> TabScaffold("내비게이션", androidx.compose.ui.graphics.Color(0xFF294653), AppTab.Navi, ::onTab) {
-                        NavigationScreen(
+                    Dest.Navi -> TabScaffold("길찾기", androidx.compose.ui.graphics.Color(0xFF294653), AppTab.Navi, ::onTab) {
+                        RouteTab(mapVm, onShowMap = { openMap(MapMode.Transit); mapVm.openPlanner() }) { NavigationScreen(
                             onPlanRoute = { openMap(MapMode.Transit); mapVm.openPlanner() },
                             onShowMap = { openMap(MapMode.Transit) },
                             onRoadInfo = { openKind(ModeJump.Kind.Road) },
@@ -212,7 +213,7 @@ fun MainScreen() {
                                 mapVm.openPlanner()
                                 mapVm.trip.goTo(place)
                             },
-                        )
+                        ) }
                     }
                     Dest.Road -> PageScaffold(ModeJump.Kind.Road, AppTab.Navi, ::onTab) { RoadInfoScreen(mapVm) }
                     Dest.Settings -> MorePage(

@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AirportShuttle
+import androidx.compose.material.icons.outlined.Directions
 import androidx.compose.material.icons.outlined.DirectionsTransit
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.DirectionsBus
@@ -79,7 +80,7 @@ enum class AppTab(val label: String, val icon: ImageVector) {
     Home("홈", Icons.Outlined.Home),
     Transit("대중교통", Icons.Outlined.DirectionsTransit),
     Map("지도", Icons.Outlined.Map),
-    Navi("내비게이션", Icons.Outlined.Navigation),
+    Navi("길찾기", Icons.Outlined.Directions),
     Settings("설정", Icons.Outlined.Settings),
 }
 
@@ -150,7 +151,7 @@ fun HomeScreen(
         Tile("항공", Icons.Outlined.Flight, Color(0xFFA85F0E), Color(0xFFA85F0E)) { onOpenTransit(TransitMode.Air) },
     )
     val road = listOf(
-        Tile("내비게이션", Icons.Outlined.Navigation, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Navi) },
+        Tile("길찾기", Icons.Outlined.Directions, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Navi) },
         Tile(ModeJump.Kind.Road.label, Icons.Outlined.Traffic, Color(0xFF8A4B1F), Color(0xFF8A4B1F)) { onOpenPage(ModeJump.Kind.Road) },
         Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
     )
