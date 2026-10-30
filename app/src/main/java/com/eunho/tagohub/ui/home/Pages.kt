@@ -91,18 +91,18 @@ fun TabScaffold(
     content: @Composable () -> Unit,
 ) {
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 흰 머리 + 아래 얇은 선. 어느 탭인지는 제목 앞의 수단 색 점으로
-        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(12.dp).background(color, androidx.compose.foundation.shape.CircleShape))
-                Spacer(Modifier.width(10.dp))
-                Text(title, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-            }
+        // 로고 줄 + 큰 제목 + 한 줄 설명 (홈과 같은 머리)
+        val subtitle = when (title) {
+            "대중교통" -> "지금 필요한 이동 정보를 찾아보세요."
+            "내비게이션" -> "목적지를 정하고 길안내를 시작하세요."
+            else -> null
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
+            BrandHeader()
+            Spacer(Modifier.height(18.dp))
+            Text(title, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+            if (subtitle != null) Text(subtitle, Modifier.padding(top = 6.dp), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Box(Modifier.weight(1f)) { content() }
         AppBottomNav(tab, onTab)
     }

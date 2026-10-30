@@ -164,8 +164,10 @@ fun HomeScreen(
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(4.dp))
                 if (query.isBlank()) {
-                    BrandHeader(Modifier.riseIn(0))
-                    Spacer(Modifier.height(18.dp))
+                    BrandHeader(Modifier.riseIn(0), action = "교통", onAction = { onOpenTab(AppTab.Transit) })
+                    Spacer(Modifier.height(20.dp))
+                    Text("오늘의 이동을 한눈에", Modifier.riseIn(1), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         "다음 여정,\n더 또렷하게.",
                         Modifier.riseIn(1),
@@ -175,7 +177,8 @@ fun HomeScreen(
                         letterSpacing = (-1.2).sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Text("역과 정류장 정보를 한곳에서 확인하세요.", Modifier.padding(top = 8.dp).riseIn(1), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(18.dp))
                 }
                 Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
                 if (query.isBlank()) {
@@ -193,7 +196,7 @@ fun HomeScreen(
 
 /** 위쪽 로고: 환승 경로 마크 + 앱 이름 */
 @Composable
-private fun BrandHeader(modifier: Modifier = Modifier) {
+internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
     val accent = MaterialTheme.colorScheme.primary
     Row(modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         androidx.compose.foundation.Canvas(Modifier.size(34.dp)) {
@@ -213,6 +216,17 @@ private fun BrandHeader(modifier: Modifier = Modifier) {
             Text("TagoHub", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
             Text("한 번에 연결되는 교통 정보", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (action != null) {
+            Spacer(Modifier.weight(1f))
+            Surface(
+                onClick = onAction,
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Text(action, Modifier.heightIn(min = 48.dp).padding(horizontal = 18.dp).wrapContentHeight(Alignment.CenterVertically), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+            }
+        }
     }
 }
 
@@ -221,8 +235,13 @@ private fun BrandHeader(modifier: Modifier = Modifier) {
 private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modifier) {
     val items by com.eunho.tagohub.data.RecentDestinations.items.collectAsStateWithLifecycle()
     if (items.isEmpty()) return
-    Row(modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.take(2).forEach { r ->
+    Column(modifier.padding(top = 18.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("최근 검색", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+        Text("지우기", Modifier.clickable { com.eunho.tagohub.data.RecentDestinations.clear() }.padding(vertical = 8.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+    }
+    Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.take(3).forEach { r ->
             val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
             Surface(
                 onClick = { onGoTo(SavedPlace(r.name, r.lat, r.lng)) },
@@ -235,6 +254,7 @@ private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modif
                 Text(r.name, Modifier.heightIn(min = 32.dp).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
     }
 }
 

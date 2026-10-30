@@ -30,6 +30,11 @@ object RecentDestinations {
         }.getOrDefault(emptyList())
     }
 
+    fun clear() {
+        _items.value = emptyList()
+        prefs?.edit()?.remove(KEY)?.apply()
+    }
+
     fun add(name: String, sub: String?, lat: Double, lng: Double) {
         if (name.isBlank() || name == "내 위치" || name == "지도 중심") return
         val next = (listOf(Item(name, sub, lat, lng)) + _items.value.filterNot { it.name == name }).take(MAX)
