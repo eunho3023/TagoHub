@@ -29,7 +29,20 @@ def test_replace_keeps_other_kinds_and_drops_old_bumps():
     assert out.splitlines() == ["bump,35.80000,127.60000,,계향로", "child,37.5,127.0,,역삼초", "speed,37.6,127.1,80,서초"]
 
 
+def test_geocode_pick_keeps_only_results_in_the_right_district():
+    import geocode_bumps as gb
+
+    docs = [
+        {"y": "35.1", "x": "129.0", "address_name": "부산 서구 강남초등6길 2"},
+        {"y": "37.5", "x": "126.95", "road_address": {"address_name": "서울 동작구 강남초등6길 2"}},
+    ]
+    assert gb.pick(docs, "서울특별시 동작구") == (37.5, 126.95)
+    assert gb.pick(docs[:1], "서울특별시 동작구") is None
+    assert gb.pick([], "서울특별시 동작구") is None
+
+
 if __name__ == "__main__":
+    test_geocode_pick_keeps_only_results_in_the_right_district()
     test_reads_both_header_styles_and_encodings()
     test_replace_keeps_other_kinds_and_drops_old_bumps()
     print("ok")
