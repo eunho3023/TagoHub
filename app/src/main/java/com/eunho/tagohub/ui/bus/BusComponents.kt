@@ -74,6 +74,7 @@ import com.eunho.tagohub.data.BusLocation
 import com.eunho.tagohub.data.BusRoute
 import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.RouteStop
+import com.eunho.tagohub.ui.common.AnimatedValueText
 import com.eunho.tagohub.ui.common.LoadView
 import com.eunho.tagohub.ui.common.MessageBox
 import com.eunho.tagohub.ui.common.Pill
@@ -109,8 +110,6 @@ internal fun RouteListRow(r: BusRoute, region: String? = null, onClick: () -> Un
             Text(
                 listOfNotNull(r.startName, r.endName).joinToString(" ↔ ").ifEmpty { r.routeNo },
                 style = MaterialTheme.typography.bodyLarge,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
             val sub = listOfNotNull(region, r.routeType).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -167,7 +166,7 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
             val ends = listOfNotNull(row.startName, row.endName).joinToString(" → ")
             val sub = listOfNotNull(row.region, dir ?: ends.ifEmpty { null }, a0?.atStop?.let { "현재 $it" })
                 .joinToString("   ").ifEmpty { null }
-            if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant)
         }
         Spacer(Modifier.width(8.dp))
         // 오른쪽: 빠른 순으로 두 대를 빨간 글씨 두 줄로 — "4분 53초 (5개 전, 저상)"
@@ -177,13 +176,17 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
             if (first == null) {
                 Text(if (row.ended) "운행종료" else "도착 정보 없음", style = MaterialTheme.typography.bodyLarge, color = variant)
             } else {
-                Text(arrivalLine(first, elapsedSec), style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) MaterialTheme.colorScheme.onSurface else soon, fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                if (second != null) Text(
-                    arrivalLine(second, elapsedSec),
-                    style = MaterialTheme.typography.bodyLarge.merge(Tnum),
-                    color = if (second.estimated || (second.arrSeconds ?: 0) - elapsedSec > 180) variant else soon,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                )
+                AnimatedValueText(arrivalLine(first, elapsedSec), label = "bus-stop-first-arrival") { value ->
+                    Text(value, style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) MaterialTheme.colorScheme.onSurface else soon, fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
+                if (second != null) AnimatedValueText(arrivalLine(second, elapsedSec), label = "bus-stop-second-arrival") { value ->
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyLarge.merge(Tnum),
+                        color = if (second.estimated || (second.arrSeconds ?: 0) - elapsedSec > 180) variant else soon,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    )
+                }
             }
         }
     }
@@ -331,7 +334,9 @@ internal fun TimelineRow(
                 fontWeight = if (focused || buses.isNotEmpty()) FontWeight.Black else FontWeight.Medium,
             )
             if (live != null) {
-                Text(live, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold, color = Color(0xFFD92D20))
+                AnimatedValueText(live, label = "bus-route-stop-arrival") { value ->
+                    Text(value, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold, color = Color(0xFFD92D20))
+                }
             }
             val sub = listOfNotNull(times, s.nodeNo).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)

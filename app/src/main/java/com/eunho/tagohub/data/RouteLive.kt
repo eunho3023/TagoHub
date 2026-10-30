@@ -86,4 +86,16 @@ object RouteLive {
         minutes != null -> "${stopsAway}정류장 전 · 약 ${minutes.coerceAtLeast(1)}분"
         else -> "${stopsAway}정류장 전"
     }
+
+    /** 노선 상세의 위치 기반 근사 도착 시간: 초마다 줄어드는 것을 보여 주되 30초 이내면 '곧 도착'으로 단순화한다. */
+    fun countdownText(stopsAway: Int, seconds: Int?): String {
+        if (stopsAway <= 0) return "정류장 도착"
+        val eta = when {
+            seconds == null -> null
+            seconds <= 30 -> "곧 도착"
+            seconds < 60 -> "약 ${seconds}초"
+            else -> "약 ${seconds / 60}분 %02d초".format(java.util.Locale.ROOT, seconds % 60)
+        }
+        return listOfNotNull("${stopsAway}정류장 전", eta).joinToString(" · ")
+    }
 }

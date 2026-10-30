@@ -127,7 +127,7 @@ fun SearchPanel(
                     Icon(Icons.Filled.Place, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(pl.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(pl.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                         Text(
                             listOfNotNull(pl.category, pl.address).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
@@ -148,9 +148,13 @@ fun SearchPanel(
                 ) {
                     Icon(Icons.Filled.DirectionsSubway, contentDescription = null, tint = ModeColor.Subway, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text(g.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f, fill = false)) {
-                        g.displayLines.take(4).forEach { Pill(it, subwayLineColor(it)) }
+                    Column(Modifier.weight(1f)) {
+                        Text(g.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        if (g.displayLines.isNotEmpty()) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                g.displayLines.take(4).forEach { Pill(it, subwayLineColor(it)) }
+                            }
+                        }
                     }
                 }
             }

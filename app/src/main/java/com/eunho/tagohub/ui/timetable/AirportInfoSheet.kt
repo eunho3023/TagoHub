@@ -142,7 +142,7 @@ fun AirportInfoSheet(initial: String?, onDismiss: () -> Unit) {
             }
             Text(
                 "'실시간' 항목은 한국공항공사 운영 정보 API, 그 아래는 공공데이터 파일 기준이라 운영 시간·매장은 바뀔 수 있어요.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp),
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp),
             )
         }
     }
@@ -173,7 +173,7 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
             info.isEmpty -> {
                 if (info.errors.isEmpty()) Text("이 공항은 실시간 정보(혼잡도·주차장 등)를 제공하지 않아요.", fontSize = 14.sp)
                 else Text("실시간 정보를 받지 못했어요.", fontSize = 14.sp)
-                info.errors.firstOrNull()?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                info.errors.firstOrNull()?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             else -> {
                 info.congestion?.let { c ->
@@ -201,8 +201,8 @@ private fun LiveSection(info: AirportLiveInfo?, onRefresh: () -> Unit) {
                     LiveLine("택시승강장", listOfNotNull(t.taxis?.let { "대기 택시 ${it}대" }, t.passengers?.let { "대기 승객 ${it}명" }, t.waitMin?.let { "예상 ${it}분" }).joinToString(" · "), Color.Unspecified)
                 }
                 val at = info.congestion?.time ?: info.lots.firstOrNull()?.time ?: info.taxi?.time ?: info.valet?.time
-                at?.let { Text("기준 $it", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
-                if (info.errors.isNotEmpty()) Text("일부 항목 조회 실패: ${info.errors.first()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                at?.let { Text("기준 $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                if (info.errors.isNotEmpty()) Text("일부 항목 조회 실패: ${info.errors.first()}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         TextButton(onClick = onRefresh) { Text("새로고침") }
@@ -249,9 +249,9 @@ private fun GuideSections(info: AirportGuideInfo?) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                     Text(b.title(), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     b.detail().takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 13.sp) }
-                    b.boarding?.let { Text("승차: $it", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    b.route?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    b.company?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    b.boarding?.let { Text("승차: $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    b.route?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    b.company?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
         }

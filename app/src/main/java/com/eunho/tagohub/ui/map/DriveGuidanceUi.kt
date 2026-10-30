@@ -267,11 +267,14 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                     if (st != null) {
                         Text(
-                            "${GuidanceText.duration(st.remainingSeconds)} · ${DriveGuidance.destinationName.ifBlank { "목적지" }}",
-                            style = MaterialTheme.typography.bodyMedium,
+                            GuidanceText.duration(st.remainingSeconds),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            DriveGuidance.destinationName.ifBlank { "목적지" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
                         )
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                             Text(
@@ -323,7 +326,7 @@ internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modi
                     Text("$speedKmh", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (over) BoardColor.Danger else MaterialTheme.colorScheme.onSurface)
                     Text("km/h", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
                 }
-                if (lanes > 0) Text("${lanes}차로 도로", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (lanes > 0) Text("${lanes}차로 도로", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (limitKmh != null) {

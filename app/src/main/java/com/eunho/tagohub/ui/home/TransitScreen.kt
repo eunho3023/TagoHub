@@ -3,12 +3,11 @@ package com.eunho.tagohub.ui.home
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.eunho.tagohub.ui.common.ChoiceTabs
 
 /** 대중교통 탭 안의 갈래 */
 enum class TransitMode(val label: String) { Bus("버스"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공") }
@@ -29,11 +28,12 @@ fun TransitScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = mode.ordinal, edgePadding = 8.dp) {
-            TransitMode.entries.forEach { m ->
-                Tab(selected = m == mode, onClick = { onMode(m) }, text = { Text(m.label, maxLines = 1) })
-            }
-        }
+        ChoiceTabs(
+            labels = TransitMode.entries.map { it.label },
+            selectedIndex = mode.ordinal,
+            onSelect = { onMode(TransitMode.entries[it]) },
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
         Box(Modifier.weight(1f)) {
             when (mode) {
                 TransitMode.Bus -> bus()

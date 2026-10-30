@@ -95,17 +95,17 @@ private val Dark = darkColorScheme(
     outlineVariant = Color(0xFF262E38),
 )
 
-/** 적당한 글자 크기: 본문 15~16, 보조 설명 13, 가장 작은 글자 12. 숫자·제목은 굵게 */
+/** 읽기 쉬운 글자 크기: 본문 15~16, 보조 설명 14, 작은 레이블도 13sp 이상. 숫자·제목은 굵게 */
 private val AppTypography = Typography().let { d ->
     d.copy(
         bodyLarge = d.bodyLarge.copy(fontSize = 16.sp, lineHeight = 22.sp),
         bodyMedium = d.bodyMedium.copy(fontSize = 15.sp, lineHeight = 21.sp),
-        bodySmall = d.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
+        bodySmall = d.bodySmall.copy(fontSize = 14.sp, lineHeight = 20.sp),
         labelLarge = d.labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp),
-        labelMedium = d.labelMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
-        labelSmall = d.labelSmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-        titleSmall = d.titleSmall.copy(fontSize = 15.sp, lineHeight = 21.sp),
-        titleMedium = d.titleMedium.copy(fontSize = 17.sp, lineHeight = 23.sp),
+        labelMedium = d.labelMedium.copy(fontSize = 14.sp, lineHeight = 19.sp),
+        labelSmall = d.labelSmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
+        titleSmall = d.titleSmall.copy(fontSize = 16.sp, lineHeight = 22.sp),
+        titleMedium = d.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
         titleLarge = d.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
         headlineSmall = d.headlineSmall.copy(fontSize = 24.sp, lineHeight = 30.sp),
         headlineMedium = d.headlineMedium.copy(fontSize = 28.sp, lineHeight = 34.sp),
@@ -117,9 +117,9 @@ private val AppTypography = Typography().let { d ->
 fun headerColor(): Color = if (LocalDarkTheme.current) Color(0xFF111B2B) else Color(0xFF0F2747)
 
 private val AppShapes = Shapes().copy(
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(18.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
 )
 
 @Composable

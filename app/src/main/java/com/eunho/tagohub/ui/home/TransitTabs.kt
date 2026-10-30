@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.eunho.tagohub.data.Favorite
 import com.eunho.tagohub.data.SubwayRegion
 import com.eunho.tagohub.data.SubwayMap
+import com.eunho.tagohub.ui.common.AnimatedValueText
 import com.eunho.tagohub.ui.common.Pill
 import com.eunho.tagohub.ui.map.MapViewModel
 import com.eunho.tagohub.ui.theme.subwayLineColor
@@ -117,7 +118,7 @@ private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
         }
     }
     val red = if (com.eunho.tagohub.ui.theme.LocalDarkTheme.current) androidx.compose.ui.graphics.Color(0xFFFF8A80) else androidx.compose.ui.graphics.Color(0xFFD92D20)
-    Text("내 주변 정류장", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("내 주변 정류장", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
     Spacer(Modifier.height(6.dp))
     androidx.compose.material3.Surface(
         shape = RoundedCornerShape(14.dp),
@@ -130,7 +131,7 @@ private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
                 if (i > 0) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(Modifier.fillMaxWidth().clickable { onStop(s) }.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
-                        Text(s.name, Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(s.name, Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                         Text(if (meters >= 1000) "%.1fkm".format(meters / 1000.0) else "${meters.toInt()}m", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     s.nodeNo?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -144,7 +145,9 @@ private fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit) {
                                         Modifier.background(com.eunho.tagohub.ui.theme.busRouteColor(r.routeType), RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
                                         fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1,
                                     )
-                                    if (r.text != null) Text(" ${r.text}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (r.seconds != null && r.seconds <= 180) red else MaterialTheme.colorScheme.onSurface)
+                                    if (r.text != null) AnimatedValueText(" ${r.text}", label = "nearby-stop-arrival") { value ->
+                                        Text(value, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (r.seconds != null && r.seconds <= 180) red else MaterialTheme.colorScheme.onSurface)
+                                    }
                                 }
                             }
                         }
@@ -217,7 +220,7 @@ fun SubwayTab(
         }
         Text(
             if (officialMap) "노선도 · 두 손가락으로 확대·이동 · 역 이름을 누르면 지도에서 열려요" else "두 손가락으로 확대·이동 · 역을 누르면 지도에서 열려요",
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 6.dp),
         )

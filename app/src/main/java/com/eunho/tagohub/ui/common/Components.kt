@@ -5,6 +5,16 @@ package com.eunho.tagohub.ui.common
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,6 +109,55 @@ import java.util.Locale
 /** 시각·요금 숫자는 고정폭 숫자로 정렬 */
 val Tnum = TextStyle(fontFeatureSettings = "tnum")
 
+private val countdownPart = Regex("""(?:약\s*)?(?:(\d+)\s*분(?:\s*(\d+)\s*초)?|(\d+)\s*초)""")
+
+/** 같은 문구에서 카운트다운 초만 조금 줄어든 경우엔 전환 애니메이션을 생략해 깜빡임을 막는다. */
+private fun isCountdownTick(previous: String, current: String): Boolean {
+    if (previous == current) return false
+    val before = countdownPart.findAll(previous).toList()
+    val after = countdownPart.findAll(current).toList()
+    if (before.isEmpty() || before.size != after.size) return false
+    if (countdownPart.replace(previous, "<time>") != countdownPart.replace(current, "<time>")) return false
+
+    fun seconds(match: MatchResult): Int? {
+        val minutes = match.groupValues[1].toIntOrNull()
+        return if (minutes != null) minutes * 60 + (match.groupValues[2].toIntOrNull() ?: 0)
+        else match.groupValues[3].toIntOrNull()
+    }
+    for ((a, b) in before.zip(after)) {
+        val old = seconds(a) ?: return false
+        val new = seconds(b) ?: return false
+        if (kotlin.math.abs(old - new) !in 1..5) return false
+    }
+    return true
+}
+
+/** 값만 짧게 페이드·미세 이동시켜 갱신을 알아보기 쉽게 한다. 행 전체의 위치는 애니메이션하지 않는다. */
+@Composable
+fun AnimatedValueText(
+    target: String,
+    label: String = "live-value",
+    content: @Composable (String) -> Unit,
+) {
+    AnimatedContent(
+        targetState = target,
+        transitionSpec = {
+            if (isCountdownTick(initialState, targetState)) {
+                EnterTransition.None togetherWith ExitTransition.None
+            } else {
+                (
+                    fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(180, easing = FastOutSlowInEasing)) { height -> height / 8 }
+                    ) togetherWith (
+                    fadeOut(tween(130, easing = FastOutSlowInEasing)) +
+                        slideOutVertically(tween(130, easing = FastOutSlowInEasing)) { height -> -height / 10 }
+                    )
+            }
+        },
+        label = label,
+    ) { value -> content(value) }
+}
+
 /** 화면 제목. 흰 바탕에 굵은 제목, 제목 앞의 작은 색 점이 교통수단. 아래에 얇은 선. */
 @Composable
 fun ScreenTitle(
@@ -127,8 +186,7 @@ fun ScreenTitle(
                         title,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
                 }
                 if (!subtitle.isNullOrBlank()) {
@@ -265,10 +323,52 @@ fun Pill(text: String, color: Color, modifier: Modifier = Modifier, filled: Bool
 fun SectionHeader(text: String) {
     Text(
         text,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface,
     )
+}
+
+/** 앱 전체에서 쓰는 선택 탭: 옅은 표면 안에 선택 항목을 카드처럼 띄운다. */
+@Composable
+fun ChoiceTabs(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        labels.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            Surface(
+                onClick = { onSelect(index) },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(11.dp),
+                color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+            ) {
+                Box(Modifier.heightIn(min = 42.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
 }
 
 /** 달력에서 날짜 고르기 (아래에서 올라오는 달력 시트). [min]~[max] 밖의 날은 누를 수 없다 */
@@ -367,8 +467,6 @@ fun PlaceField(label: String, value: Place?, accent: Color, modifier: Modifier =
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = if (value != null) FontWeight.Bold else FontWeight.Normal,
                 color = if (value != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -432,8 +530,6 @@ private fun OdRow(label: String, value: Place?, accent: Color, onClick: () -> Un
             style = MaterialTheme.typography.titleLarge,
             fontWeight = if (value != null) FontWeight.ExtraBold else FontWeight.Normal,
             color = if (value != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

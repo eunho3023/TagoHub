@@ -1094,7 +1094,7 @@ private fun PanelHeader(
         if (full) IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
         leading()
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
@@ -1156,7 +1156,7 @@ private fun RouteBandHeader(
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
         }
-        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
         if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1304,32 +1304,54 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
 @Composable
 private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
     val day by vm.timetableDay.collectAsStateWithLifecycle()
-    var pick by remember(state) { mutableStateOf<String?>(null) }
+    val preferredRouteId by vm.timetablePreferredRouteId.collectAsStateWithLifecycle()
+    var pick by remember(preferredRouteId) { mutableStateOf(preferredRouteId) }
     Column(Modifier.fillMaxSize()) {
-        LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "운행 요일",
+            Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             items(com.eunho.tagohub.data.DayKind.entries) { k ->
                 com.eunho.tagohub.ui.common.PillChip(k.label, k == day, { vm.openStopTimetable(k) })
             }
         }
         LoadView(state, onRetry = { vm.openStopTimetable() }, isEmpty = { it.isEmpty() }, emptyText = "시간표가 없어요.") { list ->
             val cur = list.firstOrNull { it.routeId == pick } ?: list.first()
+            LaunchedEffect(list, preferredRouteId) {
+                if (list.none { it.routeId == pick }) {
+                    pick = preferredRouteId?.takeIf { id -> list.any { it.routeId == id } } ?: list.firstOrNull()?.routeId
+                }
+            }
             Column(Modifier.fillMaxSize()) {
-                // 지금 고른 버스 (누르면 "버스 선택" 목록)
                 var picking by remember { mutableStateOf(false) }
+                Text(
+                    "노선",
+                    Modifier.padding(start = 16.dp, top = 2.dp, bottom = 2.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Surface(
                     onClick = { picking = true },
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.heightIn(min = 56.dp).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         RouteTitle(cur, Modifier.weight(1f))
                         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "버스 선택")
                     }
                 }
                 if (picking) {
                     ModalBottomSheet(onDismissRequest = { picking = false }) {
-                        Text("버스 선택", Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        Text("노선 선택", Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                         LazyColumn(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
                             items(list) { r ->
@@ -1353,13 +1375,23 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                 }
                 // 전국 노선은 고를 때 계산 (첫차·막차·배차간격 + 이 정류장까지 소요시간)
                 LaunchedEffect(cur.routeId, cur.loaded) { if (!cur.loaded) vm.ensureTimes(cur.routeId) }
-                Text(
-                    if (cur.estimated) "첫차·막차와 배차간격으로 계산한 예상 시각이라 실제와 다를 수 있어요."
-                    else "운행 시간표와 정류장 거리로 계산한 예상 시각이라 실제와 다를 수 있어요.",
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (cur.estimated) "첫차·막차와 배차간격으로 계산한 예상 시각입니다."
+                            else "운행 회차와 정류장 이동시간으로 계산한 예상 시각입니다.",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 if (!cur.loaded) {
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp), color = busRouteColor(cur.routeType))
                     Text("시간표 계산 중", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodyMedium)
@@ -1374,49 +1406,124 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                     )
                     return@Column
                 }
-                val now = remember(cur) { LocalTime.now().let { it.hour * 60 + it.minute } }
+                val now by produceState(LocalTime.now().let { it.hour * 60 + it.minute }, day, cur.routeId) {
+                    while (true) {
+                        val time = LocalTime.now()
+                        value = time.hour * 60 + time.minute
+                        delay(30_000L)
+                    }
+                }
                 val next = if (day == com.eunho.tagohub.data.DayKind.today()) cur.minutes.firstOrNull { it >= now } else null
-                Text(
-                    "첫차 ${JeonjuTimetable.clock(cur.minutes.first())}   막차 ${JeonjuTimetable.clock(cur.minutes.last())}   하루 ${cur.minutes.size}회" +
-                        (next?.let { "   다음 ${JeonjuTimetable.clock(it)} (${it - now}분 후)" } ?: ""),
-                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.bodyMedium.merge(Tnum),
-                    fontWeight = FontWeight.Medium,
-                )
-                LazyColumn(Modifier.fillMaxSize()) {
-                    // 시(時)별로 한 줄
-                    val byHour = cur.minutes.groupBy { (it / 60) % 24 }.toSortedMap().toList()
-                    items(byHour) { (h, mins) ->
-                        Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(String.format(java.util.Locale.ROOT, "%02d", h), Modifier.width(36.dp),
-                                style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                mins.forEach { m ->
-                                    val isNext = m == next
-                                    Text(
-                                        String.format(java.util.Locale.ROOT, "%02d", m % 60),
-                                        Modifier
-                                            .clip(androidx.compose.foundation.shape.CircleShape)
-                                            .background(if (isNext) busRouteColor(cur.routeType) else MaterialTheme.colorScheme.surfaceVariant)
-                                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.titleSmall.merge(Tnum),
-                                        color = when {
-                                            isNext -> Color.White
-                                            next != null && m < next -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                            else -> MaterialTheme.colorScheme.onSurface
-                                        },
-                                        fontWeight = if (isNext) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                    )
+                val mainTime = when {
+                    next != null -> JeonjuTimetable.clock(next)
+                    day == com.eunho.tagohub.data.DayKind.today() -> "운행 종료"
+                    else -> JeonjuTimetable.clock(cur.minutes.first())
+                }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    when {
+                                        next != null -> "다음 출발"
+                                        day == com.eunho.tagohub.data.DayKind.today() -> "오늘 운행 종료"
+                                        else -> "선택한 요일 첫 운행"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                                Text(mainTime, style = MaterialTheme.typography.headlineSmall.merge(Tnum), fontWeight = FontWeight.ExtraBold)
+                            }
+                            if (next != null) {
+                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, contentColor = Color.White) {
+                                    Text("${next - now}분 후", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text("첫차", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                                Text(JeonjuTimetable.clock(cur.minutes.first()), style = MaterialTheme.typography.bodyLarge.merge(Tnum), fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("막차", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                                Text(JeonjuTimetable.clock(cur.minutes.last()), style = MaterialTheme.typography.bodyLarge.merge(Tnum), fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("하루 운행", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                                Text("${cur.minutes.size}회", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "시간별 출발 시각",
+                    Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                    val byHour = cur.minutes.groupBy { (it / 60) % 24 }.toSortedMap().toList()
+                    items(byHour, key = { it.first }) { (h, mins) ->
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(String.format(java.util.Locale.ROOT, "%02d시", h), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("${mins.size}회", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                mins.forEach { m ->
+                                    val isNext = m == next
+                                    val isPast = day == com.eunho.tagohub.data.DayKind.today() && m < now
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isNext) busRouteColor(cur.routeType) else MaterialTheme.colorScheme.surface,
+                                        contentColor = if (isNext) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        border = if (isNext) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+                                        modifier = Modifier.heightIn(min = 44.dp),
+                                    ) {
+                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            if (isNext) {
+                                                Text("다음", Modifier.padding(end = 6.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                                            }
+                                            Text(
+                                                JeonjuTimetable.clock(m),
+                                                style = MaterialTheme.typography.titleSmall.merge(Tnum),
+                                                fontWeight = if (isNext) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                color = if (isPast) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f) else if (isNext) Color.White else MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        }
+                                    }
+                                }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun arrivalAgeSeconds(updated: java.time.LocalTime?): Int {
+    if (updated == null) return 0
+    val raw = java.time.Duration.between(updated, java.time.LocalTime.now()).seconds
+    val normalized = when {
+        raw >= 0 -> raw
+        raw >= -5 -> 0
+        else -> raw + 86_400
+    }
+    return normalized.toInt().coerceIn(0, 1_200)
 }
 
 @Composable
@@ -1433,11 +1540,22 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val selectedStop by vm.selected.collectAsStateWithLifecycle()
     val noRows = remember { kotlinx.coroutines.flow.MutableStateFlow<com.eunho.tagohub.core.Load<List<com.eunho.tagohub.ui.bus.StopRouteRow>>>(com.eunho.tagohub.core.Load.Idle) }
     val stopRows by (selectedStop?.rows ?: noRows).collectAsStateWithLifecycle()
+    val noUpdated = remember { kotlinx.coroutines.flow.MutableStateFlow<java.time.LocalTime?>(null) }
+    val stopUpdated by (selectedStop?.updated ?: noUpdated).collectAsStateWithLifecycle()
+    val focusElapsedSec by produceState(arrivalAgeSeconds(stopUpdated), stopUpdated) {
+        val initialElapsed = arrivalAgeSeconds(stopUpdated)
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        while (true) {
+            value = (initialElapsed + ((android.os.SystemClock.elapsedRealtime() - startedAt) / 1_000L).toInt()).coerceIn(0, 1_200)
+            delay(1_000L)
+        }
+    }
     val focusArr = remember(stopRows, d.routeId, d.focusNodeId, selectedStop) {
         if (selectedStop?.stop?.nodeId != d.focusNodeId) null
         else stopRows.valueOrNull()?.firstOrNull { it.routeId == d.routeId }?.arrivals?.firstOrNull()
     }
-    val focusArrival = focusArr?.let { com.eunho.tagohub.data.ArrivalText.line(it) }
+    val focusArrival = focusArr?.let { com.eunho.tagohub.data.ArrivalText.line(it, focusElapsedSec) }
+    var showTimetableStopPicker by rememberSaveable(d.routeId) { mutableStateOf(false) }
 
     PanelSurface {
         RouteBandHeader(
@@ -1500,14 +1618,28 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
             val busPos = remember(buses, list) { com.eunho.tagohub.data.RouteLive.positions(buses, list) }
             val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
+            // 서버에서 같은 위치가 반복되어도 카운트다운은 이어가고, 버스 위치가 바뀌었을 때만 새 기준으로 시작한다.
+            val routeReceivedAt = remember(buses) { updated }
+            val routeElapsedSec by produceState(arrivalAgeSeconds(routeReceivedAt), buses) {
+                val initialElapsed = arrivalAgeSeconds(routeReceivedAt)
+                val startedAt = android.os.SystemClock.elapsedRealtime()
+                while (true) {
+                    value = (initialElapsed + ((android.os.SystemClock.elapsedRealtime() - startedAt) / 1_000L).toInt()).coerceIn(0, 1_200)
+                    delay(1_000L)
+                }
+            }
             val liveOf = { i: Int, s: RouteStop ->
                 // 도착정보(API)와 버스 위치가 어긋나면 위치를 믿음: 이미 와 있는데 "1정류장 전", 가까이 버스가 보이는데 "7정류장 전"(API 가 그 버스를 빠뜨림)
                 val away = com.eunho.tagohub.data.RouteLive.stopsAway(i, busPos.at, busPos.left)
                 if (s.nodeId == d.focusNodeId && focusArrival != null && !com.eunho.tagohub.data.RouteLive.preferPosition(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
                 else away?.let { n ->
                     val from = list[i - n]
-                    val mins = if (n > 0) Math.round(TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId)).toInt() else null
-                    com.eunho.tagohub.data.RouteLive.text(n, mins)
+                    val seconds = if (n > 0) {
+                        val estimate = TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId) * 60.0
+                        if (estimate.isFinite()) Math.round(estimate).toInt().coerceAtLeast(1) else null
+                    } else null
+                    val remaining = seconds?.let { (it - routeElapsedSec).coerceAtLeast(0) }
+                    com.eunho.tagohub.data.RouteLive.countdownText(n, remaining)
                 }
             }
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
@@ -1521,6 +1653,16 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(false to "목록", true to "배치도").forEach { (isDiagram, label) ->
                     FilterChip(selected = diagram == isDiagram, onClick = { diagram = isDiagram }, label = { Text(label) })
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = {
+                    val focused = list.firstOrNull { it.nodeId == d.focusNodeId }
+                    if (focused != null) vm.openRouteStopTimetable(focused.nodeId, d.routeId)
+                    else showTimetableStopPicker = true
+                }) {
+                    Icon(Icons.Filled.Schedule, contentDescription = "정류장별 시간표", modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("정류장 시간표")
                 }
             }
             val listState = rememberLazyListState()
@@ -1553,6 +1695,51 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
                         live = liveOf(i, s),
                     ) { vm.focusRouteStop(s.nodeId) }
+                }
+            }
+            if (showTimetableStopPicker) {
+                ModalBottomSheet(onDismissRequest = { showTimetableStopPicker = false }) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                        Text(
+                            "시간표를 볼 정류장",
+                            Modifier.fillMaxWidth().padding(top = 4.dp),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            "정류장을 고르면 이 노선을 포함한 전체 시간표를 보여줘요.",
+                            Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 10.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+                            itemsIndexed(list, key = { _, stop -> stop.nodeId }) { i, stop ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showTimetableStopPicker = false
+                                            vm.openRouteStopTimetable(stop.nodeId, d.routeId)
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(stop.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            stop.nodeNo ?: "노선 내 ${i + 1}번째 정류장",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Icon(Icons.Filled.Schedule, contentDescription = "이 정류장 시간표")
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -60,6 +60,7 @@ import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.data.SavedKind
 import com.eunho.tagohub.data.SavedPlace
 import com.eunho.tagohub.ui.ModeJump
+import com.eunho.tagohub.ui.common.AnimatedValueText
 import com.eunho.tagohub.ui.bus.arrivalsFor
 import com.eunho.tagohub.ui.map.MapMode
 import com.eunho.tagohub.ui.map.MapViewModel
@@ -84,7 +85,7 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
     Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
         Column {
             Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            Row(Modifier.fillMaxWidth().height(68.dp)) {
+            Row(Modifier.fillMaxWidth().height(72.dp)) {
                 AppTab.entries.forEach { tab ->
                     val on = tab == active
                     val tint = if (on) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -103,14 +104,14 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
                             Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
                         }
                         Spacer(Modifier.height(2.dp))
-                        // 탭이 여섯 개라 칸이 좁음: 글자가 겹치거나 줄바꿈되지 않게 긴 이름은 조금 작게 한 줄로
+                        // 글자 크기 설정이 커져도 탭 이름이 잘리지 않게 최대 두 줄로 표시
                         Text(
                             tab.label,
-                            fontSize = if (tab.label.length >= 5) 12.sp else 13.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = tint,
-                            maxLines = 1,
-                            softWrap = false,
+                            maxLines = 2,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
                 }
@@ -186,7 +187,7 @@ fun HomeScreen(
 
 @Composable
 private fun TileSection(title: String, tiles: List<Tile>, columns: Int, dark: Boolean) {
-    Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp, top = 2.dp))
+    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 8.dp, top = 4.dp))
     tiles.chunked(columns).forEach { row ->
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             row.forEach { t -> ModeTile(t, dark, Modifier.weight(1f)) }
@@ -260,7 +261,7 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
 internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val shown = remember(favs) { favs.take(4) }
-    Text("즐겨찾기", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("즐겨찾기", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
     Spacer(Modifier.height(6.dp))
     if (shown.isEmpty()) {
         Text(
@@ -332,8 +333,6 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
                             if (f.kind == Favorite.Kind.Route) (f.sub ?: "노선") else f.name,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
                         )
                         // 정류장: 여기 서는 노선을 모두, 노선마다 가장 빨리 오는 버스. 역: 지나는 노선
                         if (f.kind == Favorite.Kind.Stop && routes.isNotEmpty()) {
@@ -349,7 +348,9 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
                                             Modifier.background(busRouteColor(r.routeType), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                                             fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1,
                                         )
-                                        if (r.text != null) Text(" ${r.text}", fontFamily = NumberFont, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (r.seconds != null && r.seconds <= 180) red else MaterialTheme.colorScheme.onSurface)
+                                        if (r.text != null) AnimatedValueText(" ${r.text}", label = "home-favorite-arrival") { value ->
+                                            Text(value, fontFamily = NumberFont, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (r.seconds != null && r.seconds <= 180) red else MaterialTheme.colorScheme.onSurface)
+                                        }
                                     }
                                 }
                             }

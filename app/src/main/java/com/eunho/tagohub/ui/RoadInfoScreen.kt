@@ -1,15 +1,9 @@
 package com.eunho.tagohub.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -17,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.eunho.tagohub.ui.common.ChoiceTabs
 import com.eunho.tagohub.ui.map.ItsRoadScreen
 import com.eunho.tagohub.ui.map.MapViewModel
 
@@ -29,12 +24,8 @@ fun RoadInfoScreen(vm: MapViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val titles = listOf("교통상황", "고급 도로정보")
     Column(Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-            titles.forEachIndexed { i, title ->
-                Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
-            }
-        }
-        Box(Modifier.fillMaxSize()) {
+        ChoiceTabs(titles, tab, { tab = it }, Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+        Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> UticTrafficScreen()
                 else -> AdvancedRoadInfo(vm)
@@ -49,12 +40,8 @@ private fun AdvancedRoadInfo(vm: MapViewModel) {
     val dev = com.eunho.tagohub.core.DevMode.on
     var page by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        if (dev) Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("소통·예측", "고속도로 API").forEachIndexed { i, label ->
-                FilterChip(selected = page == i, onClick = { page = i }, label = { Text(label) })
-            }
-        }
-        Box(Modifier.fillMaxSize()) {
+        if (dev) ChoiceTabs(listOf("소통·예측", "고속도로 API"), page, { page = it }, Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        Box(Modifier.weight(1f)) {
             if (dev && page == 1) ExpresswayScreen() else ItsRoadScreen(vm)
         }
     }
