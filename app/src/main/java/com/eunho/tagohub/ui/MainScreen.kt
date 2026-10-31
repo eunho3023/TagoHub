@@ -235,6 +235,7 @@ fun MainScreen() {
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }
+    com.eunho.tagohub.ui.common.LoginGateHost(mapVm)
 }
 
 /** 공지사항 (깃허브 notices.json) */

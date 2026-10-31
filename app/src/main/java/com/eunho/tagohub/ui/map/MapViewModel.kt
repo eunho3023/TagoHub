@@ -162,7 +162,21 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 즐겨찾기 (정류장·노선) — 휴대폰 안에 저장, 로그인 없이 */
     val favorites = MutableStateFlow(com.eunho.tagohub.data.FavoriteCodec.decode(prefs.getString("favorites", null)))
 
+    /**
+     * 즐겨찾기 넣기·빼기. 새로 넣을 때 로그인이 안 되어 있으면 먼저 물어봄(로그인하고 추가 / 그냥 추가 / 취소).
+     * 빼기는 늘 바로 됨.
+     */
     fun toggleFavorite(f: com.eunho.tagohub.data.Favorite) {
+        val adding = favorites.value.none { it.kind == f.kind && it.id == f.id }
+        if (adding && !com.eunho.tagohub.data.LoginGate.signedIn()) {
+            com.eunho.tagohub.data.LoginGate.ask(f)
+            return
+        }
+        applyToggleFavorite(f)
+    }
+
+    /** 로그인 확인 없이 바로 넣기·빼기 (안내 창에서 고른 뒤) */
+    fun applyToggleFavorite(f: com.eunho.tagohub.data.Favorite) {
         favorites.value = com.eunho.tagohub.data.FavoriteCodec.toggle(favorites.value, f)
         prefs.edit().putString("favorites", com.eunho.tagohub.data.FavoriteCodec.encode(favorites.value)).apply()
     }

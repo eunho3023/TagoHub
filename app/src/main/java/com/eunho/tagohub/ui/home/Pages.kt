@@ -282,6 +282,15 @@ private fun AccountRow() {
                 }
             },
         ) { Text(if (email != null) "로그아웃" else if (busy) "연결 중…" else "구글 계정 연결") }
+        // 이메일 회원가입·로그인 (가입하면 지금 저장된 즐겨찾기·설정이 그대로 이어짐)
+        if (email == null) {
+            var showEmail by remember { mutableStateOf(false) }
+            androidx.compose.material3.TextButton(onClick = { showEmail = true }) { Text("이메일로 가입·로그인") }
+            if (showEmail) com.eunho.tagohub.ui.common.EmailAuthDialog(
+                onDismiss = { showEmail = false },
+                onSuccess = { showEmail = false; android.widget.Toast.makeText(context, "로그인했어요", android.widget.Toast.LENGTH_SHORT).show() },
+            )
+        }
         // 계정·데이터 삭제 (Play 요구: 앱 안에서 지울 수 있어야 함)
         var confirmDelete by remember { mutableStateOf(false) }
         androidx.compose.material3.TextButton(enabled = !busy && activity != null, onClick = { confirmDelete = true }) { Text("내 데이터 삭제") }
