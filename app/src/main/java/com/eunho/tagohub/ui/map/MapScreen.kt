@@ -351,7 +351,7 @@ fun MapScreen(
         val hour by produceState(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) {
             while (true) { value = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY); delay(60_000) }
         }
-        if (com.eunho.tagohub.data.NightMode.dimNow(nightMode, driving, hour)) {
+        if (com.eunho.tagohub.data.NightMode.dimNow(nightMode, driving, hour, satellite = (baseMap ?: vm.effectiveBase()) == BaseMap.Satellite)) {
             Box(Modifier.fillMaxSize().background(Color(0xFF050A14).copy(alpha = com.eunho.tagohub.data.NightSettings.DIM_ALPHA)))
         }
 

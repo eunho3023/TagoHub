@@ -23,9 +23,16 @@ class NightModeTest {
     }
 
     @Test
-    fun savedCodeFallsBackToAuto() {
+    fun satelliteMapIsNeverDimmed() {
+        assertFalse(NightMode.dimNow(NightMode.Always, driving = true, hour = 23, satellite = true))
+        assertFalse(NightMode.dimNow(NightMode.Auto, driving = true, hour = 23, satellite = true))
+        assertTrue(NightMode.dimNow(NightMode.Auto, driving = true, hour = 23, satellite = false))
+    }
+
+    @Test
+    fun savedCodeFallsBackToOffSoNothingGetsDimmedByDefault() {
         NightMode.entries.forEach { assertEquals(it, NightMode.of(it.code)) }
-        assertEquals(NightMode.Auto, NightMode.of(null))
-        assertEquals(NightMode.Auto, NightMode.of("zzz"))
+        assertEquals(NightMode.Off, NightMode.of(null))
+        assertEquals(NightMode.Off, NightMode.of("zzz"))
     }
 }

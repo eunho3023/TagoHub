@@ -31,7 +31,7 @@ fun NightModePicker(modifier: Modifier = Modifier) {
             }
         }
         Text(
-            "길 안내·자유주행 중에 지도를 어둡게 해서 눈부심을 줄여요. 밤은 저녁 ${NightMode.NIGHT_FROM}시부터 아침 ${NightMode.NIGHT_TO}시까지예요.",
+            "길 안내·자유주행 중에 일반 지도를 어둡게 해서 눈부심을 줄여요(위성 지도는 어둡게 하지 않아요). 밤은 저녁 ${NightMode.NIGHT_FROM}시부터 아침 ${NightMode.NIGHT_TO}시까지예요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp),
