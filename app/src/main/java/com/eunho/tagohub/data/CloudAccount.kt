@@ -107,6 +107,53 @@ object CloudAccount {
         return note
     }
 
+    /**
+     * 이메일 가입. 익명 계정이면 그 계정에 이메일을 이어 붙여서 지금까지의 즐겨찾기·설정이 그대로 유지됨.
+     * 성공하면 null, 아니면 보여 줄 안내.
+     */
+    suspend fun signUpWithEmail(context: android.content.Context, email: String, password: String): String? {
+        EmailAuth.validate(email, password, signUp = true)?.let { return it }
+        return try {
+            val auth = FirebaseAuth.getInstance()
+            val user = auth.currentUser
+            val credential = com.google.firebase.auth.EmailAuthProvider.getCredential(email.trim(), password)
+            if (user != null && user.isAnonymous) user.linkWithCredential(credential).await()
+            else auth.createUserWithEmailAndPassword(email.trim(), password).await()
+            refresh()
+            CloudSync.restart(context.applicationContext)
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "이메일 가입 실패", e)
+            EmailAuth.message((e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: if (e is java.io.IOException) "ERROR_NETWORK_REQUEST_FAILED" else null)
+        }
+    }
+
+    /** 이메일 로그인. 다른 계정으로 바뀌면 그 계정의 즐겨찾기·설정을 받아 옴. 성공하면 null(또는 안내), 실패하면 안내 */
+    suspend fun signInWithEmail(context: android.content.Context, email: String, password: String): String? {
+        EmailAuth.validate(email, password, signUp = false)?.let { return it }
+        return try {
+            FirebaseAuth.getInstance().signInWithEmailAndPassword(email.trim(), password).await()
+            refresh()
+            CloudSync.restart(context.applicationContext)
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "이메일 로그인 실패", e)
+            EmailAuth.message((e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: if (e is java.io.IOException) "ERROR_NETWORK_REQUEST_FAILED" else null)
+        }
+    }
+
+    /** 비밀번호 재설정 메일 보내기. 성공하면 null */
+    suspend fun sendPasswordReset(email: String): String? {
+        if (EmailAuth.validate(email, "x".repeat(EmailAuth.MIN_PASSWORD), signUp = false) != null) return "이메일 주소를 확인해 주세요"
+        return try {
+            FirebaseAuth.getInstance().sendPasswordResetEmail(email.trim()).await()
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "비밀번호 재설정 실패", e)
+            EmailAuth.message((e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: if (e is java.io.IOException) "ERROR_NETWORK_REQUEST_FAILED" else null)
+        }
+    }
+
     fun signOut(activity: Activity) {
         runCatching { FirebaseAuth.getInstance().signOut() }
         CloudSync.restart(activity.applicationContext)
