@@ -228,6 +228,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 uticIncidentCount.value = 0
             }
         }
+        if (id == TRAFFIC_LIGHT_OVERLAY) pushTrafficLights()
         if (id == ITS_CCTV_OVERLAY) {
             if (id in overlays.value) scheduleItsCctvRefresh()
             else {
@@ -507,6 +508,19 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /** 신호등 위치: 켜져 있고 정류소가 보이는 배율 이상으로 확대했을 때만, 화면 안(조금 넓게) 것을 지도에 보냄 */
+    private fun pushTrafficLights() {
+        val box = lastBox
+        if (TRAFFIC_LIGHT_OVERLAY !in overlays.value || box == null || lastLevel < 2) {
+            canvas?.setTrafficLights(emptyList())
+            return
+        }
+        val dLat = (box[2] - box[0]) * 0.1
+        val dLng = (box[3] - box[1]) * 0.1
+        val all = com.eunho.tagohub.data.TrafficLights.load(getApplication())
+        canvas?.setTrafficLights(com.eunho.tagohub.data.TrafficLights.inBox(all, box[0] - dLat, box[1] - dLng, box[2] + dLat, box[3] + dLng))
     }
 
     private fun pushItsRoadFeatures() {
@@ -1336,6 +1350,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         lastLevel = level
         lastBox = doubleArrayOf(s, w, n, e)
         pushItsRoadFeatures()
+        pushTrafficLights()
         if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
         if (UTIC_ROAD_RISK_OVERLAY in overlays.value) refreshUticRoadRisks()
         if (UTIC_SAFETY_OVERLAY in overlays.value) refreshUticSafetyPoints()
@@ -2527,6 +2542,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val UTIC_ROAD_RISK_OVERLAY = "utic_road_risk"
         const val UTIC_SAFETY_OVERLAY = "utic_safety"
         const val ITS_CCTV_OVERLAY = "its_cctv"
+        const val TRAFFIC_LIGHT_OVERLAY = "traffic_lights"
         val ITS_ROAD_OVERLAY_IDS = listOf(
             "its_events",
             "its_disasters",

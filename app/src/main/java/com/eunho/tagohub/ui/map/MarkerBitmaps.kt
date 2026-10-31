@@ -345,6 +345,35 @@ class MarkerBitmaps(private val density: Float) {
         c.drawPath(tri, fill)
     }
 
+    /**
+     * 신호등: 어두운 세로 상자에 빨강·노랑·초록 불. 잔여시간표시기가 있는 곳은 아래에 흰 표시창을 더함. anchor (0.5, 0.5)
+     */
+    fun trafficLight(timer: Boolean): Bitmap {
+        val wDp = 13f
+        val hDp = if (timer) 30f else 24f
+        val b = bmp(wDp + 4f, hDp + 4f)
+        val c = Canvas(b)
+        val cx = b.width / 2f
+        val top = px(2f)
+        val box = RectF(cx - px(wDp / 2), top, cx + px(wDp / 2), top + px(hDp))
+        fill.color = Color.rgb(38, 50, 56)
+        c.drawRoundRect(box, px(3.5f), px(3.5f), fill)
+        stroke.color = Color.WHITE
+        stroke.strokeWidth = px(1.5f)
+        c.drawRoundRect(box, px(3.5f), px(3.5f), stroke)
+        val r = px(2.8f)
+        fun lamp(i: Int, color: Int) {
+            fill.color = color
+            c.drawCircle(cx, top + px(5.5f + i * 6.5f), r, fill)
+        }
+        lamp(0, Color.rgb(229, 57, 53)); lamp(1, Color.rgb(251, 192, 45)); lamp(2, Color.rgb(46, 155, 87))
+        if (timer) {
+            fill.color = Color.WHITE
+            c.drawRoundRect(RectF(cx - px(4.2f), top + px(hDp - 7f), cx + px(4.2f), top + px(hDp - 3f)), px(1.2f), px(1.2f), fill)
+        }
+        return forKakao(b)
+    }
+
     /** 돌발·주의: 노란(색) 삼각형 + 검은 느낌표. anchor (0.5, 0.5) */
     fun triangleBadge(color: Int): Bitmap {
         val b = bmp(28f, 28f)
