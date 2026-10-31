@@ -229,6 +229,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         if (id == TRAFFIC_LIGHT_OVERLAY) pushTrafficLights()
+        if (id == LIVE_SIGNAL_OVERLAY) { loadLiveSignals(); if (id !in overlays.value) selectedSignal.value = null }
         if (id == ITS_CCTV_OVERLAY) {
             if (id in overlays.value) scheduleItsCctvRefresh()
             else {
@@ -508,6 +509,32 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    // ───────── 울산 실시간 신호 ─────────
+
+    /** 눌러서 연 교차로 (신호 상태 창) */
+    val selectedSignal = MutableStateFlow<com.eunho.tagohub.data.SignalIntersection?>(null)
+    private var liveIntersections: List<com.eunho.tagohub.data.SignalIntersection> = emptyList()
+
+    fun onLiveSignalClick(id: String) { selectedSignal.value = liveIntersections.firstOrNull { it.id == id } }
+    fun dismissLiveSignal() { selectedSignal.value = null }
+
+    /** 레이어를 켜면 울산 교차로 목록을 받아 두고 화면 안 것을 지도에 보냄 */
+    private fun loadLiveSignals() {
+        if (LIVE_SIGNAL_OVERLAY !in overlays.value) { canvas?.setLiveSignals(emptyList()); return }
+        viewModelScope.launch {
+            if (liveIntersections.isEmpty()) liveIntersections = com.eunho.tagohub.data.UlsanSignals.intersections()
+            pushLiveSignals()
+        }
+    }
+
+    private fun pushLiveSignals() {
+        val box = lastBox
+        if (LIVE_SIGNAL_OVERLAY !in overlays.value || box == null || lastLevel < 1) { canvas?.setLiveSignals(emptyList()); return }
+        canvas?.setLiveSignals(
+            liveIntersections.filter { it.lat in box[0]..box[2] && it.lng in box[1]..box[3] }.take(400).map { LiveSignalPin(it.id, it.name, it.lat, it.lng) },
+        )
     }
 
     /** 신호등 위치: 켜져 있고 정류소가 보이는 배율 이상으로 확대했을 때만, 화면 안(조금 넓게) 것을 지도에 보냄 */
@@ -1351,6 +1378,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         lastBox = doubleArrayOf(s, w, n, e)
         pushItsRoadFeatures()
         pushTrafficLights()
+        pushLiveSignals()
         if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
         if (UTIC_ROAD_RISK_OVERLAY in overlays.value) refreshUticRoadRisks()
         if (UTIC_SAFETY_OVERLAY in overlays.value) refreshUticSafetyPoints()
@@ -2543,6 +2571,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val UTIC_SAFETY_OVERLAY = "utic_safety"
         const val ITS_CCTV_OVERLAY = "its_cctv"
         const val TRAFFIC_LIGHT_OVERLAY = "traffic_lights"
+        const val LIVE_SIGNAL_OVERLAY = "live_signals"
         val ITS_ROAD_OVERLAY_IDS = listOf(
             "its_events",
             "its_disasters",

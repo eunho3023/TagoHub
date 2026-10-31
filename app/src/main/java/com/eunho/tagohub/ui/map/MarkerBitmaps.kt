@@ -348,7 +348,7 @@ class MarkerBitmaps(private val density: Float) {
     /**
      * 신호등: 어두운 세로 상자에 빨강·노랑·초록 불. 잔여시간표시기가 있는 곳은 아래에 흰 표시창을 더함. anchor (0.5, 0.5)
      */
-    fun trafficLight(timer: Boolean): Bitmap {
+    fun trafficLight(timer: Boolean, live: Boolean = false): Bitmap {
         val wDp = 13f
         val hDp = if (timer) 30f else 24f
         val b = bmp(wDp + 4f, hDp + 4f)
@@ -358,8 +358,9 @@ class MarkerBitmaps(private val density: Float) {
         val box = RectF(cx - px(wDp / 2), top, cx + px(wDp / 2), top + px(hDp))
         fill.color = Color.rgb(38, 50, 56)
         c.drawRoundRect(box, px(3.5f), px(3.5f), fill)
-        stroke.color = Color.WHITE
-        stroke.strokeWidth = px(1.5f)
+        // 실시간 신호가 오는 교차로는 파란 테두리로 구분
+        stroke.color = if (live) Color.rgb(26, 115, 232) else Color.WHITE
+        stroke.strokeWidth = px(if (live) 2.5f else 1.5f)
         c.drawRoundRect(box, px(3.5f), px(3.5f), stroke)
         val r = px(2.8f)
         fun lamp(i: Int, color: Int) {

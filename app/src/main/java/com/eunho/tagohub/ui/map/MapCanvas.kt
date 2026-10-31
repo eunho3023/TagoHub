@@ -16,6 +16,9 @@ data class UticIncidentPin(val id: String, val title: String, val lat: Double, v
 data class UticRoadRiskPin(val id: String, val title: String, val lat: Double, val lng: Double)
 data class UticSafetyPin(val id: String, val title: String, val category: String, val lat: Double, val lng: Double)
 data class ItsCctvPin(val id: String, val title: String, val lat: Double, val lng: Double)
+
+/** 실시간 신호가 오는 교차로 (울산) */
+data class LiveSignalPin(val id: String, val name: String, val lat: Double, val lng: Double)
 data class ItsRoadFeaturePin(val id: String, val layer: String, val title: String, val lat: Double, val lng: Double, val path: List<LatLng>? = null)
 /**
  * 움직이는 차량. path 위에서 startFrac(지금) → endFrac 까지 durationMs 동안 이동한다.
@@ -64,6 +67,8 @@ interface MapCanvas {
     fun setItsCctvs(list: List<ItsCctvPin>) {}
     /** 신호등 위치 (지도를 크게 확대했을 때 화면 안 것만). 실시간 신호 상태는 아님 */
     fun setTrafficLights(list: List<com.eunho.tagohub.data.TrafficLightPoint>) {}
+    /** 실시간 신호가 오는 교차로 (울산, 눌러서 신호 상태를 봄) */
+    fun setLiveSignals(list: List<LiveSignalPin>) {}
     fun setItsRoadFeatures(list: List<ItsRoadFeaturePin>) {}
     fun setTrains(list: List<VehiclePin>)
     fun selectStation(id: String?)
