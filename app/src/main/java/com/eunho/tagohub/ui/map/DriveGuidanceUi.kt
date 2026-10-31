@@ -647,7 +647,13 @@ private fun DriveStartBar(plan: RidePlan) {
     /** [simulate] 이 true 면 모의주행(GPS 대신 가상 위치). 둘 다 같은 권한이 필요(위치 유형 서비스를 올리기 때문) */
     fun begin(simulate: Boolean) {
         val route = plan.drive ?: return
-        val start = { DriveGuidance.start(context, route, LatLng(plan.destLat, plan.destLng), plan.destName, simulate, plan.option, plan.vias) }
+        val start = {
+            // 안내를 시작한 경로는 경로 기록에 "안내"로 남김 (모의주행은 제외)
+            if (!simulate) com.eunho.tagohub.data.RouteHistory.add(
+                com.eunho.tagohub.data.RouteRecord("내 위치", plan.destName, plan.destLat, plan.destLng, mode = "자동차", guided = true),
+            )
+            DriveGuidance.start(context, route, LatLng(plan.destLat, plan.destLng), plan.destName, simulate, plan.option, plan.vias)
+        }
         val need = buildList {
             if (!hasLocationPermission(context)) {
                 add(Manifest.permission.ACCESS_FINE_LOCATION)

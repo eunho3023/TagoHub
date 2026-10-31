@@ -69,6 +69,8 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.guidance.DriveGuidance.loadPrefs(applicationContext)
         com.eunho.tagohub.ui.theme.ThemeSettings.load(applicationContext)
         com.eunho.tagohub.data.RecentDestinations.load(applicationContext)
+        com.eunho.tagohub.data.SearchHistory.load(applicationContext)
+        com.eunho.tagohub.data.RouteHistory.load(applicationContext)
         setContent { TagoTheme { MainScreen() } }
     }
 

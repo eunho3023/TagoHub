@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsSubway
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Icon
@@ -75,6 +76,17 @@ fun SearchPanel(
     actions: SearchActions,
     modifier: Modifier = Modifier,
 ) {
+    // 결과를 눌러 연 검색어를 검색 기록에 남김
+    val typed = androidx.compose.runtime.rememberUpdatedState(query)
+    val actions = remember(actions) {
+        SearchActions(
+            onPlace = { com.eunho.tagohub.data.SearchHistory.add(typed.value); actions.onPlace(it) },
+            onStation = { com.eunho.tagohub.data.SearchHistory.add(typed.value); actions.onStation(it) },
+            onStop = { com.eunho.tagohub.data.SearchHistory.add(typed.value); actions.onStop(it) },
+            onRoute = { com.eunho.tagohub.data.SearchHistory.add(typed.value); actions.onRoute(it) },
+        )
+    }
+    val history by com.eunho.tagohub.data.SearchHistory.items.collectAsStateWithLifecycle()
     val busResult by vm.busResult.collectAsStateWithLifecycle()
     val progress by vm.busProgress.collectAsStateWithLifecycle()
     val names by vm.cityNames.collectAsStateWithLifecycle()
@@ -105,7 +117,21 @@ fun SearchPanel(
             query, onQuery, "검색하기",
             onSearch = { if (scope != SearchScope.Subway && query.isNotBlank()) vm.searchBus(query) },
         )
-        if (query.isBlank()) return@Column
+        if (query.isBlank()) {
+            // 검색어가 비어 있으면 최근 검색어를 보여 줌 (누르면 그 말로 검색, ✕ 로 하나씩 지움)
+            if (history.isNotEmpty()) {
+                SectionHeader("최근 검색")
+                history.take(8).forEach { h ->
+                    Row(Modifier.fillMaxWidth().clickable { onQuery(h) }.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(h, Modifier.weight(1f).padding(vertical = 10.dp), style = MaterialTheme.typography.bodyLarge)
+                        androidx.compose.material3.IconButton(onClick = { com.eunho.tagohub.data.SearchHistory.remove(h) }) {
+                            Icon(Icons.Filled.Close, contentDescription = "$h 지우기", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+            return@Column
+        }
 
         progress?.let { (done, total) ->
             LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth(), color = ModeColor.Bus)

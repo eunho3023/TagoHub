@@ -175,6 +175,18 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         applyToggleFavorite(f)
     }
 
+    /** 즐겨찾기 하나 지우기 (관리 화면) */
+    fun removeFavorite(f: com.eunho.tagohub.data.Favorite) {
+        favorites.value = favorites.value.filterNot { it.kind == f.kind && it.id == f.id }
+        prefs.edit().putString("favorites", com.eunho.tagohub.data.FavoriteCodec.encode(favorites.value)).apply()
+    }
+
+    /** 즐겨찾기 모두 지우기 (관리 화면) */
+    fun clearFavorites() {
+        favorites.value = emptyList()
+        prefs.edit().putString("favorites", com.eunho.tagohub.data.FavoriteCodec.encode(emptyList())).apply()
+    }
+
     /** 로그인 확인 없이 바로 넣기·빼기 (안내 창에서 고른 뒤) */
     fun applyToggleFavorite(f: com.eunho.tagohub.data.Favorite) {
         favorites.value = com.eunho.tagohub.data.FavoriteCodec.toggle(favorites.value, f)
