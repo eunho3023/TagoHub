@@ -78,6 +78,7 @@ class KakaoCanvas(
     private var uticRoadRisks: List<UticRoadRiskPin> = emptyList()
     private var uticSafetyPoints: List<UticSafetyPin> = emptyList()
     private var itsCctvs: List<ItsCctvPin> = emptyList()
+    private var trafficLights: List<com.eunho.tagohub.data.TrafficLightPoint> = emptyList()
     private var itsRoadFeatures: List<ItsRoadFeaturePin> = emptyList()
 
     private data class RouteArgs(val color: Int?, val stops: List<RoutePin>, val shape: List<LatLng>?, val parts: List<List<LatLng>>?, val strong: Int?)
@@ -88,6 +89,7 @@ class KakaoCanvas(
     private val uticRoadRiskLabels = ArrayList<Label>()
     private val uticSafetyLabels = ArrayList<Label>()
     private val itsCctvLabels = ArrayList<Label>()
+    private val trafficLightLabels = ArrayList<Label>()
     private val itsRoadLabels = ArrayList<Label>()
     private val itsRoadLines = ArrayList<RouteLine>()
     private val stationLabels = HashMap<String, Label>()
@@ -238,6 +240,7 @@ class KakaoCanvas(
         drawUticRoadRisks()
         drawUticSafetyPoints()
         drawItsCctvs()
+        drawTrafficLights()
         drawItsRoadFeatures()
         pendingCamera?.invoke()
         pendingCamera = null
@@ -437,6 +440,24 @@ class KakaoCanvas(
                     .setClickable(true)
                     .setTag(feature.id),
             )?.let(itsRoadLabels::add)
+        }
+    }
+
+    override fun setTrafficLights(list: List<com.eunho.tagohub.data.TrafficLightPoint>) {
+        if (trafficLights == list) return
+        trafficLights = list
+        drawTrafficLights()
+    }
+
+    private fun drawTrafficLights() {
+        trafficLightLabels.forEach { runCatching { it.remove() } }
+        trafficLightLabels.clear()
+        if ("traffic_lights" !in overlays) return
+        val l = layer(TRAFFIC_LIGHT_LAYER) ?: return
+        val plain = styles("trafficLight0") { LabelStyles.from(icon(icons.trafficLight(false), 0.5f, 0.5f)) }
+        val timed = styles("trafficLight1") { LabelStyles.from(icon(icons.trafficLight(true), 0.5f, 0.5f)) }
+        trafficLights.forEach { p ->
+            l.addLabel(LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(if (p.timer) timed else plain))?.let(trafficLightLabels::add)
         }
     }
 
@@ -805,6 +826,7 @@ class KakaoCanvas(
         if ("utic_road_risk" in changed) drawUticRoadRisks()
         if ("utic_safety" in changed) drawUticSafetyPoints()
         if ("its_cctv" in changed) drawItsCctvs()
+        if ("traffic_lights" in changed) drawTrafficLights()
         if (changed.any { it.startsWith("its_") && it != "its_cctv" }) drawItsRoadFeatures()
     }
 
@@ -877,6 +899,7 @@ class KakaoCanvas(
         private const val UTIC_ROAD_RISK_LAYER = "uticRoadRisks"
         private const val UTIC_SAFETY_LAYER = "uticSafety"
         private const val ITS_CCTV_LAYER = "itsCctvs"
+        private const val TRAFFIC_LIGHT_LAYER = "trafficLights"
         private const val ITS_ROAD_LAYER = "itsRoadFeatures"
         private const val CALLOUT_LAYER = "callout"
         /** 카카오 지도 오버레이 id (KakaoMap.showOverlay(String) 문서) */
@@ -887,7 +910,7 @@ class KakaoCanvas(
         private const val ROUTE_LINE_WIDTH_DP = 8f
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
-            BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
+            BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, TRAFFIC_LIGHT_LAYER to 460, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()

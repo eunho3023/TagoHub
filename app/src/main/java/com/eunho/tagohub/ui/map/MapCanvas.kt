@@ -62,6 +62,8 @@ interface MapCanvas {
     fun setUticRoadRisks(list: List<UticRoadRiskPin>) {}
     fun setUticSafetyPoints(list: List<UticSafetyPin>) {}
     fun setItsCctvs(list: List<ItsCctvPin>) {}
+    /** 신호등 위치 (지도를 크게 확대했을 때 화면 안 것만). 실시간 신호 상태는 아님 */
+    fun setTrafficLights(list: List<com.eunho.tagohub.data.TrafficLightPoint>) {}
     fun setItsRoadFeatures(list: List<ItsRoadFeaturePin>) {}
     fun setTrains(list: List<VehiclePin>)
     fun selectStation(id: String?)

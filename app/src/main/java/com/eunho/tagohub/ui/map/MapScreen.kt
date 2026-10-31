@@ -532,6 +532,7 @@ private fun MapLayerSheet(
 ) {
     val layers = listOf(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
+        MapLayerOption(listOf("traffic_lights"), "신호등 위치", Icons.Filled.Traffic),
         MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
