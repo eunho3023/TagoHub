@@ -346,6 +346,14 @@ fun MapScreen(
       val sheet = remember(constraints.maxHeight) { Sheet(sheetFrac, constraints.maxHeight.toFloat()) }
       CompositionLocalProvider(LocalSheet provides sheet) {
         key(osm) { AndroidView(factory = { osm.view }, modifier = Modifier.fillMaxSize()) }
+        // 야간 주행 모드: 달리는 중 밤이면(또는 항상으로 정했으면) 지도를 어둡게 덮음. 눌러도 지도에 그대로 전달됨
+        val nightMode by com.eunho.tagohub.data.NightSettings.mode.collectAsStateWithLifecycle()
+        val hour by produceState(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) {
+            while (true) { value = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY); delay(60_000) }
+        }
+        if (com.eunho.tagohub.data.NightMode.dimNow(nightMode, driving, hour)) {
+            Box(Modifier.fillMaxSize().background(Color(0xFF050A14).copy(alpha = com.eunho.tagohub.data.NightSettings.DIM_ALPHA)))
+        }
 
         // ── 상단 안내 ──
         if (!driving) Column(
