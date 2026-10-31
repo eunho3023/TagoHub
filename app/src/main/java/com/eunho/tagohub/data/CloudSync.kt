@@ -20,6 +20,7 @@ internal object CloudSyncSpec {
         "bus" to "saved_work",
         "drive_guidance" to "off_groups",
         "ui" to "theme_mode",
+        "ui" to "night_mode",
         "search_history" to "items",
         "route_history" to "items",
     )

@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.RecentDestinations.load(applicationContext)
         com.eunho.tagohub.data.SearchHistory.load(applicationContext)
         com.eunho.tagohub.data.RouteHistory.load(applicationContext)
+        com.eunho.tagohub.data.NightSettings.load(applicationContext)
         setContent { TagoTheme { MainScreen() } }
     }
 
