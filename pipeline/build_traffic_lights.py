@@ -7,8 +7,8 @@
   - 추가.csv: 열 위도·경도·잔여시간표시기유무(Y/N) 가 있는 UTF-8 CSV. 예: pipeline/fetch_jeonbuk_lights.py 로 받은 전북 신호등.
   - --out 을 생략하면 app/src/main/assets/traffic_lights.csv 에 씀.
 
-  - 위도·경도가 한국 범위 안인 줄만. 약 11m(소수 4자리) 안은 한 곳으로 합침(한 교차로의 신호등 여러 개가 점 하나로).
-  - 한 줄: "위도,경도,잔여시간표시기" — 잔여시간표시기는 그 자리 신호등 중 하나라도 있으면 1. 위도 순으로 정렬(앱이 이진 탐색).
+  - 위도·경도가 한국 범위 안인 줄만. **[CLUSTER_M]미터 안의 신호등은 한 곳으로 합침**(사거리 하나에 신호등이 8~12개 있어도 점 하나. 합친 점은 그 신호등들의 가운데).
+  - 한 줄: "위도,경도,잔여시간표시기" — 잔여시간표시기는 합친 신호등 중 하나라도 있으면 1. 위도 순으로 정렬(앱이 이진 탐색).
   - 이 엑셀은 포털에서 한 번에 50,000건까지만 받아져서 전국 전부가 아닐 수 있음 (시군구별 파일을 더 받으면 같은 방식으로 합칠 수 있게 여러 파일 가능).
   - 여러 번 돌려도 같은 결과.
 """
@@ -17,7 +17,12 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_OUT = os.path.join(ROOT, "app", "src", "main", "assets", "traffic_lights.csv")
-DECIMALS = 4
+DECIMALS = 5
+
+# 이 거리(미터) 안의 신호등은 같은 교차로로 보고 한 점으로 합침. 큰 사거리도 가장 먼 신호등끼리 70m 안팎이라 가운데 기준 반지름 45m
+CLUSTER_M = 45.0
+M_PER_DEG_LAT = 111_320.0
+M_PER_DEG_LNG = 90_000.0   # 위도 36° 근처(한국 가운데)에서의 경도 1도
 
 
 def in_korea(lat, lng) -> bool:
@@ -46,12 +51,27 @@ def points(rows):
 
 
 def merge(pts) -> list:
-    """같은 자리(소수 [DECIMALS]자리)는 하나로, 잔여시간표시기는 하나라도 있으면 있음. 위도·경도 순 정렬"""
-    seen = {}
-    for lat, lng, t in pts:
-        key = (round(lat, DECIMALS), round(lng, DECIMALS))
-        seen[key] = seen.get(key, False) or t
-    return [(la, ln, t) for (la, ln), t in sorted(seen.items())]
+    """가까운 신호등([CLUSTER_M]m 안)을 한 교차로 한 점으로. 점은 합친 신호등의 가운데, 잔여시간표시기는 하나라도 있으면 있음. 위도·경도 순 정렬"""
+    cell_lat, cell_lng = 0.0006, 0.0007           # 약 67m·63m 칸: 이웃 칸까지만 보면 [CLUSTER_M] 안의 군집을 다 찾음
+    grid = {}                                      # 칸 → 그 칸에 중심이 있는 군집 번호들
+    clusters = []                                  # [위도 합, 경도 합, 개수, 잔여시간표시기]
+    for lat, lng, t in sorted(pts, key=lambda p: (round(p[0], 6), round(p[1], 6))):
+        ci, cj = int(lat / cell_lat), int(lng / cell_lng)
+        best, best_d = None, CLUSTER_M
+        for di in (-1, 0, 1):
+            for dj in (-1, 0, 1):
+                for k in grid.get((ci + di, cj + dj), ()):
+                    c = clusters[k]
+                    d = (((lat - c[0] / c[2]) * M_PER_DEG_LAT) ** 2 + ((lng - c[1] / c[2]) * M_PER_DEG_LNG) ** 2) ** 0.5
+                    if d <= best_d:
+                        best, best_d = k, d
+        if best is None:
+            clusters.append([lat, lng, 1, t])
+            grid.setdefault((ci, cj), []).append(len(clusters) - 1)
+        else:
+            c = clusters[best]
+            c[0] += lat; c[1] += lng; c[2] += 1; c[3] = c[3] or t
+    return sorted((round(c[0] / c[2], DECIMALS), round(c[1] / c[2], DECIMALS), c[3]) for c in clusters)
 
 
 def to_text(merged) -> str:
