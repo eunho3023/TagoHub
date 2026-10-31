@@ -128,6 +128,9 @@ fun MorePage(
                 SettingsLabel("화면 모드")
                 ThemeModePicker()
 
+                SettingsLabel("내 위치 아이콘")
+                VehiclePicker()
+
                 SettingsLabel("길안내")
                 GuidanceSettings()
 
