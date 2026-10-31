@@ -399,6 +399,10 @@ class TripController(
     fun plan() {
         val d = dest.value ?: return
         com.eunho.tagohub.data.RecentDestinations.add(d.name, d.sub, d.lat, d.lng)
+        val from = origin.value
+        com.eunho.tagohub.data.RouteHistory.add(
+            com.eunho.tagohub.data.RouteRecord(from?.name ?: "내 위치", d.name, d.lat, d.lng, from?.lat, from?.lng, PlanMode.Transit.label),
+        )
         planJob?.cancel()
         selected.value = null
         live.value = null

@@ -79,6 +79,7 @@ fun MainScreen() {
     var transitMode by rememberSaveable { mutableStateOf(TransitMode.Bus) }
     var showNotices by rememberSaveable { mutableStateOf(false) }
     var showReport by rememberSaveable { mutableStateOf(false) }
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     var askExit by rememberSaveable { mutableStateOf(false) }
     val mapVm = viewModel<MapViewModel>(key = "transitMap")
     // 지도 화면(카카오맵 시작·타일·GPS)은 처음 지도를 열 때 만들고, 그 뒤로는 계속 유지(상태·위치 보존).
@@ -220,6 +221,7 @@ fun MainScreen() {
                         onOpen = ::openKind,
                         onNotices = { showNotices = true },
                         onReport = { showReport = true },
+                        onHistory = { showHistory = true },
                         onTab = ::onTab,
                     )
                     Dest.Bus -> com.eunho.tagohub.ui.map.BusDetailScreen(
@@ -236,6 +238,16 @@ fun MainScreen() {
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }
     com.eunho.tagohub.ui.common.LoginGateHost(mapVm)
+    if (showHistory) com.eunho.tagohub.ui.home.HistoryManageDialog(
+        mapVm,
+        onDismiss = { showHistory = false },
+        // 경로 기록을 누르면 그 도착지로 다시 길찾기
+        onGoRoute = { r ->
+            openMap(MapMode.Transit)
+            mapVm.openPlanner()
+            mapVm.trip.goTo(com.eunho.tagohub.data.SavedPlace(r.toName, r.toLat, r.toLng))
+        },
+    )
 }
 
 /** 공지사항 (깃허브 notices.json) */

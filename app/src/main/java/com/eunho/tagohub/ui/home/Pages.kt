@@ -114,6 +114,7 @@ fun MorePage(
     onOpen: (ModeJump.Kind) -> Unit,
     onNotices: () -> Unit,
     onReport: () -> Unit,
+    onHistory: () -> Unit = {},
     onTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -138,6 +139,8 @@ fun MorePage(
                 var crash by remember { mutableStateOf(com.eunho.tagohub.data.CrashLog.last()) }
                 var showCrash by remember { mutableStateOf(false) }
                 SettingsCard {
+                    MoreRow("기록·즐겨찾기 관리", onHistory)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     MoreRow("공지사항", onNotices)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     MoreRow("앱 제보", onReport)
