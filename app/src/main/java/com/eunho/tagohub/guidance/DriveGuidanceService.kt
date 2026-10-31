@@ -329,6 +329,8 @@ class DriveGuidanceService : Service() {
         val over = if (st.offRoute || st.arrived || DriveGuidance.simulating.value || zone?.overspeed == true) null
         else speedWatch.update(speedKmh.roundToInt(), road?.speedKmh, System.currentTimeMillis())
         val lines = st.speak + zone?.speak.orEmpty() + listOfNotNull(rest?.speak) + listOfNotNull(alert?.speak) + listOfNotNull(over)
+        // 과속 경고음: 단속카메라 제한속도 +3·+5km/h 초과, 어린이 보호구역 제한속도 초과 즉시 (새 경고가 나온 순간 한 번)
+        if (zone?.beep == true) playOverspeedBeep()
         // 안내마다 따로 차례로 말함(한 번에 이어 붙이면 길어서 중간에 끊기고, 새 안내가 오면 앞 말이 잘렸음). 경로 이탈만 바로 끊고 말함
         lines.forEach { v?.speak(it, interrupt = st.offRoute) }
         if (!st.offRoute) rerouteCount = 0   // 다시 경로 위로 돌아오면 재탐색 횟수 제한을 처음부터 (계속 이탈해도 언젠가 막히지 않게)
@@ -344,6 +346,15 @@ class DriveGuidanceService : Service() {
                 delay(ARRIVAL_STOP_DELAY_MS) // 도착 안내를 끝까지 들려준 뒤 종료
                 stopSelf()
             }
+        }
+    }
+
+    /** 짧은 경고음 두 번. 안내 음성보다 먼저 들리게 음성과 별개로 울림 */
+    private fun playOverspeedBeep() {
+        runCatching {
+            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 450)
+            scope.launch { delay(900); runCatching { tone.release() } }
         }
     }
 

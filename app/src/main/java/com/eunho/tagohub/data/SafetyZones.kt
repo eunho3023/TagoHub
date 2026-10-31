@@ -175,7 +175,11 @@ internal fun NavRoute.snap(lat: Double, lng: Double, maxOffM: Double, pad: Doubl
 private const val MERGE_M = 150.0
 
 /** 앞으로 만날 안전 지점의 상태: 가장 가까운 것과 거리, 지금 말할 문구, 과속 여부 */
-data class ZoneStatus(val next: RouteZone?, val distance: Double, val speak: List<String>, val overspeed: Boolean)
+data class ZoneStatus(
+    val next: RouteZone?, val distance: Double, val speak: List<String>, val overspeed: Boolean,
+    /** 과속 경고음을 지금 한 번 울려야 하는지 (새 과속 경고가 나온 순간에만 true) */
+    val beep: Boolean = false,
+)
 
 /** 달리면서 다음 안전 지점을 알려줌. 한 지점당 같은 거리의 안내는 한 번만 한다 */
 class ZoneTracker(private val zones: List<RouteZone>) {
@@ -187,22 +191,34 @@ class ZoneTracker(private val zones: List<RouteZone>) {
         val rz = zones.getOrNull(index) ?: return ZoneStatus(null, 0.0, emptyList(), false)
         val dist = max(0.0, rz.along - progress)
         val say = ArrayList<String>()
-        for (lead in leads(rz.zone.kind, speedKmh)) {
+        for (lead in leads(rz.zone.kind, speedKmh, rz.zone.limitKmh)) {
             if (dist <= lead && said.add(key(index, lead))) {
                 say += sentence(rz.zone, dist)
                 break
             }
         }
-        // 과속단속카메라 앞 600m 안에서 제한속도를 넘으면 한 번 알림
+        var beep = false
         val limit = rz.zone.limitKmh
-        val over = rz.zone.kind.isCamera && limit != null && dist <= WARN_OVERSPEED_M && speedKmh > limit + 3
-        if (over && said.add(key(index, OVERSPEED_KEY))) say += "과속입니다. 속도를 줄이세요."
-        return ZoneStatus(rz, dist, say, over)
+        // 단속카메라: 제한속도를 3km/h 넘으면 경고음과 함께 한 번, 5km/h 넘으면 한 번 더 (카메라마다)
+        var over = false
+        if (rz.zone.kind.isCamera && limit != null && dist <= WARN_OVERSPEED_M) {
+            over = speedKmh > limit + CAMERA_OVER_FIRST
+            if (speedKmh > limit + CAMERA_OVER_FIRST && said.add(key(index, OVERSPEED_KEY))) { say += OVERSPEED_TEXT; beep = true }
+            if (speedKmh > limit + CAMERA_OVER_SECOND && said.add(key(index, OVERSPEED_KEY + 1))) { say += OVERSPEED_TEXT; beep = true }
+        }
+        // 어린이 보호구역: 제한속도(모르면 30km/h)를 넘는 즉시 경고음과 함께 알림
+        if (rz.zone.kind == ZoneKind.ChildZone && dist <= CHILD_WARN_M && speedKmh > (limit ?: CHILD_DEFAULT_LIMIT)) {
+            over = true
+            if (said.add(key(index, OVERSPEED_KEY))) { say += "어린이 보호구역입니다. $OVERSPEED_TEXT"; beep = true }
+        }
+        return ZoneStatus(rz, dist, say, over, beep)
     }
 
     private fun key(i: Int, lead: Int): Long = i.toLong() * 100_000L + lead
 
-    private fun leads(kind: ZoneKind, speedKmh: Double): IntArray = when {
+    private fun leads(kind: ZoneKind, speedKmh: Double, limitKmh: Int? = null): IntArray = when {
+        // 단속카메라는 제한속도별로: 80km/h 이상은 2km·1km·500m 전, 그 아래(50 이상·50 미만 모두)는 1km·600m·300m 전. 제한속도를 모르면 지금 속도로 가름
+        kind.isCamera -> if ((limitKmh ?: speedKmh.toInt()) >= 80) intArrayOf(2000, 1000, 500) else intArrayOf(1000, 600, 300)
         kind == ZoneKind.ChildZone -> intArrayOf(400)
         kind == ZoneKind.SpeedBump -> intArrayOf(200)
         kind == ZoneKind.ParkingCamera -> intArrayOf(300)
@@ -241,7 +257,13 @@ class ZoneTracker(private val zones: List<RouteZone>) {
 
     private companion object {
         const val PASSED_M = 20.0
-        const val WARN_OVERSPEED_M = 600.0
+        /** 단속카메라 앞 이 거리 안에서 과속 경고 */
+        const val WARN_OVERSPEED_M = 1000.0
         const val OVERSPEED_KEY = 99_999
+        const val OVERSPEED_TEXT = "과속입니다. 속도를 줄이세요."
+        const val CAMERA_OVER_FIRST = 3
+        const val CAMERA_OVER_SECOND = 5
+        const val CHILD_WARN_M = 400.0
+        const val CHILD_DEFAULT_LIMIT = 30
     }
 }

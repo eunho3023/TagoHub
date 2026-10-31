@@ -78,13 +78,14 @@ class SafetyZonesTest {
         val on = matchRoute(r, listOf(zoneAt(r, 10_000.0, ZoneKind.SpeedCamera, 80)))
         val t = ZoneTracker(on)
         val at = on[0].along
-        // 고속(80km/h, 제한속도 안): 1000m, 400m 앞에서 한 번씩
-        assertTrue(t.update(at - 2000, 80.0).speak.isEmpty())
-        val s1 = t.update(at - 990, 80.0).speak
+        // 제한속도 80km/h 이상: 2km, 1km, 500m 앞에서 한 번씩
+        assertTrue(t.update(at - 2500, 80.0).speak.isEmpty())
+        val s1 = t.update(at - 1990, 80.0).speak
         assertEquals(1, s1.size)
         assertTrue(s1[0], "과속단속카메라" in s1[0] && "제한속도 80킬로미터" in s1[0])
-        assertTrue(t.update(at - 900, 80.0).speak.isEmpty())  // 같은 안내는 다시 안 함
-        assertEquals(1, t.update(at - 390, 80.0).speak.size)
+        assertTrue(t.update(at - 1900, 80.0).speak.isEmpty())  // 같은 안내는 다시 안 함
+        assertEquals(1, t.update(at - 990, 80.0).speak.size)
+        assertEquals(1, t.update(at - 490, 80.0).speak.size)
         // 지나친 뒤: 다음 지점이 없음
         val past = t.update(at + 100, 80.0)
         assertNull(past.next)
@@ -97,15 +98,15 @@ class SafetyZonesTest {
         val child = matchRoute(r, listOf(zoneAt(r, 5_000.0, ZoneKind.ChildZone)))
         val t = ZoneTracker(child)
         val at = child[0].along
-        assertTrue(t.update(at - 600, 40.0).speak.isEmpty())
-        val s = t.update(at - 390, 40.0).speak
+        assertTrue(t.update(at - 600, 25.0).speak.isEmpty())
+        val s = t.update(at - 390, 25.0).speak
         assertEquals(1, s.size)
         assertTrue(s[0], "어린이 보호구역" in s[0])
-        assertTrue(t.update(at - 100, 40.0).speak.isEmpty())
+        assertTrue(t.update(at - 100, 25.0).speak.isEmpty())   // 제한속도 안이면 다시 말하지 않음
 
         val cam = ZoneTracker(matchRoute(r, listOf(zoneAt(r, 8_000.0, ZoneKind.SignalCamera))))
-        val c = cam.update(8_000.0 - 480, 30.0).speak
-        assertEquals(1, c.size) // 저속은 500m 앞에서 첫 안내
+        val c = cam.update(8_000.0 - 980, 30.0).speak
+        assertEquals(1, c.size) // 제한속도를 모르는 저속은 1km 앞에서 첫 안내
         assertTrue(c[0], "신호위반" in c[0])
     }
 
@@ -124,6 +125,50 @@ class SafetyZonesTest {
         val again = t.update(at - 300, 96.0)
         assertTrue(again.overspeed)                 // 화면 표시는 계속
         assertTrue(again.speak.none { "과속입니다" in it }) // 말은 한 번만
+    }
+
+    @Test
+    fun cameraLeadsFollowTheSpeedLimit() {
+        val r = route()
+        fun leadsFor(limit: Int): List<Int> {
+            val on = matchRoute(r, listOf(zoneAt(r, 14_000.0, ZoneKind.SpeedCamera, limit)))
+            val t = ZoneTracker(on)
+            val at = on[0].along
+            return (3000 downTo 100 step 10).filter { d -> t.update(at - d.toDouble(), 60.0).speak.isNotEmpty() }
+        }
+        assertEquals(listOf(2000, 1000, 500), leadsFor(100))   // 80km/h 이상
+        assertEquals(listOf(2000, 1000, 500), leadsFor(80))
+        assertEquals(listOf(1000, 600, 300), leadsFor(60))     // 50~80 미만
+        assertEquals(listOf(1000, 600, 300), leadsFor(30))     // 50 미만
+    }
+
+    @Test
+    fun cameraBeepsAtThreeAndAgainAtFiveOverTheLimit() {
+        val r = route()
+        val on = matchRoute(r, listOf(zoneAt(r, 16_000.0, ZoneKind.SpeedCamera, 60)))
+        val t = ZoneTracker(on)
+        val at = on[0].along
+        t.update(at - 1200, 60.0)
+        assertFalse(t.update(at - 900, 63.0).beep)          // 정확히 +3 은 아직
+        val first = t.update(at - 800, 64.0)                // +3 초과: 경고음
+        assertTrue(first.beep); assertTrue(first.overspeed)
+        assertFalse(t.update(at - 700, 64.5).beep)          // 같은 단계는 한 번만
+        assertTrue(t.update(at - 600, 66.0).beep)           // +5 초과: 한 번 더
+        assertFalse(t.update(at - 500, 80.0).beep)          // 그 뒤로는 울리지 않음
+    }
+
+    @Test
+    fun childZoneBeepsImmediatelyAboveItsLimit() {
+        val r = route()
+        val child = matchRoute(r, listOf(zoneAt(r, 6_000.0, ZoneKind.ChildZone)))
+        val t = ZoneTracker(child)
+        val at = child[0].along
+        t.update(at - 500, 28.0)
+        assertFalse(t.update(at - 350, 30.0).beep)          // 제한속도(기본 30)와 같으면 괜찮음
+        val over = t.update(at - 300, 31.0)                 // 1km/h 초과 즉시
+        assertTrue(over.beep); assertTrue(over.overspeed)
+        assertTrue(over.speak.any { "어린이 보호구역" in it && "과속" in it })
+        assertFalse(t.update(at - 250, 45.0).beep)
     }
 
     @Test
