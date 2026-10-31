@@ -79,6 +79,7 @@ class KakaoCanvas(
     private var uticSafetyPoints: List<UticSafetyPin> = emptyList()
     private var itsCctvs: List<ItsCctvPin> = emptyList()
     private var trafficLights: List<com.eunho.tagohub.data.TrafficLightPoint> = emptyList()
+    private var liveSignals: List<LiveSignalPin> = emptyList()
     private var itsRoadFeatures: List<ItsRoadFeaturePin> = emptyList()
 
     private data class RouteArgs(val color: Int?, val stops: List<RoutePin>, val shape: List<LatLng>?, val parts: List<List<LatLng>>?, val strong: Int?)
@@ -90,6 +91,7 @@ class KakaoCanvas(
     private val uticSafetyLabels = ArrayList<Label>()
     private val itsCctvLabels = ArrayList<Label>()
     private val trafficLightLabels = ArrayList<Label>()
+    private val liveSignalLabels = ArrayList<Label>()
     private val itsRoadLabels = ArrayList<Label>()
     private val itsRoadLines = ArrayList<RouteLine>()
     private val stationLabels = HashMap<String, Label>()
@@ -201,6 +203,7 @@ class KakaoCanvas(
                     STOP_LAYER, ROUTE_PIN_LAYER -> vm.onStopClick(id)
                     STATION_LAYER -> vm.onStationClick(id)
                     TRAIN_LAYER -> vm.onTrainClick(id)
+                    LIVE_SIGNAL_LAYER -> vm.onLiveSignalClick(id)
                     UTIC_INCIDENT_LAYER, UTIC_ROAD_RISK_LAYER, UTIC_SAFETY_LAYER, ITS_CCTV_LAYER, ITS_ROAD_LAYER -> showCallout(layer.layerId, id)
                     CALLOUT_LAYER -> openMarker(id)
                 }
@@ -241,6 +244,7 @@ class KakaoCanvas(
         drawUticSafetyPoints()
         drawItsCctvs()
         drawTrafficLights()
+        drawLiveSignals()
         drawItsRoadFeatures()
         pendingCamera?.invoke()
         pendingCamera = null
@@ -447,6 +451,23 @@ class KakaoCanvas(
         if (trafficLights == list) return
         trafficLights = list
         drawTrafficLights()
+    }
+
+    override fun setLiveSignals(list: List<LiveSignalPin>) {
+        if (liveSignals == list) return
+        liveSignals = list
+        drawLiveSignals()
+    }
+
+    private fun drawLiveSignals() {
+        liveSignalLabels.forEach { runCatching { it.remove() } }
+        liveSignalLabels.clear()
+        if ("live_signals" !in overlays) return
+        val l = layer(LIVE_SIGNAL_LAYER) ?: return
+        val st = styles("liveSignal") { LabelStyles.from(icon(icons.trafficLight(timer = true, live = true), 0.5f, 0.5f)) }
+        liveSignals.forEach { p ->
+            l.addLabel(LabelOptions.from("ls:${p.id}", KLatLng.from(p.lat, p.lng)).setStyles(st).setClickable(true).setTag(p.id))?.let(liveSignalLabels::add)
+        }
     }
 
     private fun drawTrafficLights() {
@@ -827,6 +848,7 @@ class KakaoCanvas(
         if ("utic_safety" in changed) drawUticSafetyPoints()
         if ("its_cctv" in changed) drawItsCctvs()
         if ("traffic_lights" in changed) drawTrafficLights()
+        if ("live_signals" in changed) drawLiveSignals()
         if (changed.any { it.startsWith("its_") && it != "its_cctv" }) drawItsRoadFeatures()
     }
 
@@ -900,6 +922,7 @@ class KakaoCanvas(
         private const val UTIC_SAFETY_LAYER = "uticSafety"
         private const val ITS_CCTV_LAYER = "itsCctvs"
         private const val TRAFFIC_LIGHT_LAYER = "trafficLights"
+        private const val LIVE_SIGNAL_LAYER = "liveSignals"
         private const val ITS_ROAD_LAYER = "itsRoadFeatures"
         private const val CALLOUT_LAYER = "callout"
         /** 카카오 지도 오버레이 id (KakaoMap.showOverlay(String) 문서) */
@@ -910,7 +933,7 @@ class KakaoCanvas(
         private const val ROUTE_LINE_WIDTH_DP = 8f
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
-            BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, TRAFFIC_LIGHT_LAYER to 460, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
+            BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, TRAFFIC_LIGHT_LAYER to 460, LIVE_SIGNAL_LAYER to 465, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
             UTIC_SAFETY_LAYER to 478, ITS_CCTV_LAYER to 479, ITS_ROAD_LAYER to 481, PIN_LAYER to 490, CALLOUT_LAYER to 495, ME_LAYER to 500)
         private val TRANSFER_RING = 0xFF333F4F.toInt()
         private val UTIC_ORANGE = 0xFFF57C00.toInt()
