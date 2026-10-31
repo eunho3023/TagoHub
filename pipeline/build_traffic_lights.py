@@ -2,8 +2,10 @@
 """
 전국신호등표준데이터(공공데이터포털, 행정안전부) 엑셀(.xls)에서 신호등 위치만 뽑아 앱에 넣을 작은 파일(assets/traffic_lights.csv)을 만든다.
 
-  python pipeline/build_traffic_lights.py <전국신호등표준데이터-날짜.xls> [출력 경로]
+  python pipeline/build_traffic_lights.py <전국신호등표준데이터-날짜.xls> [추가.csv ...] [--out 출력경로]
   (필요: pip install xlrd — 환경변수 PYLIB 에 설치한 폴더를 두면 거기서도 찾음)
+  - 추가.csv: 열 위도·경도·잔여시간표시기유무(Y/N) 가 있는 UTF-8 CSV. 예: pipeline/fetch_jeonbuk_lights.py 로 받은 전북 신호등.
+  - --out 을 생략하면 app/src/main/assets/traffic_lights.csv 에 씀.
 
   - 위도·경도가 한국 범위 안인 줄만. 약 11m(소수 4자리) 안은 한 곳으로 합침(한 교차로의 신호등 여러 개가 점 하나로).
   - 한 줄: "위도,경도,잔여시간표시기" — 잔여시간표시기는 그 자리 신호등 중 하나라도 있으면 1. 위도 순으로 정렬(앱이 이진 탐색).
@@ -64,16 +66,27 @@ def read_xls(path):
     return [sh.row_values(i) for i in range(sh.nrows)]
 
 
+def read_csv(path):
+    import csv  # noqa: PLC0415
+
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        return [r for r in csv.reader(f)]
+
+
 def main(argv) -> int:
-    paths = [a for a in argv[1:] if a.lower().endswith(".xls")]
+    args = argv[1:]
+    out = DEFAULT_OUT
+    if "--out" in args:
+        i = args.index("--out")
+        out = args[i + 1]
+        del args[i:i + 2]
+    paths = [a for a in args if a.lower().endswith((".xls", ".csv"))]
     if not paths:
         print(__doc__)
         return 2
-    rest = [a for a in argv[1:] if not a.lower().endswith(".xls")]
-    out = rest[0] if rest else DEFAULT_OUT
     pts = []
     for p in paths:
-        got = points(read_xls(p))
+        got = points(read_xls(p) if p.lower().endswith(".xls") else read_csv(p))
         print(f"{os.path.basename(p)}: 좌표 있는 {len(got):,}줄")
         pts += got
     merged = merge(pts)
