@@ -124,6 +124,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         com.eunho.tagohub.data.ExMapLayers.vdsJson = {
             app.assets.open("ex_vds.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
         }
+        // 설정에서 내 위치 아이콘을 바꾸면 지도에 바로 반영
+        viewModelScope.launch { com.eunho.tagohub.data.VehicleSettings.selected.collect { canvas?.setVehicle(it) } }
     }
     private val repo = Graph.repo
     private val seoul = Graph.seoul
@@ -1202,6 +1204,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun attach(c: MapCanvas, isDark: Boolean) {
         canvas = c
         dark = isDark
+        c.setVehicle(com.eunho.tagohub.data.VehicleSettings.selected.value)
         // 지도를 다시 만들어도(인증 실패 후 새로고침으로 다시 시도) 실시간 열차가 이어지게
         updateTrainLines()
         c.setBase(effectiveBase())

@@ -98,6 +98,7 @@ class KakaoCanvas(
     private var meLabel: Label? = null
     private var meHeadingLabel: Label? = null
     private var meHeadingDeg: Double? = null
+    private var vehicle = com.eunho.tagohub.data.VehicleIcon.Default
     /** 확대해 둔 상태에서 마지막으로 본 지도 가운데 (너무 축소했을 때 되돌아올 자리) */
     private var goodCenter: KLatLng? = null
     private val styleCache = HashMap<String, LabelStyles>()
@@ -702,19 +703,36 @@ class KakaoCanvas(
     private fun drawMe() {
         val p = me ?: return
         val existing = meLabel
+        val v = vehicle
         if (existing != null) {
-            runCatching { existing.moveTo(KLatLng.from(p.lat, p.lng)) }
+            runCatching {
+                existing.moveTo(KLatLng.from(p.lat, p.lng))
+                if (v.isVehicle) existing.rotateTo(Math.toRadians(meHeadingDeg ?: 0.0).toFloat())
+            }
             drawMeHeading()
             return
         }
         val l = layer(ME_LAYER) ?: return
-        val st = styles("me") { LabelStyles.from(icon(icons.me(), 0.5f, 0.5f)) }
-        meLabel = l.addLabel(LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(st).setRank(10))
+        val st = styles("me_${v.code}") { LabelStyles.from(icon(if (v.isVehicle) icons.vehicle(v) else icons.me(), 0.5f, 0.5f)) }
+        val options = LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(st).setRank(10)
+        // 탈것은 진행 방향으로 돌려 그림 (지도를 돌려도 방위는 그대로)
+        if (v.isVehicle) options.setTransform(TransformMethod.AbsoluteRotation_Decal)
+        meLabel = l.addLabel(options)?.also { if (v.isVehicle) runCatching { it.rotateTo(Math.toRadians(meHeadingDeg ?: 0.0).toFloat()) } }
         drawMeHeading()
+    }
+
+    override fun setVehicle(kind: com.eunho.tagohub.data.VehicleIcon) {
+        if (vehicle == kind) return
+        vehicle = kind
+        // 아이콘이 바뀌면 지금 라벨을 지우고 새 모양으로 다시 그림
+        meLabel?.let { runCatching { it.remove() } }
+        meLabel = null
+        drawMe()
     }
 
     override fun setMeHeading(deg: Double?) {
         meHeadingDeg = deg
+        if (vehicle.isVehicle) meLabel?.let { runCatching { it.rotateTo(Math.toRadians(deg ?: 0.0).toFloat()) } }
         drawMeHeading()
     }
 
@@ -722,7 +740,8 @@ class KakaoCanvas(
     private fun drawMeHeading() {
         val p = me ?: return
         val deg = meHeadingDeg
-        if (deg == null) {
+        // 탈것 아이콘은 그 자체가 방향을 보이므로 부채꼴은 그리지 않음
+        if (deg == null || vehicle.isVehicle) {
             meHeadingLabel?.let { runCatching { it.remove() } }
             meHeadingLabel = null
             return

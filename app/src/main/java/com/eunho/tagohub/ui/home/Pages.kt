@@ -131,6 +131,9 @@ fun MorePage(
                 SettingsLabel("야간 주행 모드")
                 NightModePicker()
 
+                SettingsLabel("내 위치 아이콘")
+                VehiclePicker()
+
                 SettingsLabel("길안내")
                 GuidanceSettings()
 

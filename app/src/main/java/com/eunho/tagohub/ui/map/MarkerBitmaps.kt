@@ -147,6 +147,94 @@ class MarkerBitmaps(private val density: Float) {
         return forKakao(b)
     }
 
+    /**
+     * 내 위치 탈것 아이콘: 위에서 내려다본 모습, 앞쪽이 위(북쪽)를 봄. 라벨을 진행 방향으로 돌려서 씀. anchor (0.5, 0.5).
+     * 흰 테두리로 지도 위에서 잘 보이게 하고, 종류마다 색을 달리함.
+     */
+    fun vehicle(kind: com.eunho.tagohub.data.VehicleIcon): Bitmap {
+        if (!kind.isVehicle) return me()
+        val dark = Color.rgb(38, 50, 56)
+        val glass = Color.rgb(207, 226, 243)
+        // 가로 w · 세로 h (dp)
+        val (w, h) = when (kind) {
+            com.eunho.tagohub.data.VehicleIcon.Truck -> 26f to 54f
+            com.eunho.tagohub.data.VehicleIcon.Bus -> 26f to 60f
+            com.eunho.tagohub.data.VehicleIcon.Motorcycle -> 22f to 44f
+            com.eunho.tagohub.data.VehicleIcon.Bicycle -> 22f to 44f
+            else -> 24f to 44f
+        }
+        val b = bmp(w + 6f, h + 6f)
+        val c = Canvas(b)
+        val cx = b.width / 2f
+        val cy = b.height / 2f
+        fun body(wDp: Float, hDp: Float, top: Float, rDp: Float, color: Int) {
+            val l = cx - px(wDp / 2)
+            val t = cy - px(h / 2) + px(top)
+            val rect = RectF(l, t, l + px(wDp), t + px(hDp))
+            fill.color = color
+            c.drawRoundRect(rect, px(rDp), px(rDp), fill)
+            stroke.color = Color.WHITE
+            stroke.strokeWidth = px(2f)
+            c.drawRoundRect(rect, px(rDp), px(rDp), stroke)
+        }
+        fun rect(wDp: Float, hDp: Float, top: Float, color: Int, rDp: Float = 2f, dx: Float = 0f) {
+            val l = cx - px(wDp / 2) + px(dx)
+            val t = cy - px(h / 2) + px(top)
+            fill.color = color
+            c.drawRoundRect(RectF(l, t, l + px(wDp), t + px(hDp)), px(rDp), px(rDp), fill)
+        }
+        when (kind) {
+            com.eunho.tagohub.data.VehicleIcon.Default -> Unit
+            com.eunho.tagohub.data.VehicleIcon.Sedan -> {
+                rect(3f, 8f, 8f, dark, 1.5f, -w / 2 - 0.5f); rect(3f, 8f, 8f, dark, 1.5f, w / 2 + 0.5f)         // 앞바퀴
+                rect(3f, 8f, 30f, dark, 1.5f, -w / 2 - 0.5f); rect(3f, 8f, 30f, dark, 1.5f, w / 2 + 0.5f)       // 뒷바퀴
+                body(w - 2f, h, 0f, 9f, Color.rgb(26, 115, 232))
+                rect(w - 8f, 9f, 11f, glass, 3f)       // 앞유리
+                rect(w - 8f, 6f, 29f, glass, 2.5f)     // 뒷유리
+                rect(w - 12f, 8f, 20f, Color.rgb(21, 87, 176), 2f)   // 지붕
+            }
+            com.eunho.tagohub.data.VehicleIcon.Truck -> {
+                rect(3f, 9f, 4f, dark, 1.5f, -w / 2 - 0.5f); rect(3f, 9f, 4f, dark, 1.5f, w / 2 + 0.5f)
+                rect(3f, 9f, 38f, dark, 1.5f, -w / 2 - 0.5f); rect(3f, 9f, 38f, dark, 1.5f, w / 2 + 0.5f)
+                body(w - 2f, 16f, 0f, 6f, Color.rgb(230, 126, 34))             // 운전석
+                rect(w - 8f, 7f, 4f, glass, 2.5f)                               // 앞유리
+                body(w - 2f, 35f, 18f, 3f, Color.rgb(244, 183, 126))            // 짐칸
+                rect(w - 10f, 1.5f, 24f, Color.argb(120, 150, 80, 20), 1f)
+                rect(w - 10f, 1.5f, 33f, Color.argb(120, 150, 80, 20), 1f)
+            }
+            com.eunho.tagohub.data.VehicleIcon.Bus -> {
+                rect(3f, 9f, 6f, dark, 1.5f, -w / 2 - 0.5f); rect(3f, 9f, 6f, dark, 1.5f, w / 2 + 0.5f)
+                rect(3f, 9f, 42f, dark, 1.5f, -w / 2 - 0.5f); rect(3f, 9f, 42f, dark, 1.5f, w / 2 + 0.5f)
+                body(w - 2f, h, 0f, 6f, Color.rgb(46, 155, 87))
+                rect(w - 8f, 7f, 3f, glass, 2.5f)                                // 앞유리
+                for (i in 0 until 5) rect(w - 9f, 5f, 14f + i * 8f, glass, 1.5f)  // 옆 창 줄
+            }
+            com.eunho.tagohub.data.VehicleIcon.Motorcycle -> {
+                rect(4f, 9f, 1f, dark, 2f)             // 앞바퀴
+                rect(5f, 10f, h - 12f, dark, 2f)       // 뒷바퀴
+                body(8f, 24f, 9f, 4f, Color.rgb(211, 47, 47))   // 차체
+                rect(20f, 3f, 11f, dark, 1.5f)         // 핸들
+                fill.color = Color.rgb(255, 213, 79)   // 타는 사람(헬멧)
+                c.drawCircle(cx, cy - px(h / 2) + px(21f), px(5f), fill)
+                stroke.color = Color.WHITE
+                stroke.strokeWidth = px(1.5f)
+                c.drawCircle(cx, cy - px(h / 2) + px(21f), px(5f), stroke)
+            }
+            com.eunho.tagohub.data.VehicleIcon.Bicycle -> {
+                rect(3f, 12f, 1f, dark, 1.5f)          // 앞바퀴
+                rect(3f, 12f, h - 13f, dark, 1.5f)     // 뒷바퀴
+                rect(2f, 22f, 10f, Color.rgb(0, 150, 136), 1f)   // 몸통(프레임)
+                rect(18f, 2.5f, 10f, dark, 1.2f)       // 핸들
+                fill.color = Color.rgb(255, 213, 79)   // 타는 사람(헬멧)
+                c.drawCircle(cx, cy - px(h / 2) + px(21f), px(4.5f), fill)
+                stroke.color = Color.WHITE
+                stroke.strokeWidth = px(1.5f)
+                c.drawCircle(cx, cy - px(h / 2) + px(21f), px(4.5f), stroke)
+            }
+        }
+        return forKakao(b)
+    }
+
     /** 내 위치 방향: 위(북쪽)를 향한 반투명 파란 부채꼴. 아래쪽 가운데가 내 위치 (anchor 0.5, 1). 라벨을 돌리면 방향이 바뀜 */
     fun meHeading(): Bitmap {
         val b = bmp(72f, 52f)

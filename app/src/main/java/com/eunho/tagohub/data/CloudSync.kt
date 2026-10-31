@@ -21,6 +21,7 @@ internal object CloudSyncSpec {
         "drive_guidance" to "off_groups",
         "ui" to "theme_mode",
         "ui" to "night_mode",
+        "ui" to "vehicle_icon",
         "search_history" to "items",
         "route_history" to "items",
     )
