@@ -28,24 +28,62 @@ object RouteLive {
      * 버스가 [here] 정류장을 떠나 [next] 로 가는 중인가: 경기 상태값(정류소 출발)이거나, GPS 가 [here] 에서 [AT_STOP_M] 넘게 떨어져
      * [next] 쪽으로 가는 선분 위(정류장 사이 거리의 1.2배 안)에 있을 때. 좌표를 모르면 false.
      */
-    fun departed(bus: BusLocation, here: RouteStop, next: RouteStop?): Boolean {
-        if (bus.state == 2) return true
-        if (bus.state == 1) return false
-        val bLat = bus.lat ?: return false
-        val bLng = bus.lng ?: return false
-        val hLat = here.lat ?: return false
-        val hLng = here.lng ?: return false
-        val nLat = next?.lat ?: return false
-        val nLng = next.lng ?: return false
-        if (com.eunho.tagohub.core.Geo.meters(hLat, hLng, bLat, bLng) <= AT_STOP_M) return false
+    fun departed(bus: BusLocation, here: RouteStop, next: RouteStop?): Boolean = departedAlong(bus, here, next) != null
+
+    /**
+     * [departed] 이면 [here]→[next] 사이 어디쯤인지(0 = here, 1 = next)를, 아니면 null.
+     * GPS 가 없이 상태값(정류소 출발)만 있으면 막 출발한 것으로 보고 0.3.
+     */
+    fun departedAlong(bus: BusLocation, here: RouteStop, next: RouteStop?): Double? {
+        if (bus.state == 2) return JUST_LEFT
+        if (bus.state == 1) return null
+        val bLat = bus.lat ?: return null
+        val bLng = bus.lng ?: return null
+        val hLat = here.lat ?: return null
+        val hLng = here.lng ?: return null
+        val nLat = next?.lat ?: return null
+        val nLng = next.lng ?: return null
+        if (com.eunho.tagohub.core.Geo.meters(hLat, hLng, bLat, bLng) <= AT_STOP_M) return null
         // 정류장 사이 선분에 내린 그림자(0 = here, 1 = next): 평면으로 근사해도 이 거리에서는 충분함
         val cos = Math.cos(Math.toRadians(hLat))
         val sx = (nLng - hLng) * cos
         val sy = nLat - hLat
         val len2 = sx * sx + sy * sy
-        if (len2 == 0.0) return false
+        if (len2 == 0.0) return null
         val t = ((bLng - hLng) * cos * sx + (bLat - hLat) * sy) / len2
-        return t > 0.0 && t <= 1.2
+        return if (t > 0.0 && t <= 1.2) t else null
+    }
+
+    /** 막 출발했다고만 아는 버스를 정류장 사이 어디에 그릴지 */
+    private const val JUST_LEFT = 0.3
+
+    /** 정류장 목록(노선 상세)에서 버스를 그릴 자리: 정류장에 서 있는 버스와, 그 정류장을 떠나 다음 정류장으로 가는 중인 버스 */
+    class Placement(
+        /** 정류장 번호 → 그 정류장에 서 있는 버스 */
+        val at: Map<Int, List<BusLocation>>,
+        /** 정류장 번호 → 그 정류장을 떠나 다음 정류장으로 가는 중인 버스 */
+        val between: Map<Int, List<BusLocation>>,
+        /** 배치도용: 정류장 번호 + 정류장 사이 비율(떠난 버스는 0.15~0.85) */
+        val fractions: List<Float>,
+    )
+
+    fun placement(buses: List<BusLocation>, stops: List<RouteStop>): Placement {
+        val at = HashMap<Int, MutableList<BusLocation>>()
+        val between = HashMap<Int, MutableList<BusLocation>>()
+        val fractions = ArrayList<Float>()
+        for (b in buses) {
+            val i = stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }
+            if (i < 0) continue
+            val t = departedAlong(b, stops[i], stops.getOrNull(i + 1))
+            if (t != null) {
+                between.getOrPut(i) { ArrayList() } += b
+                fractions += i + t.coerceIn(0.15, 0.85).toFloat()
+            } else {
+                at.getOrPut(i) { ArrayList() } += b
+                fractions += i.toFloat()
+            }
+        }
+        return Placement(at, between, fractions)
     }
 
     /** [buses] 각각이 [stops] 목록 안 어느 정류장에 있는지, 그리고 그 정류장을 떠났는지 */

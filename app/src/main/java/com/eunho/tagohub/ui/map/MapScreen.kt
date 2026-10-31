@@ -1620,9 +1620,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
-            val busesAt = remember(buses) {
-                { s: RouteStop -> buses.filter { b -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId } }
-            }
+            // 버스를 정류장에 서 있는 것과, 정류장을 떠나 다음 정류장으로 가는 중인 것(GPS)으로 나눔
+            val placement = remember(buses, list) { com.eunho.tagohub.data.RouteLive.placement(buses, list) }
             // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
             val busPos = remember(buses, list) { com.eunho.tagohub.data.RouteLive.positions(buses, list) }
             val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
@@ -1677,7 +1676,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             LaunchedEffect(list) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
                 val target = list.indexOfFirst { it.nodeId == d.focusNodeId }.takeIf { it >= 0 }
-                    ?: list.indexOfFirst { busesAt(it).isNotEmpty() }.takeIf { it >= 0 }
+                    ?: (placement.at.keys + placement.between.keys).minOrNull()
                 if (target != null && target > 2) listState.scrollToItem(target - 2)
             }
             if (diagram) {
@@ -1685,7 +1684,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     routeId = d.routeId,
                     stops = list,
                     color = color,
-                    busOrds = buses.mapNotNull { it.ord }.toSet(),
+                    busPositions = placement.fractions,
                     focusedNodeId = d.focusNodeId,
                     onStop = { vm.focusRouteStop(it.nodeId) },
                     modifier = Modifier.fillMaxSize(),
@@ -1698,7 +1697,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         s, color,
                         isFirst = i == 0,
                         isLast = i == list.lastIndex,
-                        buses = busesAt(s),
+                        buses = placement.at[i].orEmpty(),
+                        between = placement.between[i].orEmpty(),
                         focused = s.nodeId == d.focusNodeId,
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
                         live = liveOf(i, s),

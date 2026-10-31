@@ -34,7 +34,8 @@ fun RouteDiagramView(
     routeId: String,
     stops: List<RouteStop>,
     color: Color,
-    busOrds: Set<Int>,
+    /** 버스 위치: 정류장 번호 + 정류장 사이 비율 (3.0 = 4번째 정류장, 3.5 = 4번째와 5번째 사이) */
+    busPositions: List<Float>,
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier = Modifier,
@@ -43,7 +44,7 @@ fun RouteDiagramView(
     val cells = remember(routeId, stops) {
         RouteDiagram.layout(routeId, stops.map { it.nodeId }, RouteDiagram.official(context), PER_ROW)
     }
-    DiagramCanvas(stops, cells, color, busOrds, focusedNodeId, onStop, modifier)
+    DiagramCanvas(stops, cells, color, busPositions, focusedNodeId, onStop, modifier)
 }
 
 private const val PER_ROW = 4
@@ -53,7 +54,7 @@ private fun DiagramCanvas(
     stops: List<RouteStop>,
     cells: List<RouteDiagram.Cell>,
     color: Color,
-    busOrds: Set<Int>,
+    busPositions: List<Float>,
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier,
@@ -94,7 +95,6 @@ private fun DiagramCanvas(
                 val focused = s.nodeId == focusedNodeId
                 drawCircle(Color.White, radius = if (focused) 11.dp.toPx() else 8.dp.toPx(), center = p)
                 drawCircle(if (focused) Color(0xFFE53935) else color, radius = if (focused) 9.dp.toPx() else 6.dp.toPx(), center = p)
-                if (s.ord in busOrds) drawCircle(Color(0xFFFFB300), radius = 4.dp.toPx(), center = p)
                 val label = measurer.measure(
                     s.name,
                     TextStyle(fontSize = 11.sp, color = ink),
@@ -103,6 +103,35 @@ private fun DiagramCanvas(
                     constraints = Constraints(maxWidth = (colW * 0.9f).toInt()),
                 )
                 drawText(label, topLeft = Offset(p.x - label.size.width / 2f, p.y + 12.dp.toPx()))
+            }
+            // 가는 방향: 정류장 사이 가운데에 작은 화살표 (한 줄 안에서만)
+            for (i in 0 until pts.size - 1) {
+                val a = pts[i]
+                val b = pts[i + 1]
+                if (kotlin.math.abs(a.y - b.y) > 1f || a.x == b.x) continue
+                val dir = if (b.x > a.x) 1f else -1f
+                val m = Offset((a.x + b.x) / 2f, a.y)
+                val r = 4.dp.toPx()
+                val arrow = Path().apply { moveTo(m.x + dir * r, m.y); lineTo(m.x - dir * r * 0.6f, m.y - r); lineTo(m.x - dir * r * 0.6f, m.y + r); close() }
+                drawPath(arrow, color)
+            }
+            // 기점·종점 표시
+            if (pts.size >= 2) {
+                listOf(0 to "기점", pts.lastIndex to "종점").forEach { (i, text) ->
+                    val t = measurer.measure(text, TextStyle(fontSize = 10.sp, color = color, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                    drawText(t, topLeft = Offset(pts[i].x - t.size.width / 2f, pts[i].y - 24.dp.toPx()))
+                }
+            }
+            // 버스: 정류장 위, 또는 떠난 버스는 정류장 사이 (노란 원)
+            busPositions.forEach { f ->
+                val i = kotlin.math.floor(f).toInt().coerceIn(0, pts.lastIndex)
+                val t = f - i
+                val from = pts[i]
+                val to = pts.getOrNull(i + 1) ?: from
+                // 줄이 바뀌는 곳(다른 줄로 건너뜀)은 사이에 그리면 엉뚱한 곳이라 출발 정류장 쪽에 그림
+                val at = if (kotlin.math.abs(from.y - to.y) > 1f) from else Offset(from.x + (to.x - from.x) * t, from.y)
+                drawCircle(Color.White, radius = 9.dp.toPx(), center = at)
+                drawCircle(Color(0xFFFFB300), radius = 7.dp.toPx(), center = at)
             }
         }
     }

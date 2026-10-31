@@ -250,6 +250,8 @@ internal fun TimelineRow(
     isFirst: Boolean,
     isLast: Boolean,
     buses: List<BusLocation>,
+    /** 이 정류장을 막 떠나 다음 정류장으로 가는 중인 버스 (띠의 아래쪽, 다음 정류장 바로 앞에 그림) */
+    between: List<BusLocation> = emptyList(),
     focused: Boolean,
     /** 이 정류장 첫차·막차 예상 시각 ("07:24 - 23:12") */
     times: String? = null,
@@ -279,6 +281,20 @@ internal fun TimelineRow(
                     maxLines = 1,
                 )
             }
+            // 이 정류소를 떠나 다음 정류소로 가는 중인 버스: 아래쪽(다음 정류소 바로 앞)에 차량번호
+            between.firstOrNull()?.let { b ->
+                Text(
+                    (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (between.size > 1) " 외 ${between.size - 1}" else "",
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 6.dp, bottom = 2.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
         }
         Box(
             Modifier
@@ -300,6 +316,21 @@ internal fun TimelineRow(
                         .weight(1f)
                         .background(if (isLast) Color.Transparent else color)
                 )
+            }
+            if (between.isNotEmpty()) {
+                // 떠난 버스: 띠 아래쪽에 작은 앰버 원 (정류소 점과 겹치지 않게)
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 2.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(BoardColor.AmberFill)
+                        .border(2.dp, color, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.DirectionsBus, contentDescription = "이동 중인 버스", tint = BoardColor.OnAmber, modifier = Modifier.size(10.dp))
+                }
             }
             if (buses.isNotEmpty()) {
                 // 버스가 있는 정류소: 앰버 원에 버스 아이콘
