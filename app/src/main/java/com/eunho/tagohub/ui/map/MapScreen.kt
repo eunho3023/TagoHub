@@ -2355,6 +2355,7 @@ private fun PlanList(t: TripController) {
     val sort by t.sort.collectAsStateWithLifecycle()
     val mode by t.mode.collectAsStateWithLifecycle()
     val via by t.via.collectAsStateWithLifecycle()
+    val modeMinutes by t.modeMinutes.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize()) {
         if (destination != null) {
@@ -2373,7 +2374,7 @@ private fun PlanList(t: TripController) {
                     FilterChip(
                         selected = mode == option,
                         onClick = { if (mode != option) t.selectMode(option) },
-                        label = { Text(option.label) },
+                        label = { Text(modeMinutes[option]?.let { "${option.label} ${com.eunho.tagohub.guidance.GuidanceText.duration(it * 60)}" } ?: option.label) },
                         leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
                     )
                 }
@@ -2387,7 +2388,8 @@ private fun PlanList(t: TripController) {
                         val result = route.value
                         if (result.mode == PlanMode.Car) {
                             val driveOption by t.driveOption.collectAsStateWithLifecycle()
-                            DriveRoutePanel(result, driveOption, t::selectDriveOption, Modifier.weight(1f))
+                            val driveAlts by t.driveAlts.collectAsStateWithLifecycle()
+                            DriveRoutePanel(result, driveOption, t::selectDriveOption, driveAlts, t::fitDriveRoute, Modifier.weight(1f))
                         } else {
                             val distance = if (result.distanceMeters >= 1000) {
                                 "%.1fkm".format(result.distanceMeters / 1000.0)
