@@ -462,11 +462,13 @@ class KakaoCanvas(
     private fun drawLiveSignals() {
         liveSignalLabels.forEach { runCatching { it.remove() } }
         liveSignalLabels.clear()
-        if ("live_signals" !in overlays) return
+        if ("live_signals" !in overlays && "signal_plans" !in overlays) return
         val l = layer(LIVE_SIGNAL_LAYER) ?: return
         val st = styles("liveSignal") { LabelStyles.from(icon(icons.trafficLight(timer = true, live = true), 0.5f, 0.5f)) }
+        // 신호 계획 교차로는 잔여시간 표시 막대가 없는 파란 테두리 신호등 (실시간과 구분)
+        val planSt = styles("planSignal") { LabelStyles.from(icon(icons.trafficLight(timer = false, live = true), 0.5f, 0.5f)) }
         liveSignals.forEach { p ->
-            l.addLabel(LabelOptions.from("ls:${p.id}", KLatLng.from(p.lat, p.lng)).setStyles(st).setClickable(true).setTag(p.id))?.let(liveSignalLabels::add)
+            l.addLabel(LabelOptions.from("ls:${p.id}", KLatLng.from(p.lat, p.lng)).setStyles(if (p.plan) planSt else st).setClickable(true).setTag(p.id))?.let(liveSignalLabels::add)
         }
     }
 
@@ -848,7 +850,7 @@ class KakaoCanvas(
         if ("utic_safety" in changed) drawUticSafetyPoints()
         if ("its_cctv" in changed) drawItsCctvs()
         if ("traffic_lights" in changed) drawTrafficLights()
-        if ("live_signals" in changed) drawLiveSignals()
+        if ("live_signals" in changed || "signal_plans" in changed) drawLiveSignals()
         if (changed.any { it.startsWith("its_") && it != "its_cctv" }) drawItsRoadFeatures()
     }
 

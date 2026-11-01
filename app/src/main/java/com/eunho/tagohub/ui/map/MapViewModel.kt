@@ -230,6 +230,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (id == TRAFFIC_LIGHT_OVERLAY) pushTrafficLights()
         if (id == LIVE_SIGNAL_OVERLAY) { loadLiveSignals(); if (id !in overlays.value) selectedSignal.value = null }
+        if (id == SIGNAL_PLAN_OVERLAY) { loadSignalPlans(); if (id !in overlays.value) selectedSignal.value = null }
         if (id == ITS_CCTV_OVERLAY) {
             if (id in overlays.value) scheduleItsCctvRefresh()
             else {
@@ -516,13 +517,18 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 눌러서 연 교차로 (신호 상태 창) */
     val selectedSignal = MutableStateFlow<com.eunho.tagohub.data.SignalIntersection?>(null)
     private var liveIntersections: List<com.eunho.tagohub.data.SignalIntersection> = emptyList()
+    /** 신호 운영계획이 있는 교차로 (인천·대구, 앱에 든 표) */
+    private var planIntersections: List<com.eunho.tagohub.data.SignalIntersection> = emptyList()
+    /** 실시간 신호 교차로를 받으러 간 적이 있는지 (앱을 다시 켰을 때 레이어가 켜져 있으면 지도를 처음 움직일 때 한 번 받음) */
+    private var liveSignalsLoaded = false
 
-    fun onLiveSignalClick(id: String) { selectedSignal.value = liveIntersections.firstOrNull { it.id == id } }
+    fun onLiveSignalClick(id: String) { selectedSignal.value = (liveIntersections + planIntersections).firstOrNull { it.id == id } }
     fun dismissLiveSignal() { selectedSignal.value = null }
 
     /** 레이어를 켜면 울산 교차로 목록을 받아 두고 화면 안 것을 지도에 보냄 */
     private fun loadLiveSignals() {
-        if (LIVE_SIGNAL_OVERLAY !in overlays.value) { canvas?.setLiveSignals(emptyList()); pushTrafficLights(); return }
+        if (LIVE_SIGNAL_OVERLAY !in overlays.value) { pushLiveSignals(); pushTrafficLights(); return }
+        liveSignalsLoaded = true
         viewModelScope.launch {
             if (liveIntersections.isEmpty()) {
                 // 울산 + (서울 신호 키가 있으면) 서울 교차로
@@ -536,11 +542,33 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 레이어를 켜면 인천·대구 신호 계획 교차로 표를 읽어 두고 화면 안 것을 지도에 보냄 */
+    private fun loadSignalPlans() {
+        if (SIGNAL_PLAN_OVERLAY !in overlays.value) { pushLiveSignals(); pushTrafficLights(); return }
+        viewModelScope.launch {
+            if (planIntersections.isEmpty()) {
+                planIntersections = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.SignalPlans.intersections(getApplication()) }
+            }
+            pushLiveSignals()
+            pushTrafficLights()
+        }
+    }
+
+    /** 실시간 신호(서울·울산)·신호 계획(인천·대구) 교차로 중 켜 둔 레이어의 것, 화면 안 것만 */
+    private fun shownSignalIntersections(s: Double, w: Double, n: Double, e: Double): List<Pair<com.eunho.tagohub.data.SignalIntersection, Boolean>> {
+        val live = if (LIVE_SIGNAL_OVERLAY in overlays.value) liveIntersections.map { it to false } else emptyList()
+        val plans = if (SIGNAL_PLAN_OVERLAY in overlays.value) planIntersections.map { it to true } else emptyList()
+        return (live + plans).filter { (it, _) -> it.lat in s..n && it.lng in w..e }
+    }
+
     private fun pushLiveSignals() {
         val box = lastBox
-        if (LIVE_SIGNAL_OVERLAY !in overlays.value || box == null || lastLevel < 1) { canvas?.setLiveSignals(emptyList()); return }
+        if ((LIVE_SIGNAL_OVERLAY !in overlays.value && SIGNAL_PLAN_OVERLAY !in overlays.value) || box == null || lastLevel < 1) {
+            canvas?.setLiveSignals(emptyList())
+            return
+        }
         canvas?.setLiveSignals(
-            liveIntersections.filter { it.lat in box[0]..box[2] && it.lng in box[1]..box[3] }.take(400).map { LiveSignalPin(it.id, it.name, it.lat, it.lng) },
+            shownSignalIntersections(box[0], box[1], box[2], box[3]).take(400).map { (it, plan) -> LiveSignalPin(it.id, it.name, it.lat, it.lng, plan) },
         )
     }
 
@@ -554,10 +582,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val dLat = (box[2] - box[0]) * 0.1
         val dLng = (box[3] - box[1]) * 0.1
         val all = com.eunho.tagohub.data.TrafficLights.load(getApplication())
-        // 실시간 신호 레이어를 켜 두었으면, 실시간 신호가 있는 교차로 둘레의 신호등 위치는 뺌 (같은 교차로가 두 개로 겹쳐 보이지 않게)
-        val live = if (LIVE_SIGNAL_OVERLAY in overlays.value) {
-            liveIntersections.filter { it.lat in (box[0] - dLat)..(box[2] + dLat) && it.lng in (box[1] - dLng)..(box[3] + dLng) }.map { it.lat to it.lng }
-        } else emptyList()
+        // 실시간 신호·신호 계획 레이어를 켜 두었으면, 그 교차로 둘레의 신호등 위치는 뺌 (같은 교차로가 두 개로 겹쳐 보이지 않게)
+        val live = shownSignalIntersections(box[0] - dLat, box[1] - dLng, box[2] + dLat, box[3] + dLng).map { (it, _) -> it.lat to it.lng }
         canvas?.setTrafficLights(
             com.eunho.tagohub.data.TrafficLights.inBox(
                 all, box[0] - dLat, box[1] - dLng, box[2] + dLat, box[3] + dLng,
@@ -1395,6 +1421,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushItsRoadFeatures()
         pushTrafficLights()
         pushLiveSignals()
+        // 앱을 다시 켰을 때 켜져 있던 신호 레이어는 여기서 처음 교차로를 받음 (레이어를 눌렀을 때만 받던 것)
+        if (LIVE_SIGNAL_OVERLAY in overlays.value && !liveSignalsLoaded) loadLiveSignals()
+        if (SIGNAL_PLAN_OVERLAY in overlays.value && planIntersections.isEmpty()) loadSignalPlans()
         if (UTIC_INCIDENTS_OVERLAY in overlays.value) refreshUticIncidents()
         if (UTIC_ROAD_RISK_OVERLAY in overlays.value) refreshUticRoadRisks()
         if (UTIC_SAFETY_OVERLAY in overlays.value) refreshUticSafetyPoints()
@@ -2588,6 +2617,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val ITS_CCTV_OVERLAY = "its_cctv"
         const val TRAFFIC_LIGHT_OVERLAY = "traffic_lights"
         const val LIVE_SIGNAL_OVERLAY = "live_signals"
+        const val SIGNAL_PLAN_OVERLAY = "signal_plans"
 
         /** 실시간 신호 교차로 가운데에서 이 거리(m) 안의 신호등 위치는 지도에서 뺌 (교차로 가운데와 합쳐진 신호등 점 사이 거리를 넉넉히 덮음) */
         const val LIVE_SIGNAL_HIDES_LIGHT_M = 70.0
