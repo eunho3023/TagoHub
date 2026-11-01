@@ -2441,15 +2441,15 @@ private fun PlanList(t: TripController) {
                         }
                     }
                     Column(Modifier.fillMaxSize()) {
-                        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PlanSort.entries.forEach { option ->
-                                FilterChip(selected = sort == option, onClick = { t.sort.value = option }, label = { Text(option.label) })
-                            }
+                        var sortOpen by remember { mutableStateOf(false) }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("경로 ${shown.size}개", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            com.eunho.tagohub.ui.common.PillChip("${sort.label}순", false, { sortOpen = true }, dropdown = true)
                         }
-                        LazyColumn(Modifier.weight(1f)) {
-                            items(shown) { p ->
-                                PlanCard(p) { t.select(p) }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (sortOpen) PlanSortSheet(sort, onPick = { t.sort.value = it }, onDismiss = { sortOpen = false })
+                        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp)) {
+                            itemsIndexed(shown) { i, p ->
+                                PlanCard(p, tag = if (i == 0) sort.label else null) { t.select(p) }
                             }
                         }
                     }
@@ -2476,20 +2476,83 @@ private fun CarViaBar(t: TripController) {
     }
 }
 
+/** 정렬 기준 시트: 하나 고르면 바로 적용하고, 「완료」로 닫음 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlanCard(p: TripPlan, onClick: () -> Unit) {
-    val variant = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("약 ${p.minutes}분", style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text(if (p.legs.size == 1) "직통" else "환승 ${p.legs.size - 1}회", style = MaterialTheme.typography.labelMedium, color = if (p.legs.size == 1) ModeColor.Bus else variant, fontWeight = FontWeight.Bold)
+private fun PlanSortSheet(current: PlanSort, onPick: (PlanSort) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 20.dp)) {
+            Text("정렬 기준", Modifier.fillMaxWidth().padding(vertical = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            PlanSort.entries.forEach { s ->
+                val on = s == current
+                val desc = when (s) {
+                    PlanSort.Fast -> "가장 빨리 도착하는 순서"
+                    PlanSort.LessWalk -> "걷는 거리가 짧은 순서"
+                    PlanSort.LessTransfer -> "갈아타는 횟수가 적은 순서"
+                }
+                Row(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(s.label + "순", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (on) Icon(Icons.Filled.Check, contentDescription = "선택됨", tint = MaterialTheme.colorScheme.primary)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).heightIn(min = 52.dp), shape = CircleShape) {
+                Text("완료", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            }
         }
-        Spacer(Modifier.height(6.dp))
+    }
+}
+
+/** 경로 카드: 큰 분, 오는 시각 범위, 걷기·탑승 시간 막대, 요약. 한 장씩 둥근 카드 */
+@Composable
+private fun PlanCard(p: TripPlan, tag: String? = null, onClick: () -> Unit) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    val clock = remember { java.time.format.DateTimeFormatter.ofPattern("a h:mm", java.util.Locale.KOREAN) }
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                if (tag != null) Text(tag, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("${p.minutes}", fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp)
+                    Text("분", Modifier.padding(start = 2.dp, bottom = 4.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                val now = java.time.LocalTime.now()
+                Text("${now.format(clock)} – ${now.plusMinutes(p.minutes.toLong()).format(clock)}", style = MaterialTheme.typography.bodySmall, color = variant)
+                Text(listOfNotNull(if (p.legs.size == 1) "직통" else "환승 ${p.legs.size - 1}회", p.fare?.let { "${"%,d".format(it)}원" }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = if (p.legs.size == 1) ModeColor.Bus else variant, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        // 걷기(회색) · 탑승(노선 색) 시간 막대
+        val walkStart = (p.walkStartM / com.eunho.tagohub.data.TripPlanner.WALK_M_PER_MIN).coerceAtLeast(1.0)
+        val walkEnd = (p.walkEndM / com.eunho.tagohub.data.TripPlanner.WALK_M_PER_MIN).coerceAtLeast(1.0)
+        Row(Modifier.fillMaxWidth().height(24.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            Box(Modifier.weight(walkStart.toFloat()).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Text("${walkStart.toInt().coerceAtLeast(1)}분", fontSize = 11.sp, color = variant, maxLines = 1)
+            }
+            p.legs.forEachIndexed { i, leg ->
+                val ride = com.eunho.tagohub.data.TripPlanner.rideMinutes(leg).coerceAtLeast(2.0)
+                Box(Modifier.weight(ride.toFloat() * 1.6f).fillMaxHeight().clip(CircleShape).background(legColor(leg, i)), contentAlignment = Alignment.Center) {
+                    Text("${ride.toInt()}분", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1)
+                }
+            }
+            Box(Modifier.weight(walkEnd.toFloat()).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Text("${walkEnd.toInt().coerceAtLeast(1)}분", fontSize = 11.sp, color = variant, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.AutoMirrored.Filled.DirectionsWalk, contentDescription = "걷기", tint = variant, modifier = Modifier.size(16.dp))
             p.legs.forEachIndexed { i, leg ->
@@ -2517,6 +2580,7 @@ private fun PlanCard(p: TripPlan, onClick: () -> Unit) {
             p.source,
         ).filter { it.isNotBlank() }
         Text(parts.joinToString("   "), style = MaterialTheme.typography.bodySmall, color = variant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
     }
 }
 
