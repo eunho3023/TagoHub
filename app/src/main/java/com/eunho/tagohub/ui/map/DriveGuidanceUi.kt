@@ -474,13 +474,21 @@ private fun TurnBanner(guide: DriveGuide, meters: Double) {
     }
 }
 
+/** 다음 회전 바로 뒤에 이어지는 회전: "이후 600m · 좌회전 · 올림픽대로" 한 줄 */
 @Composable
 private fun AfterBanner(guide: DriveGuide, meters: Double) {
-    Surface(shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp), color = subBannerColor(), shadowElevation = 6.dp, modifier = Modifier.widthIn(min = 150.dp, max = 200.dp)) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(TurnKind.of(guide).icon(), contentDescription = "이어서", tint = Color.White, modifier = Modifier.size(32.dp))
-            Spacer(Modifier.width(14.dp))
-            Text(NavText.short(meters), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+    Surface(shape = RoundedCornerShape(14.dp), color = subBannerColor(), shadowElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(TurnKind.of(guide).icon(), contentDescription = "이어서", tint = Color.White, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(10.dp))
+            com.eunho.tagohub.ui.common.FitText(
+                "이후 ${NavText.short(meters)} · ${TurnKind.bannerText(guide)}",
+                Modifier.weight(1f),
+                color = Color.White,
+                maxSizeSp = 15f,
+                minSizeSp = 11f,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }

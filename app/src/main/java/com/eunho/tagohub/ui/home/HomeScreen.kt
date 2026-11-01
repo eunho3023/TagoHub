@@ -74,9 +74,6 @@ import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.ui.draw.clip
 
 /** 아래 탭: 홈·대중교통(버스·지하철·기차·고속시외·항공)·지도·내비게이션·설정 */
 enum class AppTab(val label: String, val icon: ImageVector) {
@@ -159,10 +156,6 @@ fun HomeScreen(
         Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
     )
     var query by rememberSaveable { mutableStateOf("") }
-    // 검색창을 누르면 글자를 치는 것처럼 다른 구역을 접고 그 자리에 최근 검색을 보임 (뒤로 가기로 닫음)
-    var searching by remember { mutableStateOf(false) }
-    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    androidx.activity.compose.BackHandler(enabled = searching) { focusManager.clearFocus() }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val columns = 3
         Column(
@@ -171,28 +164,14 @@ fun HomeScreen(
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(4.dp))
-                if (query.isBlank() && !searching) {
+                if (query.isBlank()) {
                     BrandHeader(Modifier.riseIn(0), action = "교통", onAction = { onOpenTab(AppTab.Transit) })
-                    Spacer(Modifier.height(20.dp))
-                    Text("오늘의 이동을 한눈에", Modifier.riseIn(1), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "다음 여정,\n더 또렷하게.",
-                        Modifier.riseIn(1),
-                        fontSize = 30.sp,
-                        lineHeight = 38.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = (-1.2).sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text("역과 정류장 정보를 한곳에서 확인하세요.", Modifier.padding(top = 8.dp).riseIn(1), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(16.dp))
                 }
-                Box(Modifier.riseIn(2)) {
-                    SearchPanel(vm, SearchScope.All, query, { query = it }, search, onFocusChange = { searching = it }, whenFocused = { RecentChips(onGoTo) })
-                }
-                if (query.isBlank() && !searching) {
-                    SavedPlaces(vm, onGoTo)
+                Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
+                if (query.isBlank()) {
+                    ShortcutTiles(vm, onGoTo, onOpenTab, Modifier.riseIn(3).padding(top = 14.dp))
+                    RecentChips(onGoTo, Modifier.riseIn(3))
                     Spacer(Modifier.height(10.dp))
                     Column(Modifier.riseIn(4)) { Favorites(vm, onFavorite) }
                     Spacer(Modifier.height(16.dp))
@@ -239,7 +218,7 @@ internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, 
     }
 }
 
-/** 최근에 길찾기한 목적지 (눌러서 바로 길찾기). 홈의 검색창을 눌렀을 때 그 아래에 보임 */
+/** 최근에 길찾기한 목적지 (눌러서 바로 길찾기) */
 @Composable
 private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modifier) {
     val items by com.eunho.tagohub.data.RecentDestinations.items.collectAsStateWithLifecycle()
@@ -260,15 +239,7 @@ private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modif
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.pressScale(src),
             ) {
-                // 이름 + ✕ (✕ 를 누르면 그 목적지만 지움)
-                Row(Modifier.heightIn(min = 32.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.name, Modifier.weight(1f, fill = false), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Icon(
-                        Icons.Filled.Close, contentDescription = "${r.name} 지우기",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 2.dp).size(28.dp).clip(CircleShape).clickable { com.eunho.tagohub.data.RecentDestinations.remove(r.name) }.padding(7.dp),
-                    )
-                }
+                Text(r.name, Modifier.heightIn(min = 32.dp).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -314,6 +285,35 @@ com.eunho.tagohub.ui.common.FitText(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+        }
+    }
+}
+
+/** 바로가기 네 칸: 집 · 회사(저장해 둔 곳으로 바로 길찾기), 길찾기 · 지도 */
+@Composable
+private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpenTab: (AppTab) -> Unit, modifier: Modifier = Modifier) {
+    val saved by vm.trip.homeWork.state.collectAsStateWithLifecycle()
+    val items: List<Triple<String, ImageVector, () -> Unit>> = listOf(
+        Triple(SavedKind.Home.label, Icons.Outlined.Home, saved.home?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
+        Triple(SavedKind.Work.label, Icons.Outlined.Work, saved.work?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
+        Triple("길찾기", Icons.Outlined.Directions, { onOpenTab(AppTab.Navi) }),
+        Triple("지도", Icons.Outlined.Map, { onOpenTab(AppTab.Map) }),
+    )
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        items.forEach { (label, icon, click) ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    onClick = click,
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(26.dp))
+                    }
+                }
+                com.eunho.tagohub.ui.common.FitText(label, Modifier.padding(top = 6.dp), maxSizeSp = 12f, minSizeSp = 9f, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            }
         }
     }
 }
