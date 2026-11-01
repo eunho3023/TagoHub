@@ -75,6 +75,10 @@ fun SearchPanel(
     onQuery: (String) -> Unit,
     actions: SearchActions,
     modifier: Modifier = Modifier,
+    /** 검색창을 눌렀는지(글자를 칠 수 있는 상태) 바뀔 때 알림. 화면이 이때 다른 구역을 접어서 검색 중처럼 보이게 함 */
+    onFocusChange: (Boolean) -> Unit = {},
+    /** 검색창을 눌렀고 검색어가 비어 있을 때, 최근 검색어 아래에 더 보여 줄 것 (예: 최근 목적지) */
+    whenFocused: @Composable () -> Unit = {},
 ) {
     // 결과를 눌러 연 검색어를 검색 기록에 남김
     val typed = androidx.compose.runtime.rememberUpdatedState(query)
@@ -117,7 +121,7 @@ fun SearchPanel(
         SearchBox(
             query, onQuery, "검색하기",
             onSearch = { if (scope != SearchScope.Subway && query.isNotBlank()) vm.searchBus(query) },
-            onFocusChange = { focused = it },
+            onFocusChange = { focused = it; onFocusChange(it) },
         )
         if (query.isBlank()) {
             // 검색창을 누르면(검색어가 비어 있을 때) 그 아래에 최근 검색어를 보여 줌 (누르면 그 말로 검색, ✕ 로 하나씩 지움)
@@ -132,6 +136,7 @@ fun SearchPanel(
                     }
                 }
             }
+            if (focused) whenFocused()
             return@Column
         }
 
