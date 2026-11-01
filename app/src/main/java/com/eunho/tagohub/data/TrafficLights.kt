@@ -6,9 +6,9 @@ import android.content.Context
 data class TrafficLightPoint(val lat: Double, val lng: Double, val timer: Boolean)
 
 /**
- * 신호등 위치 (전국신호등표준데이터 API 전체 + 전북 신호등 현황 API + 서울시 신호등 부착대 API + 부산 신호제어기 파일, 앱에 넣은 assets/traffic_lights.csv: "위도,경도,잔여시간표시기" 위도 순).
+ * 신호등 위치 (전국신호등표준데이터 API 전체 + 전북 신호등 현황 API + 서울시 신호등 부착대 API + 부산 신호제어기 파일 + 제주·울산 교차로 위치(KLID), 앱에 넣은 assets/traffic_lights.csv: "위도,경도,잔여시간표시기" 위도 순).
  * 사거리 하나의 신호등 여러 개는 점 하나로 합쳐져 있고 점은 그 신호등 중 가운데에 가장 가까운 실제 신호등 자리다(pipeline/build_traffic_lights.py, 45m 안).
- * 실시간 신호 상태는 아니고 위치만이며, 자료를 낸 지자체만 들어 있어 전국 전부는 아니다 (인천·울산·제주는 없음 등).
+ * 실시간 신호 상태는 아니고 위치만이며, 자료를 낸 지자체만 들어 있어 전국 전부는 아니다 (인천은 없음 등. 제주·울산은 교차로 위치만).
  * 화면 범위 안 점만 이진 탐색으로 골라 지도에 그린다.
  */
 object TrafficLights {
