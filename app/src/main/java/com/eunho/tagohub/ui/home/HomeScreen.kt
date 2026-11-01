@@ -156,6 +156,10 @@ fun HomeScreen(
         Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
     )
     var query by rememberSaveable { mutableStateOf("") }
+    // 검색창을 누르면 글자를 치는 것처럼 다른 구역을 접고 그 자리에 최근 검색을 보임 (뒤로 가기로 닫음)
+    var searching by remember { mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    androidx.activity.compose.BackHandler(enabled = searching) { focusManager.clearFocus() }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val columns = 3
         Column(
@@ -164,7 +168,7 @@ fun HomeScreen(
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(4.dp))
-                if (query.isBlank()) {
+                if (query.isBlank() && !searching) {
                     BrandHeader(Modifier.riseIn(0), action = "교통", onAction = { onOpenTab(AppTab.Transit) })
                     Spacer(Modifier.height(20.dp))
                     Text("오늘의 이동을 한눈에", Modifier.riseIn(1), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
@@ -181,9 +185,10 @@ fun HomeScreen(
                     Text("역과 정류장 정보를 한곳에서 확인하세요.", Modifier.padding(top = 8.dp).riseIn(1), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(18.dp))
                 }
-                Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
-                if (query.isBlank()) {
-                    RecentChips(onGoTo, Modifier.riseIn(3))
+                Box(Modifier.riseIn(2)) {
+                    SearchPanel(vm, SearchScope.All, query, { query = it }, search, onFocusChange = { searching = it }, whenFocused = { RecentChips(onGoTo) })
+                }
+                if (query.isBlank() && !searching) {
                     SavedPlaces(vm, onGoTo)
                     Spacer(Modifier.height(10.dp))
                     Column(Modifier.riseIn(4)) { Favorites(vm, onFavorite) }
@@ -231,7 +236,7 @@ internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, 
     }
 }
 
-/** 최근에 길찾기한 목적지 (눌러서 바로 길찾기) */
+/** 최근에 길찾기한 목적지 (눌러서 바로 길찾기). 홈의 검색창을 눌렀을 때 그 아래에 보임 */
 @Composable
 private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modifier) {
     val items by com.eunho.tagohub.data.RecentDestinations.items.collectAsStateWithLifecycle()
