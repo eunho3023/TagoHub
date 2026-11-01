@@ -17,8 +17,8 @@ data class UticRoadRiskPin(val id: String, val title: String, val lat: Double, v
 data class UticSafetyPin(val id: String, val title: String, val category: String, val lat: Double, val lng: Double)
 data class ItsCctvPin(val id: String, val title: String, val lat: Double, val lng: Double)
 
-/** 실시간 신호가 오는 교차로 (울산) */
-data class LiveSignalPin(val id: String, val name: String, val lat: Double, val lng: Double)
+/** 실시간 신호가 오는 교차로(서울·울산), 또는 [plan] 이면 신호 운영계획만 있는 교차로(인천·대구) */
+data class LiveSignalPin(val id: String, val name: String, val lat: Double, val lng: Double, val plan: Boolean = false)
 data class ItsRoadFeaturePin(val id: String, val layer: String, val title: String, val lat: Double, val lng: Double, val path: List<LatLng>? = null)
 /**
  * 움직이는 차량. path 위에서 startFrac(지금) → endFrac 까지 durationMs 동안 이동한다.

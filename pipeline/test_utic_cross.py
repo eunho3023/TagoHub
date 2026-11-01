@@ -28,7 +28,19 @@ def test_rows_use_column_names_and_skip_blank_lines():
     assert uc.points_from_rows(rows) == [(37.464368, 126.636053)]
 
 
+def test_table_keeps_region_number_and_name_and_skips_duplicates():
+    rows = [
+        ("REGION_CD", "INT_NO", "INT_NM", "X_COORD", "Y_COORD", "UPD_DTIME", "NODE_ID"),
+        ("L02", 1001, "신광4거리", 1266360530, 374643680, None, 1),
+        ("L02", 1001, "중복", 1266360530, 374643680, None, 1),
+        ("L29", 429, " 방촌  우체국 ", 1286900000, 358800000, None, 2),
+        ("L02", 1003, "좌표없음", None, None, None, 3),
+    ]
+    assert uc.table_from_rows(rows) == [("L02", "1001", "신광4거리", 37.464368, 126.636053), ("L29", "429", "방촌 우체국", 35.88, 128.69)]
+
+
 if __name__ == "__main__":
+    test_table_keeps_region_number_and_name_and_skips_duplicates()
     test_integer_coordinates_become_degrees()
     test_missing_or_out_of_korea_coordinates_are_dropped()
     test_rows_use_column_names_and_skip_blank_lines()
