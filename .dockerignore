@@ -1,0 +1,8 @@
+# 웹 서버 이미지에는 아래 파일만 들어감 (나머지는 모두 제외: 키가 든 local.properties, 안드로이드 빌드 등)
+*
+!web/server.py
+!web/static
+!app/src/main/assets/bus_stops.db
+!app/src/main/assets/subway_stations.tsv
+!app/src/main/assets/train_timetable.tsv
+!Dockerfile

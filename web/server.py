@@ -794,6 +794,40 @@ def route(path: str, q: dict):
     raise ApiError("없는 주소입니다.", 404)
 
 
+class RateLimiter:
+    """주소(IP)마다 1분에 [limit] 번까지만 허용 (인터넷에 올렸을 때 키 하나를 여럿이 쓰므로 한 사람이 다 쓰지 못하게). limit 이 0 이면 제한 없음"""
+
+    def __init__(self, limit: int, window: float = 60.0):
+        self.limit, self.window = limit, window
+        self._hits: dict = {}
+        self._lock = threading.Lock()
+
+    def allow(self, ip: str, now: float | None = None) -> bool:
+        if self.limit <= 0:
+            return True
+        now = time.time() if now is None else now
+        with self._lock:
+            if len(self._hits) > 20000:   # 오래된 주소는 비움
+                self._hits = {k: v for k, v in self._hits.items() if v and now - v[-1] < self.window}
+            hits = [t for t in self._hits.get(ip, ()) if now - t < self.window]
+            if len(hits) >= self.limit:
+                self._hits[ip] = hits
+                return False
+            hits.append(now)
+            self._hits[ip] = hits
+            return True
+
+
+# 서버에 올릴 때는 환경변수 RATE_LIMIT_PER_MIN 으로 켬 (내 PC에서 쓸 때는 0 = 제한 없음)
+LIMITER = RateLimiter(int(os.environ.get("RATE_LIMIT_PER_MIN", "0") or 0))
+
+
+def client_ip(headers, fallback: str) -> str:
+    """구글 클라우드(Cloud Run)는 X-Forwarded-For 맨 끝에 진짜 접속자 주소를 붙여 줌. 앞쪽 값은 접속자가 꾸밀 수 있어 쓰지 않음"""
+    forwarded = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip()
+    return forwarded or fallback
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TagoHubWeb"
 
@@ -811,7 +845,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/healthz":
+            self.send_json({"ok": True})
+            return
         if parsed.path.startswith("/api/"):
+            if not LIMITER.allow(client_ip(self.headers, self.client_address[0])):
+                self.send_json({"error": "요청이 너무 많아요. 잠시 뒤에 다시 해 주세요."}, 429)
+                return
             try:
                 self.send_json(route(parsed.path, urllib.parse.parse_qs(parsed.query)))
             except ApiError as e:
@@ -837,9 +877,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="TagoHub 웹 버전 서버")
-    ap.add_argument("--port", type=int, default=8000)
-    ap.add_argument("--host", default="127.0.0.1", help="다른 기기(폰)에서도 열려면 0.0.0.0")
-    ap.add_argument("--no-browser", action="store_true")
+    # 환경변수 PORT 가 있으면 서버(Cloud Run 등)에서 도는 것: 모든 주소로 열고 브라우저는 띄우지 않음
+    hosted = bool(os.environ.get("PORT"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8000))
+    ap.add_argument("--host", default="0.0.0.0" if hosted else "127.0.0.1", help="다른 기기(폰)에서도 열려면 0.0.0.0")
+    ap.add_argument("--no-browser", action="store_true", default=hosted)
     args = ap.parse_args(argv)
     # 정류장 DB 는 뒤에서 준비 (받아야 하면 오래 걸림)
     threading.Thread(target=lambda: _safe(get_db), daemon=True).start()
