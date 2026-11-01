@@ -143,7 +143,7 @@ object RegionalMappers {
 
     /** 부산·울산·여수: XML 에서 item/row 한 줄씩. 결과코드가 정상(0·00·200)이 아니면 오류 */
     fun xmlRows(body: String, label: String): List<Row> {
-        val text = body.trim().removePrefix("﻿")
+        val text = body.trim().removePrefix("\uFEFF")
         if (text.isEmpty()) throw IOException("$label 버스 API 응답이 비어 있습니다.")
         gateway.find(text)?.let { throw IOException("$label 버스 API 게이트웨이 오류 ${it.groupValues[1]}") }
         if (!text.startsWith("<")) throw IOException("$label 버스 API 가 XML 이 아닌 응답을 보냈습니다: ${text.take(120)}")

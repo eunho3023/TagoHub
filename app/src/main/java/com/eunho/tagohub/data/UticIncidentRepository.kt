@@ -33,7 +33,7 @@ object UticIncidentParser {
 
     /** JSON 오류 응답이면 "(코드) 메시지", 아니면 null */
     internal fun jsonError(body: String): String? {
-        val text = body.trim().removePrefix("﻿")
+        val text = body.trim().removePrefix("\uFEFF")
         if (!text.startsWith("[") && !text.startsWith("{")) return null
         val code = jsonCode.find(text)?.groupValues?.get(1)
         val msg = jsonMsg.find(text)?.groupValues?.get(1)
