@@ -100,7 +100,7 @@ fun TabScaffold(
         Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
             BrandHeader()
             Spacer(Modifier.height(18.dp))
-            Text(title, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+            Text(title, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             if (subtitle != null) Text(subtitle, Modifier.padding(top = 6.dp), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Box(Modifier.weight(1f)) { content() }

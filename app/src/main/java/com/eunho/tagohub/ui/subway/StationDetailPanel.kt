@@ -316,17 +316,17 @@ private fun StationDetailBody(
                             contentColor = MaterialTheme.colorScheme.primary,
                         ) {
                             Box(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                                Text(label, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                Text(label, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
                             }
                         }
                     }
                 }
             }
             androidx.compose.material3.OutlinedButton(onClick = { onUseStation?.invoke(true) }, enabled = onUseStation != null, shape = CircleShape, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("여기서 출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text("여기서 출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
             }
             Button(onClick = { onUseStation?.invoke(false) }, enabled = onUseStation != null, shape = CircleShape, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("여기로 도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text("여기로 도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
             }
         }
     }

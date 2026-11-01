@@ -197,7 +197,7 @@ private fun FreeDriveSummary() {
                 tint = if (h != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(44.dp).rotate((h ?: 0.0).toFloat()),
             )
-            Text(if (h != null) "${FreeDrive.compassWord(h)} ${h.toInt()}°" else "방향 확인 중", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(if (h != null) "${FreeDrive.compassWord(h)} ${h.toInt()}°" else "방향 확인 중", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {

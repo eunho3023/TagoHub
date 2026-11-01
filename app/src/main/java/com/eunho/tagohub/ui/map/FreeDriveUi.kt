@@ -90,14 +90,14 @@ internal fun FreeDriveOverlay(vm: MapViewModel, modifier: Modifier = Modifier) {
                         snap?.heading?.let { "${FreeDrive.compassWord(it)}쪽 ${it.toInt()}°" } ?: "방향 --",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("음성", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(6.dp))
                         Switch(checked = voiceOn, onCheckedChange = { FreeDriveSession.voiceOn.value = it })
                     }
-                    Button(onClick = { FreeDriveSession.stop() }) { Text("자유주행 종료", maxLines = 1) }
+                    Button(onClick = { FreeDriveSession.stop() }) { Text("자유주행 종료", maxLines = 2) }
                 }
             }
         }

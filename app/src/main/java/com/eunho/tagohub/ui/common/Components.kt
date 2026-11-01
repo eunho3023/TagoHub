@@ -315,7 +315,7 @@ fun Pill(text: String, color: Color, modifier: Modifier = Modifier, filled: Bool
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.Bold,
         textAlign = TextAlign.Center,
-        maxLines = 1,
+        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     )
 }
 
