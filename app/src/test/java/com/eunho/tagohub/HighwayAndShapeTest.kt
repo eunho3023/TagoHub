@@ -41,4 +41,23 @@ class HighwayAndShapeTest {
         assertEquals(2.0 / 3.0, Shapes.coverage(line, stops, 100.0), 1e-9)
         assertEquals(0.0, Shapes.coverage(emptyList(), stops, 100.0), 0.0)
     }
+
+    @Test
+    fun roomBelowPutsTheRouteAboveTheCoveringPanel() {
+        val pts = listOf(LatLng(37.50, 127.00), LatLng(37.52, 127.02))
+        val out = Shapes.withRoomBelow(pts, 0.7)
+        assertEquals(3, out.size)
+        // 남북 폭 0.02 의 0.7/0.3 배만큼 남쪽 → 위쪽 30% 에 노선이 들어옴
+        assertEquals(37.50 - 0.02 * 0.7 / 0.3, out.last().lat, 1e-9)
+        assertEquals(127.01, out.last().lng, 1e-9)
+        assertEquals(pts, Shapes.withRoomBelow(pts, 0.0))
+        assertEquals(pts.take(1), Shapes.withRoomBelow(pts.take(1), 0.7))
+    }
+
+    @Test
+    fun smoothingIsOnlyOptionalForSparseLines() {
+        // 정류장 세 개를 잇는 꺾인 선: 둥글게 하면 가운데 정류장(꼭짓점)을 지나지 않게 됨 → 성긴 선에는 쓰지 않음
+        val stops = listOf(LatLng(37.50, 127.00), LatLng(37.51, 127.00), LatLng(37.51, 127.01))
+        assertTrue(Shapes.smooth(stops).none { it == stops[1] })
+    }
 }

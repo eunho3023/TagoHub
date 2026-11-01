@@ -336,7 +336,9 @@ fun MapScreen(
     LaunchedEffect(panel) {
         sheetFrac.floatValue = when (panel) {
             MapPanel.Stop -> 0.4f
-            MapPanel.Route, MapPanel.Train -> 0.5f
+            // 노선은 정류장 목록이 바로 보이게 더 높이 (위쪽 30% 는 지도)
+            MapPanel.Route -> ROUTE_SHEET_FRAC
+            MapPanel.Train -> 0.5f
             MapPanel.Station, MapPanel.Plan -> 0.55f
             MapPanel.None -> sheetFrac.floatValue
         }
@@ -1018,7 +1020,7 @@ private val LocalFullScreen = compositionLocalOf { false }
 /** 전체 화면에서 "지도에서 보기"를 누르면 부를 동작 (지도 위 시트에서는 null) */
 private val LocalShowMap = compositionLocalOf<(() -> Unit)?> { null }
 
-private val SNAPS = listOf(0.22f, 0.45f, 0.88f, 1.0f)   // 1.0 = 맨 위까지 끌면 전체화면
+private val SNAPS = listOf(0.22f, 0.45f, 0.7f, 0.88f, 1.0f)   // 1.0 = 맨 위까지 끌면 전체화면
 
 /** 위쪽 손잡이를 위아래로 끌면 높이가 바뀌고, 놓으면 가까운 높이(작게·중간·크게)에 맞춰진다. 손잡이를 누르면 중간↔크게 */
 @Composable
