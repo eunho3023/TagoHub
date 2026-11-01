@@ -393,6 +393,12 @@ class TripController(
         }
     }
 
+    /** 검색 결과의 「출발」「도착」 버튼: 지금 고치는 칸과 상관없이 고른 쪽에 넣음 */
+    fun pickAs(p: PlanPoint, field: PlanField) {
+        if (saving.value == null && editing.value != PlanField.Via) editing.value = field
+        pick(p)
+    }
+
     fun pick(p: PlanPoint?) {
         val kind = saving.value
         if (kind != null && p != null) {

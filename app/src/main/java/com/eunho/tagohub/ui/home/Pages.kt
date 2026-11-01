@@ -2,6 +2,13 @@ package com.eunho.tagohub.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Navigation
+import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
@@ -125,22 +132,25 @@ fun MorePage(
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Text("설정", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                SettingsLabel("화면 모드")
+                SettingsLabel("자주 바꾸는 것", Icons.Outlined.Tune)
+                QuickToggles()
+
+                SettingsLabel("화면 모드", Icons.Outlined.Palette)
                 ThemeModePicker()
 
-                SettingsLabel("야간 주행 모드")
+                SettingsLabel("야간 주행 모드", Icons.Outlined.NightsStay)
                 NightModePicker()
 
-                SettingsLabel("내 위치 아이콘")
+                SettingsLabel("내 위치 아이콘", Icons.Outlined.MyLocation)
                 VehiclePicker()
 
-                SettingsLabel("길안내")
+                SettingsLabel("길안내", Icons.Outlined.Navigation)
                 GuidanceSettings()
 
-                SettingsLabel("계정")
+                SettingsLabel("계정", Icons.Outlined.AccountCircle)
                 SettingsCard { AccountRow() }
 
-                SettingsLabel("정보")
+                SettingsLabel("정보", Icons.Outlined.Info)
                 // 앱이 비정상 종료된 적이 있으면 원인을 보고 공유할 수 있음
                 var crash by remember { mutableStateOf(com.eunho.tagohub.data.CrashLog.last()) }
                 var showCrash by remember { mutableStateOf(false) }
@@ -198,9 +208,38 @@ fun MorePage(
 }
 
 @Composable
-private fun SettingsLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+private fun SettingsLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
+    Row(Modifier.padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (icon != null) {
+            androidx.compose.material3.Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+    }
 }
+
+/** 자주 바꾸는 켜기/끄기만 맨 위에 모은 카드: 안내 음성 · 단속 안내 · 보호구역 안내 */
+@Composable
+private fun QuickToggles() {
+    val context = LocalContext.current
+    val voiceOn by com.eunho.tagohub.guidance.DriveGuidance.voiceOn.collectAsStateWithLifecycle()
+    val groups by com.eunho.tagohub.guidance.DriveGuidance.zoneGroups.collectAsStateWithLifecycle()
+    SettingsCard {
+        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("안내 음성", Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            com.eunho.tagohub.ui.common.ClearSwitch(voiceOn, { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = it })
+        }
+        QUICK_ZONES.forEach { g ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(g.label, Modifier.weight(1f).padding(end = 10.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                com.eunho.tagohub.ui.common.ClearSwitch(g in groups, { com.eunho.tagohub.guidance.DriveGuidance.setZoneGroup(context, g, it) })
+            }
+        }
+    }
+}
+
+private val QUICK_ZONES = listOf(com.eunho.tagohub.data.ZoneGroup.Camera, com.eunho.tagohub.data.ZoneGroup.Protect)
 
 @Composable
 private fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
@@ -220,17 +259,9 @@ private fun GuidanceSettings() {
     val volume by com.eunho.tagohub.guidance.DriveGuidance.voiceVolume.collectAsStateWithLifecycle()
     val groups by com.eunho.tagohub.guidance.DriveGuidance.zoneGroups.collectAsStateWithLifecycle()
     var more by remember { mutableStateOf(false) }
-    val main = listOf(
-        com.eunho.tagohub.data.ZoneGroup.Camera, com.eunho.tagohub.data.ZoneGroup.Parking,
-        com.eunho.tagohub.data.ZoneGroup.Protect, com.eunho.tagohub.data.ZoneGroup.Bump,
-    )
-    val rest = com.eunho.tagohub.data.ZoneGroup.entries - main.toSet()
+    val main = listOf(com.eunho.tagohub.data.ZoneGroup.Parking, com.eunho.tagohub.data.ZoneGroup.Bump)
+    val rest = com.eunho.tagohub.data.ZoneGroup.entries - main.toSet() - QUICK_ZONES.toSet()
     SettingsCard {
-        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("안내 음성", Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            com.eunho.tagohub.ui.common.ClearSwitch(voiceOn, { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = it })
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
             Text("음성 크기", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             androidx.compose.material3.Slider(
