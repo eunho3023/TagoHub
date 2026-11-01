@@ -91,6 +91,7 @@ fun SearchPanel(
     val progress by vm.busProgress.collectAsStateWithLifecycle()
     val names by vm.cityNames.collectAsStateWithLifecycle()
     var settled by remember { mutableStateOf("") }
+    var focused by remember { mutableStateOf(false) }      // 검색창을 눌러 글자를 칠 수 있는 상태인지 (최근 검색은 이때만 보임)
     val places by produceState(emptyList<Place2>(), query, scope) {
         value = emptyList()
         if (scope == SearchScope.All && query.isNotBlank()) {
@@ -116,10 +117,11 @@ fun SearchPanel(
         SearchBox(
             query, onQuery, "검색하기",
             onSearch = { if (scope != SearchScope.Subway && query.isNotBlank()) vm.searchBus(query) },
+            onFocusChange = { focused = it },
         )
         if (query.isBlank()) {
-            // 검색어가 비어 있으면 최근 검색어를 보여 줌 (누르면 그 말로 검색, ✕ 로 하나씩 지움)
-            if (history.isNotEmpty()) {
+            // 검색창을 누르면(검색어가 비어 있을 때) 그 아래에 최근 검색어를 보여 줌 (누르면 그 말로 검색, ✕ 로 하나씩 지움)
+            if (focused && history.isNotEmpty()) {
                 SectionHeader("최근 검색")
                 history.take(8).forEach { h ->
                     Row(Modifier.fillMaxWidth().clickable { onQuery(h) }.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {

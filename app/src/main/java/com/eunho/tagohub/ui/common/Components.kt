@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import com.eunho.tagohub.data.PlaceGroups
 import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -239,12 +240,14 @@ fun SearchBox(
     modifier: Modifier = Modifier,
     onSearch: () -> Unit = {},
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    onFocusChange: (Boolean) -> Unit = {},
 ) {
     val focus = LocalFocusManager.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+        modifier = modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { onFocusChange(it.isFocused) },
         singleLine = true,
         placeholder = { Text(placeholder) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
