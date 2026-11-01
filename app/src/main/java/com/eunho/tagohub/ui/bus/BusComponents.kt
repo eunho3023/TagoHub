@@ -278,7 +278,7 @@ internal fun TimelineRow(
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
             // 이 정류소를 떠나 다음 정류소로 가는 중인 버스: 아래쪽(다음 정류소 바로 앞)에 차량번호
@@ -292,7 +292,7 @@ internal fun TimelineRow(
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }

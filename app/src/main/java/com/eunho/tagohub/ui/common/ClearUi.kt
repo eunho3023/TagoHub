@@ -70,7 +70,7 @@ fun PillChip(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = if (selected) cs.primary else if (textColor != Color.Unspecified) textColor else cs.onSurface,
-                maxLines = 1,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             if (dropdown) {
                 Icon(

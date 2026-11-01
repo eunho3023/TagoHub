@@ -629,7 +629,7 @@ private fun MapLayerSheet(
                             option.title,
                             Modifier.padding(top = 6.dp),
                             style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                             color = if (on) blue else MaterialTheme.colorScheme.onSurface,
                         )
@@ -1154,7 +1154,7 @@ private fun RouteBandHeader(
                 Pill(it.removeSuffix("버스"), color)
                 Spacer(Modifier.width(10.dp))
             }
-            Text(routeNo, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(routeNo, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
             IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") }
             IconButton(onClick = onFavorite) {
@@ -1302,10 +1302,10 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             Spacer(Modifier.weight(1f))
             if (d.stop.lat != null) {
                 androidx.compose.material3.OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
-                    Text("여기서 출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text("여기서 출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
                 }
                 Button(onClick = { vm.useStopAs(d.stop, asOrigin = false); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
-                    Text("여기로 도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text("여기로 도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
                 }
             }
         }

@@ -297,7 +297,7 @@ private fun ModeTile(t: Tile, dark: Boolean, modifier: Modifier = Modifier) {
                 fontSize = if (t.label.length >= 5) 13.sp else 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 softWrap = false,
             )
         }
