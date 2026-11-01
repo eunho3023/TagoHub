@@ -25,6 +25,15 @@ class SeoulSignalsTest {
     }
 
     @Test
+    fun theNoCountdownValueKeepsTheColorButDropsTheSeconds() {
+        // 실제 응답: 카운트다운이 없는 교차로는 모든 방향에 36001 (= 3600.1초)
+        val p = SeoulSignals.parsePhases("""[{"trsmUtcTime":1.0,"etStsgStatNm":"stop-And-Remain","etStsgRmdrCs":36001.0,"wtStsgStatNm":"protected-Movement-Allowed","wtStsgRmdrCs":36001.0}]""")
+        assertEquals(listOf(SignalColor.Red, SignalColor.Green), p.map { it.color })
+        assertTrue(p.all { it.remainingMs == null })
+        assertEquals(1800, SeoulSignals.parsePhases("""[{"stStsgStatNm":"protected-clearance","stStsgRmdrCs":18.0}]""").single().remainingMs)
+    }
+
+    @Test
     fun emptyAndNullFieldsAreSkipped() {
         val p = SeoulSignals.parsePhases(sample)
         assertTrue(p.none { it.direction == "nt" })
