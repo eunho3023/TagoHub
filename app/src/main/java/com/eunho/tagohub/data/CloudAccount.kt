@@ -66,6 +66,8 @@ object CloudAccount {
             if (switched) "다른 계정의 데이터를 받아 왔어요. 앱을 다시 켜면 반영돼요" else null
         } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
             "취소했어요"
+        } catch (e: androidx.credentials.exceptions.NoCredentialException) {
+            "이 폰에 로그인할 구글 계정이 없어요. 폰 설정에서 구글 계정을 추가한 뒤 다시 해 주세요"
         } catch (e: Exception) {
             Log.w(TAG, "구글 로그인 실패", e)
             "로그인에 실패했어요 (${e.javaClass.simpleName})"
