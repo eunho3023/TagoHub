@@ -34,19 +34,39 @@ object TrafficLights {
 
     /**
      * 남(S)·서(W)·북(N)·동(E) 범위 안의 신호등. 너무 많으면 [max] 개만(화면 가운데에 가까운 것부터).
-     * [all] 은 위도 순으로 정렬돼 있어야 함.
+     * [all] 은 위도 순으로 정렬돼 있어야 함. [skip] 이 true 인 점은 뺌(개수를 자르기 전에 빼서 그만큼 다른 점이 채워짐).
      */
-    fun inBox(all: List<TrafficLightPoint>, s: Double, w: Double, n: Double, e: Double, max: Int = 400): List<TrafficLightPoint> {
+    fun inBox(
+        all: List<TrafficLightPoint>, s: Double, w: Double, n: Double, e: Double, max: Int = 400,
+        skip: (TrafficLightPoint) -> Boolean = { false },
+    ): List<TrafficLightPoint> {
         if (all.isEmpty()) return emptyList()
         var lo = 0
         var hi = all.size
         while (lo < hi) { val mid = (lo + hi) ushr 1; if (all[mid].lat < s) lo = mid + 1 else hi = mid }
         val found = ArrayList<TrafficLightPoint>()
         var i = lo
-        while (i < all.size && all[i].lat <= n) { val p = all[i]; if (p.lng in w..e) found += p; i++ }
+        while (i < all.size && all[i].lat <= n) { val p = all[i]; if (p.lng in w..e && !skip(p)) found += p; i++ }
         if (found.size <= max) return found
         val cLat = (s + n) / 2
         val cLng = (w + e) / 2
         return found.sortedBy { (it.lat - cLat) * (it.lat - cLat) + (it.lng - cLng) * (it.lng - cLng) }.take(max)
+    }
+
+    /**
+     * 실시간 신호가 있는 교차로 가운데([centers]) 에서 [meters] 안에 있는 점인지 가르는 함수. 실시간 신호 마커와 겹쳐 두 개로 보이지 않게
+     * 신호등 위치에서 뺄 때 씀 ([inBox] 의 skip). 가운데가 없으면 아무것도 빼지 않음.
+     */
+    fun nearAny(centers: List<Pair<Double, Double>>, meters: Double): (TrafficLightPoint) -> Boolean {
+        if (centers.isEmpty()) return { false }
+        val limit = meters * meters
+        return { p ->
+            val mPerLng = 111_320.0 * kotlin.math.cos(Math.toRadians(p.lat))
+            centers.any { (lat, lng) ->
+                val dy = (p.lat - lat) * 111_320.0
+                val dx = (p.lng - lng) * mPerLng
+                dx * dx + dy * dy <= limit
+            }
+        }
     }
 }
