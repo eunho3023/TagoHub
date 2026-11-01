@@ -39,6 +39,8 @@ android {
         buildConfigField("String", "KAC_API_KEY", "\"${localProps.getProperty("KAC_API_KEY", localProps.getProperty("TAGO_SERVICE_KEY", ""))}\"")
         buildConfigField("String", "KRIC_SUBWAY_KEY","\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
         buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
+        // 서울 교통빅데이터 플랫폼(T Data) 실시간 교차로 신호 인증키. 비우면 서울 실시간 신호는 지도에 나오지 않음
+        buildConfigField("String", "SEOUL_SIGNAL_KEY", "\"${localProps.getProperty("SEOUL_SIGNAL_KEY", "")}\"")
         // 한국도로공사 고속도로 공공데이터(data.ex.co.kr) 인증키
         buildConfigField("String", "EX_API_KEY", "\"${localProps.getProperty("EX_API_KEY", "")}\"")
         // 기상청 CCTV 기반 도로날씨 인증키 (공공데이터포털 RoadWthrInfoService)

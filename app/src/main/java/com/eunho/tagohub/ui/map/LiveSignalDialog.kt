@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eunho.tagohub.data.SignalColor
 import com.eunho.tagohub.data.SignalIntersection
+import com.eunho.tagohub.data.SeoulSignals
 import com.eunho.tagohub.data.SignalPhase
 import com.eunho.tagohub.data.UlsanSignals
 import kotlinx.coroutines.delay
@@ -47,7 +48,8 @@ fun LiveSignalDialog(intersection: SignalIntersection, onDismiss: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     val snap by produceState<Snapshot?>(null, intersection.id) {
         while (true) {
-            val got = UlsanSignals.phases()
+            // 서울은 교차로 하나씩, 울산은 한 번에 전체를 받음
+            val got = if (SeoulSignals.isSeoulId(intersection.id)) SeoulSignals.phases(intersection.id)?.let { mapOf(intersection.id to it) } else UlsanSignals.phases()
             value = Snapshot(got, System.currentTimeMillis())
             loading = false
             delay(REFRESH_MS)
@@ -71,7 +73,8 @@ fun LiveSignalDialog(intersection: SignalIntersection, onDismiss: () -> Unit) {
                     else -> phases.forEach { PhaseRow(it, elapsed) }
                 }
                 Text(
-                    "한국지역정보개발원 교차로 신호 자료예요. 참고용이라 실제 신호와 다를 수 있고, 방향 표기는 자료에 적힌 그대로예요.",
+                    (if (SeoulSignals.isSeoulId(intersection.id)) "서울시 교통빅데이터(C-ITS) 교차로 신호 자료예요." else "한국지역정보개발원 교차로 신호 자료예요.") +
+                        " 참고용이라 실제 신호와 다를 수 있으니 교차로의 신호등을 꼭 확인하세요. 방향 표기는 자료에 적힌 그대로예요.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
