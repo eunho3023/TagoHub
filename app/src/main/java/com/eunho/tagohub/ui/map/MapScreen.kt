@@ -465,9 +465,7 @@ fun MapScreen(
       }
     }
     val liveSignal by vm.selectedSignal.collectAsStateWithLifecycle()
-    liveSignal?.let {
-        if (com.eunho.tagohub.data.SignalPlans.isPlanId(it.id)) SignalPlanDialog(it, vm::dismissLiveSignal) else LiveSignalDialog(it, vm::dismissLiveSignal)
-    }
+    liveSignal?.let { LiveSignalDialog(it, vm::dismissLiveSignal) }
     selectedItsCctv?.let { cctv ->
         ItsCctvDialog(cctv = cctv, onDismiss = vm::dismissItsCctv)
     }
@@ -536,8 +534,8 @@ private fun MapLayerSheet(
 ) {
     val layers = listOf(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
-        // 신호등: 위치(전국) + 파란 테두리는 눌러서 실시간 신호(서울·울산)나 신호 계획(인천·대구)
-        MapLayerOption(listOf("traffic_lights"), "신호등", Icons.Filled.Traffic),
+        MapLayerOption(listOf("traffic_lights"), "신호등 위치", Icons.Filled.Traffic),
+        MapLayerOption(listOf("live_signals"), "실시간 신호(울산)", Icons.Filled.Traffic),
         MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
@@ -732,7 +730,6 @@ private tailrec fun android.content.Context.findActivity(): android.app.Activity
     else -> null
 }
 
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -1695,7 +1692,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     onStop = { vm.focusRouteStop(it.nodeId) },
                     modifier = Modifier.fillMaxSize(),
                 )
-            } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            } else
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)
                     TimelineRow(
@@ -2215,7 +2213,7 @@ fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Mo
             when {
                 editing != null -> PlanSearch(t, editing!!)
                 selected != null -> PlanDetail(t, selected!!)
-                else -> PlanList(t)
+                else -> PlanList(t, onShowMap)
             }
         }
     }
@@ -2349,7 +2347,7 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
 }
 
 @Composable
-private fun PlanList(t: TripController) {
+private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null) {
     val plans by t.plans.collectAsStateWithLifecycle()
     val destination by t.dest.collectAsStateWithLifecycle()
     val ridePlan by t.ridePlan.collectAsStateWithLifecycle()
@@ -2452,6 +2450,13 @@ private fun PlanList(t: TripController) {
                             itemsIndexed(shown) { i, p ->
                                 PlanCard(p, tag = if (i == 0) sort.label else null) { t.select(p) }
                             }
+                        }
+                        if (onShowMap != null && shown.isNotEmpty()) {
+                            Button(
+                                onClick = { t.select(shown.first()); onShowMap() },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).heightIn(min = 52.dp),
+                                shape = CircleShape,
+                            ) { Text("지도에서 보기", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
                         }
                     }
                 }
