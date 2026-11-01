@@ -74,6 +74,9 @@ import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.draw.clip
 
 /** 아래 탭: 홈·대중교통(버스·지하철·기차·고속시외·항공)·지도·내비게이션·설정 */
 enum class AppTab(val label: String, val icon: ImageVector) {
@@ -257,7 +260,15 @@ private fun RecentChips(onGoTo: (SavedPlace) -> Unit, modifier: Modifier = Modif
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.pressScale(src),
             ) {
-                Text(r.name, Modifier.heightIn(min = 32.dp).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // 이름 + ✕ (✕ 를 누르면 그 목적지만 지움)
+                Row(Modifier.heightIn(min = 32.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(r.name, Modifier.weight(1f, fill = false), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Icon(
+                        Icons.Filled.Close, contentDescription = "${r.name} 지우기",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 2.dp).size(28.dp).clip(CircleShape).clickable { com.eunho.tagohub.data.RecentDestinations.remove(r.name) }.padding(7.dp),
+                    )
+                }
             }
         }
     }

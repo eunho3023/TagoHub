@@ -39,6 +39,16 @@ object RecentDestinations {
         if (name.isBlank() || name == "내 위치" || name == "지도 중심") return
         val next = (listOf(Item(name, sub, lat, lng)) + _items.value.filterNot { it.name == name }).take(MAX)
         if (next == _items.value) return
+        save(next)
+    }
+
+    /** 목적지 하나만 지움 */
+    fun remove(name: String) {
+        val next = _items.value.filterNot { it.name == name }
+        if (next != _items.value) save(next)
+    }
+
+    private fun save(next: List<Item>) {
         _items.value = next
         val json = JSONArray().also { a -> next.forEach { a.put(JSONObject().put("n", it.name).put("s", it.sub ?: "").put("a", it.lat).put("o", it.lng)) } }
         prefs?.edit()?.putString(KEY, json.toString())?.apply()
