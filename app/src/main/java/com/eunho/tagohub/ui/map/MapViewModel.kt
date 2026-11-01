@@ -524,7 +524,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadLiveSignals() {
         if (LIVE_SIGNAL_OVERLAY !in overlays.value) { canvas?.setLiveSignals(emptyList()); return }
         viewModelScope.launch {
-            if (liveIntersections.isEmpty()) liveIntersections = com.eunho.tagohub.data.UlsanSignals.intersections()
+            if (liveIntersections.isEmpty()) {
+                // 울산 + (서울 신호 키가 있으면) 서울 교차로
+                val seoul = if (com.eunho.tagohub.data.SeoulSignals.enabled()) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.SeoulSignals.intersections(getApplication()) }
+                } else emptyList()
+                liveIntersections = com.eunho.tagohub.data.UlsanSignals.intersections() + seoul
+            }
             pushLiveSignals()
         }
     }

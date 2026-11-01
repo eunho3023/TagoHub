@@ -17,7 +17,7 @@ enum class SignalColor(val label: String) { Red("적색"), Yellow("황색"), Gre
 /** 한 방향·한 신호(직진·좌회전 …)의 지금 상태와 남은 시간 */
 data class SignalPhase(val direction: String, val kind: String, val color: SignalColor, val remainingMs: Int?, val rawState: String) {
     val directionLabel: String get() = UlsanSignals.DIRECTIONS[direction] ?: direction
-    val kindLabel: String get() = UlsanSignals.KINDS[kind] ?: kind
+    val kindLabel: String get() = UlsanSignals.KINDS[kind] ?: SeoulSignals.EXTRA_KINDS[kind] ?: kind
 }
 
 /**

@@ -23,6 +23,8 @@ EX_API_KEY=한국도로공사_인증키
 KMA_ROAD_KEY=기상청_도로날씨_인증키
 # 서울 열린데이터광장 실시간 지하철
 SEOUL_SUBWAY_KEY=서울_실시간지하철_인증키
+# 서울 교통빅데이터 플랫폼(T Data) 실시간 교차로 신호 인증키 (v2xSignalPhaseTimingFusionCurrentInfo). 없으면 서울 실시간 신호는 지도에 안 나옴
+SEOUL_SIGNAL_KEY=서울_교차로신호_인증키
 
 # 카카오 개발자 사이트
 KAKAO_NATIVE_KEY=카카오_네이티브_앱_키
