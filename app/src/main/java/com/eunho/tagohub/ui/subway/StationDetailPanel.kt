@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Load
@@ -493,12 +494,20 @@ private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick
                         }
                         rows.groupBy { it.upDown.ifBlank { "방향 정보 없음" } }.forEach { (direction, directionRows) ->
                             item(key = "d$lineId$direction") {
-                                Text(
-                                    direction,
-                                    Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = subwayLineColor(name),
-                                )
+                                // 방면 이름을 누르면 그 방향 열차가 어디쯤 오는지 노선 위에 점으로 보여 줌
+                                var open by remember { mutableStateOf(false) }
+                                Column(Modifier.fillMaxWidth().clickable { open = !open }) {
+                                    Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            direction,
+                                            Modifier.weight(1f),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = subwayLineColor(name),
+                                        )
+                                        Text(if (open) "열차 위치 접기 ▴" else "열차 위치 ▾", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (open) TrainTrack(directionRows, now, d.group.displayLines.firstOrNull().orEmpty(), subwayLineColor(name))
+                                }
                             }
                             items(directionRows) { a ->
                                 ArrivalRow(a, now, onClick = onArrivalClick?.let { cb -> { cb(a) } })
@@ -555,6 +564,34 @@ private fun arrivalMain(a: SubwayArrival, now: LocalDateTime): String {
     val elapsed = a.received?.let { Duration.between(it, now).seconds.coerceIn(0, 600) } ?: 0
     val left = (sec - elapsed).coerceAtLeast(0)
     return if (left < 60) "곧 도착" else "${(left + 59) / 60}분 후"
+}
+
+/** 이 역으로 오는 열차들의 현재 위치를 노선 위 점으로: 열차 위치 ●━━ 이번 역 */
+@Composable
+private fun TrainTrack(rows: List<SubwayArrival>, now: LocalDateTime, here: String, color: Color) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        rows.take(3).forEach { a ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(76.dp)) {
+                    Text(a.current ?: "위치 확인 중", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(a.dest?.let { "${it}행" } ?: a.lineText, fontSize = 11.sp, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Box(Modifier.size(12.dp).background(color, androidx.compose.foundation.shape.CircleShape))
+                Box(Modifier.weight(1f).height(4.dp).background(color.copy(alpha = 0.45f)))
+                Box(Modifier.size(16.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape).border(4.dp, color, androidx.compose.foundation.shape.CircleShape))
+                Column(Modifier.width(64.dp), horizontalAlignment = Alignment.End) {
+                    Text(here.ifBlank { "이번 역" }, fontSize = 12.sp, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(arrivalMain(a, now), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = color)
+                }
+            }
+        }
+    }
 }
 
 @Composable

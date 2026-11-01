@@ -2314,7 +2314,11 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                 is Load.Ok -> {
                     if (r.value.isEmpty()) item { MessageText("검색 결과가 없어요.") }
                     items(r.value) { p ->
-                        PlanResultRow(if (p.stopId != null) Icons.Filled.DirectionsBus else Icons.Filled.Place, p.name, p.sub) { t.pick(p) }
+                        PlanResultRow(
+                            if (p.stopId != null) Icons.Filled.DirectionsBus else Icons.Filled.Place, p.name, p.sub,
+                            onSetOrigin = if (saving == null && field != PlanField.Via) ({ t.pickAs(p, PlanField.Origin) }) else null,
+                            onSetDest = if (saving == null && field != PlanField.Via) ({ t.pickAs(p, PlanField.Dest) }) else null,
+                        ) { t.pick(p) }
                     }
                 }
                 is Load.Fail -> item { MessageText(r.message) }
@@ -2330,7 +2334,14 @@ private fun MessageText(text: String) {
 }
 
 @Composable
-private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String?, onClick: () -> Unit) {
+private fun PlanResultRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    sub: String?,
+    onSetOrigin: (() -> Unit)? = null,
+    onSetDest: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -2343,6 +2354,18 @@ private fun PlanResultRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (!sub.isNullOrBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        if (onSetOrigin != null) {
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = onSetOrigin, shape = CircleShape, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), modifier = Modifier.heightIn(min = 36.dp)) {
+                com.eunho.tagohub.ui.common.FitText("출발", maxSizeSp = 13f, minSizeSp = 10f, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+        if (onSetDest != null) {
+            Spacer(Modifier.width(6.dp))
+            Button(onClick = onSetDest, shape = CircleShape, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), modifier = Modifier.heightIn(min = 36.dp)) {
+                com.eunho.tagohub.ui.common.FitText("도착", maxSizeSp = 13f, minSizeSp = 10f, fontWeight = FontWeight.ExtraBold)
+            }
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
