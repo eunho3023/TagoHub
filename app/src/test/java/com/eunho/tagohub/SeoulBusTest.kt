@@ -13,6 +13,25 @@ class SeoulBusTest {
         """<?xml version="1.0" encoding="UTF-8"?><ServiceResult><comMsgHeader/><msgHeader><headerCd>$cd</headerCd><headerMsg>정상적으로 처리되었습니다.</headerMsg><itemCount>0</itemCount></msgHeader><msgBody>$items</msgBody></ServiceResult>"""
 
     @Test
+    fun routeStopsFromSeoulApiAreOrderedAndSplitAtTheTurn() {
+        // 부천 88번(서울 정류장에서 연 경기 노선) 모양을 줄인 것: 순서가 섞여 와도 seq 로 정렬, 회차(transYn=Y)에서 상·하행이 나뉨
+        val rows = SeoulBusXml.parse(wrap(listOf(
+            Triple(2, "200000002", "봉오고가교(미정차)"), Triple(1, "200000001", "대장공영차고지"),
+            Triple(3, "100000003", "여의도환승센터"), Triple(4, "100000004", "여의나루역"),
+        ).joinToString("") { (seq, id, name) ->
+            "<itemList><seq>$seq</seq><station>$id</station><stationNm>$name</stationNm><arsId>${if (seq == 2) "0" else "1900$seq"}</arsId>" +
+                "<gpsX>126.9$seq</gpsX><gpsY>37.5$seq</gpsY><transYn>${if (seq == 3) "Y" else "N"}</transYn></itemList>"
+        }))
+        val stops = SeoulMappers2.routeStops(rows)
+        assertEquals(listOf("대장공영차고지", "봉오고가교(미정차)", "여의도환승센터", "여의나루역"), stops.map { it.name })
+        assertEquals("SEB200000001", stops[0].nodeId)
+        assertEquals(null, stops[1].nodeNo)                      // 번호 없는 정류장(0)은 비움
+        assertEquals("19001", stops[0].nodeNo)
+        assertEquals(37.51, stops[0].lat!!, 1e-9)
+        assertTrue(stops.first().upDown != stops.last().upDown)  // 회차 정류장 앞뒤로 방향이 나뉨
+    }
+
+    @Test
     fun arsIsPaddedToFiveDigits() {
         assertEquals("01001", SeoulBus.ars("1001"))     // 엑셀을 거치며 앞의 0 이 빠진 번호도
         assertEquals("01001", SeoulBus.ars(" 01001 "))
