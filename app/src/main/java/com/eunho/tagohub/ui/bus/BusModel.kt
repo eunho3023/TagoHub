@@ -557,6 +557,19 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
             return
         }
     }
+    // 서울 정류장에서 연 노선인데 앱 안 서울 노선 표에 없는 노선(서울을 지나는 경기·인천 노선 등):
+    // 서울시 API 가 정류장·노선 정보를 다 줌 (TAGO 는 서울 노선 ID 를 몰라서 "정류장 정보가 없어요"가 됐음)
+    if (SeoulBus.isSeoul(d.routeId)) {
+        coroutineScope {
+            launch { d.info.value = Load.Ok(cachedInfo(d.routeId) { (Graph.seoulBus.routeInfo(d.routeId) as? TagoResult.Success)?.data }) }
+            launch {
+                if (d.stops.value !is Load.Ok) d.stops.value = Load.Loading
+                val st = cachedStops(d.routeId) { (Graph.seoulBus.routeStops(d.routeId) as? TagoResult.Success)?.data }
+                d.stops.value = if (!st.isNullOrEmpty()) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했어요.")
+            }
+        }
+        return
+    }
     coroutineScope {
         launch {
             val k = StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.routeById(d.routeId) } }

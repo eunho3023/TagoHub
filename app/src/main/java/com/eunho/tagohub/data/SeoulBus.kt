@@ -85,6 +85,25 @@ object SeoulMappers2 {
         .firstOrNull { it.str("transYn") == "Y" }
         ?.str("station")?.let(SeoulBus::app)
 
+    /**
+     * 노선 정류장 (getStaionByRoute): 순번 순서, 좌표(gpsX 경도·gpsY 위도), 정류장 번호(arsId).
+     * 회차 정류장(transYn)으로 상·하행을 나눔. 앱 안 서울 노선 표에 없는 노선(서울 정류장을 지나는 경기·인천 노선 등)에 씀
+     */
+    fun routeStops(rows: List<Row>): List<RouteStop> {
+        val stops = rows.mapNotNull { r ->
+            RouteStop(
+                nodeId = r.str("station")?.let(SeoulBus::app) ?: return@mapNotNull null,
+                name = r.str("stationNm") ?: return@mapNotNull null,
+                nodeNo = r.str("arsId")?.takeIf { it != "0" && it.isNotBlank() },
+                ord = r.str("seq")?.toIntOrNull() ?: return@mapNotNull null,
+                upDown = null,
+                lat = r.double("gpsY"),
+                lng = r.double("gpsX"),
+            )
+        }.sortedBy { it.ord }
+        return RouteDirections.markTurn(stops, turnStation(rows))
+    }
+
     /** 정류장 도착 (getStationByUid): 한 행에 노선별 첫째·둘째 버스 */
     fun arrivals(r: Row): List<BusArrival> = (1..2).mapNotNull { n ->
         val (sec, stops) = SeoulBus.parseArrMsg(r.str("arrmsg$n")) ?: return@mapNotNull null

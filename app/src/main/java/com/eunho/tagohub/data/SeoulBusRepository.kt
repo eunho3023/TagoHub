@@ -78,7 +78,9 @@ class SeoulBusRepository(private val api: SeoulBusApi) {
             .also { synchronized(infoCache) { infoCache[routeAppId] = it } }
     }
 
-    /** 노선 모양 (노선별 캐시) */
+    /** 노선 정류장 (서울시 API, 상·하행 나눔). 앱 안 서울 노선 표에 없는 노선에 씀 */
+    suspend fun routeStops(routeAppId: String) = run { SeoulMappers2.routeStops(rows { api.stationsByRoute(SeoulBus.std(routeAppId)) }) }
+
     /** 회차 정류장 (앱 정류장 ID) — 처음 한 번만 받고 저장. 없으면 null */
     suspend fun turnStation(routeAppId: String): String? {
         withContext(Dispatchers.IO) { StaticCache.seoulTurn(routeAppId) }?.let { return it.ifEmpty { null } }
