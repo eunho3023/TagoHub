@@ -27,7 +27,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -232,6 +234,20 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             note?.let { NoteChip(it, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer) }
         }
 
+        // ── 과속 경고: 단속 제한속도를 3km/h 넘으면 화면 가장자리가 천천히 빨갛게 숨 쉼 ──
+        val speedNow = info?.speedKmh ?: 0
+        val limitNow = info?.zone?.next?.zone?.limitKmh?.takeIf { info?.zone?.next?.zone?.kind?.isCamera == true && (info?.zone?.distance ?: 9e9) <= 1500.0 }
+        if (limitNow != null && speedNow > limitNow + 3) {
+            val reduce = com.eunho.tagohub.ui.common.rememberReduceMotion()
+            val pulse by androidx.compose.animation.core.rememberInfiniteTransition(label = "over").animateFloat(
+                initialValue = 0.15f,
+                targetValue = 0.55f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(700), androidx.compose.animation.core.RepeatMode.Reverse),
+                label = "overAlpha",
+            )
+            Box(Modifier.fillMaxSize().border(10.dp, BoardColor.Danger.copy(alpha = if (reduce) 0.45f else pulse)))
+        }
+
         // ── 오른쪽: 남은 길 소통 막대 ──
         if (route != null && st != null) {
             val spans = remember(nav, st.progressMeters.toInt() / 100) { nav?.trafficSpans(st.progressMeters).orEmpty() }
@@ -248,6 +264,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
         SpeedGauge(
             speedKmh = info?.speedKmh ?: 0,
             limitKmh = limit ?: info?.roadLimitKmh,
+            cameraMeters = if (limit != null) zone?.distance else null,
             lanes = info?.lanes ?: 0,
             modifier = Modifier.align(Alignment.BottomStart).windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, bottom = 88.dp),
         )
@@ -255,15 +272,20 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
         // ── 아래: 도착 시각·남은 거리 바 ──
         // 어두운 회색 바: 목적지 이름 아래에 큰 도착 시각과 남은 거리, 오른쪽 ⋮ (내비 앱처럼)
         Surface(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 12.dp, vertical = 12.dp).fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
             shadowElevation = 12.dp,
             color = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Row(
-                Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 18.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                Modifier.padding(start = 10.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Surface(onClick = { menu = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(46.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.MoreVert, contentDescription = "안내 설정") }
+                }
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                     if (st != null) {
                         Text(
@@ -292,8 +314,8 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
                         Text("위치를 찾는 중…", style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                Surface(onClick = { menu = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(46.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.MoreVert, contentDescription = "안내 설정") }
+                Surface(onClick = { confirmEnd = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text("끝내기", Modifier.heightIn(min = 46.dp).padding(horizontal = 16.dp).wrapContentHeight(Alignment.CenterVertically), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
@@ -312,7 +334,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
 
 /** 현재 속도(동그라미)와, 앞 단속카메라의 제한속도(빨간 테두리). 제한을 넘으면 속도가 빨갛게 */
 @Composable
-internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier, lanes: Int = 0) {
+internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modifier, lanes: Int = 0, cameraMeters: Double? = null) {
     val over = limitKmh != null && speedKmh > limitKmh + 3
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
@@ -334,6 +356,12 @@ internal fun SpeedGauge(speedKmh: Int, limitKmh: Int?, modifier: Modifier = Modi
                 Modifier.size(52.dp).background(Color.White, CircleShape).border(5.dp, BoardColor.Danger, CircleShape),
                 contentAlignment = Alignment.Center,
             ) { Text("$limitKmh", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold) }
+            // 앞 단속카메라까지 남은 거리: 빨간 알약 (표지 옆)
+            if (cameraMeters != null) {
+                Surface(shape = RoundedCornerShape(14.dp), color = BoardColor.Danger, contentColor = Color.White) {
+                    Text(NavText.short(cameraMeters), Modifier.padding(horizontal = 10.dp, vertical = 6.dp), fontSize = 15.sp, fontWeight = FontWeight.Black)
+                }
+            }
         }
     }
 }
@@ -547,12 +575,12 @@ private fun GuidanceSettingsSheet(onDismiss: () -> Unit, onEnd: () -> Unit) {
                     OutlinedButton(onClick = { DriveGuidance.deviate.value += 1 }) { Text("이탈 시험") }
                 }
             }
-            OutlinedButton(
+            Button(
                 onClick = onEnd,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                border = BorderStroke(2.dp, BoardColor.Danger),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = BoardColor.Danger),
-            ) { Text("안내 종료", fontWeight = FontWeight.Bold) }
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = NaviButton, contentColor = Color.White),
+            ) { Text("안내 종료", fontWeight = FontWeight.ExtraBold, fontSize = 17.sp) }
         }
     }
 }
