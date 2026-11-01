@@ -1,5 +1,6 @@
 package com.eunho.tagohub
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -73,7 +74,20 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.RouteHistory.load(applicationContext)
         com.eunho.tagohub.data.NightSettings.load(applicationContext)
         com.eunho.tagohub.data.VehicleSettings.load(applicationContext)
+        takeEmailLink(intent)
         setContent { TagoTheme { MainScreen() } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeEmailLink(intent)
+    }
+
+    /** 메일의 로그인 링크를 눌러 앱이 열렸으면 링크를 넘겨서 로그인을 마무리하게 함 */
+    private fun takeEmailLink(intent: Intent?) {
+        val link = intent?.data?.toString() ?: return
+        if (com.eunho.tagohub.data.CloudAccount.isEmailLink(link)) com.eunho.tagohub.data.CloudAccount.emailLink.value = link
     }
 
     /** 앱 버전 번호 (업데이트되면 저장해 둔 노선 정보를 새로 받기 위해) */

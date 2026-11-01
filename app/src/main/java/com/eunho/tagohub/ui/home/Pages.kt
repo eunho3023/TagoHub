@@ -267,7 +267,7 @@ private fun AccountRow() {
         while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
         c as? android.app.Activity
     }
-    val email = account.email
+    val email = account.email ?: account.phone
     Column(Modifier.fillMaxWidth().padding(14.dp)) {
         Text(
             if (email != null) "$email 연결됨 · 즐겨찾기와 설정이 계정에 저장돼요" else "구글 계정을 연결하면 앱을 지우거나 폰을 바꿔도 즐겨찾기와 설정이 이어져요",
@@ -294,7 +294,7 @@ private fun AccountRow() {
         // 이메일 회원가입·로그인 (가입하면 지금 저장된 즐겨찾기·설정이 그대로 이어짐)
         if (email == null) {
             var showEmail by remember { mutableStateOf(false) }
-            androidx.compose.material3.TextButton(onClick = { showEmail = true }) { Text("이메일로 가입·로그인") }
+            androidx.compose.material3.TextButton(onClick = { showEmail = true }) { Text("이메일·전화번호로 가입·로그인") }
             if (showEmail) com.eunho.tagohub.ui.common.EmailAuthDialog(
                 onDismiss = { showEmail = false },
                 onSuccess = { showEmail = false; android.widget.Toast.makeText(context, "로그인했어요", android.widget.Toast.LENGTH_SHORT).show() },
