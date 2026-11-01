@@ -38,6 +38,20 @@ python web/server.py --host 0.0.0.0  # 같은 Wi-Fi 의 폰에서도 http://PC�
   "JavaScript SDK 도메인"에 `http://localhost:8000` 을 등록하고, 그 키를 `local.properties` 에 `KAKAO_JS_KEY=키` 로 한 줄 넣으세요.
   (더보기 → 지도에서 OpenStreetMap 으로 되돌릴 수 있고, 카카오맵을 못 불러오면 자동으로 OpenStreetMap 으로 열립니다.)
 
+## Windows에서 앱처럼 설치 (PWA)
+
+웹 버전을 Firebase Hosting에 배포한 뒤 Edge에서 사이트를 열고 **설정 및 기타 → 앱 → 이 사이트를 앱으로 설치**를 선택하면 시작 메뉴와 작업 표시줄에서 앱처럼 실행할 수 있습니다. Chrome에서도 사이트 메뉴의 **앱 설치**를 사용할 수 있습니다. 개발 중에는 `http://localhost:8000`에서도 확인할 수 있습니다.
+
+iPhone/iPad에서는 HTTPS로 연 웹사이트의 Safari **공유 → 홈 화면에 추가**를 선택해 웹앱으로 실행할 수 있도록 Apple 메타데이터와 아이콘도 연결했습니다. 이는 App Store용 네이티브 iOS 앱과는 별도입니다.
+
+서비스 워커는 화면 파일만 캐시합니다. `/api/` 실시간 교통 응답과 지도 타일은 캐시하지 않으므로 도착정보·검색·지도 기능에는 인터넷 연결이 필요합니다. 이 PWA는 별도 `.exe`/MSIX 설치 프로그램과는 다른 방식입니다.
+
+## Firebase Hosting + Cloud Run 준비
+
+`firebase.json`은 `static/`만 Firebase Hosting에 제공하고, `/api/**`를 `tagohub-api` Cloud Run 서비스의 `asia-northeast3` 리전으로 전달합니다. Python 서버 컨테이너는 `deploy/Dockerfile`을 사용합니다. `deploy/prepare-cloudrun-context.ps1`은 배포에 필요한 서버, 정적 파일, 작은 TSV 데이터만 프로젝트의 `.work/` 아래 임시 빌드 폴더로 복사합니다. `local.properties`, Firebase 클라이언트 설정, 서명 파일과 API 키는 복사하지 않습니다.
+
+배포 전에는 Firebase 프로젝트 연결, Secret Manager의 서버 API 키, Cloud Run 공개 호출에 대한 인증·남용 방지, 정류장 DB의 인스턴스별 다운로드 동작을 검토해야 합니다. Cloud Run은 Firebase Spark 요금제에서 사용할 수 없으며 Billing 계정을 연결하면 Blaze로 바뀔 수 있습니다. 이 저장소에는 아직 Firebase 프로젝트 설정이 없으므로 이 파일들은 배포 준비용이며, 결제 설정이나 공개 배포를 수행하지 않습니다. Android/iOS Firebase 연결과 즐겨찾기 계정 동기화도 아직 구성되지 않았습니다.
+
 ## exe 만들기
 
 ```bash
