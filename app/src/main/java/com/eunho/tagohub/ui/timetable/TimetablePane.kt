@@ -743,10 +743,10 @@ private fun OptionSheet(
                                 .clickable { tab = i },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                label, style = MaterialTheme.typography.labelLarge,
+                            com.eunho.tagohub.ui.common.FitText(
+                                label, maxSizeSp = 14f, minSizeSp = 10f,
                                 fontWeight = if (tab == i) FontWeight.ExtraBold else FontWeight.Medium,
-                                color = if (tab == i) cs.onSurface else cs.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                color = if (tab == i) cs.onSurface else cs.onSurfaceVariant,
                             )
                         }
                     }

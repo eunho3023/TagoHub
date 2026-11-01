@@ -97,7 +97,7 @@ internal fun FreeDriveOverlay(vm: MapViewModel, modifier: Modifier = Modifier) {
                         Spacer(Modifier.width(6.dp))
                         Switch(checked = voiceOn, onCheckedChange = { FreeDriveSession.voiceOn.value = it })
                     }
-                    Button(onClick = { FreeDriveSession.stop() }) { Text("자유주행 종료", maxLines = 2) }
+                    Button(onClick = { FreeDriveSession.stop() }) { com.eunho.tagohub.ui.common.FitText("자유주행 종료", maxSizeSp = 14f, minSizeSp = 10f) }
                 }
             }
         }

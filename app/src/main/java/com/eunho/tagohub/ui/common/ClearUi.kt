@@ -65,12 +65,11 @@ fun PillChip(
         border = BorderStroke(1.dp, if (selected) cs.primary else cs.outlineVariant),
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
+            FitText(
                 label,
-                style = MaterialTheme.typography.labelLarge,
+                maxSizeSp = 14f, minSizeSp = 10f,
                 fontWeight = FontWeight.Bold,
                 color = if (selected) cs.primary else if (textColor != Color.Unspecified) textColor else cs.onSurface,
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             if (dropdown) {
                 Icon(
