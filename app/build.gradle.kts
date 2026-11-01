@@ -124,7 +124,7 @@ dependencies {
     implementation("com.kakao.maps.open:android:2.15.2")
 
     // Firebase: 익명 로그인 + Firestore 로 즐겨찾기·설정 동기화
-    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     // 구글 로그인 (Credential Manager) 과 Task.await()
