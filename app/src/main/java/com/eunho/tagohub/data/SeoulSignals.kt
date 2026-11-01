@@ -26,6 +26,12 @@ object SeoulSignals {
     /** 서울에만 있는 신호 종류: 버스·자전거 (울산은 뜻을 확인하지 못해 보여 주지 않음) */
     val EXTRA_KINDS = mapOf("Bs" to "버스", "Bc" to "자전거")
 
+    /**
+     * 남은 시간이 이 값(1/10초, 3600초) 이상이면 카운트다운이 없는 신호로 본다. 실제 호출(2026-11)에서 고정 주기 교차로 등이
+     * 모든 방향에 36001(= 3600.1초)을 보내는 것을 확인했고, 이걸 그대로 보이면 "3601초"가 되어서 색만 보여 줌.
+     */
+    const val NO_COUNTDOWN = 36000.0
+
     private val FIELD = Regex("(nt|et|st|wt|ne|se|sw|nw)(Bs|Bc|Lt|Pd|St|Ut)sg(StatNm|RmdrCs)")
 
     /** 키가 있어야 서울 신호를 씀 (없으면 지도에 서울 교차로를 보이지 않음) */
@@ -75,7 +81,8 @@ object SeoulSignals {
             val key = f.groupValues[1] to f.groupValues[2]
             val value = v?.toString()?.trim().orEmpty()
             if (value.isEmpty() || value == "null") continue
-            if (f.groupValues[3] == "StatNm") states[key] = value else value.toDoubleOrNull()?.let { remains[key] = (it * 100).toInt() }   // 1/10초 → 밀리초
+            if (f.groupValues[3] == "StatNm") states[key] = value
+            else value.toDoubleOrNull()?.takeIf { it < NO_COUNTDOWN }?.let { remains[key] = (it * 100).toInt() }   // 1/10초 → 밀리초
         }
         val dirs = UlsanSignals.DIRECTIONS.keys.toList()
         val kinds = listOf("St", "Lt", "Pd", "Ut", "Bs", "Bc")
