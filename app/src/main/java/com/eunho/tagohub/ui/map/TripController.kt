@@ -175,6 +175,24 @@ class TripController(
     }
     val note = MutableStateFlow<String?>(null)
 
+    /** 같은 출발·도착·경유에서 옵션별로 미리 받아 둔 자동차 경로 (경로 카드에 쓰고, 카드를 누르면 다시 받지 않고 바로 씀) */
+    val driveAlts = MutableStateFlow<Map<com.eunho.tagohub.data.DriveOption, com.eunho.tagohub.data.KakaoDriveRoute>>(emptyMap())
+    private var driveAltsKey = ""
+
+    /** 수단 탭에 붙일 소요 시간(분): 이미 받아 본 수단만 */
+    val modeMinutes = MutableStateFlow<Map<PlanMode, Int>>(emptyMap())
+    private var modeKey = ""
+
+    private fun resetTimesIfRouteChanged(o: LatLng, d: PlanPoint) {
+        val key = "${o.lat},${o.lng}>${d.lat},${d.lng}"
+        if (key != modeKey) { modeKey = key; modeMinutes.value = emptyMap() }
+    }
+
+    /** 경로 전체가 보이게 지도를 맞춤 (아래 「전체경로」 버튼) */
+    fun fitDriveRoute() {
+        (ridePlan.value as? Load.Ok)?.value?.drive?.points?.let { canvas()?.fitTo(it) }
+    }
+
     /** 값이 있으면 지금 검색해서 고르는 장소를 길찾기 대신 집/회사로 저장한다 ("집 설정" 칩) */
     val saving = MutableStateFlow<com.eunho.tagohub.data.SavedKind?>(null)
 
@@ -222,6 +240,8 @@ class TripController(
         live.value = null
         mode.value = PlanMode.Transit
         ridePlan.value = Load.Idle
+        driveAlts.value = emptyMap(); driveAltsKey = ""
+        modeMinutes.value = emptyMap(); modeKey = ""
         note.value = null
         canvas()?.setTrip(emptyList(), emptyList())
     }
@@ -268,7 +288,12 @@ class TripController(
                 return@launch
             }
             val viaLatLngs = carVias.value.map { LatLng(it.lat, it.lng) }
-            val (status, route) = tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng), driveOption.value, viaLatLngs) }
+            resetTimesIfRouteChanged(o, d)
+            val altsKey = "${o.lat},${o.lng}>${d.lat},${d.lng}|" + viaLatLngs.joinToString { "${it.lat},${it.lng}" }
+            if (altsKey != driveAltsKey) { driveAltsKey = altsKey; driveAlts.value = emptyMap() }
+            val option = driveOption.value
+            val cached = driveAlts.value[option]
+            val (status, route) = if (cached != null) "OK" to cached else tracked { com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng), option, viaLatLngs) }
             if (route == null) {
                 ridePlan.value = Load.Fail(
                     when {
@@ -278,6 +303,15 @@ class TripController(
                     },
                 )
                 return@launch
+            }
+            driveAlts.value = driveAlts.value + (option to route)
+            modeMinutes.value = modeMinutes.value + (PlanMode.Car to (route.durationSeconds + 59) / 60)
+            // 다른 옵션의 경로도 뒤에서 받아 카드에 보여 줌
+            com.eunho.tagohub.data.DriveOption.entries.filter { it !in driveAlts.value }.forEach { opt ->
+                scope.launch {
+                    val r = com.eunho.tagohub.data.KakaoExtra.drive(o, LatLng(d.lat, d.lng), opt, viaLatLngs).second
+                    if (r != null && driveAltsKey == altsKey) driveAlts.value = driveAlts.value + (opt to r)
+                }
             }
             showDriveRoute(o, LatLng(d.lat, d.lng), route, fit = true, vias = viaLatLngs)
             ridePlan.value = Load.Ok(
@@ -308,6 +342,8 @@ class TripController(
                 return@launch
             }
             val (path, m, sec) = r
+            resetTimesIfRouteChanged(o, d)
+            modeMinutes.value = modeMinutes.value + ((if (bicycle) PlanMode.Bicycle else PlanMode.Walk) to (sec + 59) / 60)
             canvas()?.setTrip(listOf(TripSegment(path, if (bicycle) 0xFF2E7D32.toInt() else WALK, !bicycle)),
                 listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)))
             canvas()?.fitTo(path)
@@ -445,6 +481,8 @@ class TripController(
                 return@launch
             }
             plans.value = Load.Ok(kakao.sortedBy { it.minutes }.take(10))
+            resetTimesIfRouteChanged(LatLng(o.lat, o.lng), d)
+            modeMinutes.value = modeMinutes.value + (PlanMode.Transit to kakao.minOf { it.minutes })
             canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
         }
     }

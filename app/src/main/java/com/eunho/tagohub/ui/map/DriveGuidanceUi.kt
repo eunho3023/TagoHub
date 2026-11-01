@@ -562,41 +562,55 @@ private fun GuidanceSettingsSheet(onDismiss: () -> Unit, onEnd: () -> Unit) {
  * 이미 안내 중이면 버튼 자리에 [안내 종료].
  */
 @Composable
-internal fun DriveRoutePanel(plan: RidePlan, option: DriveOption, onOption: (DriveOption) -> Unit, modifier: Modifier = Modifier) {
+internal fun DriveRoutePanel(
+    plan: RidePlan,
+    option: DriveOption,
+    onOption: (DriveOption) -> Unit,
+    alts: Map<DriveOption, com.eunho.tagohub.data.KakaoDriveRoute>,
+    onOverview: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)) {
             Text("자동차 · 도착지", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(plan.destName.ifBlank { "목적지" }, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        // 길찾기 옵션: 추천 · 최단거리 · 무료도로 · 고속도로 제외
-        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // 경로 카드(옆으로 넘김): 추천 · 최단거리 · 무료도로 · 고속도로 제외. 고른 카드는 파랗게 채움
+        val arrivalFmt = remember { java.time.format.DateTimeFormatter.ofPattern("a h:mm", java.util.Locale.KOREAN) }
+        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(DriveOption.entries) { o ->
                 val on = option == o
+                val alt = alts[o]
+                val sec = if (on) plan.durationSeconds else alt?.durationSeconds
+                val meters = if (on) plan.distanceMeters else alt?.distanceMeters
+                val toll = if (on) plan.tollWon else alt?.tollWon
+                val taxi = if (on) plan.taxiWon else alt?.taxiWon
+                val ink = if (on) Color.White else MaterialTheme.colorScheme.onSurface
+                val sub = if (on) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
                 Surface(
                     onClick = { onOption(o) },
-                    shape = CircleShape,
+                    shape = RoundedCornerShape(18.dp),
                     color = if (on) NaviButton else MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, if (on) NaviButton else MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.heightIn(min = 38.dp),
+                    modifier = Modifier.width(210.dp),
                 ) {
-                    Box(Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                        Text(o.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (on) Color.White else MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(o.label, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = sub)
+                        Text(sec?.let { GuidanceText.duration(it) } ?: "계산 중…", fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp, color = ink)
+                        if (sec != null) Text("${java.time.LocalTime.now().plusSeconds(sec.toLong()).format(arrivalFmt)} 도착", fontSize = 13.sp, color = sub)
+                        if (meters != null) {
+                            val fare = buildList {
+                                add(NavText.short(meters.toDouble()))
+                                add(if (toll != null && toll > 0) "통행료 ${"%,d".format(toll)}원" else "통행료 없음")
+                                taxi?.takeIf { it > 0 }?.let { add("택시 ${"%,d".format(it)}원") }
+                            }
+                            Text(fare.joinToString(" · "), fontSize = 12.sp, color = sub, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        }
                     }
                 }
             }
         }
-        // 머리글: 큰 소요시간, 아래에 거리 · 통행료 · 택시 (내비 앱 경로 목록처럼)
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(GuidanceText.duration(plan.durationSeconds), fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold)
-            val toll = plan.tollWon
-            val fare = buildList {
-                add(NavText.short(plan.distanceMeters.toDouble()))
-                add(if (toll != null && toll > 0) "통행료 ${"%,d".format(toll)}원" else "통행료 없음")
-                plan.taxiWon?.takeIf { it > 0 }?.let { add("택시 약 ${"%,d".format(it)}원") }
-            }
-            Text(fare.joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            trafficSummary(plan.roads)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
+        trafficSummary(plan.roads)?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         HorizontalDivider()
         val steps = remember(plan.guides) { driveSteps(plan.guides) }
         // 왼쪽에 경로를 따라 내려가는 세로선, 출발·도착은 속이 빈 점
@@ -627,7 +641,7 @@ internal fun DriveRoutePanel(plan: RidePlan, option: DriveOption, onOption: (Dri
                 HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
-        DriveStartBar(plan)
+        DriveStartBar(plan, onOverview)
     }
 }
 
@@ -636,7 +650,7 @@ internal fun DriveRoutePanel(plan: RidePlan, option: DriveOption, onOption: (Dri
  * 위치 권한이 없으면 시작하지 않는다. 알림 권한만 없으면 안내는 되지만 알림이 보이지 않을 수 있다.
  */
 @Composable
-private fun DriveStartBar(plan: RidePlan) {
+private fun DriveStartBar(plan: RidePlan, onOverview: () -> Unit) {
     val context = LocalContext.current
     val active by DriveGuidance.active.collectAsStateWithLifecycle()
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -676,6 +690,13 @@ private fun DriveStartBar(plan: RidePlan) {
                 colors = ButtonDefaults.buttonColors(containerColor = BoardColor.Danger, contentColor = Color.White),
             ) { Text("안내 종료", fontWeight = FontWeight.ExtraBold, fontSize = 17.sp) }
         } else {
+            // 왼쪽 「전체경로」: 지도를 경로 전체가 보이게 맞춤 (보조), 오른쪽 「안내 시작」이 강조
+            Button(
+                onClick = onOverview,
+                modifier = Modifier.weight(1f).height(58.dp),
+                shape = RoundedCornerShape(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
+            ) { Text("전체경로", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             // 모의주행은 개발자용 시험 기능: 개발자 모드에서만
             if (com.eunho.tagohub.core.DevMode.on) Button(
                 onClick = { begin(true) },
