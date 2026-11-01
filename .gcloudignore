@@ -1,0 +1,20 @@
+# gcloud run deploy --source . 가 올리는 파일 (.dockerignore 와 같은 목록: 키가 든 local.properties 는 절대 올리지 않음)
+# gitignore 규칙이라 폴더를 하나씩 다시 열어 주어야 안의 파일을 고를 수 있음
+*
+!Dockerfile
+!web/
+web/*
+!web/server.py
+!web/static/
+!web/static/**
+!app/
+app/*
+!app/src/
+app/src/*
+!app/src/main/
+app/src/main/*
+!app/src/main/assets/
+app/src/main/assets/*
+!app/src/main/assets/bus_stops.db
+!app/src/main/assets/subway_stations.tsv
+!app/src/main/assets/train_timetable.tsv

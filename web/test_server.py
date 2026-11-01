@@ -170,6 +170,23 @@ class TrainStops(unittest.TestCase):
         self.assertTrue(r["message"])
 
 
+class RateLimit(unittest.TestCase):
+    def test_blocks_after_the_limit_and_frees_after_the_window(self):
+        r = s.RateLimiter(3, window=60)
+        self.assertTrue(all(r.allow("1.1.1.1", now=100 + i) for i in range(3)))
+        self.assertFalse(r.allow("1.1.1.1", now=110))
+        self.assertTrue(r.allow("2.2.2.2", now=110))          # 다른 주소는 따로 셈
+        self.assertTrue(r.allow("1.1.1.1", now=161))          # 60초가 지나면 다시 허용
+
+    def test_zero_means_unlimited(self):
+        r = s.RateLimiter(0)
+        self.assertTrue(all(r.allow("x", now=1) for _ in range(1000)))
+
+    def test_client_ip_uses_the_last_forwarded_address(self):
+        self.assertEqual(s.client_ip({"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}, "10.0.0.1"), "203.0.113.9")
+        self.assertEqual(s.client_ip({}, "10.0.0.1"), "10.0.0.1")
+
+
 class Routing(unittest.TestCase):
     def test_unknown_api_path_is_a_404_style_error(self):
         with self.assertRaises(s.ApiError) as ctx:
