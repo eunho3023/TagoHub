@@ -32,6 +32,14 @@ def test_nearby_lights_of_one_intersection_become_one_point():
     assert timer is True                       # 하나라도 잔여시간표시기가 있으면 있음
 
 
+def test_merged_point_is_a_real_light_not_the_average():
+    # ㄱ자로 놓인 세 신호등: 평균은 (37.50010, 127.00010)인데 그 자리엔 신호등이 없음 → 가장 가까운 실제 신호등을 씀
+    lights = [(37.5, 127.0, False), (37.5, 127.0003, False), (37.5003, 127.0, False)]
+    merged = tl.merge(lights)
+    assert len(merged) == 1
+    assert (merged[0][0], merged[0][1]) in {(la, ln) for la, ln, _ in lights}
+
+
 def test_far_apart_intersections_stay_separate_and_sorted_by_latitude():
     pts = [(37.5, 127.0, False), (37.5, 127.002, True), (35.1, 129.0, False)]   # 0.002° ≈ 180m
     merged = tl.merge(pts)
@@ -50,6 +58,7 @@ def test_text_format():
 if __name__ == "__main__":
     test_points_filters_bad_coordinates()
     test_nearby_lights_of_one_intersection_become_one_point()
+    test_merged_point_is_a_real_light_not_the_average()
     test_far_apart_intersections_stay_separate_and_sorted_by_latitude()
     test_merge_is_repeatable_regardless_of_input_order()
     test_text_format()
