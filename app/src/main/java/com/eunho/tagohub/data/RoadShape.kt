@@ -213,6 +213,18 @@ object Shapes {
         return p
     }
 
+    /**
+     * 화면 아래 [coverFrac] 만큼을 패널이 가릴 때, 점들이 그 위쪽 지도에 들어오도록 맞춤용 점을 하나 더함:
+     * 가장 남쪽 점보다 (남북 폭 × 가린 비율 / 보이는 비율)만큼 남쪽. 점이 2개 미만이거나 비율이 이상하면 그대로.
+     */
+    fun withRoomBelow(points: List<LatLng>, coverFrac: Double): List<LatLng> {
+        if (points.size < 2 || coverFrac <= 0.0 || coverFrac >= 0.95) return points
+        val minLat = points.minOf { it.lat }
+        val span = (points.maxOf { it.lat } - minLat).coerceAtLeast(0.002)    // 동서로 긴 노선도 아래로 조금은 띄움
+        val midLng = (points.minOf { it.lng } + points.maxOf { it.lng }) / 2
+        return points + LatLng(minLat - span * coverFrac / (1 - coverFrac), midLng)
+    }
+
     /** 정류장 중 선에서 maxM 안에 있는 것의 비율 (0~1) */
     fun coverage(path: List<LatLng>, stops: List<LatLng>, maxM: Double): Double {
         if (path.size < 2 || stops.isEmpty()) return 0.0

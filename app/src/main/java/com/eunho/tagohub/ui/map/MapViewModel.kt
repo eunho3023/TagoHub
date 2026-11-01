@@ -118,6 +118,9 @@ data class TrainView(
 /** Transit = 버스·지하철을 한 지도에 (정류장·역·버스·열차 모두) */
 enum class MapMode { Bus, Subway, Transit }
 
+/** 노선 패널이 처음 열리는 높이(화면 비율). 정류장 목록이 바로 보이게 (지도 맞춤도 이 높이를 비켜서) */
+internal const val ROUTE_SHEET_FRAC = 0.7f
+
 class MapViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // 정체 구간을 지도에 찍을 VDS 위치 파일 (assets/ex_vds.json)
@@ -2279,8 +2282,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushRoute()
         // 노선 검색에서 열었을 때만 노선 전체가 보이게. 정류장에서 노선을 누른 경우는 지도 그대로
         if (first && d.fitOnOpen) {
+            // 아래쪽은 노선 패널이 가리므로 노선이 그 위 지도에 들어오게 맞춤
             located(d).map { s -> LatLng(s.lat!!, s.lng!!) }
-                .takeIf { it.size >= 2 }?.let { canvas?.fitTo(it) }
+                .takeIf { it.size >= 2 }?.let { canvas?.fitTo(com.eunho.tagohub.data.Shapes.withRoomBelow(it, ROUTE_SHEET_FRAC.toDouble())) }
         }
         if (d.stopTimes.value.isEmpty()) viewModelScope.launch { loadRouteStopTimes(d) }
         // 도로 선형은 처음 한 번만 (노선별 캐시). 받는 동안에도 버스는 직선 구간으로 움직인다

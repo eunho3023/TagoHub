@@ -611,6 +611,7 @@ class KakaoCanvas(
         routeLines.clear()
         val a = routeArgs ?: return
         val color = a.color ?: return
+        val roadShape = (a.shape?.size ?: 0) >= 2
         val lines: List<Pair<List<LatLng>, Boolean>> = if ((a.parts?.size ?: 0) >= 2) {
             val d = ROUTE_LINE_WIDTH_DP * 0.9 * density * metersPerPx()  // 상·하행 두 줄이 굵어진 만큼 더 띄움
             a.parts!!.mapIndexed { i, p -> PathMath.offsetMeters(p, d) to (a.strong == null || a.strong == i) }
@@ -622,13 +623,16 @@ class KakaoCanvas(
             val c = if (strong) color else (color and 0x00FFFFFF) or (0x5A shl 24)
             val style = RouteLineStyle.from(ROUTE_LINE_WIDTH_DP, c, 2f, if (strong) Color.WHITE else 0x78FFFFFF,
                 RouteLinePattern.from(icons.arrowPattern(), 70f))
-            add(layer, pts, RouteLineStyles.from(style))?.let { routeLines += it }
+            // 도로 모양을 받기 전(정류장끼리 직선)에는 둥글게 하지 않음: 둥글게 하면 꼭짓점(정류장)을 비켜 가는 곡선이 됨
+            add(layer, pts, RouteLineStyles.from(style), smooth = roadShape)?.let { routeLines += it }
         }
     }
 
-    private fun add(layer: com.kakao.vectormap.route.RouteLineLayer, pts: List<LatLng>, styles: RouteLineStyles): RouteLine? {
+    /** 선 하나를 그림. [smooth] 면 꺾이는 곳을 부드럽게 (촘촘한 도로 모양일 때만. 성긴 선은 꼭짓점을 비켜 가므로 그대로) */
+    private fun add(layer: com.kakao.vectormap.route.RouteLineLayer, pts: List<LatLng>, styles: RouteLineStyles, smooth: Boolean = true): RouteLine? {
         val set = RouteLineStylesSet.from(styles)
-        val seg = RouteLineSegment.from(com.eunho.tagohub.data.Shapes.smooth(pts).map { KLatLng.from(it.lat, it.lng) }.toTypedArray(), styles)   // 꺾이는 곳 부드럽게
+        val line = if (smooth) com.eunho.tagohub.data.Shapes.smooth(pts) else pts
+        val seg = RouteLineSegment.from(line.map { KLatLng.from(it.lat, it.lng) }.toTypedArray(), styles)
         return runCatching { layer.addRouteLine(RouteLineOptions.from(seg).setStylesSet(set)) }.getOrNull()
     }
 
