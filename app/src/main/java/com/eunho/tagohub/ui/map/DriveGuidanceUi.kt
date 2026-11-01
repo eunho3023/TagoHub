@@ -228,6 +228,7 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             info?.zone?.takeIf { it.next != null && it.distance <= 1500.0 }?.let { ZoneCard(it) }
             info?.rest?.let { RestCard(it) }
             info?.alert?.let { AlertCard(it) }
+            AheadSignalCard(info, info?.bearing ?: bearing)
             val suggestion by DriveGuidance.suggestion.collectAsStateWithLifecycle()
             suggestion?.let { SuggestionCard(it) }
             if (simulating) NoteChip("모의주행 중 · 실제 위치가 아닙니다", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
@@ -738,6 +739,59 @@ private fun DriveStartBar(plan: RidePlan, onOverview: () -> Unit) {
                 shape = RoundedCornerShape(0.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = NaviButton, contentColor = Color.White),
             ) { Text("안내 시작", fontWeight = FontWeight.ExtraBold, fontSize = 17.sp) }
+        }
+    }
+}
+
+/**
+ * 앞 교차로의 실시간 신호(서울·울산): 내가 들어가는 쪽의 직진·좌회전·유턴 신호 색과 남은 초. 300m 안에 있을 때만.
+ * 서울은 그 교차로만 10초마다, 울산은 시 전체가 한 번에 와서 30초마다 받고 그 사이엔 1초씩 줄여 보임. 참고용.
+ */
+@Composable
+private fun AheadSignalCard(info: DriveGuidance.Info?, bearing: Double?) {
+    val context = LocalContext.current
+    val candidates by androidx.compose.runtime.produceState(emptyList<com.eunho.tagohub.data.SignalIntersection>()) {
+        val seoul = if (com.eunho.tagohub.data.SeoulSignals.enabled()) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.SeoulSignals.intersections(context) }
+        } else emptyList()
+        value = seoul + com.eunho.tagohub.data.UlsanSignals.intersections()
+    }
+    val i = info ?: return
+    val ahead = remember(i.lat, i.lng, bearing, candidates) { com.eunho.tagohub.data.AheadSignal.pick(i.lat, i.lng, bearing, candidates) } ?: return
+    val id = ahead.intersection.id
+    val seoul = com.eunho.tagohub.data.SeoulSignals.isSeoulId(id)
+    val snap by androidx.compose.runtime.produceState<Pair<List<com.eunho.tagohub.data.SignalPhase>?, Long>?>(null, id) {
+        while (true) {
+            val got = if (seoul) com.eunho.tagohub.data.SeoulSignals.phases(id) else com.eunho.tagohub.data.UlsanSignals.phases()?.get(id)
+            value = got to System.currentTimeMillis()
+            delay(if (seoul) 10_000L else 30_000L)
+        }
+    }
+    val now by androidx.compose.runtime.produceState(System.currentTimeMillis()) {
+        while (true) { value = System.currentTimeMillis(); delay(1000) }
+    }
+    val s = snap ?: return
+    val phases = com.eunho.tagohub.data.AheadSignal.forApproach(s.first.orEmpty(), com.eunho.tagohub.data.AheadSignal.approach(ahead.intersection, i.lat, i.lng))
+    if (phases.isEmpty()) return
+    val elapsed = (now - s.second).coerceAtLeast(0L).toInt()
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, modifier = Modifier.widthIn(max = 320.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(
+                "${ahead.intersection.name} 신호 · ${NavText.short(ahead.distanceM)}",
+                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                phases.forEach { p ->
+                    val left = com.eunho.tagohub.data.UlsanSignals.seconds(p.remainingMs?.minus(elapsed))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(12.dp).background(signalColor(p.color), androidx.compose.foundation.shape.CircleShape))
+                        Spacer(Modifier.width(5.dp))
+                        Text(p.kindLabel + (left?.let { " ${it}초" } ?: ""), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Text("참고용이에요. 실제 신호등을 꼭 보세요.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

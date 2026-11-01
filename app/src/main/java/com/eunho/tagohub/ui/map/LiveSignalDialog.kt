@@ -90,7 +90,7 @@ private fun PhaseRow(p: SignalPhase, elapsedMs: Long) {
     val left = UlsanSignals.seconds(p.remainingMs?.minus(elapsedMs.toInt()))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.size(0.dp))
-        androidx.compose.foundation.layout.Box(Modifier.size(14.dp).background(colorOf(p.color), CircleShape))
+        androidx.compose.foundation.layout.Box(Modifier.size(14.dp).background(signalColor(p.color), CircleShape))
         Spacer(Modifier.width(10.dp))
         Text("${p.directionLabel} ${p.kindLabel}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Text(
@@ -101,7 +101,8 @@ private fun PhaseRow(p: SignalPhase, elapsedMs: Long) {
     }
 }
 
-private fun colorOf(c: SignalColor): Color = when (c) {
+/** 신호 색 → 화면 색 (길 안내의 앞 교차로 신호 카드도 같이 씀) */
+internal fun signalColor(c: SignalColor): Color = when (c) {
     SignalColor.Green -> Color(0xFF2E9B57)
     SignalColor.Yellow, SignalColor.YellowBlink -> Color(0xFFFBC02D)
     SignalColor.Red, SignalColor.RedBlink -> Color(0xFFE53935)
