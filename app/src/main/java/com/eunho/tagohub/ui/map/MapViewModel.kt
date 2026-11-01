@@ -522,7 +522,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 레이어를 켜면 울산 교차로 목록을 받아 두고 화면 안 것을 지도에 보냄 */
     private fun loadLiveSignals() {
-        if (LIVE_SIGNAL_OVERLAY !in overlays.value) { canvas?.setLiveSignals(emptyList()); return }
+        if (LIVE_SIGNAL_OVERLAY !in overlays.value) { canvas?.setLiveSignals(emptyList()); pushTrafficLights(); return }
         viewModelScope.launch {
             if (liveIntersections.isEmpty()) {
                 // 울산 + (서울 신호 키가 있으면) 서울 교차로
@@ -532,6 +532,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 liveIntersections = com.eunho.tagohub.data.UlsanSignals.intersections() + seoul
             }
             pushLiveSignals()
+            pushTrafficLights()
         }
     }
 
@@ -553,7 +554,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val dLat = (box[2] - box[0]) * 0.1
         val dLng = (box[3] - box[1]) * 0.1
         val all = com.eunho.tagohub.data.TrafficLights.load(getApplication())
-        canvas?.setTrafficLights(com.eunho.tagohub.data.TrafficLights.inBox(all, box[0] - dLat, box[1] - dLng, box[2] + dLat, box[3] + dLng))
+        // 실시간 신호 레이어를 켜 두었으면, 실시간 신호가 있는 교차로 둘레의 신호등 위치는 뺌 (같은 교차로가 두 개로 겹쳐 보이지 않게)
+        val live = if (LIVE_SIGNAL_OVERLAY in overlays.value) {
+            liveIntersections.filter { it.lat in (box[0] - dLat)..(box[2] + dLat) && it.lng in (box[1] - dLng)..(box[3] + dLng) }.map { it.lat to it.lng }
+        } else emptyList()
+        canvas?.setTrafficLights(
+            com.eunho.tagohub.data.TrafficLights.inBox(
+                all, box[0] - dLat, box[1] - dLng, box[2] + dLat, box[3] + dLng,
+                skip = com.eunho.tagohub.data.TrafficLights.nearAny(live, LIVE_SIGNAL_HIDES_LIGHT_M),
+            ),
+        )
     }
 
     private fun pushItsRoadFeatures() {
@@ -2578,6 +2588,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val ITS_CCTV_OVERLAY = "its_cctv"
         const val TRAFFIC_LIGHT_OVERLAY = "traffic_lights"
         const val LIVE_SIGNAL_OVERLAY = "live_signals"
+
+        /** 실시간 신호 교차로 가운데에서 이 거리(m) 안의 신호등 위치는 지도에서 뺌 (교차로 가운데와 합쳐진 신호등 점 사이 거리를 넉넉히 덮음) */
+        const val LIVE_SIGNAL_HIDES_LIGHT_M = 70.0
         val ITS_ROAD_OVERLAY_IDS = listOf(
             "its_events",
             "its_disasters",
