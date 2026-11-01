@@ -4,7 +4,7 @@
 
   python pipeline/build_traffic_lights.py <전국신호등표준데이터-날짜.xls> [추가.csv ...] [--out 출력경로]
   (필요: pip install xlrd — 환경변수 PYLIB 에 설치한 폴더를 두면 거기서도 찾음)
-  - 추가.csv: 열 위도·경도·잔여시간표시기유무(Y/N) 가 있는 UTF-8 CSV. 예: pipeline/fetch_jeonbuk_lights.py 로 받은 전북 신호등.
+  - 추가.csv: 열 위도·경도·잔여시간표시기유무(Y/N) 가 있는 UTF-8 CSV. 예: pipeline/fetch_jeonbuk_lights.py 로 받은 전북 신호등, pipeline/fetch_seoul_lights.py 로 받은 서울 신호등.
   - --out 을 생략하면 app/src/main/assets/traffic_lights.csv 에 씀.
 
   - 위도·경도가 한국 범위 안인 줄만. **[CLUSTER_M]미터 안의 신호등은 한 곳으로 합침**(사거리 하나에 신호등이 8~12개 있어도 점 하나. 합친 점은 그 신호등 중 가운데에 가장 가까운 실제 신호등 자리).
