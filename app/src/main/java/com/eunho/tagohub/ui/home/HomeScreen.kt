@@ -292,13 +292,11 @@ private fun ModeTile(t: Tile, dark: Boolean, modifier: Modifier = Modifier) {
             ) {
                 Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
-            Text(
+com.eunho.tagohub.ui.common.FitText(
                 t.label,
-                fontSize = if (t.label.length >= 5) 13.sp else 14.sp,
+                maxSizeSp = 14f, minSizeSp = 9f,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                softWrap = false,
             )
         }
     }

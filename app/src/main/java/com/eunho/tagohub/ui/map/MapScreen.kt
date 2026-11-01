@@ -625,11 +625,10 @@ private fun MapLayerSheet(
                                 tint = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Text(
+                        com.eunho.tagohub.ui.common.FitText(
                             option.title,
                             Modifier.padding(top = 6.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            maxSizeSp = 12f, minSizeSp = 9f,
                             fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                             color = if (on) blue else MaterialTheme.colorScheme.onSurface,
                         )
@@ -1302,10 +1301,10 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             Spacer(Modifier.weight(1f))
             if (d.stop.lat != null) {
                 androidx.compose.material3.OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
-                    Text("여기서 출발", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                    com.eunho.tagohub.ui.common.FitText("여기서 출발", fontWeight = FontWeight.ExtraBold, maxSizeSp = 16f, minSizeSp = 10f)
                 }
                 Button(onClick = { vm.useStopAs(d.stop, asOrigin = false); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
-                    Text("여기로 도착", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                    com.eunho.tagohub.ui.common.FitText("여기로 도착", fontWeight = FontWeight.ExtraBold, maxSizeSp = 16f, minSizeSp = 10f)
                 }
             }
         }
@@ -2374,8 +2373,8 @@ private fun PlanList(t: TripController) {
                     FilterChip(
                         selected = mode == option,
                         onClick = { if (mode != option) t.selectMode(option) },
-                        label = { Text(modeMinutes[option]?.let { "${option.label} ${com.eunho.tagohub.guidance.GuidanceText.duration(it * 60)}" } ?: option.label) },
-                        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        label = { modeMinutes[option]?.let { com.eunho.tagohub.ui.common.FitText(com.eunho.tagohub.guidance.GuidanceText.duration(it * 60), maxSizeSp = 14f, minSizeSp = 10f) } ?: Spacer(Modifier.width(0.dp)) },
+                        leadingIcon = { Icon(icon, contentDescription = option.label, modifier = Modifier.size(22.dp)) },
                     )
                 }
             }
