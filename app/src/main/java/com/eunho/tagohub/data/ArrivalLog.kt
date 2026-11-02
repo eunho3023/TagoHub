@@ -153,6 +153,4 @@ object ArrivalLog {
         }
         return Table(times.map { it.toLocalDate() }.distinct().size, slots)
     }
-
-    internal fun resetMemory() = last.clear()
 }

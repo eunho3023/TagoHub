@@ -381,10 +381,6 @@ class TagoRepository(private val api: TagoApi) {
 
     // ───────────────────────── 항공 ─────────────────────────
 
-    suspend fun airportPlaces(q: String) = run {
-        search(cached("airports") { all(listOf(100)) { p, n -> api.airports(p, n) }.map(Mappers::airport) }, q)
-    }
-
     suspend fun airlines() = run {
         cached("airlines") { all(listOf(100)) { p, n -> api.airlines(p, n) }.map(Mappers::airline) }
     }

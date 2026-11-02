@@ -77,7 +77,6 @@ object Mappers {
     )
 
     // ── 항공 ──
-    fun airport(r: Row) = Place(r.text("airportId"), r.text("airportNm"))
     fun airline(r: Row) = Grade(r.text("airlineId"), r.text("airlineNm"))
 
     fun flight(r: Row) = Trip(

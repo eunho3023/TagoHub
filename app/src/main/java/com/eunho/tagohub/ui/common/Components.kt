@@ -454,27 +454,6 @@ fun GradeStrip(grades: List<Grade>, selected: Grade?, accent: Color, allLabel: S
     }
 }
 
-@Composable
-fun PlaceField(label: String, value: Place?, accent: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
-            Text(
-                value?.name ?: "선택하세요",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (value != null) FontWeight.Bold else FontWeight.Normal,
-                color = if (value != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
 /**
  * 출발/도착 선택 카드: 왼쪽에 노선도처럼 점과 선으로 두 곳을 잇고, 이름은 크게(두 줄까지 끝까지), 오른쪽에 바꾸기 버튼.
  */

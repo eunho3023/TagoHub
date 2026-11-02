@@ -133,9 +133,6 @@ interface TagoApi {
     ): String
 
     // ───────── 국내선 항공 ─────────
-    @GET("DmstcFlightNvgInfo/GetArprtList")
-    suspend fun airports(@Query("pageNo") page: Int, @Query("numOfRows") rows: Int): String
-
     @GET("DmstcFlightNvgInfo/GetAirmanList")
     suspend fun airlines(@Query("pageNo") page: Int, @Query("numOfRows") rows: Int): String
 

@@ -119,7 +119,4 @@ object AirSchedule {
     private val PREFERRED = listOf("GMP", "CJU", "PUS", "TAE", "CJJ", "KWJ", "MWX", "YNY", "USN", "RSU", "HIN", "KPO", "KUV", "WJU", "ICN")
 
     fun airportName(code: String): String = airports[code] ?: KacIntl.KAC.firstOrNull { it.first == code }?.second ?: code
-
-    /** 파일에 든 스케줄의 마지막 날 (없으면 null) */
-    fun lastDate(): LocalDate? { ensure(); return rows.maxOfOrNull { it.end } }
 }
