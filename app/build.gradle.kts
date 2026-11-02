@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 val localProps = Properties().apply {
@@ -27,6 +28,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        // 오류 자동 보고(Crashlytics): 디버그 빌드(개발 중)는 끄고 release·fast(실제로 쓰는 빌드)만 보냄
+        manifestPlaceholders["crashlyticsEnabled"] = "false"
         buildConfigField(
             "String", "TAGO_SERVICE_KEY",
             "\"${localProps.getProperty("TAGO_SERVICE_KEY", "")}\""
@@ -75,6 +78,7 @@ android {
             // 코드·리소스를 줄이고 난독화 (앱 크기와 역공학 부담을 줄임). 규칙은 proguard-rules.pro
             isMinifyEnabled = true
             isShrinkResources = true
+            manifestPlaceholders["crashlyticsEnabled"] = "true"
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
@@ -129,6 +133,8 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+    // 앱이 죽으면 원인을 Firebase 콘솔로 자동 보고 (Crashlytics). 키가 섞인 오류 문구는 CrashLog 가 지운 뒤 넘김
+    implementation("com.google.firebase:firebase-crashlytics")
     // 구글 로그인 (Credential Manager) 과 Task.await()
     implementation("androidx.credentials:credentials:1.3.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")

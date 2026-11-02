@@ -62,6 +62,24 @@ class RailFacilitiesAndCrashLogTest {
         assertTrue(out.length <= 8000)
     }
 
+    @Test
+    fun crashReportGetsAKeylessCopyButKeepsTheStack() {
+        val cause = java.io.IOException("https://apis.data.go.kr/x?serviceKey=SECRET77&pageNo=1")
+        val error = IllegalStateException("불러오기 실패", cause)
+        val out = CrashLog.scrubbed(error)
+        val all = generateSequence(out) { it.cause }.joinToString("\n") { it.message.orEmpty() }
+        assertFalse(all.contains("SECRET77"))
+        assertTrue(all.contains("java.io.IOException") && all.contains("pageNo=1"))   // 원래 종류와 다른 값은 남김
+        assertEquals(error.stackTrace.toList(), out.stackTrace.toList())
+        assertEquals(cause.stackTrace.toList(), out.cause!!.stackTrace.toList())
+    }
+
+    @Test
+    fun crashWithoutKeysIsPassedAsIs() {
+        val error = NullPointerException("값이 없음")
+        assertTrue(CrashLog.scrubbed(error) === error)
+    }
+
     // ── 지난주 도착 지연 요약 ──
 
     private fun trip(no: String, arrH: Int, arrM: Int) =

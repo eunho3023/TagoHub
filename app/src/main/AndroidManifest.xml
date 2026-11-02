@@ -29,6 +29,10 @@
         android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.TagoHub">
+        <!-- 오류 자동 보고: 빌드 종류마다 켬/끔 (app/build.gradle.kts 의 crashlyticsEnabled) -->
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="${crashlyticsEnabled}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
