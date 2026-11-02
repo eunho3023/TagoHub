@@ -566,28 +566,88 @@ private fun arrivalMain(a: SubwayArrival, now: LocalDateTime): String {
     return if (left < 60) "곧 도착" else "${(left + 59) / 60}분 후"
 }
 
-/** 이 역으로 오는 열차들의 현재 위치를 노선 위 점으로: 열차 위치 ●━━ 이번 역 */
+/**
+ * 이 역에 닿는 방향의 노선: 이 역까지 오는 역(기점 쪽이 앞, 마지막이 이 역) 이름을 구함. (호선 id, 행선지) → 역 이름들.
+ * 없으면 열차 위치를 "현재 역 → 이번 역" 한 줄로만 보여 줌.
+ */
+val LocalTrainPath = androidx.compose.runtime.staticCompositionLocalOf<((String, String?) -> List<String>)?> { null }
+
+/** 이 역으로 오는 열차들의 현재 위치를 노선 위에: 역 이름을 위에서 아래로(마지막이 이번 역), 열차가 있는 역에 열차 칩 */
 @Composable
 private fun TrainTrack(rows: List<SubwayArrival>, now: LocalDateTime, here: String, color: Color) {
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    val resolver = LocalTrainPath.current
+    val lineId = rows.firstOrNull()?.lineId.orEmpty()
+    val dest = rows.firstNotNullOfOrNull { it.dest }
+    val names = remember(lineId, dest, here) { resolver?.invoke(lineId, dest).orEmpty() }
+    val shown = rows.take(4)
+    val norms = remember(names) { names.map { com.eunho.tagohub.data.StationName.norm(it) } }
+    fun indexOf(a: SubwayArrival): Int {
+        val c = a.current?.let { com.eunho.tagohub.data.StationName.norm(it) }?.takeIf { it.isNotEmpty() } ?: return -1
+        return norms.indexOf(c).takeIf { it >= 0 } ?: norms.indexOfFirst { it.contains(c) || c.contains(it) }
+    }
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        rows.take(3).forEach { a ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.width(76.dp)) {
-                    Text(a.current ?: "위치 확인 중", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(a.dest?.let { "${it}행" } ?: a.lineText, fontSize = 11.sp, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (names.size >= 2) {
+            names.forEachIndexed { i, name ->
+                val last = i == names.lastIndex
+                val trains = shown.filter { indexOf(it) == i }
+                Row(Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                    // 노선 띠: 위아래로 이어진 선 + 역 점
+                    Box(Modifier.width(26.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Column(Modifier.fillMaxHeight()) {
+                            Box(Modifier.width(5.dp).weight(1f).align(Alignment.CenterHorizontally).background(if (i == 0) Color.Transparent else color))
+                            Box(Modifier.width(5.dp).weight(1f).align(Alignment.CenterHorizontally).background(if (last) Color.Transparent else color))
+                        }
+                        if (last) Box(Modifier.size(18.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape).border(4.dp, color, androidx.compose.foundation.shape.CircleShape))
+                        else Box(Modifier.size(11.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape).border(3.dp, color, androidx.compose.foundation.shape.CircleShape))
+                    }
+                    Text(
+                        name,
+                        Modifier.weight(1f).padding(start = 10.dp, top = 9.dp, bottom = 9.dp),
+                        fontSize = if (last) 15.sp else 14.sp,
+                        fontWeight = if (last || trains.isNotEmpty()) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (last || trains.isNotEmpty()) MaterialTheme.colorScheme.onSurface else variant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        trains.forEach { a ->
+                            Text(
+                                "🚇 ${a.dest?.let { "${it}행" } ?: ""} · ${arrivalMain(a, now)}".replace("  ", " "),
+                                fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
-                Box(Modifier.size(12.dp).background(color, androidx.compose.foundation.shape.CircleShape))
-                Box(Modifier.weight(1f).height(4.dp).background(color.copy(alpha = 0.45f)))
-                Box(Modifier.size(16.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape).border(4.dp, color, androidx.compose.foundation.shape.CircleShape))
-                Column(Modifier.width(64.dp), horizontalAlignment = Alignment.End) {
-                    Text(here.ifBlank { "이번 역" }, fontSize = 12.sp, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(arrivalMain(a, now), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = color)
+            }
+            // 이 구간 밖(더 먼 곳)에서 오는 열차
+            val outside = shown.filter { indexOf(it) < 0 }
+            if (outside.isNotEmpty()) {
+                Text(
+                    outside.joinToString("   ") { a -> "${a.current ?: "위치 확인 중"} · ${arrivalMain(a, now)}" },
+                    Modifier.padding(top = 6.dp), fontSize = 12.sp, color = variant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            return@Column
+        }
+        // 노선 순서를 모를 때: 열차마다 "현재 역 ●━━ 이번 역"
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            rows.take(3).forEach { a ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.width(76.dp)) {
+                        Text(a.current ?: "위치 확인 중", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(a.dest?.let { "${it}행" } ?: a.lineText, fontSize = 11.sp, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box(Modifier.size(12.dp).background(color, androidx.compose.foundation.shape.CircleShape))
+                    Box(Modifier.weight(1f).height(4.dp).background(color.copy(alpha = 0.45f)))
+                    Box(Modifier.size(16.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape).border(4.dp, color, androidx.compose.foundation.shape.CircleShape))
+                    Column(Modifier.width(64.dp), horizontalAlignment = Alignment.End) {
+                        Text(here.ifBlank { "이번 역" }, fontSize = 12.sp, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(arrivalMain(a, now), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = color)
+                    }
                 }
             }
         }

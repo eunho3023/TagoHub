@@ -458,6 +458,7 @@ fun MapScreen(
                     val favs by vm.favorites.collectAsStateWithLifecycle()
                     val railName = remember(d) { vm.railStationFor(d.group)?.name }   // 지하철역과 같은 자리의 기차역
                     PanelSurface {
+                        androidx.compose.runtime.CompositionLocalProvider(com.eunho.tagohub.ui.subway.LocalTrainPath provides { line, dest -> vm.trainTrackNames(d.group, line, dest) }) {
                         StationDetailPanel(
                             d, vm.stations,
                             onClose = vm::closePanel,
@@ -471,6 +472,7 @@ fun MapScreen(
                             railStationName = railName,
                             onRailJump = railName?.let { rn -> { asOrigin -> vm.jumpToTrain(rn, asOrigin) } },
                         )
+                        }
                     }
                 }
                 MapPanel.Train -> trainView?.let { TrainPanel(vm, it, hasStation = station != null) }
