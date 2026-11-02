@@ -171,6 +171,7 @@ fun HomeScreen(
                 Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
                 if (query.isBlank()) {
                     ShortcutTiles(vm, onGoTo, onOpenTab, Modifier.riseIn(3).padding(top = 14.dp))
+                    HomeMapPreview({ onOpenTab(AppTab.Map) }, Modifier.riseIn(3).padding(top = 14.dp))
                     RecentChips(onGoTo, Modifier.riseIn(3))
                     Spacer(Modifier.height(10.dp))
                     Column(Modifier.riseIn(4)) { Favorites(vm, onFavorite) }
