@@ -978,6 +978,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      * 패널이 열려 있거나(정류장·노선·길찾기…) 주행 안내 중이면 실수로 누른 것일 수 있어 아무것도 안 함.
      */
     fun onMapTap(lat: Double, lng: Double) {
+        // 길찾기에서 출발·도착을 고르는 중이면 눌러서 바로 고름
+        if (panel.value == MapPanel.Plan && trip.editing.value != null) {
+            onMapLongPress(lat, lng)
+            return
+        }
         if (panel.value != MapPanel.None) return
         if (com.eunho.tagohub.guidance.DriveGuidance.active.value || com.eunho.tagohub.guidance.FreeDriveSession.active.value) return
         onMapLongPress(lat, lng)

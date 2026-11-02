@@ -2234,12 +2234,6 @@ fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Mo
     val mode by t.mode.collectAsStateWithLifecycle()
     val ride by t.ridePlan.collectAsStateWithLifecycle()
     Column(modifier.fillMaxSize()) {
-        Text(
-            note ?: "이동 경로를 미리 살펴보세요.",
-            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         if (selected == null) {
             if (editing == null) HomeWorkChips(t)
             Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2249,7 +2243,12 @@ fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Mo
                         t.edit(PlanField.Dest)
                     }
                 }
-                IconButton(onClick = t::swap) { Icon(Icons.Filled.SwapVert, contentDescription = "출발·도착 바꾸기") }
+                Surface(
+                    onClick = t::swap,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp).size(44.dp),
+                ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.SwapVert, contentDescription = "출발·도착 바꾸기") } }
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -2372,7 +2371,7 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                     }
                 }
                 is Load.Fail -> item { MessageText(r.message) }
-                is Load.Idle -> item { MessageText("장소를 검색하거나 지도에서 위치를 길게 눌러 선택하세요.") }
+                is Load.Idle -> item { MessageText("장소를 검색하거나 지도에서 위치를 눌러 선택하세요.") }
             }
         }
     }
