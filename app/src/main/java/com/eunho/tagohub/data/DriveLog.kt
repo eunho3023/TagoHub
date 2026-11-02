@@ -2,11 +2,12 @@ package com.eunho.tagohub.data
 
 import com.eunho.tagohub.core.Geo
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.io.File
 
 /**
  * 주행 기록: 자유주행·경로 안내 동안 지나온 자리와 그때 속도, 단속카메라 부근을 지날 때의 속도.
  * 끝나면 [last] 에 요약이 들어가 화면에 "어디서 몇 km/h 로 달렸는지, 카메라 앞에서 과속했는지"를 띄운다.
- * 기록은 메모리에만 있고(저장·전송하지 않음) 다음 주행을 시작하면 지워진다.
+ * 끝난 주행은 휴대폰 안(filesDir/drive_log)에 최근 [KEEP] 개까지 남겨 [history] 로 다시 볼 수 있다. 서버로 보내지 않음.
  */
 object DriveLog {
     /** 지나온 한 점 */
@@ -45,8 +46,77 @@ object DriveLog {
     /** 이보다 짧은 주행은 요약을 띄우지 않음 */
     const val MIN_TRIP_M = 300.0
 
-    /** 끝난 주행의 요약. 화면이 보여 준 뒤 null 로 지움 */
+    /** 끝난 주행의 요약. 화면이 보여 준 뒤 null 로 지움 (지난 주행을 누르면 그 주행을 다시 넣음) */
     val last = MutableStateFlow<Summary?>(null)
+
+    /** 저장해 둔 지난 주행 (최근 것부터) */
+    val history = MutableStateFlow<List<Summary>>(emptyList())
+
+    /** 남겨 두는 지난 주행 수 */
+    const val KEEP = 30
+
+    @Volatile private var dir: File? = null
+
+    /** 앱 시작 때 한 번: 저장해 둔 주행을 읽음 (파일 읽기라 백그라운드에서) */
+    fun init(root: File) {
+        val d = File(root, "drive_log")
+        dir = d
+        Thread {
+            val list = d.listFiles { f -> f.name.endsWith(".tsv") }.orEmpty()
+                .mapNotNull { f -> runCatching { decode(f.readText()) }.getOrNull() }
+                .sortedByDescending { it.startMs }
+            history.value = list
+        }.start()
+    }
+
+    /** 지난 주행 하나를 지움 */
+    fun delete(s: Summary) {
+        history.value = history.value.filterNot { it.startMs == s.startMs }
+        val d = dir ?: return
+        Thread { File(d, "${s.startMs}.tsv").delete() }.start()
+    }
+
+    private fun save(s: Summary) {
+        val all = (listOf(s) + history.value.filterNot { it.startMs == s.startMs }).sortedByDescending { it.startMs }
+        history.value = all.take(KEEP)
+        val d = dir ?: return
+        val drop = all.drop(KEEP)
+        Thread {
+            runCatching {
+                d.mkdirs()
+                File(d, "${s.startMs}.tsv").writeText(encode(s))
+                drop.forEach { File(d, "${it.startMs}.tsv").delete() }
+            }
+        }.start()
+    }
+
+    private fun clean(t: String) = t.replace('\t', ' ').replace('\n', ' ')
+
+    /** 파일 한 개 = 주행 한 번: 첫 줄 "S 제목 거리 시작 끝", 그 뒤 점 "P 위도 경도 속도 시각", 카메라 "C 이름 위도 경도 제한 속도 시각" (탭 구분) */
+    fun encode(s: Summary): String = buildString {
+        append(listOf("S", clean(s.title), s.meters, s.startMs, s.endMs).joinToString("\t")).append('\n')
+        s.points.forEach { append(listOf("P", it.lat, it.lng, it.kmh, it.atMs).joinToString("\t")).append('\n') }
+        s.cameras.forEach { append(listOf("C", clean(it.name), it.lat, it.lng, it.limitKmh, it.speedKmh, it.atMs).joinToString("\t")).append('\n') }
+    }
+
+    /** [encode] 의 반대. 첫 줄이 깨졌으면 null, 깨진 점·카메라 줄은 건너뜀 */
+    fun decode(text: String): Summary? {
+        val lines = text.lines().filter { it.isNotBlank() }.map { it.split('\t') }
+        val h = lines.firstOrNull()?.takeIf { it.size == 5 && it[0] == "S" } ?: return null
+        val points = lines.filter { it.size == 5 && it[0] == "P" }.mapNotNull { p ->
+            Point(
+                p[1].toDoubleOrNull() ?: return@mapNotNull null, p[2].toDoubleOrNull() ?: return@mapNotNull null,
+                p[3].toIntOrNull() ?: return@mapNotNull null, p[4].toLongOrNull() ?: return@mapNotNull null,
+            )
+        }
+        val cams = lines.filter { it.size == 7 && it[0] == "C" }.mapNotNull { c ->
+            CameraPass(
+                c[1], c[2].toDoubleOrNull() ?: return@mapNotNull null, c[3].toDoubleOrNull() ?: return@mapNotNull null,
+                c[4].toIntOrNull() ?: return@mapNotNull null, c[5].toIntOrNull() ?: return@mapNotNull null, c[6].toLongOrNull() ?: return@mapNotNull null,
+            )
+        }
+        return Summary(h[1], points, cams, h[2].toDoubleOrNull() ?: return null, h[3].toLongOrNull() ?: return null, h[4].toLongOrNull() ?: return null)
+    }
 
     @Volatile private var recorder: Recorder? = null
 
@@ -68,7 +138,7 @@ object DriveLog {
     fun finish(nowMs: Long = System.currentTimeMillis()) {
         val r = recorder ?: return
         recorder = null
-        r.finish(nowMs)?.let { last.value = it }
+        r.finish(nowMs)?.let { last.value = it; save(it) }
     }
 
     class Recorder(private val title: String, zones: List<SafetyZone>, private val startMs: Long) {

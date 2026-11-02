@@ -49,11 +49,23 @@ internal fun speedColor(kmh: Int): Color = when {
 @Composable
 fun DriveLogHost() {
     val summary by DriveLog.last.collectAsStateWithLifecycle()
+    val history by DriveLog.history.collectAsStateWithLifecycle()
     val s = summary ?: return
     AlertDialog(
         onDismissRequest = { DriveLog.last.value = null },
         confirmButton = { TextButton(onClick = { DriveLog.last.value = null }) { Text("닫기") } },
-        title = { Text("${s.title} 기록", fontWeight = FontWeight.ExtraBold) },
+        // 저장된 주행이면 여기서 지울 수 있음
+        dismissButton = {
+            if (history.any { it.startMs == s.startMs }) {
+                TextButton(onClick = { DriveLog.delete(s); DriveLog.last.value = null }) { Text("기록 지우기", color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        title = {
+            Column {
+                Text("${s.title} 기록", fontWeight = FontWeight.ExtraBold)
+                Text(driveDate(s.startMs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
         text = { DriveLogBody(s) },
     )
 }
@@ -110,7 +122,7 @@ private fun DriveLogBody(s: DriveLog.Summary) {
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "GPS 속도라 계기판·단속 장비와 몇 km/h 다를 수 있어요. 기록은 이 화면을 닫으면 지워져요.",
+            "GPS 속도라 계기판·단속 장비와 몇 km/h 다를 수 있어요. 기록은 이 휴대폰에만 최근 ${DriveLog.KEEP}개까지 남아요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -124,6 +136,13 @@ private fun Stat(label: String, value: String) {
         Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold)
     }
 }
+
+/** "11월 3일 (화) 08:12" */
+internal fun driveDate(ms: Long): String =
+    java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()).let {
+        val dow = "월화수목금토일"[it.dayOfWeek.value - 1]
+        "${it.monthValue}월 ${it.dayOfMonth}일 ($dow) %02d:%02d".format(it.hour, it.minute)
+    }
 
 private fun clock(ms: Long): String =
     java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()).let { "%02d:%02d".format(it.hour, it.minute) }

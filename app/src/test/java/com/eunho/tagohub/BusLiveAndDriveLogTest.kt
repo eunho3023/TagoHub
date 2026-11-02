@@ -169,4 +169,21 @@ class BusLiveAndDriveLogTest {
         assertNotNull(v)
         return v!!
     }
+
+    @Test
+    fun driveLogFileRoundTrips() {
+        val s = DriveLog.Summary(
+            "자유주행",
+            listOf(DriveLog.Point(37.5, 127.0, 42, 1_000), DriveLog.Point(37.501, 127.002, 55, 6_000)),
+            listOf(DriveLog.CameraPass("이름	탭", 37.5005, 127.001, 50, 58, 3_000)),
+            320.5, 1_000, 60_000,
+        )
+        val back = DriveLog.decode(DriveLog.encode(s))
+        assertNotNull(back)
+        assertEquals(s.points, back!!.points)
+        assertEquals("이름 탭", back.cameras.single().name)
+        assertEquals(8, back.cameras.single().overBy)
+        assertEquals(s.meters, back.meters, 0.0)
+        assertNull(DriveLog.decode("깨진 파일"))
+    }
 }

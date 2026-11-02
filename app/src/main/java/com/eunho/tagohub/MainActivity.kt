@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())
         com.eunho.tagohub.data.OverlaySnapshot.init(filesDir)
         com.eunho.tagohub.data.ArrivalLog.init(filesDir)
+        com.eunho.tagohub.data.DriveLog.init(filesDir)
         com.eunho.tagohub.guidance.DriveGuidance.loadPrefs(applicationContext)
         com.eunho.tagohub.ui.theme.ThemeSettings.load(applicationContext)
         com.eunho.tagohub.data.RecentDestinations.load(applicationContext)

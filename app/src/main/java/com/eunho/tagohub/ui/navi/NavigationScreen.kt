@@ -68,6 +68,7 @@ fun NavigationScreen(
     val context = LocalContext.current
     val running by FreeDriveSession.active.collectAsStateWithLifecycle()
     val recents by RecentDestinations.items.collectAsStateWithLifecycle()
+    val drives by com.eunho.tagohub.data.DriveLog.history.collectAsStateWithLifecycle()
     var denied by remember { mutableStateOf(false) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (hasLocationPermission(context)) { denied = false; FreeDriveSession.start(context); onShowMap() } else denied = true
@@ -113,6 +114,7 @@ fun NavigationScreen(
                 PillButton("시작", { startFree() }, filled = false)
             }
         }
+        if (drives.isNotEmpty()) PastDrives(drives)
         if (recents.isNotEmpty()) {
             Text(
                 "최근 목적지", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface,
@@ -140,6 +142,58 @@ fun NavigationScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** 지난 주행 목록: 누르면 그 주행 기록(속도 길·카메라 앞 속도)을 다시 띄움. 처음엔 3개, "더 보기"로 전부 */
+@Composable
+private fun PastDrives(drives: List<com.eunho.tagohub.data.DriveLog.Summary>) {
+    var all by remember { mutableStateOf(false) }
+    Text(
+        "지난 주행", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            val shown = if (all) drives else drives.take(3)
+            shown.forEachIndexed { i, s ->
+                if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 54.dp).clickable { com.eunho.tagohub.data.DriveLog.last.value = s }.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${s.title} · ${com.eunho.tagohub.ui.map.driveDate(s.startMs)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "${com.eunho.tagohub.data.NavText.short(s.meters)} · 최고 ${s.maxKmh}km/h",
+                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val verdict = when {
+                        s.speedingCount > 0 -> "과속 ${s.speedingCount}곳"
+                        s.cameras.isNotEmpty() -> "모두 지킴"
+                        else -> null
+                    }
+                    if (verdict != null) Text(
+                        verdict, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        color = if (s.speedingCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            if (drives.size > 3) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    if (all) "접기" else "더 보기 (${drives.size}개)",
+                    Modifier.fillMaxWidth().clickable { all = !all }.padding(14.dp),
+                    fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
     }
