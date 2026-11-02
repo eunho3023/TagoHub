@@ -1895,6 +1895,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         openStation(g, line)
     }
 
+    /** 열차 위치 표시용: 이 역에 닿는 [dest] 방향 열차가 지나오는 역 이름들 (기점 쪽이 앞, 마지막이 이 역). 모르면 빈 목록 */
+    fun trainTrackNames(g: StationGroup, lineId: String, dest: String?, maxBehind: Int = 8): List<String> {
+        val idx = index ?: return emptyList()
+        val here = g.stations.firstOrNull { it.seoulLine?.id == lineId } ?: return emptyList()
+        val d = dest?.let { idx.locate(lineId, it) }
+        return (idx.pathBehind(lineId, here, d).takeLast(maxBehind) + here).map { it.name }
+    }
+
     /** 노선 띠의 이전·다음 역: 지선이 있는 노선도 위치로 맞게, 운영기관 구간이 끊긴 쪽은 표준데이터로 채움 */
     fun neighborsOf(g: StationGroup, line: String, all: List<com.eunho.tagohub.data.KricRouteStation>, code: String?): StationIndex.Around? =
         index?.neighborsOf(g, line, all, code)
