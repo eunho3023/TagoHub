@@ -92,6 +92,9 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
             isDebuggable = false
+            // 내 폰에 깔아 볼 APK 라 64비트 ARM(요즘 폰 전부)만: 카카오 지도 32비트 라이브러리(약 17MB)를 뺌.
+            // 스토어용 release 는 그대로 두 가지 모두 (AAB 로 올리면 플레이가 폰에 맞는 것만 내려줌)
+            ndk { abiFilters += "arm64-v8a" }
         }
     }
     compileOptions {
