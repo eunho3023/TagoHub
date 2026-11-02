@@ -389,7 +389,7 @@ fun MapScreen(
             mapFailure?.let { Banner(it) { vm.mapFailure.value = null } }
             // 숨은 조작(지도 길게 누르기)은 처음 한 번만 짧게 알려 줌
             var longPressHint by remember { mutableStateOf(!hintSeen(context, "map_long_press")) }
-            if (longPressHint && mapFailure == null) Banner("지도를 길게 누르면 그 곳으로 길찾기를 시작할 수 있어요.", info = true) {
+            if (longPressHint && mapFailure == null) Banner("지도를 누르면 그 곳으로 길찾기를 시작할 수 있어요.", info = true) {
                 markHintSeen(context, "map_long_press")
                 longPressHint = false
             }
