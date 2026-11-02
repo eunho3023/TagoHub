@@ -30,6 +30,8 @@ android {
         versionName = "1.0"
         // 오류 자동 보고(Crashlytics): 디버그 빌드(개발 중)는 끄고 release·fast(실제로 쓰는 빌드)만 보냄
         manifestPlaceholders["crashlyticsEnabled"] = "false"
+        // 사용 통계(Google Analytics)도 같은 기준: 개발 중 실행은 통계에 섞지 않음
+        manifestPlaceholders["analyticsEnabled"] = "false"
         buildConfigField(
             "String", "TAGO_SERVICE_KEY",
             "\"${localProps.getProperty("TAGO_SERVICE_KEY", "")}\""
@@ -79,6 +81,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             manifestPlaceholders["crashlyticsEnabled"] = "true"
+            manifestPlaceholders["analyticsEnabled"] = "true"
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
@@ -130,11 +133,13 @@ dependencies {
     implementation("com.kakao.maps.open:android:2.15.2")
 
     // Firebase: 익명 로그인 + Firestore 로 즐겨찾기·설정 동기화
-    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.12.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     // 앱이 죽으면 원인을 Firebase 콘솔로 자동 보고 (Crashlytics). 키가 섞인 오류 문구는 CrashLog 가 지운 뒤 넘김
     implementation("com.google.firebase:firebase-crashlytics")
+    // 사용 통계(화면·이벤트). Crashlytics 보고에 "죽기 직전 본 화면"이 붙음. 광고 ID 는 쓰지 않음 (AndroidManifest)
+    implementation("com.google.firebase:firebase-analytics")
     // 구글 로그인 (Credential Manager) 과 Task.await()
     implementation("androidx.credentials:credentials:1.3.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
