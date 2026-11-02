@@ -52,8 +52,6 @@ object TrainTimetable {
         }
     }
 
-    val isLoaded: Boolean get() { ensure(); return trains.isNotEmpty() }
-
     /** 역 이름 비교용: 괄호 안 설명과 공백을 뺌 ("울산(통도사)" = "울산") */
     fun norm(name: String): String = name.replace(Regex("\\(.*?\\)"), "").replace(Regex("\\s+"), "").let {
         // 시간표 이름과 TAGO 이름이 다른 몇 곳

@@ -483,7 +483,9 @@ fun MapScreen(
       }
     }
     val liveSignal by vm.selectedSignal.collectAsStateWithLifecycle()
-    liveSignal?.let { LiveSignalDialog(it, vm::dismissLiveSignal) }
+    liveSignal?.let {
+        if (com.eunho.tagohub.data.SignalPlans.isPlanId(it.id)) SignalPlanDialog(it, vm::dismissLiveSignal) else LiveSignalDialog(it, vm::dismissLiveSignal)
+    }
     selectedItsCctv?.let { cctv ->
         ItsCctvDialog(cctv = cctv, onDismiss = vm::dismissItsCctv)
     }
@@ -552,8 +554,8 @@ private fun MapLayerSheet(
 ) {
     val layers = listOf(
         MapLayerOption(listOf("its_cctv"), "CCTV", Icons.Filled.Videocam),
-        MapLayerOption(listOf("traffic_lights"), "신호등 위치", Icons.Filled.Traffic),
-        MapLayerOption(listOf("live_signals"), "실시간 신호(울산)", Icons.Filled.Traffic),
+        // 신호등: 위치(전국) + 파란 테두리는 눌러서 실시간 신호(서울·울산)나 신호 계획(인천·대구)
+        MapLayerOption(listOf("traffic_lights"), "신호등", Icons.Filled.Traffic),
         MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
@@ -998,13 +1000,6 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun Hint(text: String) {
-    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), shadowElevation = 2.dp) {
-        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
     }
 }
 
