@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.DirectionsSubway
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -2233,13 +2234,18 @@ fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Mo
     val note by t.note.collectAsStateWithLifecycle()
     val mode by t.mode.collectAsStateWithLifecycle()
     val ride by t.ridePlan.collectAsStateWithLifecycle()
+    val saving by t.saving.collectAsStateWithLifecycle()
+    // 고르는 중인 칸이 바로 입력칸 (집·회사로 저장할 때만 예전 검색칸)
+    var q by rememberSaveable(editing) { mutableStateOf("") }
+    fun inputFor(field: PlanField): Triple<String, (String) -> Unit, () -> Unit>? =
+        if (editing == field && saving == null) Triple(q, { v: String -> q = v; t.search(v) }, { t.search(q) }) else null
     Column(modifier.fillMaxSize()) {
         if (selected == null) {
             if (editing == null) HomeWorkChips(t)
             Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PlanPointField("출발", origin?.name ?: "내 위치", active = editing == PlanField.Origin) { t.edit(PlanField.Origin) }
-                    PlanPointField("도착", dest?.name ?: "목적지를 입력하세요", active = editing == PlanField.Dest, placeholder = dest == null) {
+                    PlanPointField("출발", if (editing == PlanField.Origin) "출발지를 입력하세요" else origin?.name ?: "내 위치", active = editing == PlanField.Origin, input = inputFor(PlanField.Origin)) { t.edit(PlanField.Origin) }
+                    PlanPointField("도착", dest?.name ?: "목적지를 입력하세요", active = editing == PlanField.Dest, placeholder = dest == null, input = inputFor(PlanField.Dest)) {
                         t.edit(PlanField.Dest)
                     }
                 }
@@ -2262,7 +2268,11 @@ fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Mo
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(Modifier.weight(1f)) {
             when {
-                editing != null -> PlanSearch(t, editing!!)
+                editing != null -> PlanSearch(
+                    t, editing!!,
+                    showBox = saving != null,
+                    onPickOnMap = if (saving == null && editing != PlanField.Via) ({ vm.keepPlannerForMap(); onShowMap() }) else null,
+                )
                 selected != null -> PlanDetail(t, selected!!)
                 else -> PlanList(t, onShowMap)
             }
@@ -2311,7 +2321,12 @@ private fun HomeWorkChips(t: TripController) {
 }
 
 @Composable
-private fun PlanPointField(label: String, value: String, active: Boolean, placeholder: Boolean = false, onClick: () -> Unit) {
+private fun PlanPointField(
+    label: String, value: String, active: Boolean, placeholder: Boolean = false,
+    /** 있으면 이 칸이 글자를 바로 칠 수 있는 입력칸이 됨: (지금 글자, 바뀔 때, 검색) */
+    input: Triple<String, (String) -> Unit, () -> Unit>? = null,
+    onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
@@ -2320,24 +2335,43 @@ private fun PlanPointField(label: String, value: String, active: Boolean, placeh
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = ModeColor.Bus, fontWeight = FontWeight.Bold, modifier = Modifier.width(36.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (placeholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (input != null) {
+                val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = input.first,
+                    onValueChange = input.second,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(ModeColor.Bus),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { input.third() }),
+                    modifier = Modifier.weight(1f).then(Modifier.focusRequester(focus)),
+                    decorationBox = { inner ->
+                        if (input.first.isEmpty()) Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        inner()
+                    },
+                )
+            } else {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (placeholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun PlanSearch(t: TripController, field: PlanField) {
+private fun PlanSearch(t: TripController, field: PlanField, showBox: Boolean = true, onPickOnMap: (() -> Unit)? = null) {
     val results by t.results.collectAsStateWithLifecycle()
     val saving by t.saving.collectAsStateWithLifecycle()
     var q by rememberSaveable(field) { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
-        SearchBox(
+        if (showBox) SearchBox(
             q,
             {
                 q = it
@@ -2352,7 +2386,7 @@ private fun PlanSearch(t: TripController, field: PlanField) {
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             onSearch = { t.search(q) },
         )
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f)) {
             if (field == PlanField.Origin) {
                 item {
                     PlanResultRow(Icons.Filled.MyLocation, "내 위치", "현재 위치에서 출발") { t.pick(null) }
@@ -2372,6 +2406,18 @@ private fun PlanSearch(t: TripController, field: PlanField) {
                 }
                 is Load.Fail -> item { MessageText(r.message) }
                 is Load.Idle -> item { MessageText("장소를 검색하거나 지도에서 위치를 눌러 선택하세요.") }
+            }
+        }
+        if (onPickOnMap != null) Surface(
+            onClick = onPickOnMap,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).heightIn(min = 52.dp),
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(20.dp), tint = ModeColor.Bus)
+                Spacer(Modifier.width(8.dp))
+                Text("지도에서 고르기", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
             }
         }
     }
