@@ -32,8 +32,9 @@ object ReminderLogic {
 
     fun clock(minutes: Int): String = String.format(java.util.Locale.ROOT, "%02d:%02d", (minutes / 60) % 24, minutes % 60)
 
-    fun lastBusText(routeNo: String, leadMin: Int, lastMinutes: Int): String =
-        "${routeNo}번 막차가 약 ${leadMin}분 뒤입니다 (기점 ${clock(lastMinutes)} 출발). 정류장에 따라 시각이 다를 수 있으니 서두르세요."
+    fun lastBusText(routeNo: String, leadMin: Int, lastMinutes: Int, first: Boolean = false): String =
+        if (first) "${routeNo}번 첫차가 약 ${leadMin}분 뒤입니다 (기점 ${clock(lastMinutes)} 출발). 정류장에 따라 시각이 다를 수 있어요."
+        else "${routeNo}번 막차가 약 ${leadMin}분 뒤입니다 (기점 ${clock(lastMinutes)} 출발). 정류장에 따라 시각이 다를 수 있으니 서두르세요."
 
     /** 출근 알림의 다음 행동 */
     sealed class Decision {

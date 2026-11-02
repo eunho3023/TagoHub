@@ -21,15 +21,17 @@ import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.ZonedDateTime
 
-/** 알람이 울렸을 때: 막차 알림을 띄우고 다음 날 것을 예약, 출근 알림은 소요시간을 확인해 나갈 때를 알려줌 */
+/** 알람이 울렸을 때: 막차·첫차 알림을 띄우고 다음 날 것을 예약, 출근 알림은 소요시간을 확인해 나갈 때를 알려줌 */
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         when (intent.action) {
-            ReminderScheduler.ACTION_LAST_BUS -> {
+            ReminderScheduler.ACTION_LAST_BUS, ReminderScheduler.ACTION_FIRST_BUS -> {
+                val first = intent.action == ReminderScheduler.ACTION_FIRST_BUS
                 val id = intent.getStringExtra(ReminderScheduler.EXTRA_ROUTE_ID) ?: return
-                val r = ReminderScheduler.store(app).lastBusFor(id) ?: return
-                notify(app, 5000 + (id.hashCode() and 0xFFF), "${r.routeNo}번 막차 알림", ReminderLogic.lastBusText(r.routeNo, r.leadMin, r.lastMinutes))
+                val r = ReminderScheduler.store(app).lastBusFor(id, first) ?: return
+                val kind = if (first) "첫차" else "막차"
+                notify(app, (if (first) 6000 else 5000) + (id.hashCode() and 0xFFF), "${r.routeNo}번 $kind 알림", ReminderLogic.lastBusText(r.routeNo, r.leadMin, r.lastMinutes, first))
                 ReminderScheduler.scheduleLastBus(app, r)
             }
             ReminderScheduler.ACTION_COMMUTE -> {
@@ -83,8 +85,8 @@ class ReminderReceiver : BroadcastReceiver() {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "막차·출근 알림", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "막차 시각과 출근 때 나갈 시각을 알려줍니다."
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "막차·첫차·출근 알림", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "막차·첫차 시각과 출근 때 나갈 시각을 알려줍니다."
             })
         }
         val open = PendingIntent.getActivity(
