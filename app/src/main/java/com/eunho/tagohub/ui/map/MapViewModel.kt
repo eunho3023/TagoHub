@@ -2247,6 +2247,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         panel.value = MapPanel.Plan
     }
 
+    /** 길찾기 탭에서 "지도에서 고르기": 입력 중이던 출발·도착을 지우지 않고 지도 위 길찾기 패널로 (openPlanner 가 비우지 않게 미리 열어 둠) */
+    fun keepPlannerForMap() { panel.value = MapPanel.Plan }
+
     fun effectiveBase(): BaseMap = baseMap.value ?: BaseMap.Base
 
     fun setBaseMap(type: BaseMap) {
