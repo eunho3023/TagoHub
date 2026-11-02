@@ -121,7 +121,9 @@ fun TimetablePane(
     LaunchedEffect(c) { c.ensureGrades() }
     LaunchedEffect(viaTransfer, searched) { if (viaTransfer && searched) c.loadTransfers() }
 
-    Column(Modifier.fillMaxSize()) {
+    // 조회 전 화면은 내용이 화면보다 길어도(최근 조회 등) 밀어 올려서 끝까지 볼 수 있게
+    val formScroll = rememberScrollState()
+    Column(Modifier.fillMaxSize().then(if (!searched) Modifier.verticalScroll(formScroll) else Modifier)) {
         if (!searched) {
             // 조회 전: 출발·도착 카드, 가는날, 등급을 고르고 아래 큰 버튼으로 조회
             Column(Modifier.padding(top = 14.dp, bottom = 12.dp)) {
@@ -154,7 +156,7 @@ fun TimetablePane(
             if (recents.isNotEmpty()) {
                 Text("최근 조회", Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 6.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                 Surface(
-                    Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+                    Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
