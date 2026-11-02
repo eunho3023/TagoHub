@@ -165,7 +165,7 @@ fun HomeScreen(
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(4.dp))
                 if (query.isBlank()) {
-                    BrandHeader(Modifier.riseIn(0), action = "교통", onAction = { onOpenTab(AppTab.Transit) })
+                    BrandHeader(Modifier.riseIn(0))
                     Spacer(Modifier.height(16.dp))
                 }
                 Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
