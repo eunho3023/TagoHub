@@ -1336,18 +1336,29 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
     var pick by remember(preferredRouteId) { mutableStateOf(preferredRouteId) }
     Column(Modifier.fillMaxSize()) {
         Text(
-            "운행 요일",
-            Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp),
-            style = MaterialTheme.typography.labelLarge,
+            "첫차·막차와 배차간격으로 계산한 예상 시간표로 실제 상황과 다를 수 있습니다.",
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // 요일: 고른 것은 굵은 테두리, 나머지는 회색 알약
         LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(com.eunho.tagohub.data.DayKind.entries) { k ->
-                com.eunho.tagohub.ui.common.PillChip(k.label, k == day, { vm.openStopTimetable(k) })
+                val on = k == day
+                Surface(
+                    onClick = { vm.openStopTimetable(k) },
+                    shape = CircleShape,
+                    color = if (on) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                    border = if (on) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface) else null,
+                ) {
+                    Box(Modifier.heightIn(min = 40.dp).widthIn(min = 44.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                        Text(k.label, style = MaterialTheme.typography.titleSmall, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium)
+                    }
+                }
             }
         }
         LoadView(state, onRetry = { vm.openStopTimetable() }, isEmpty = { it.isEmpty() }, emptyText = "시간표가 없어요.") { list ->
@@ -1359,20 +1370,14 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
             }
             Column(Modifier.fillMaxSize()) {
                 var picking by remember { mutableStateOf(false) }
-                Text(
-                    "노선",
-                    Modifier.padding(start = 16.dp, top = 2.dp, bottom = 2.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Surface(
                     onClick = { picking = true },
                     shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                    color = MaterialTheme.colorScheme.surface,
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 ) {
-                    Row(Modifier.heightIn(min = 56.dp).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.heightIn(min = 52.dp).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         RouteTitle(cur, Modifier.weight(1f))
                         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "버스 선택")
                     }
@@ -1413,23 +1418,6 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                 }
                 // 전국 노선은 고를 때 계산 (첫차·막차·배차간격 + 이 정류장까지 소요시간)
                 LaunchedEffect(cur.routeId, cur.loaded) { if (!cur.loaded) vm.ensureTimes(cur.routeId) }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (cur.estimated) "첫차·막차와 배차간격으로 계산한 예상 시각입니다."
-                            else "운행 회차와 정류장 이동시간으로 계산한 예상 시각입니다.",
-                            Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
                 if (!cur.loaded) {
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp), color = busRouteColor(cur.routeType))
                     Text("시간표 계산 중", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodyMedium)
@@ -1444,6 +1432,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                     )
                     return@Column
                 }
+                val today = day == com.eunho.tagohub.data.DayKind.today()
                 val now by produceState(LocalTime.now().let { it.hour * 60 + it.minute }, day, cur.routeId) {
                     while (true) {
                         val time = LocalTime.now()
@@ -1451,105 +1440,116 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                         delay(30_000L)
                     }
                 }
-                val next = if (day == com.eunho.tagohub.data.DayKind.today()) cur.minutes.firstOrNull { it >= now } else null
-                val mainTime = when {
-                    next != null -> JeonjuTimetable.clock(next)
-                    day == com.eunho.tagohub.data.DayKind.today() -> "운행 종료"
-                    else -> JeonjuTimetable.clock(cur.minutes.first())
-                }
+                val next = if (today) cur.minutes.firstOrNull { it >= now } else null
+                val nextIdx = next?.let { cur.minutes.indexOf(it) } ?: -1
+                val listState = rememberLazyListState()
+                // 열자마자 다음 차가 맨 위 근처에 보이게
+                LaunchedEffect(cur.routeId, day, nextIdx) { if (nextIdx > 1) listState.scrollToItem(nextIdx - 1) }
+                val line = MaterialTheme.colorScheme.outlineVariant
+                val routeColor = busRouteColor(cur.routeType)
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, line),
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp).padding(top = 8.dp, bottom = 8.dp),
                 ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    when {
-                                        next != null -> "다음 출발"
-                                        day == com.eunho.tagohub.data.DayKind.today() -> "오늘 운행 종료"
-                                        else -> "선택한 요일 첫 운행"
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                                Text(mainTime, style = MaterialTheme.typography.headlineSmall.merge(Tnum), fontWeight = FontWeight.ExtraBold)
-                            }
-                            if (next != null) {
-                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, contentColor = Color.White) {
-                                    Text("${next - now}분 후", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column {
-                                Text("첫차", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
-                                Text(JeonjuTimetable.clock(cur.minutes.first()), style = MaterialTheme.typography.bodyLarge.merge(Tnum), fontWeight = FontWeight.Bold)
-                            }
-                            Column {
-                                Text("막차", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
-                                Text(JeonjuTimetable.clock(cur.minutes.last()), style = MaterialTheme.typography.bodyLarge.merge(Tnum), fontWeight = FontWeight.Bold)
-                            }
-                            Column {
-                                Text("하루 운행", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
-                                Text("${cur.minutes.size}회", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-                Text(
-                    "시간별 출발 시각",
-                    Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                    val byHour = cur.minutes.groupBy { (it / 60) % 24 }.toSortedMap().toList()
-                    items(byHour, key = { it.first }) { (h, mins) ->
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                        ) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(String.format(java.util.Locale.ROOT, "%02d시", h), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold)
-                                    Spacer(Modifier.weight(1f))
-                                    Text("${mins.size}회", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                mins.forEach { m ->
-                                    val isNext = m == next
-                                    val isPast = day == com.eunho.tagohub.data.DayKind.today() && m < now
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = if (isNext) busRouteColor(cur.routeType) else MaterialTheme.colorScheme.surface,
-                                        contentColor = if (isNext) Color.White else MaterialTheme.colorScheme.onSurface,
-                                        border = if (isNext) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
-                                        modifier = Modifier.heightIn(min = 44.dp),
-                                    ) {
-                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            if (isNext) {
-                                                Text("다음", Modifier.padding(end = 6.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
-                                            }
+                    Column(Modifier.fillMaxSize()) {
+                        TimetableRow(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), line, 52.dp,
+                            { TimetableHead("예상 시간표") },
+                            { TimetableHead("이전 차와 간격") },
+                            { TimetableHead(if (today) "남은 시간" else "순서") },
+                        )
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                            itemsIndexed(cur.minutes) { i, m ->
+                                val isNext = i == nextIdx
+                                val isPast = today && m < now
+                                val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                TimetableRow(
+                                    if (isNext) routeColor.copy(alpha = 0.10f) else Color.Transparent, line, 52.dp,
+                                    {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (i == 0) TimetableBadge("첫", routeColor)
+                                            else if (i == cur.minutes.lastIndex) TimetableBadge("막", MaterialTheme.colorScheme.error)
                                             Text(
                                                 JeonjuTimetable.clock(m),
-                                                style = MaterialTheme.typography.titleSmall.merge(Tnum),
-                                                fontWeight = if (isNext) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                                color = if (isPast) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f) else if (isNext) Color.White else MaterialTheme.colorScheme.onSurface,
+                                                style = MaterialTheme.typography.titleMedium.merge(Tnum),
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isNext) routeColor else if (isPast) dim else MaterialTheme.colorScheme.onSurface,
                                             )
                                         }
-                                    }
-                                }
-                                }
+                                    },
+                                    {
+                                        Text(
+                                            if (i == 0) "-" else "${m - cur.minutes[i - 1]}분",
+                                            style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = dim,
+                                        )
+                                    },
+                                    {
+                                        val mins = m - now
+                                        Text(
+                                            when {
+                                                !today -> "${i + 1}번째"
+                                                isPast -> "지남"
+                                                mins >= 60 -> "${mins / 60}시간 ${mins % 60}분 후"
+                                                else -> "${mins}분 후"
+                                            },
+                                            style = MaterialTheme.typography.bodyLarge.merge(Tnum),
+                                            fontWeight = if (isNext) FontWeight.ExtraBold else FontWeight.Normal,
+                                            color = if (isNext) routeColor else dim,
+                                        )
+                                    },
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** 시간표 한 줄: 세 칸(1.4 : 1 : 1)을 세로 줄로 나누고 아래에 가로 줄 */
+@Composable
+private fun TimetableRow(
+    bg: Color,
+    line: Color,
+    height: androidx.compose.ui.unit.Dp,
+    first: @Composable () -> Unit,
+    second: @Composable () -> Unit,
+    third: @Composable () -> Unit,
+) {
+    Column {
+        Row(Modifier.fillMaxWidth().height(height).background(bg)) {
+            Box(Modifier.weight(1.4f).fillMaxHeight(), contentAlignment = Alignment.Center) { first() }
+            Box(Modifier.width(1.dp).fillMaxHeight().background(line))
+            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { second() }
+            Box(Modifier.width(1.dp).fillMaxHeight().background(line))
+            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { third() }
+        }
+        HorizontalDivider(color = line)
+    }
+}
+
+@Composable
+private fun TimetableHead(text: String) {
+    com.eunho.tagohub.ui.common.FitText(
+        text, Modifier.padding(horizontal = 6.dp),
+        color = MaterialTheme.colorScheme.onSurface, maxSizeSp = 15f, minSizeSp = 10f, fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center,
+    )
+}
+
+/** 첫차·막차 표시 (시각 앞의 작은 네모) */
+@Composable
+private fun TimetableBadge(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(5.dp),
+        color = color.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.5f)),
+        modifier = Modifier.padding(end = 6.dp),
+    ) {
+        Text(text, Modifier.padding(horizontal = 5.dp, vertical = 1.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = color)
     }
 }
 
