@@ -48,14 +48,6 @@ interface JeonjuApi {
      */
     @GET("busstop/general_busstop_common")
     suspend fun stopRoutes(@Query("stopStandardid") a: String, @Query("stopStdid") b: String): String
-
-    /** 출발·도착 정류장 사이 환승 경로 */
-    @GET("transfer/fromto_bus_search_transfer_detail_common")
-    suspend fun transfer(
-        @Query("sStandardId") from: String,
-        @Query("eStandardId") to: String,
-        @Query("maxCnt") maxCnt: Int,
-    ): String
 }
 
 class JeonjuRepository(private val api: JeonjuApi) {
@@ -128,10 +120,6 @@ class JeonjuRepository(private val api: JeonjuApi) {
     }
 
     private suspend fun <T> run2(block: suspend () -> T): T = block()
-
-    suspend fun transfers(fromTagoId: String, toTagoId: String) = run {
-        JeonjuMappers.transfers(rows { api.transfer(Jeonju.std(fromTagoId), Jeonju.std(toTagoId), 25) })
-    }
 
     companion object {
         fun create(): JeonjuRepository {

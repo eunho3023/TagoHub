@@ -16,23 +16,6 @@ object Jeonju {
     fun tago(stdId: String) = PREFIX + stdId.trim()
 }
 
-/** 환승 경로검색 한 건 */
-data class TransferOption(
-    val startId: String,
-    val startNo: String,
-    val chgStopId: String,
-    val chgName: String,
-    val chgRemark: String?,
-    val finId: String,
-    val finNo: String,
-    val rStop1: Int,
-    val rStop2: Int,
-    val startFromSeq: Int,
-    val startToSeq: Int,
-    val finFromSeq: Int,
-    val finToSeq: Int,
-)
-
 object JeonjuMappers {
 
     /** 정류장 도착 예정 (RTime = 초, RStop = 남은 정류장 수, viaStopname = 버스가 지금 있는 정류장) */
@@ -130,24 +113,6 @@ object JeonjuMappers {
         LatLng(lat, lng)
     }
 
-    /** 환승 검색 결과. 같은 행이 반복돼서 와서 중복 제거 */
-    fun transfers(rows: List<Row>): List<TransferOption> = rows.mapNotNull { r ->
-        TransferOption(
-            startId = r.str("startId") ?: return@mapNotNull null,
-            startNo = r.text("startNo"),
-            chgStopId = r.str("chgBnodeId") ?: return@mapNotNull null,
-            chgName = r.text("chgName"),
-            chgRemark = r.str("reMark"),
-            finId = r.str("finId") ?: return@mapNotNull null,
-            finNo = r.text("finNo"),
-            rStop1 = r.int("RStop1") ?: 0,
-            rStop2 = r.int("RStop2") ?: 0,
-            startFromSeq = r.int("startFromSeqNo") ?: 0,
-            startToSeq = r.int("startToseqNo") ?: 0,
-            finFromSeq = r.int("finFromseqNo") ?: 0,
-            finToSeq = r.int("finToseqNo") ?: 0,
-        )
-    }.distinctBy { listOf(it.startId, it.chgStopId, it.finId, it.startFromSeq, it.finToSeq) }
 }
 
 // ───────────────────────── 길찾기 ─────────────────────────
@@ -222,7 +187,6 @@ object TripPlanner {
     const val DWELL_MIN_PER_STOP = 0.3    // 정차 시간
     const val MIN_PER_STOP = 1.6          // 거리를 모를 때 정류장당
     const val TRANSFER_MIN = 4
-    const val TRANSFER_WALK_MAX = 200.0   // 환승할 때 걸어서 옮길 수 있는 최대 거리
     const val MAX_LEG_STOPS = 70
 
     fun rideMinutes(l: TripLeg): Double =
@@ -304,85 +268,6 @@ object TripPlanner {
             best?.let { out += it }
         }
         return out
-    }
-
-    /**
-     * 가장 가까운 환승: 출발 쪽 노선(A)의 하류 정류장과 도착 쪽 노선(B)의 상류 정류장이
-     * 같은 정류장이거나 200m 안에서 만나는 지점을 모두 보고, 노선 조합마다 가장 빠른 것 하나.
-     * 격자로 근처 정류장만 비교해서 빠르다.
-     */
-    fun nearestTransfers(
-        origins: List<Pair<BusStop, Double>>,
-        dests: List<Pair<BusStop, Double>>,
-        fromLines: List<Line>,
-        toLines: List<Line>,
-    ): List<TripPlan> {
-        class Up(val line: Line, val m: Int, val j: Int, val dest: BusStop, val dw: Double)
-        val cell = 0.002
-        fun key(lat: Double, lng: Double) = Pair(Math.floor(lat / cell).toInt(), Math.floor(lng / (cell * 1.25)).toInt())
-        val grid = HashMap<Pair<Int, Int>, MutableList<Up>>()
-        for (b in toLines) for ((d, dw) in dests) {
-            val j = b.firstIndex(d.nodeId)
-            if (j <= 0) continue
-            for (m in maxOf(0, j - MAX_LEG_STOPS) until j) {
-                val t = b.stops[m]
-                grid.getOrPut(key(t.lat!!, t.lng!!)) { mutableListOf() } += Up(b, m, j, d, dw)
-            }
-        }
-        val best = HashMap<String, TripPlan>()
-        for (a in fromLines) for ((o, ow) in origins) {
-            val i = a.firstIndex(o.nodeId)
-            if (i < 0) continue
-            for (k in i + 1 until minOf(a.stops.size, i + MAX_LEG_STOPS)) {
-                val s = a.stops[k]
-                val (cy, cx) = key(s.lat!!, s.lng!!)
-                for (dy in -1..1) for (dx in -1..1) {
-                    val ups = grid[Pair(cy + dy, cx + dx)] ?: continue
-                    for (u in ups) {
-                        if (u.line.routeId == a.routeId) continue
-                        val t = u.line.stops[u.m]
-                        val walk = if (t.nodeId == s.nodeId) 0.0 else com.eunho.tagohub.core.Geo.meters(s.lat, s.lng!!, t.lat!!, t.lng!!)
-                        if (walk > TRANSFER_WALK_MAX) continue
-                        val plan = TripPlan(
-                            o, u.dest, ow, u.dw,
-                            listOf(a.leg(i, k), u.line.leg(u.m, u.j)),
-                            transferWalkM = walk,
-                        )
-                        val id = a.routeId + ">" + u.line.routeId
-                        val cur = best[id]
-                        if (cur == null || plan.minutes < cur.minutes) best[id] = plan
-                    }
-                }
-            }
-        }
-        return best.values.toList()
-    }
-
-    /** 전주시 환승 경로검색 결과 → 경로 (노선 좌표가 있으면 실제 거리로 다시 계산) */
-    fun fromTransfers(
-        origin: BusStop, dest: BusStop, walkStartM: Double, walkEndM: Double,
-        options: List<TransferOption>,
-        lines: Map<String, Line> = emptyMap(),
-        stopName: (String) -> String?,
-    ): List<TripPlan> = options.map { t ->
-        val chg = Jeonju.tago(t.chgStopId)
-        val chgName = t.chgName.ifBlank { stopName(chg).orEmpty() }
-        fun meters(routeId: String, fromSeq: Int, toSeq: Int): Double {
-            val line = lines[routeId] ?: return 0.0
-            val i = line.stops.indexOfFirst { it.ord == fromSeq }
-            val j = line.stops.indexOfFirst { it.ord == toSeq }
-            return if (i >= 0 && j > i) line.dist(i, j) else 0.0
-        }
-        val a = Jeonju.tago(t.startId)
-        val b = Jeonju.tago(t.finId)
-        TripPlan(
-            origin = origin, dest = dest, walkStartM = walkStartM, walkEndM = walkEndM,
-            legs = listOf(
-                TripLeg(a, t.startNo, origin.nodeId, origin.name, chg, chgName, t.startFromSeq, t.startToSeq, t.rStop1, meters(a, t.startFromSeq, t.startToSeq)),
-                TripLeg(b, t.finNo, chg, chgName, dest.nodeId, dest.name, t.finFromSeq, t.finToSeq, t.rStop2, meters(b, t.finFromSeq, t.finToSeq)),
-            ),
-            transferRemark = t.chgRemark,
-        )
     }
 
     /**

@@ -18,7 +18,6 @@ class NavRoute(
     val points: List<LatLng>,
     val guides: List<DriveGuide>,
     val roads: List<DriveRoad>,
-    val totalMeters: Int,
     val totalSeconds: Int,
 ) {
     /** 점마다의 누적 거리(m) */
@@ -173,7 +172,7 @@ class NavRoute(
     data class Projection(val segment: Int, val distance: Double, val along: Double, val side: Double = 0.0)
 
     companion object {
-        fun from(r: KakaoDriveRoute) = NavRoute(r.points, r.guides, r.roads, r.distanceMeters, r.durationSeconds)
+        fun from(r: KakaoDriveRoute) = NavRoute(r.points, r.guides, r.roads, r.durationSeconds)
     }
 }
 

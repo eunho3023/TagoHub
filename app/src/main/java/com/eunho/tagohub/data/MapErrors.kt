@@ -7,6 +7,4 @@ object MapErrors {
         return Regex("\\((-?\\d+)\\)").find(text)?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    /** 키 해시·패키지명 미등록(401), 권한 없음(403) → 등록 안내 */
-    fun kakaoNeedsRegistration(code: Int?) = code == 401 || code == 403
 }

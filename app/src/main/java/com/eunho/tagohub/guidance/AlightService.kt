@@ -212,14 +212,10 @@ class AlightService : Service() {
         if (vibrator == null || !vibrator.hasVibrator()) return
         // 곧: 짧게 두 번 / 지금·지나침: 길게 세 번
         val pattern = if (stage == AlightStage.Soon) longArrayOf(0, 300, 200, 300) else longArrayOf(0, 700, 250, 700, 250, 700)
-        runCatching {
-            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
-            else @Suppress("DEPRECATION") vibrator.vibrate(pattern, -1)
-        }
+        runCatching { vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1)) }
     }
 
     private fun createChannels() {
-        if (Build.VERSION.SDK_INT < 26) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(ONGOING_CHANNEL) == null) {
             nm.createNotificationChannel(NotificationChannel(ONGOING_CHANNEL, "하차 알림 진행", NotificationManager.IMPORTANCE_LOW).apply {
