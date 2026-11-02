@@ -322,6 +322,26 @@ private fun AccountRow() {
                 }
             },
         ) { Text(if (email != null) "로그아웃" else if (busy) "연결 중…" else "구글 계정 연결") }
+        // 로그인한 계정에 다른 로그인 방법(구글·이메일·전화번호)을 더 붙여서, 같은 사람의 계정이 둘로 갈라지지 않게
+        if (email != null) {
+            if (account.methods.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "로그인 방법: " + account.methods.joinToString(" · ") { it.label },
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (com.eunho.tagohub.data.LoginMethods.missing(account.methods).isNotEmpty()) {
+                var showAdd by remember { mutableStateOf(false) }
+                androidx.compose.material3.TextButton(enabled = !busy, onClick = { showAdd = true }) { Text("로그인 방법 추가") }
+                if (showAdd) com.eunho.tagohub.ui.common.EmailAuthDialog(
+                    onDismiss = { showAdd = false },
+                    onSuccess = { showAdd = false; android.widget.Toast.makeText(context, "로그인 방법을 추가했어요", android.widget.Toast.LENGTH_SHORT).show() },
+                    add = true,
+                )
+            }
+        }
         // 이메일 회원가입·로그인 (가입하면 지금 저장된 즐겨찾기·설정이 그대로 이어짐)
         if (email == null) {
             var showEmail by remember { mutableStateOf(false) }
