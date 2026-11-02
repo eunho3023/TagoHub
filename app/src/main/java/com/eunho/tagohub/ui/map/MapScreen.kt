@@ -1588,8 +1588,12 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             onFavorite = { vm.toggleFavorite(vm.routeFavorite(d)) },
             onRefresh = vm::refreshNow,
         )
-        r?.let { RouteInfoCard(it) }
-        r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
+        // 목록일 땐 정보 카드·막차 알림이 정류장 목록과 함께 스크롤됨 (고정이면 목록이 들어갈 자리가 없어짐). 배치도에서만 위에 고정
+        var diagram by rememberSaveable { mutableStateOf(false) }
+        if (diagram) {
+            r?.let { RouteInfoCard(it) }
+            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
+        }
         val dir by d.dir.collectAsStateWithLifecycle()
         LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없어요.") { all ->
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
@@ -1602,18 +1606,16 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         Box(
                             Modifier
                                 .weight(1f)
-                                .heightIn(min = 52.dp)
+                                .heightIn(min = 44.dp)
                                 .clickable { vm.setRouteDir(d, i) },
                             contentAlignment = Alignment.BottomCenter,
                         ) {
-                            Text(
+                            com.eunho.tagohub.ui.common.FitText(
                                 "$name 방면",
-                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 14.dp),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp),
                                 color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
+                                maxSizeSp = 16f, minSizeSp = 10f,
+                                fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Medium,
                                 textAlign = TextAlign.Center,
                             )
                             Box(Modifier.fillMaxWidth().height(3.dp).background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent))
@@ -1661,7 +1663,6 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     AlightButton(com.eunho.tagohub.guidance.AlightAlert.Target(s.name, s.lat!!, s.lng!!, false, d.routeNo))
                 }
             }
-            var diagram by rememberSaveable { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(false to "목록", true to "배치도").forEach { (isDiagram, label) ->
                     FilterChip(selected = diagram == isDiagram, onClick = { diagram = isDiagram }, label = { Text(label) })
@@ -1682,7 +1683,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
                 val target = list.indexOfFirst { it.nodeId == d.focusNodeId }.takeIf { it >= 0 }
                     ?: (placement.at.keys + placement.between.keys).minOrNull()
-                if (target != null && target > 2) listState.scrollToItem(target - 2)
+                // 맨 앞에 정보 카드 한 칸이 있어서 정류장은 한 칸씩 뒤 (누른 정류장 위로 두 칸이 보이게)
+                if (target != null) listState.scrollToItem((target - 1).coerceAtLeast(0))
             }
             if (diagram) {
                 RouteDiagramView(
@@ -1696,6 +1698,10 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                 )
             } else
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                item {
+                    r?.let { RouteInfoCard(it) }
+                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
+                }
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)
                     TimelineRow(
