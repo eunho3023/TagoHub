@@ -236,6 +236,12 @@ internal fun DriveGuidanceOverlay(vm: MapViewModel, modifier: Modifier = Modifie
             note?.let { NoteChip(it, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer) }
         }
 
+        // ── 회전이 가까우면(250m 안) 큰 화살표: 어느 쪽으로 꺾는지 한눈에 ──
+        val turn = st?.nextGuide
+        if (st != null && turn != null && !turn.isDestination && !st.arrived && !st.offRoute && st.distanceToNext <= 250.0 && TurnKind.isManeuverGuide(turn)) {
+            JunctionArrow(turn, st.distanceToNext, Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
+        }
+
         // ── 과속 경고: 단속 제한속도를 3km/h 넘으면 화면 가장자리가 천천히 빨갛게 숨 쉼 ──
         val speedNow = info?.speedKmh ?: 0
         val limitNow = info?.zone?.next?.zone?.limitKmh?.takeIf { info?.zone?.next?.zone?.kind?.isCamera == true && (info?.zone?.distance ?: 9e9) <= 1500.0 }
@@ -449,6 +455,25 @@ private fun ZoneCard(z: ZoneStatus) {
             )
             Spacer(Modifier.width(10.dp))
             Text(NavText.short(z.distance), color = ink, fontFamily = Mono, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** 교차로 확대 화살표: 회전 250m 전부터 크게. 아래 막대가 회전 지점에 가까워질수록 차오름 */
+@Composable
+private fun JunctionArrow(guide: DriveGuide, meters: Double, modifier: Modifier = Modifier) {
+    val kind = TurnKind.of(guide)
+    Surface(shape = RoundedCornerShape(26.dp), color = bannerColor(), shadowElevation = 10.dp, modifier = modifier.width(132.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(kind.icon(), contentDescription = TurnKind.bannerText(guide), tint = Color.White, modifier = Modifier.size(92.dp))
+            Text(NavText.short(meters), color = Color.White, fontSize = 30.sp, lineHeight = 34.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { (1f - (meters / 250.0).toFloat()).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.3f),
+            )
         }
     }
 }
