@@ -2512,7 +2512,12 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
                     isEmpty = { it.isEmpty() },
                     emptyText = "대중교통 경로가 없어요. 다른 이동수단을 선택해 경로를 확인하세요.",
                     idle = { MessageText("출발지와 도착지를 선택하면 대중교통 경로를 보여줍니다.") },
-                ) { list ->
+                ) { allPlans ->
+                    // 종류 필터: 전체 / 버스 / 지하철 / 시외·고속 (경로에 실제로 있는 종류만 칩으로)
+                    val kinds = remember(allPlans) { PlanKind.entries.filter { k -> k == PlanKind.All || allPlans.any { k.matches(it) } } }
+                    var kindName by rememberSaveable { mutableStateOf(PlanKind.All.name) }
+                    val kind = PlanKind.entries.firstOrNull { it.name == kindName }?.takeIf { it in kinds } ?: PlanKind.All
+                    val list = remember(allPlans, kind) { allPlans.filter { kind.matches(it) } }
                     val shown = remember(list, sort) {
                         when (sort) {
                             PlanSort.Fast -> list.sortedBy { it.minutes }
@@ -2521,6 +2526,14 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
                         }
                     }
                     Column(Modifier.fillMaxSize()) {
+                        if (kinds.size > 2) androidx.compose.foundation.lazy.LazyRow(
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(kinds) { k ->
+                                com.eunho.tagohub.ui.common.PillChip("${k.label} ${allPlans.count { k.matches(it) }}", k == kind, { kindName = k.name })
+                            }
+                        }
                         var sortOpen by remember { mutableStateOf(false) }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("경로 ${shown.size}개", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2639,6 +2652,18 @@ private fun MiniPlanCard(p: TripPlan, tag: String, on: Boolean, onClick: () -> U
                 if (p.legs.size > 3) Text("+${p.legs.size - 3}", fontSize = 12.sp, color = variant)
             }
         }
+    }
+}
+
+/** 대중교통 결과 종류 필터 */
+private enum class PlanKind(val label: String) {
+    All("전체"), Bus("버스"), Subway("지하철"), Coach("시외·고속");
+
+    fun matches(p: TripPlan): Boolean = when (this) {
+        All -> true
+        Bus -> p.legs.none { it.subway }
+        Subway -> p.legs.any { it.subway }
+        Coach -> p.legs.any { it.intercity }
     }
 }
 
