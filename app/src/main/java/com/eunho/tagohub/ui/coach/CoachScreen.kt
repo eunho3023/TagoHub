@@ -189,7 +189,7 @@ private fun LivePane(vm: CoachViewModel) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                updated?.let { "${TagoTime.clockText(it.hour * 60 + it.minute)} 갱신, 1분마다 자동 갱신" } ?: "",
+                "1분마다 자동으로 새로고침돼요",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

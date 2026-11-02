@@ -467,13 +467,6 @@ private fun LiveTab(d: StationDetail, c: StationDetailController, onArrivalClick
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
-                updated?.let {
-                    Text(
-                        "${it.hhmm()} 갱신",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
             LoadView(state, isEmpty = { it.isEmpty() }, emptyText = "현재 도착·출발 예정인 열차가 없어요.") { list ->
                 val now by produceState(LocalDateTime.now()) {
