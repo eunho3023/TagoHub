@@ -187,8 +187,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 
 private fun LocalTime.hhmm() = TagoTime.clockText(hour * 60 + minute)
-/** 새로고침이 됐는지 보이게 초까지: "17:12:31" */
-private fun LocalTime.hhmmss() = "%02d:%02d:%02d".format(hour, minute, second)
 
 /** 새로고침 버튼: 누르면 아이콘이 한 바퀴 돌아 눌렸다는 것을 보여 줌 */
 @Composable
@@ -1868,15 +1866,6 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
         kotlinx.coroutines.delay(350)
         searched = query
         if (!query.any(Char::isDigit)) vm.searchBus(query)
-    }
-    LaunchedEffect(Unit) {
-        // 홈 화면의 검색창에서 왔으면 바로 입력할 수 있게 (화면이 뜬 뒤에)
-        vm.searchFocus.collect { n ->
-            if (n > 0) {
-                kotlinx.coroutines.delay(350)
-                runCatching { searchFocus.requestFocus() }
-            }
-        }
     }
 
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {

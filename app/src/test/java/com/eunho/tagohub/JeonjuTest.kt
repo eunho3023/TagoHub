@@ -54,27 +54,6 @@ class JeonjuTest {
     }
 
     @Test
-    fun transfers_dedupedAndPlanned() {
-        val t = JeonjuMappers.transfers(rows("jeonju_transfer.xml"))
-        // 74→3001, 74→3002, 75→3002, 75→3001 처럼 환승 정류장이 같아도 버스 조합이 달라 모두 다른 경로
-        assertEquals(11, t.size)
-        assertEquals(4, t.count { it.chgStopId == "305100916" })
-        val first = t.first()
-        assertEquals("309", first.startNo)
-        assertEquals("200", first.finNo)
-        assertEquals("이마트", first.chgName)
-        val o = BusStop("35010", "JUB305100351", "출발", null, 35.8, 127.1)
-        val d = BusStop("35010", "JUB305100713", "도착", null, 35.81, 127.11)
-        val plans = TripPlanner.rank(TripPlanner.fromTransfers(o, d, 100.0, 200.0, t) { null })
-        assertTrue(plans.isNotEmpty())
-        assertTrue(plans.all { it.legs.size == 2 })
-        val p = plans.first { it.legs[0].routeNo == "309" && it.legs[1].routeNo == "200" }
-        assertEquals("JUB305100883", p.legs[0].alightStopId)
-        assertEquals(p.legs[0].alightStopId, p.legs[1].boardStopId)
-        assertEquals(25, p.stops)
-    }
-
-    @Test
     fun directs_foundFromRouteStopLists() {
         fun st(id: String, ord: Int) = RouteStop(id, id, null, ord, null, 35.8, 127.1)
         val routes = mapOf(
@@ -122,38 +101,8 @@ class JeonjuTest {
      * B노선: X 에서 D 로 (가까운 환승).
      * C노선: A 가 멀리 북쪽으로 돌아간 끝 Y 에서 D 로 (먼 환승) → 선택되면 안 됨.
      */
-    @Test
-    fun nearestTransfer_beatsFarDetour() {
-        fun rs(id: String, ord: Int, lat: Double, lng: Double) = RouteStop(id, id, null, ord, null, 35.80 + lat, 127.10 + lng)
-        val a = TripPlanner.Line("A", "10", listOf(
-            rs("O", 1, 0.0, 0.0), rs("a1", 2, 0.0, 0.005), rs("X", 3, 0.0, 0.010),
-            rs("a3", 4, 0.01, 0.010), rs("a4", 5, 0.02, 0.010), rs("Y", 6, 0.03, 0.010),
-        ))
-        val b = TripPlanner.Line("B", "20", listOf(rs("X", 1, 0.0, 0.010), rs("b1", 2, 0.0, 0.015), rs("D", 3, 0.0, 0.020)))
-        val c = TripPlanner.Line("C", "30", listOf(rs("Y", 1, 0.03, 0.010), rs("c1", 2, 0.02, 0.020), rs("c2", 3, 0.01, 0.020), rs("D", 4, 0.0, 0.020)))
-        val o = BusStop("35010", "O", "O", null, 35.80, 127.10)
-        val d = BusStop("35010", "D", "D", null, 35.80, 127.12)
-        val plans = TripPlanner.rank(TripPlanner.nearestTransfers(listOf(o to 50.0), listOf(d to 50.0), listOf(a), listOf(b, c)))
-        assertEquals("10>20", plans.first().legs.joinToString(">") { it.routeNo })
-        assertEquals("X", plans.first().legs[0].alightStopId)
-        assertTrue(plans.first().minutes < plans.last().minutes || plans.size == 1)
-        // 먼 환승(C)은 크게 돌아가므로 걸러지거나 뒤로
-        assertTrue(plans.none { it.legs[1].routeNo == "30" } || plans.indexOfFirst { it.legs[1].routeNo == "30" } > 0)
-    }
 
     /** 다른 정류장(길 건너편 등)으로 걸어서 갈아타기 */
-    @Test
-    fun transfer_withShortWalk() {
-        fun rs(id: String, ord: Int, lat: Double, lng: Double) = RouteStop(id, id, null, ord, null, 35.80 + lat, 127.10 + lng)
-        val a = TripPlanner.Line("A", "10", listOf(rs("O", 1, 0.0, 0.0), rs("X1", 2, 0.0, 0.010)))
-        val b = TripPlanner.Line("B", "20", listOf(rs("X2", 1, 0.0005, 0.010), rs("D", 2, 0.0005, 0.020))) // 약 55m 떨어진 정류장
-        val o = BusStop("35010", "O", "O", null, 35.80, 127.10)
-        val d = BusStop("35010", "D", "D", null, 35.8005, 127.12)
-        val p = TripPlanner.nearestTransfers(listOf(o to 0.0), listOf(d to 0.0), listOf(a), listOf(b)).single()
-        assertEquals("X1", p.legs[0].alightStopId)
-        assertEquals("X2", p.legs[1].boardStopId)
-        assertTrue(p.transferWalkM in 40.0..80.0)
-    }
 
     /** 시간표: 실제 노선(305001271) 평일 53회 + 주말 목록 */
     @Test

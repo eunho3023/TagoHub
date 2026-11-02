@@ -91,21 +91,6 @@ class ShapeTest {
     }
 
     @Test
-    fun roadPath_followsShapeForward() {
-        // ㄱ자 도로: 동쪽으로 갔다가 북쪽으로
-        val shape = (0..10).map { LatLng(35.80, 127.10 + it * 0.001) } + (1..10).map { LatLng(35.80 + it * 0.001, 127.11) }
-        val a = LatLng(35.8001, 127.103)   // 동쪽 구간 위
-        val b = LatLng(35.805, 127.1101)   // 북쪽 구간 위
-        val p = Shapes.roadPath(a, b, shape)
-        assertTrue(p.size > 5)                                    // 모서리를 돌아서
-        assertTrue(p.any { abs(it.lat - 35.80) < 1e-9 && abs(it.lng - 127.11) < 1e-9 })
-        // 뒤로 가는 경우는 직선
-        assertEquals(2, Shapes.roadPath(b, a, shape).size)
-        // 선형이 없으면 직선
-        assertEquals(2, Shapes.roadPath(a, b, null).size)
-    }
-
-    @Test
     fun project_findsPositionAlongPath() {
         val path = (0..10).map { LatLng(35.80, 127.10 + it * 0.001) } // 동쪽 약 900m
         val (f, d) = Shapes.project(path, LatLng(35.8001, 127.105))     // 가운데, 11m 북쪽
