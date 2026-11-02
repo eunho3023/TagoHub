@@ -153,13 +153,13 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
     ) {
         // 왼쪽: 노선 종류 배지 + 큰 노선번호, 아래에 방면(없으면 기점 → 종점)
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                row.routeType?.let { t ->
-                    Pill(t.removeSuffix("버스"), busRouteColor(t))
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(row.routeNo, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
+            // 노선 번호: 노선 색 칩에 흰 글씨 (종류는 색으로)
+            Text(
+                row.routeNo,
+                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
+                color = Color.White, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
             val a0 = row.arrivals.firstOrNull()
             val roundTrip = com.eunho.tagohub.data.RouteDirections.isRoundTrip(row.startName, row.endName)
             // 방면(지역 API, 없으면 순환 노선의 방향) · 현재 정류장(지역 API)
@@ -170,7 +170,7 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
             if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant)
         }
         Spacer(Modifier.width(8.dp))
-        // 오른쪽: 빠른 순으로 두 대를 빨간 글씨 두 줄로 — "4분 53초 (5개 전, 저상)"
+        // 오른쪽: 가장 빠른 버스의 남은 시간을 크게, 정류장 수·저상은 작게. 다음 버스는 그 아래 한 줄
         Column(horizontalAlignment = Alignment.End) {
             val first = row.arrivals.getOrNull(0)
             val second = row.arrivals.getOrNull(1)
@@ -178,7 +178,17 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
                 Text(if (row.ended) "운행종료" else "도착 정보 없음", style = MaterialTheme.typography.bodyLarge, color = variant)
             } else {
                 AnimatedValueText(arrivalLine(first, elapsedSec), label = "bus-stop-first-arrival") { value ->
-                    Text(value, style = MaterialTheme.typography.bodyLarge.merge(Tnum), color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) MaterialTheme.colorScheme.onSurface else soon, fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    val parts = value.split(" · ")
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            parts.first(),
+                            style = MaterialTheme.typography.titleLarge.merge(Tnum),
+                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) MaterialTheme.colorScheme.onSurface else soon,
+                            fontWeight = FontWeight.Black,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        )
+                        if (parts.size > 1) Text(parts.drop(1).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = variant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    }
                 }
                 if (second != null) AnimatedValueText(arrivalLine(second, elapsedSec), label = "bus-stop-second-arrival") { value ->
                     Text(
