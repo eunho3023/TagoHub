@@ -354,7 +354,9 @@ fun MapScreen(
             // 노선은 정류장 목록이 바로 보이게 더 높이 (위쪽 30% 는 지도)
             MapPanel.Route -> ROUTE_SHEET_FRAC
             MapPanel.Train -> 0.5f
-            MapPanel.Station, MapPanel.Plan -> 0.55f
+            // 역 상세는 노선 배지·탭·버튼이 많아 낮으면 도착 목록이 안 보임 → 노선처럼 높게
+            MapPanel.Station -> 0.75f
+            MapPanel.Plan -> 0.55f
             MapPanel.None -> sheetFrac.floatValue
         }
     }
