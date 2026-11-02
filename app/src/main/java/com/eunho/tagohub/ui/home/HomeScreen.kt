@@ -2,6 +2,12 @@ package com.eunho.tagohub.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -156,27 +162,62 @@ fun HomeScreen(
         Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
     )
     var query by rememberSaveable { mutableStateOf("") }
+    val blank = query.isBlank()
+    // 시트 안에서 「즐겨찾기」「최근」 칸을 누르면 그 구역으로 내려감
+    val sheetScroll = rememberScrollState()
+    val sheetScope = androidx.compose.runtime.rememberCoroutineScope()
+    var recentY by remember { mutableStateOf(0) }
+    var favY by remember { mutableStateOf(0) }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val columns = 3
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                Spacer(Modifier.height(4.dp))
-                if (query.isBlank()) {
-                    BrandHeader(Modifier.riseIn(0))
-                    Spacer(Modifier.height(16.dp))
+        Column(Modifier.fillMaxSize()) {
+            // 위 카드: 앱 이름 + 검색 (검색어를 쓰면 결과가 이 안에 나오고 카드가 화면을 채움)
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = if (blank) RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp) else androidx.compose.ui.graphics.RectangleShape,
+                shadowElevation = if (blank) 6.dp else 0.dp,
+                modifier = Modifier.fillMaxWidth().then(if (blank) Modifier else Modifier.weight(1f)),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().then(if (blank) Modifier else Modifier.verticalScroll(rememberScrollState())),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp, bottom = if (blank) 14.dp else 16.dp)) {
+                        if (blank) {
+                            BrandHeader(Modifier.riseIn(0))
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
+                    }
                 }
-                Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
-                if (query.isBlank()) {
-                    ShortcutTiles(vm, onGoTo, onOpenTab, Modifier.riseIn(3).padding(top = 14.dp))
-                    HomeMapPreview({ onOpenTab(AppTab.Map) }, Modifier.riseIn(3).padding(top = 14.dp))
-                    RecentChips(onGoTo, Modifier.riseIn(3))
-                    Spacer(Modifier.height(10.dp))
-                    Column(Modifier.riseIn(4)) { Favorites(vm, onFavorite) }
-                    Spacer(Modifier.height(16.dp))
-                    Column(Modifier.riseIn(5)) { NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) }) }
+            }
+            if (blank) {
+                // 가운데: 내 위치 주변 지도 (누르면 지도 탭). 위치를 모르면 빈 배경
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    HomeMapPreview({ onOpenTab(AppTab.Map) }, Modifier, fill = true)
+                }
+                // 아래 시트: 집·회사·즐겨찾기·최근 + 자세한 구역
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                    shadowElevation = 14.dp,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = this@BoxWithConstraints.maxHeight * 0.5f),
+                ) {
+                    Column(Modifier.fillMaxWidth().verticalScroll(sheetScroll), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.padding(top = 10.dp, bottom = 12.dp).size(width = 40.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant))
+                        Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
+                            ShortcutTiles(
+                                vm, onGoTo, onOpenTab,
+                                onFavorites = { sheetScope.launch { sheetScroll.animateScrollTo(favY) } },
+                                onRecent = { sheetScope.launch { sheetScroll.animateScrollTo(recentY) } },
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                            Column(Modifier.onGloballyPositioned { recentY = it.positionInParent().y.toInt() }) { RecentChips(onGoTo, Modifier) }
+                            Spacer(Modifier.height(10.dp))
+                            Column(Modifier.onGloballyPositioned { favY = it.positionInParent().y.toInt() }) { Favorites(vm, onFavorite) }
+                            Spacer(Modifier.height(16.dp))
+                            NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) })
+                        }
+                    }
                 }
             }
         }
@@ -290,15 +331,15 @@ com.eunho.tagohub.ui.common.FitText(
     }
 }
 
-/** 바로가기 네 칸: 집 · 회사(저장해 둔 곳으로 바로 길찾기), 길찾기 · 지도 */
+/** 바로가기 네 칸: 집 · 회사(저장해 둔 곳으로 바로 길찾기), 즐겨찾기 · 최근(아래 목록으로 내려감) */
 @Composable
-private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpenTab: (AppTab) -> Unit, modifier: Modifier = Modifier) {
+private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpenTab: (AppTab) -> Unit, onFavorites: () -> Unit, onRecent: () -> Unit, modifier: Modifier = Modifier) {
     val saved by vm.trip.homeWork.state.collectAsStateWithLifecycle()
     val items: List<Triple<String, ImageVector, () -> Unit>> = listOf(
         Triple(SavedKind.Home.label, Icons.Outlined.Home, saved.home?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
         Triple(SavedKind.Work.label, Icons.Outlined.Work, saved.work?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
-        Triple("길찾기", Icons.Outlined.Directions, { onOpenTab(AppTab.Navi) }),
-        Triple("지도", Icons.Outlined.Map, { onOpenTab(AppTab.Map) }),
+        Triple("즐겨찾기", Icons.Outlined.StarBorder, onFavorites),
+        Triple("최근", Icons.Outlined.History, onRecent),
     )
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items.forEach { (label, icon, click) ->
