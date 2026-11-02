@@ -189,7 +189,7 @@ class KakaoCanvas(
                 goodCenter = position.position
                 if (z != lastZoom) {
                     lastZoom = z
-                    if ((routeArgs?.parts?.size ?: 0) >= 2) drawRouteLines() // 배율이 바뀌면 상·하행 간격 다시
+                    if ((routeArgs?.parts?.size ?: 0) >= 2) drawRoute() // 배율이 바뀌면 상·하행 간격과 그 선 위의 점 다시
                 }
                 report()
             }
@@ -587,30 +587,32 @@ class KakaoCanvas(
     }
 
     private fun drawRoute() {
-        drawRouteLines()
+        val drawn = drawRouteLines()
         val l = layer(ROUTE_PIN_LAYER) ?: return
         routeLabels.forEach { runCatching { it.remove() } }
         routeLabels.clear()
         val a = routeArgs ?: return
         val color = a.color ?: return
         for (p in a.stops) {
+            // 점은 정류장 좌표가 아니라 그려진 노선 선 위에 (선은 도로를 따라가고 상·하행은 옆으로 띄워져 있어서 좌표 그대로면 선에서 벗어남)
+            val at = snapToLine(drawn, p)
             val st = styles("rp$color${p.focus}") {
                 if (p.focus) LabelStyles.from(withText(icon(icons.routeDot(color, true), 0.5f, 0.5f), 12f))
                 else LabelStyles.from(icon(icons.routeDot(color, false), 0.5f, 0.5f, 12), withText(icon(icons.routeDot(color, false), 0.5f, 0.5f, 16)))
             }
-            l.addLabel(LabelOptions.from(KLatLng.from(p.lat, p.lng)).setStyles(st).setTexts(text(p.name)).setClickable(true).setTag(p.id))
+            l.addLabel(LabelOptions.from(KLatLng.from(at.lat, at.lng)).setStyles(st).setTexts(text(p.name)).setClickable(true).setTag(p.id))
                 ?.let { routeLabels += it }
         }
     }
 
     /** 노선 선: 상·하행이면 각자 오른쪽으로 4dp(지금 배율의 실제 거리)씩 띄우고, 고른 방향은 진하게 */
-    private fun drawRouteLines() {
-        val km = map ?: return
-        val layer = km.routeLineManager?.getLayer(ROUTE_LAYER) ?: return
+    private fun drawRouteLines(): List<List<LatLng>> {
+        val km = map ?: return emptyList()
+        val layer = km.routeLineManager?.getLayer(ROUTE_LAYER) ?: return emptyList()
         routeLines.forEach { runCatching { it.remove() } }
         routeLines.clear()
-        val a = routeArgs ?: return
-        val color = a.color ?: return
+        val a = routeArgs ?: return emptyList()
+        val color = a.color ?: return emptyList()
         val roadShape = (a.shape?.size ?: 0) >= 2
         val lines: List<Pair<List<LatLng>, Boolean>> = if ((a.parts?.size ?: 0) >= 2) {
             val d = ROUTE_LINE_WIDTH_DP * 0.9 * density * metersPerPx()  // 상·하행 두 줄이 굵어진 만큼 더 띄움
@@ -626,6 +628,16 @@ class KakaoCanvas(
             // 도로 모양을 받기 전(정류장끼리 직선)에는 둥글게 하지 않음: 둥글게 하면 꼭짓점(정류장)을 비켜 가는 곡선이 됨
             add(layer, pts, RouteLineStyles.from(style), smooth = roadShape)?.let { routeLines += it }
         }
+        return lines.map { it.first }
+    }
+
+    /** 정류장 점을 자기 방향 선(상·하행이면 part 번째, 아니면 하나뿐인 선) 위 가장 가까운 자리로. 선과 60m 넘게 멀면(선형이 어긋남) 원래 좌표 */
+    private fun snapToLine(lines: List<List<LatLng>>, p: RoutePin): LatLng {
+        val line = (if (lines.size >= 2) lines.getOrNull(p.part) else lines.firstOrNull()) ?: return LatLng(p.lat, p.lng)
+        if (line.size < 2) return LatLng(p.lat, p.lng)
+        val here = LatLng(p.lat, p.lng)
+        val (frac, dist) = com.eunho.tagohub.data.Shapes.project(line, here)
+        return if (dist <= 60.0) com.eunho.tagohub.data.Shapes.along(line, frac) else here
     }
 
     /** 선 하나를 그림. [smooth] 면 꺾이는 곳을 부드럽게 (촘촘한 도로 모양일 때만. 성긴 선은 꼭짓점을 비켜 가므로 그대로) */
