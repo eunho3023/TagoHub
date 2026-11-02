@@ -54,6 +54,8 @@ data class RidePlan(
     val option: com.eunho.tagohub.data.DriveOption = com.eunho.tagohub.data.DriveOption.Recommend,
     /** 이 경로가 거치는 경유지 (안내 시작·재탐색에 그대로 넘김) */
     val vias: List<LatLng> = emptyList(),
+    /** 도보·자전거 경로 좌표 (고도 그래프용) */
+    val path: List<LatLng> = emptyList(),
 )
 
 /** 소통 상태 색: 1 정체(빨강) 2 지체(주황) 3 서행(노랑) 4 원활(초록), 사고(6)는 진한 빨강, 모르면 기본 파랑 */
@@ -347,7 +349,7 @@ class TripController(
             canvas()?.setTrip(listOf(TripSegment(path, if (bicycle) 0xFF2E7D32.toInt() else WALK, !bicycle)),
                 listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)))
             canvas()?.fitTo(path)
-            ridePlan.value = Load.Ok(RidePlan(if (bicycle) PlanMode.Bicycle else PlanMode.Walk, m, sec))
+            ridePlan.value = Load.Ok(RidePlan(if (bicycle) PlanMode.Bicycle else PlanMode.Walk, m, sec, path = path))
         }
     }
 
