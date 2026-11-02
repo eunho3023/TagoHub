@@ -202,32 +202,6 @@ private fun StationDetailBody(
                     Text(operatorLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            // 호선 알약: 한 줄에 2개씩. 여러 노선이 서는 역이면 누르는 노선으로 넘어가고, 고른 노선은 또렷하게
-            Column(Modifier.weight(1.4f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                lines.chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        row.forEach { name ->
-                            val option = tagoOptions.firstOrNull { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) }
-                            val chosen = selectedLine?.let { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) } == true
-                            val dim = lines.size > 1 && selectedLine != null && !chosen
-                            // 알약 한 개가 줄의 절반 폭: 이름이 길면("경의중앙선", "GTX-A") 잘리지 않게 글자를 줄여 끝까지 보임
-                            com.eunho.tagohub.ui.common.FitText(
-                                name,
-                                Modifier
-                                    .weight(1f, fill = false)
-                                    .background(subwayLineColor(name).copy(alpha = if (dim) 0.55f else 1f), CircleShape)
-                                    .then(if (chosen && lines.size > 1) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
-                                    .then(if (option != null && !chosen) Modifier.clickable { c.selectLine(d, option) } else Modifier)
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                color = Color.White,
-                                maxSizeSp = 14f,
-                                minSizeSp = 9f,
-                                fontWeight = FontWeight.ExtraBold,
-                            )
-                        }
-                    }
-                }
-            }
             Spacer(Modifier.width(10.dp))
             if (onFavorite != null) {
                 androidx.compose.material3.IconButton(onClick = onFavorite) {
@@ -242,13 +216,36 @@ private fun StationDetailBody(
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
             }
         }
+        // 호선 알약: 한 줄로 옆으로 밀어 봄 (환승역은 여러 개). 여러 노선이 서는 역이면 누르는 노선으로 넘어가고, 고른 노선은 또렷하게
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            lines.forEach { name ->
+                val option = tagoOptions.firstOrNull { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) }
+                val chosen = selectedLine?.let { com.eunho.tagohub.data.StationName.sameLine(it.routeName, name) } == true
+                val dim = lines.size > 1 && selectedLine != null && !chosen
+                Text(
+                    name,
+                    Modifier
+                        .background(subwayLineColor(name).copy(alpha = if (dim) 0.55f else 1f), CircleShape)
+                        .then(if (chosen && lines.size > 1) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                        .then(if (option != null && !chosen) Modifier.clickable { c.selectLine(d, option) } else Modifier)
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                )
+            }
+        }
         // 노선 띠: 이전 역 ‹  [ 이 역 ]  › 다음 역
         neighbors?.let { (prev, cur, next) ->
             Box(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = 44.dp)
                     .background(stripColor, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
