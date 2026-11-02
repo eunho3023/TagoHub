@@ -512,6 +512,11 @@ class TripController(
     /** 노선 ID → 도시코드 (TAGO 노선의 정류장 목록·도착을 받을 때) */
     private val routeCity = HashMap<String, String>()
 
+    /** 목록에서 경로를 미리 봄: 지도에 그리기만 하고 상세·실시간 도착은 열지 않음 */
+    fun preview(p: TripPlan) {
+        scope.launch { draw(p) }
+    }
+
     fun select(p: TripPlan?) {
         selected.value = p
         liveJob?.cancel()

@@ -2220,7 +2220,7 @@ private fun PlannerPanel(vm: MapViewModel) {
         when {
             editing != null -> PlanSearch(t, editing!!)
             selected != null -> PlanDetail(t, selected!!)
-            else -> PlanList(t)
+            else -> PlanList(t, cards = true)
         }
     }
 }
@@ -2428,7 +2428,7 @@ private fun PlanResultRow(
 }
 
 @Composable
-private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null) {
+private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: Boolean = false) {
     val plans by t.plans.collectAsStateWithLifecycle()
     val destination by t.dest.collectAsStateWithLifecycle()
     val ridePlan by t.ridePlan.collectAsStateWithLifecycle()
@@ -2527,7 +2527,8 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null) {
                             com.eunho.tagohub.ui.common.PillChip("${sort.label}순", false, { sortOpen = true }, dropdown = true)
                         }
                         if (sortOpen) PlanSortSheet(sort, onPick = { t.sort.value = it }, onDismiss = { sortOpen = false })
-                        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp)) {
+                        if (cards) PlanCardPager(shown, sort.label + "순", t)
+                        else LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp)) {
                             itemsIndexed(shown) { i, p ->
                                 PlanCard(p, tag = if (i == 0) sort.label else null) { t.select(p) }
                             }
@@ -2559,6 +2560,84 @@ private fun CarViaBar(t: TripController) {
         }
         if (vias.size < com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS) {
             TextButton(onClick = { t.edit(PlanField.Via) }) { Text(if (vias.isEmpty()) "경유지 추가" else "경유지 더 추가 (${vias.size}/${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS})") }
+        }
+    }
+}
+
+/**
+ * 지도 위 길찾기 결과: 위쪽 지도에는 고른 경로가 그려지고, 아래에서 경로 카드를 옆으로 넘기며 고름.
+ * 카드를 누르면 그 경로가 지도에 그려지고(상세는 안 열림), 「경로 자세히」로 상세를 연다.
+ */
+@Composable
+private fun PlanCardPager(shown: List<TripPlan>, sortLabel: String, t: TripController, modifier: Modifier = Modifier) {
+    var pv by remember(shown) { mutableStateOf(0) }
+    LaunchedEffect(shown, pv) { shown.getOrNull(pv)?.let { t.preview(it) } }
+    Column(modifier.fillMaxWidth()) {
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            itemsIndexed(shown) { i, p ->
+                val tag = when {
+                    i == 0 -> sortLabel
+                    p.legs.size == 1 -> "직통"
+                    else -> "환승 ${p.legs.size - 1}회"
+                }
+                MiniPlanCard(p, tag, on = i == pv) { pv = i }
+            }
+        }
+        Button(
+            onClick = { shown.getOrNull(pv)?.let { t.select(it) } },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(min = 52.dp),
+            shape = CircleShape,
+        ) { Text("경로 자세히", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
+    }
+}
+
+/** 옆으로 넘기는 작은 경로 카드: 어떤 경로인지, 큰 분, 요금·환승, 걷기·탑승 막대, 노선 알약 */
+@Composable
+private fun MiniPlanCard(p: TripPlan, tag: String, on: Boolean, onClick: () -> Unit) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.width(250.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            com.eunho.tagohub.ui.common.FitText(tag, color = if (on) MaterialTheme.colorScheme.primary else variant, maxSizeSp = 12f, minSizeSp = 9f, fontWeight = FontWeight.ExtraBold)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("${p.minutes}", fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp)
+                Text("분", Modifier.padding(start = 2.dp, bottom = 4.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                com.eunho.tagohub.ui.common.FitText(
+                    listOfNotNull(if (p.legs.size == 1) "직통" else "환승 ${p.legs.size - 1}회", p.fare?.let { "${"%,d".format(it)}원" }).joinToString(" · "),
+                    Modifier.padding(bottom = 5.dp), color = variant, maxSizeSp = 12f, minSizeSp = 9f,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            val walkStart = (p.walkStartM / com.eunho.tagohub.data.TripPlanner.WALK_M_PER_MIN).coerceAtLeast(1.0)
+            val walkEnd = (p.walkEndM / com.eunho.tagohub.data.TripPlanner.WALK_M_PER_MIN).coerceAtLeast(1.0)
+            Row(Modifier.fillMaxWidth().height(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                Box(Modifier.weight(walkStart.toFloat()).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Text("${walkStart.toInt().coerceAtLeast(1)}분", fontSize = 10.sp, color = variant, maxLines = 1)
+                }
+                p.legs.forEachIndexed { i, leg ->
+                    val ride = com.eunho.tagohub.data.TripPlanner.rideMinutes(leg).coerceAtLeast(2.0)
+                    Box(Modifier.weight(ride.toFloat() * 1.6f).fillMaxHeight().clip(CircleShape).background(legColor(leg, i)), contentAlignment = Alignment.Center) {
+                        Text("${ride.toInt()}분", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1)
+                    }
+                }
+                Box(Modifier.weight(walkEnd.toFloat()).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Text("${walkEnd.toInt().coerceAtLeast(1)}분", fontSize = 10.sp, color = variant, maxLines = 1)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                p.legs.take(3).forEachIndexed { i, leg -> Pill(leg.routeNo, legColor(leg, i)) }
+                if (p.legs.size > 3) Text("+${p.legs.size - 3}", fontSize = 12.sp, color = variant)
+            }
         }
     }
 }
