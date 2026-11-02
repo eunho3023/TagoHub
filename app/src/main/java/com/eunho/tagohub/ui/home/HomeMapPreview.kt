@@ -47,7 +47,7 @@ import com.kakao.vectormap.LatLng as KLatLng
  * 위치 권한·카카오맵 키가 없거나 지도를 못 띄우면 아무것도 그리지 않음 (홈의 나머지는 그대로).
  */
 @Composable
-internal fun HomeMapPreview(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+internal fun HomeMapPreview(onOpen: () -> Unit, modifier: Modifier = Modifier, fill: Boolean = false) {
     val ctx = LocalContext.current
     if (!KakaoCanvas.available || !hasLocationPermission(ctx)) return
     val loc = remember { lastKnownLocation(ctx) } ?: return
@@ -87,7 +87,7 @@ internal fun HomeMapPreview(onOpen: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
     Box(
-        modifier
+        if (fill) modifier.fillMaxSize() else modifier
             .fillMaxWidth()
             .height(168.dp)
             .clip(RoundedCornerShape(18.dp))
@@ -98,7 +98,7 @@ internal fun HomeMapPreview(onOpen: () -> Unit, modifier: Modifier = Modifier) {
         Box(Modifier.align(Alignment.Center).size(20.dp).clip(CircleShape).background(Color.White).padding(3.5.dp).background(Color(0xFF2563EB), CircleShape))
         // 손으로 움직이지 않고 누르면 지도 탭으로
         Box(Modifier.matchParentSize().clickable(onClick = onOpen))
-        Surface(
+        if (!fill) Surface(
             modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
