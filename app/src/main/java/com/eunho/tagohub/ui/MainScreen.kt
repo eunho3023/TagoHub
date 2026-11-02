@@ -239,6 +239,7 @@ fun MainScreen() {
     if (showReport) ReportDialog { showReport = false }
     com.eunho.tagohub.ui.common.LoginGateHost(mapVm)
     com.eunho.tagohub.ui.common.EmailLinkHost()
+    com.eunho.tagohub.ui.common.AccountSwitchHost()
     if (showHistory) com.eunho.tagohub.ui.home.HistoryManageDialog(
         mapVm,
         onDismiss = { showHistory = false },

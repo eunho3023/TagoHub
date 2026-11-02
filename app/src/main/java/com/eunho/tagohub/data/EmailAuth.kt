@@ -21,7 +21,9 @@ object EmailAuth {
 
     /** Firebase 인증 오류 코드(ERROR_…)를 사용자 안내로. 모르는 코드는 일반 안내 */
     fun message(code: String?): String = when (code) {
-        "ERROR_EMAIL_ALREADY_IN_USE", "ERROR_CREDENTIAL_ALREADY_IN_USE" -> "이미 가입된 이메일이에요. 로그인해 주세요"
+        "ERROR_EMAIL_ALREADY_IN_USE", "ERROR_CREDENTIAL_ALREADY_IN_USE", "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" ->
+            "이미 가입된 이메일이에요. 처음 가입한 방법(비밀번호나 구글)으로 로그인해 주세요"
+        "ERROR_PROVIDER_ALREADY_LINKED" -> "같은 종류의 로그인 방법이 이미 연결돼 있어요"
         "ERROR_INVALID_EMAIL" -> "이메일 주소를 확인해 주세요"
         "ERROR_WEAK_PASSWORD" -> "비밀번호가 너무 약해요. 더 길게 해 주세요"
         "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL", "ERROR_USER_NOT_FOUND", "ERROR_INVALID_LOGIN_CREDENTIALS" -> "이메일이나 비밀번호가 맞지 않아요"
@@ -36,6 +38,29 @@ object EmailAuth {
         "ERROR_INVALID_ACTION_CODE", "ERROR_EXPIRED_ACTION_CODE" -> "링크가 올바르지 않거나 시간이 지났어요. 다시 받아 주세요"
         else -> "처리하지 못했어요. 잠시 뒤에 다시 해 주세요"
     }
+}
+
+/** 계정에 붙은 로그인 방법 하나. [provider] 는 Firebase 제공자 ID(google.com / password / phone), [detail] 은 그 방법의 이메일·전화번호 */
+data class LoginMethod(val provider: String, val detail: String? = null) {
+    val label: String get() = LoginMethods.label(provider) + (detail?.let { " ($it)" } ?: "")
+}
+
+/** 한 사람이 구글·이메일·전화번호를 한 계정에 모두 붙여 쓸 수 있게: 이름과 아직 안 붙인 방법 */
+object LoginMethods {
+    const val GOOGLE = "google.com"
+    const val PASSWORD = "password"   // 이메일+비밀번호와 이메일 링크 모두
+    const val PHONE = "phone"
+    val ALL = listOf(GOOGLE, PASSWORD, PHONE)
+
+    fun label(provider: String): String = when (provider) {
+        GOOGLE -> "구글"
+        PASSWORD -> "이메일"
+        PHONE -> "전화번호"
+        else -> provider
+    }
+
+    /** 아직 이 계정에 붙이지 않은 방법 ([ALL] 순서) */
+    fun missing(methods: List<LoginMethod>): List<String> = ALL.filter { p -> methods.none { it.provider == p } }
 }
 
 /** 전화번호 로그인에서 쓰는 입력 정리와 검사 (Firebase 호출과 따로 두어 시험하기 쉽게) */

@@ -32,19 +32,24 @@ import com.eunho.tagohub.data.CloudAccount
 import com.eunho.tagohub.data.EmailAuth
 import com.eunho.tagohub.data.Favorite
 import com.eunho.tagohub.data.LoginGate
+import com.eunho.tagohub.data.LoginMethods
 import com.eunho.tagohub.data.PhoneNumber
 import com.eunho.tagohub.ui.map.MapViewModel
 import kotlinx.coroutines.launch
 
 /** 로그인 방법: 이메일+비밀번호 / 메일로 온 링크 / 문자로 온 인증번호 */
-private enum class AuthMode(val label: String) { Password("비밀번호"), Link("이메일 링크"), Phone("전화번호") }
+private enum class AuthMode(val label: String, val provider: String) {
+    Password("비밀번호", LoginMethods.PASSWORD), Link("이메일 링크", LoginMethods.PASSWORD), Phone("전화번호", LoginMethods.PHONE)
+}
 
 /**
  * 가입·로그인 창. 이메일+비밀번호, 이메일 링크(비밀번호 없이), 전화번호(문자 인증번호), 구글 계정 중에서 고름.
  * 가입하면 지금까지의 즐겨찾기·설정이 그 계정에 그대로 이어지고, 로그인하면 그 계정에 저장된 것을 받아 옴. 성공하면 [onSuccess].
+ * [add] 면 로그인한 지금 계정에 로그인 방법을 하나 더 붙임(아직 안 붙인 방법만 보여 줌) — 같은 사람의 계정이 둘로 갈라지지 않게.
+ * 붙이려는 방법이 이미 다른 계정의 것이면 창을 닫고 [AccountSwitchHost] 가 그 계정으로 바꿀지 물어봄.
  */
 @Composable
-fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
+fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit, add: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val activity = remember(context) {
@@ -53,7 +58,10 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
         c as? Activity
     }
     val account by CloudAccount.state.collectAsStateWithLifecycle()
-    var mode by rememberSaveable { mutableStateOf(AuthMode.Password) }
+    val startMethods = remember { account.methods }
+    val missing = if (add) LoginMethods.missing(startMethods) else LoginMethods.ALL
+    val modes = AuthMode.entries.filter { it.provider in missing }
+    var mode by rememberSaveable { mutableStateOf(modes.firstOrNull() ?: AuthMode.Password) }
     var signUp by rememberSaveable { mutableStateOf(true) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -65,8 +73,16 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
 
-    // 메일의 링크를 눌러 로그인이 끝나면(앱이 링크를 받아 처리) 창을 닫음
-    LaunchedEffect(linkSent, account.email) { if (linkSent && account.email != null) onSuccess() }
+    // 메일의 링크를 눌러 로그인(또는 방법 추가)이 끝나면(앱이 링크를 받아 처리) 창을 닫음
+    LaunchedEffect(linkSent, account.methods) { if (linkSent && account.methods != startMethods) onSuccess() }
+
+    fun finished(msg: String?) {
+        when {
+            msg == null || msg.startsWith("다른 계정") -> onSuccess()   // 다른 계정으로 바뀐 안내는 성공으로 봄
+            msg == CloudAccount.IN_USE -> onDismiss()                   // 계정을 바꿀지 묻는 창이 이어서 뜸
+            else -> error = msg
+        }
+    }
 
     fun run(block: suspend () -> String?) {
         busy = true
@@ -75,7 +91,7 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
         scope.launch {
             val msg = block()
             busy = false
-            if (msg == null || msg.startsWith("다른 계정")) onSuccess() else error = msg   // 다른 계정으로 바뀐 안내는 성공으로 봄
+            finished(msg)
         }
     }
 
@@ -84,7 +100,7 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
         error = null
         info = null
         scope.launch {
-            val msg = CloudAccount.sendEmailLink(context, email)
+            val msg = CloudAccount.sendEmailLink(context, email, add)
             busy = false
             if (msg == null) { linkSent = true; info = "메일을 보냈어요. 이 폰에서 메일을 열어 링크를 눌러 주세요" } else error = msg
         }
@@ -98,37 +114,38 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
         error = null
         info = null
         CloudAccount.sendPhoneCode(
-            a, number, resend,
+            a, number, resend, add,
             onSent = { busy = false; codeSent = true; info = "${PhoneNumber.masked(number)} 로 인증번호를 보냈어요" },
-            onDone = { msg -> busy = false; if (msg == null || msg.startsWith("다른 계정")) onSuccess() else error = msg },
+            onDone = { msg -> busy = false; finished(msg) },
         )
     }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(if (mode == AuthMode.Password && signUp) "회원가입" else "로그인") },
+        title = { Text(if (add) "로그인 방법 추가" else if (mode == AuthMode.Password && signUp) "회원가입" else "로그인") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AuthMode.entries.forEach { m ->
+                if (add && modes.isEmpty()) Text("이 계정에는 구글만 더 붙일 수 있어요.", style = MaterialTheme.typography.bodySmall)
+                if (modes.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    modes.forEach { m ->
                         FilterChip(selected = mode == m, onClick = { mode = m; error = null; info = null }, label = { Text(m.label) })
                     }
                 }
-                if (mode == AuthMode.Password) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (mode == AuthMode.Password && !add) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = signUp, onClick = { signUp = true; error = null }, label = { Text("가입") })
                     FilterChip(selected = !signUp, onClick = { signUp = false; error = null }, label = { Text("로그인") })
                 }
-                if (mode != AuthMode.Phone) OutlinedTextField(
+                if (modes.isNotEmpty() && mode != AuthMode.Phone) OutlinedTextField(
                     email, { email = it; error = null }, label = { Text("이메일") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.fillMaxWidth(),
                 )
-                if (mode == AuthMode.Password) OutlinedTextField(
+                if (modes.isNotEmpty() && mode == AuthMode.Password) OutlinedTextField(
                     password, { password = it; error = null },
-                    label = { Text(if (signUp) "비밀번호 (${EmailAuth.MIN_PASSWORD}자 이상)" else "비밀번호") }, singleLine = true,
+                    label = { Text(if (signUp || add) "비밀번호 (${EmailAuth.MIN_PASSWORD}자 이상)" else "비밀번호") }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth(),
                 )
-                if (mode == AuthMode.Phone) {
+                if (modes.isNotEmpty() && mode == AuthMode.Phone) {
                     OutlinedTextField(
                         phone, { phone = it; error = null }, label = { Text("전화번호 (예: 010-1234-5678)") }, singleLine = true,
                         enabled = !codeSent, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth(),
@@ -142,7 +159,8 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 info?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
                 Text(
-                    when (mode) {
+                    if (add) "지금 계정에 로그인 방법을 하나 더 붙여요. 붙인 뒤에는 어느 방법으로 로그인해도 같은 즐겨찾기와 설정이 나와요."
+                    else when (mode) {
                         AuthMode.Password -> if (signUp) "가입하면 지금 저장된 즐겨찾기와 설정이 계정에 이어져요." else "로그인하면 그 계정에 저장된 즐겨찾기와 설정을 받아 와요."
                         AuthMode.Link -> "비밀번호 없이, 메일로 보내는 링크를 누르면 로그인돼요. 링크를 요청한 이 폰에서 열어 주세요."
                         AuthMode.Phone -> "문자로 인증번호를 보내요. 문자 요금이 부과될 수 있어요. 전화번호만으로는 보안이 약하니, 가능하면 이메일이나 구글 계정도 함께 쓰세요."
@@ -150,7 +168,7 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (mode == AuthMode.Password && !signUp) TextButton(enabled = !busy, onClick = {
+                    if (mode == AuthMode.Password && !signUp && !add) TextButton(enabled = !busy, onClick = {
                         busy = true
                         error = null
                         scope.launch {
@@ -160,17 +178,19 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
                         }
                     }) { Text("비밀번호 재설정") }
                     if (mode == AuthMode.Phone && codeSent) TextButton(enabled = !busy, onClick = { sendCode(resend = true) }) { Text("인증번호 다시 받기") }
-                    TextButton(enabled = !busy && activity != null, onClick = {
+                    if (LoginMethods.GOOGLE in missing) TextButton(enabled = !busy && activity != null, onClick = {
                         val a = activity ?: return@TextButton
-                        run { CloudAccount.signInWithGoogle(a) }
-                    }) { Text("구글로 계속") }
+                        run { CloudAccount.signInWithGoogle(a, add) }
+                    }) { Text(if (add) "구글 계정 붙이기" else "구글로 계속") }
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy, onClick = {
+            if (modes.isNotEmpty()) TextButton(enabled = !busy, onClick = {
                 when (mode) {
-                    AuthMode.Password -> run { if (signUp) CloudAccount.signUpWithEmail(context, email, password) else CloudAccount.signInWithEmail(context, email, password) }
+                    AuthMode.Password -> run {
+                        if (add || signUp) CloudAccount.signUpWithEmail(context, email, password, add) else CloudAccount.signInWithEmail(context, email, password)
+                    }
                     AuthMode.Link -> sendLink()
                     AuthMode.Phone -> if (codeSent) run { CloudAccount.confirmPhoneCode(context, code) } else sendCode(resend = false)
                 }
@@ -178,7 +198,7 @@ fun EmailAuthDialog(onDismiss: () -> Unit, onSuccess: () -> Unit) {
                 Text(
                     when {
                         busy -> "처리 중…"
-                        mode == AuthMode.Password -> if (signUp) "가입" else "로그인"
+                        mode == AuthMode.Password -> if (add) "붙이기" else if (signUp) "가입" else "로그인"
                         mode == AuthMode.Link -> if (linkSent) "링크 다시 받기" else "링크 받기"
                         codeSent -> "확인"
                         else -> "인증번호 받기"
@@ -238,6 +258,40 @@ fun EmailLinkHost() {
             }) { Text(if (busy) "처리 중…" else "로그인") }
         },
         dismissButton = { TextButton(enabled = !busy, onClick = { CloudAccount.emailLink.value = null }) { Text("취소") } },
+    )
+}
+
+/**
+ * 로그인 방법을 붙이려는데 그 방법이 이미 다른 계정의 것이었을 때: 그 계정으로 바꿀지, 지금 계정을 유지할지 물어봄.
+ * (두 계정의 데이터를 합치지는 않음 — 바꾸면 그 계정에 저장된 즐겨찾기·설정을 받아 오고, 지금 계정의 것은 지금 계정에 남음)
+ */
+@Composable
+fun AccountSwitchHost() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pending by CloudAccount.pendingSwitch.collectAsStateWithLifecycle()
+    var busy by remember { mutableStateOf(false) }
+    if (pending == null) return
+    AlertDialog(
+        onDismissRequest = { if (!busy) CloudAccount.pendingSwitch.value = null },
+        title = { Text("다른 계정에서 쓰는 로그인 방법이에요") },
+        text = {
+            Text(
+                "이 방법은 이미 다른 계정에 연결돼 있어서 지금 계정에 붙일 수 없어요. 그 계정으로 바꿀까요? " +
+                    "바꾸면 그 계정에 저장된 즐겨찾기와 설정을 받아 오고, 지금 계정의 것은 지금 계정에 그대로 남아요.",
+            )
+        },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = {
+                busy = true
+                scope.launch {
+                    val msg = CloudAccount.switchToPending(context)
+                    busy = false
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }) { Text(if (busy) "바꾸는 중…" else "그 계정으로 바꾸기") }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = { CloudAccount.pendingSwitch.value = null }) { Text("지금 계정 유지") } },
     )
 }
 
