@@ -2492,6 +2492,7 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            ElevationChart(result.path)
                         }
                     }
                     is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었어요.")
@@ -2557,6 +2558,49 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
                 }
             }
         }
+    }
+}
+
+/** 도보·자전거 경로의 고도 그래프: 오르막·내리막 합계와 지형 높이 선 (받지 못하면 아무것도 안 그림) */
+@Composable
+private fun ElevationChart(path: List<com.eunho.tagohub.data.LatLng>) {
+    val profile by produceState<com.eunho.tagohub.data.Elevation.Profile?>(null, path) {
+        value = if (path.size >= 2) com.eunho.tagohub.data.Elevation.profile(path) else null
+    }
+    val p = profile ?: return
+    val line = MaterialTheme.colorScheme.primary
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("고도", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+            com.eunho.tagohub.ui.common.FitText(
+                "오르막 ${p.ascent}m · 내리막 ${p.descent}m",
+                color = variant, maxSizeSp = 13f, minSizeSp = 9f, fontWeight = FontWeight.Bold,
+            )
+        }
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(72.dp).padding(top = 6.dp)) {
+            val lo = p.min
+            val span = (p.max - lo).coerceAtLeast(10.0)
+            val step = size.width / (p.meters.size - 1)
+            fun y(m: Double) = size.height - ((m - lo) / span).toFloat() * size.height
+            val top = androidx.compose.ui.graphics.Path().apply {
+                p.meters.forEachIndexed { i, m -> if (i == 0) moveTo(0f, y(m)) else lineTo(step * i, y(m)) }
+            }
+            val fill = androidx.compose.ui.graphics.Path().apply {
+                addPath(top)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+                close()
+            }
+            drawPath(fill, line.copy(alpha = 0.16f))
+            drawPath(top, line, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+            Text("${p.min.toInt()}m", style = MaterialTheme.typography.labelSmall, color = variant)
+            Spacer(Modifier.weight(1f))
+            Text("최고 ${p.max.toInt()}m", style = MaterialTheme.typography.labelSmall, color = variant)
+        }
+        Text("대략적인 지형 높이예요 (다리·고가·지하도는 실제와 다를 수 있어요)", style = MaterialTheme.typography.labelSmall, color = variant)
     }
 }
 
