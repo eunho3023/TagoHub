@@ -2530,7 +2530,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         } else null
         c.setRoute(
             busRouteColor(d.routeType).toArgb(),
-            all.map { s -> RoutePin(s.nodeId, s.name, s.lat!!, s.lng!!, s.nodeId == d.focusNodeId) },
+            // part: 회차점까지는 0(앞 선), 그 뒤는 1(뒤 선) — 점을 자기 방향 선 위에 붙이는 데 씀
+            all.mapIndexed { i, s -> RoutePin(s.nodeId, s.name, s.lat!!, s.lng!!, s.nodeId == d.focusNodeId, if (t != null && i > t) 1 else 0) },
             d.shape.value,
             parts,
             // 패널에서 고른 방향은 진하게, 반대 방향은 흐리게
