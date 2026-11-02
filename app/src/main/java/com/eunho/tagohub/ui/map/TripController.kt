@@ -579,6 +579,7 @@ class TripController(
                 val path = legPath(leg, db)
                 segs += TripSegment(path, LEG_COLORS[i % LEG_COLORS.size], false)
                 all += path
+                nameTag(leg, path, i)?.let { marks += it }
                 if (i < p.legs.lastIndex) {
                     val a = leg.alightLat
                     val b = leg.alightLng
@@ -607,6 +608,7 @@ class TripController(
             val path = legPath(leg, db)
             segs += TripSegment(path, LEG_COLORS[i % LEG_COLORS.size], false)
             all += path
+            nameTag(leg, path, i)?.let { marks += it }
         }
         d?.let { segs += TripSegment(walkLine(ds, LatLng(it.lat, it.lng)), WALK, true); all += LatLng(it.lat, it.lng) }
         o?.let { marks += TripMark(it.lat, it.lng, "출", MARK_START) }
@@ -616,6 +618,13 @@ class TripController(
         d?.let { marks += TripMark(it.lat, it.lng, "도", MARK_END) }
         c.setTrip(segs, marks)
         c.fitTo(all)
+    }
+
+    /** 탑승 구간 선 한가운데의 노선 이름표 (버스 번호·호선) */
+    private fun nameTag(leg: TripLeg, path: List<LatLng>, i: Int): TripMark? {
+        if (path.size < 2 || leg.routeNo.isBlank()) return null
+        val mid = com.eunho.tagohub.data.Shapes.along(path, 0.5)
+        return TripMark(mid.lat, mid.lng, leg.routeNo, LEG_COLORS[i % LEG_COLORS.size], tag = true)
     }
 
     /** 걷는 길: 카카오 도보 경로 (키가 없거나 30m 안이면 직선) */

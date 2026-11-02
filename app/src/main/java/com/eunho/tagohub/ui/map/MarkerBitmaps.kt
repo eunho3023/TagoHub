@@ -466,6 +466,30 @@ class MarkerBitmaps(private val density: Float) {
         return forKakao(b)
     }
 
+    /** 지도 노선 이름표: 노선 색 알약에 흰 글씨(버스 번호·호선)와 흰 테두리 */
+    fun routeTag(label: String, color: Int): Bitmap {
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = Color.WHITE
+            textSize = px(12f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        val shown = android.text.TextUtils.ellipsize(label, android.text.TextPaint(text), px(90f), android.text.TextUtils.TruncateAt.END).toString()
+        val tw = text.measureText(shown)
+        val padH = px(8f)
+        val boxH = px(22f)
+        val edge = px(2f)
+        val b = Bitmap.createBitmap((tw + padH * 2 + edge * 2).toInt() + 1, (boxH + edge * 2).toInt() + 1, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        val rect = RectF(edge, edge, edge + tw + padH * 2, edge + boxH)
+        fill.color = color
+        c.drawRoundRect(rect, px(11f), px(11f), fill)
+        stroke.color = Color.WHITE
+        stroke.strokeWidth = px(2f)
+        c.drawRoundRect(rect, px(11f), px(11f), stroke)
+        c.drawText(shown, rect.left + padH, rect.centerY() - (text.ascent() + text.descent()) / 2, text)
+        return forKakao(b)
+    }
+
     /** 걷기 점선용 점 (RouteLinePattern) */
     fun walkDot(color: Int): Bitmap {
         val b = Bitmap.createBitmap(6, 6, Bitmap.Config.ARGB_8888)
