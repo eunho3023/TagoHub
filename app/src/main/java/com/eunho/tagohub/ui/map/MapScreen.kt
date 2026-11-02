@@ -1596,6 +1596,13 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
         if (selectedStop?.stop?.nodeId != d.focusNodeId) null
         else stopRows.valueOrNull()?.firstOrNull { it.routeId == d.routeId }?.arrivals?.firstOrNull()
     }
+    // 첫차·막차 알림 기준 정류장 (정류장에서 열었을 때): 그 정류장과 기점에서 걸리는 분
+    val alertStop = remember(stops, d.focusNodeId) {
+        val all = stops.valueOrNull().orEmpty()
+        all.firstOrNull { it.nodeId == d.focusNodeId }?.let { s ->
+            s.name to Math.round(TripPlanner.minutesBetween(TripPlanner.Line(d.routeId, d.routeNo, all), all.first().ord, s.ord)).toInt()
+        }
+    }
     val focusArrival = focusArr?.let { com.eunho.tagohub.data.ArrivalText.line(it, focusElapsedSec) }
     var showTimetableStopPicker by rememberSaveable(d.routeId) { mutableStateOf(false) }
 
@@ -1621,8 +1628,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
         var diagram by rememberSaveable { mutableStateOf(false) }
         if (diagram) {
             r?.let { RouteInfoCard(it) }
-            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true) }
-            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
+            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
+            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
         }
         val dir by d.dir.collectAsStateWithLifecycle()
         LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없어요.") { all ->
@@ -1739,8 +1746,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 item {
                     r?.let { RouteInfoCard(it) }
-                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true) }
-                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
+                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
+                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
                 }
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)

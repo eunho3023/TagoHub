@@ -91,12 +91,19 @@ class ReminderLogicTest {
             LastBusReminder("R|1", "123", "25", "기점 | 이름", 25 * 60 + 10, 30),
             LastBusReminder("R2", "5-1", "11", "서울역", 23 * 60, 15),
             LastBusReminder("R2", "5-1", "11", "서울역", 5 * 60 + 30, 60, first = true),
+            LastBusReminder("R3", "7", "37", "기점", 23 * 60, 30, offsetMin = 18, stopName = "삼천 | 아파트"),
         )
         assertEquals(list, ReminderCodec.decodeLastBus(ReminderCodec.encodeLastBus(list)))
         assertEquals(emptyList<LastBusReminder>(), ReminderCodec.decodeLastBus("깨진|줄\n\n a|b|c|d|x|30"))
         // 예전에 저장한 6칸 줄은 막차 알림으로 읽음
         assertEquals(false, ReminderCodec.decodeLastBus("R|1|2|기점|1400|30").single().first)
         assertTrue(ReminderLogic.lastBusText("5-1", 60, 5 * 60 + 30, first = true).contains("첫차"))
+        // 예전 7칸(첫차 표시만) 줄도 읽음
+        assertEquals(true, ReminderCodec.decodeLastBus("R|1|2|기점|330|30|f").single().first)
+        // 내 정류장 기준: 기점 23:00 + 18분 = 23:18 도착, 그 30분 전인 22:48 에 알림
+        val mine = LastBusReminder("R3", "7", "37", "기점", 23 * 60, 30, offsetMin = 18, stopName = "삼천아파트")
+        assertEquals(22 * 60 + 48, ReminderLogic.lastBusFireMinutes(mine.stopMinutes, mine.leadMin))
+        assertTrue(ReminderLogic.lastBusText(mine).contains("삼천아파트") && ReminderLogic.lastBusText(mine).contains("23:18"))
         val c = CommuteReminder(true, 9 * 60)
         assertEquals(c, ReminderCodec.decodeCommute(ReminderCodec.encodeCommute(c)))
         assertEquals(CommuteReminder(false, 480), ReminderCodec.decodeCommute("0|480"))
