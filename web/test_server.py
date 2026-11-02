@@ -204,5 +204,20 @@ class Routing(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 400)
 
 
+
+class Cors(unittest.TestCase):
+    def test_only_local_pages_by_default(self):
+        self.assertEqual(s.cors_origin("http://localhost:8081", []), "http://localhost:8081")
+        self.assertEqual(s.cors_origin("http://127.0.0.1:19006/", []), "http://127.0.0.1:19006")
+        self.assertIsNone(s.cors_origin("https://evil.example", []))
+        self.assertIsNone(s.cors_origin(None, []))
+
+    def test_listed_origins(self):
+        allowed = ["https://tagohub.web.app"]
+        self.assertEqual(s.cors_origin("https://tagohub.web.app", allowed), "https://tagohub.web.app")
+        self.assertIsNone(s.cors_origin("http://localhost:8081", allowed))
+        self.assertEqual(s.cors_origin("https://x.example", ["*"]), "https://x.example")
+
+
 if __name__ == "__main__":
     unittest.main()
