@@ -98,17 +98,9 @@ fun TabScaffold(
     content: @Composable () -> Unit,
 ) {
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 로고 줄 + 큰 제목 + 한 줄 설명 (홈과 같은 머리)
-        val subtitle = when (title) {
-            "대중교통" -> "지금 필요한 이동 정보를 찾아보세요."
-            "내비게이션" -> "목적지를 정하고 길안내를 시작하세요."
-            else -> null
-        }
-        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
-            BrandHeader()
-            Spacer(Modifier.height(18.dp))
+        // 큰 제목만 (앱 이름·설명은 홈에만)
+        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
             Text(title, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, Modifier.padding(top = 6.dp), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Box(Modifier.weight(1f)) { content() }
         AppBottomNav(tab, onTab)
