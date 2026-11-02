@@ -57,12 +57,14 @@ private fun rememberNotificationAsk(): (then: () -> Unit) -> Unit {
 
 /**
  * 막차·첫차 알림 칩: "막차 알림 · 23:40  [15분 전] [30분 전] [60분 전]". 켜 둔 칩을 다시 누르면 끔.
- * 막차·첫차 시각은 노선의 기점 출발 기준이라 중간 정류장은 더 늦을 수 있어서 알림 문구에 그렇게 적는다.
+ * 시각은 기점 출발에 기점→[stopName] 소요([offsetMin])를 더한 예상 도착이라 도로 사정에 따라 다를 수 있다고 알림 문구에 적는다.
  */
 @Composable
 internal fun LastBusChips(
     routeId: String, routeNo: String, cityCode: String, startName: String?, lastTimeRaw: String?,
     modifier: Modifier = Modifier, first: Boolean = false,
+    /** 노선을 정류장에서 열었으면 그 정류장과 기점에서 걸리는 분: 알림을 "내 정류장에 오는 시각" 기준으로 */
+    stopName: String? = null, offsetMin: Int = 0,
 ) {
     val last = TagoTime.minutesOfDay(lastTimeRaw) ?: return
     val context = LocalContext.current
@@ -73,7 +75,7 @@ internal fun LastBusChips(
         Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         // 폭이 좁으면 제목이 줄어들고 칩 글자는 줄바꿈하지 않음 ("60분 전"이 두 줄로 꺾이지 않게)
         Text(
-            "${if (first) "첫차" else "막차"} 알림 · ${ReminderLogic.clock(last)}",
+            "${if (first) "첫차" else "막차"} 알림 · ${ReminderLogic.clock(last + offsetMin)}",
             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
         )
@@ -86,7 +88,7 @@ internal fun LastBusChips(
                         ReminderScheduler.cancelLastBus(context, routeId, first)
                         current = null
                     } else {
-                        val r = LastBusReminder(routeId, routeNo, cityCode, startName.orEmpty(), last, lead, first)
+                        val r = LastBusReminder(routeId, routeNo, cityCode, startName.orEmpty(), last, lead, first, offsetMin, stopName.orEmpty())
                         ask {
                             store.setLastBus(routeId, r)
                             ReminderScheduler.scheduleLastBus(context, r)

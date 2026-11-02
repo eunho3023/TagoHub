@@ -31,7 +31,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 val id = intent.getStringExtra(ReminderScheduler.EXTRA_ROUTE_ID) ?: return
                 val r = ReminderScheduler.store(app).lastBusFor(id, first) ?: return
                 val kind = if (first) "첫차" else "막차"
-                notify(app, (if (first) 6000 else 5000) + (id.hashCode() and 0xFFF), "${r.routeNo}번 $kind 알림", ReminderLogic.lastBusText(r.routeNo, r.leadMin, r.lastMinutes, first))
+                notify(app, (if (first) 6000 else 5000) + (id.hashCode() and 0xFFF), "${r.routeNo}번 $kind 알림", ReminderLogic.lastBusText(r, first))
                 ReminderScheduler.scheduleLastBus(app, r)
             }
             ReminderScheduler.ACTION_COMMUTE -> {

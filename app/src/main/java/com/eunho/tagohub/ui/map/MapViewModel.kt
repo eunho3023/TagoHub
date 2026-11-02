@@ -973,6 +973,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         updatePickedAddress(p)
     }
 
+    /**
+     * 지도 바닥(건물·정류장·역이 아닌 곳)을 한 번 누름: 꾹 누른 것과 같이 그 자리 장소 시트 (여기서 출발 / 여기로 도착).
+     * 패널이 열려 있거나(정류장·노선·길찾기…) 주행 안내 중이면 실수로 누른 것일 수 있어 아무것도 안 함.
+     */
+    fun onMapTap(lat: Double, lng: Double) {
+        if (panel.value != MapPanel.None) return
+        if (com.eunho.tagohub.guidance.DriveGuidance.active.value || com.eunho.tagohub.guidance.FreeDriveSession.active.value) return
+        onMapLongPress(lat, lng)
+    }
+
     private fun updatePickedAddress(p: PickedPlace) {
         viewModelScope.launch {
             val address = com.eunho.tagohub.data.KakaoExtra.placeName(p.lat, p.lng)

@@ -218,6 +218,8 @@ class KakaoCanvas(
             if (poi.isPoi()) {
                 val name = poi.getName().orEmpty()
                 main.post { vm.onMapPoi(name, position.latitude, position.longitude) }
+            } else {
+                main.post { vm.onMapTap(position.latitude, position.longitude) }
             }
         }
         // 바닥 꾹 누르기 → 여기서 출발 / 여기로 도착

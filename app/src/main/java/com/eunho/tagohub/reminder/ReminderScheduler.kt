@@ -47,7 +47,7 @@ object ReminderScheduler {
 
     /** 막차·첫차 [r] 의 다음 알림 예약 (울린 뒤에도 같은 함수로 다음 날 것을 다시 예약) */
     fun scheduleLastBus(context: Context, r: LastBusReminder, now: ZonedDateTime = ZonedDateTime.now()) {
-        val fire = ReminderLogic.nextFire(now, ReminderLogic.lastBusFireMinutes(r.lastMinutes, r.leadMin))
+        val fire = ReminderLogic.nextFire(now, ReminderLogic.lastBusFireMinutes(r.stopMinutes, r.leadMin))
         set(context, lastBusCode(r.routeId, r.first), intent(context, busAction(r.first), r.routeId), fire)
     }
 

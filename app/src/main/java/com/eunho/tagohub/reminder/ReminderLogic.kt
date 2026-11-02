@@ -32,6 +32,10 @@ object ReminderLogic {
 
     fun clock(minutes: Int): String = String.format(java.util.Locale.ROOT, "%02d:%02d", (minutes / 60) % 24, minutes % 60)
 
+    fun lastBusText(r: LastBusReminder, first: Boolean = r.first): String =
+        if (r.stopName.isBlank() || r.offsetMin <= 0) lastBusText(r.routeNo, r.leadMin, r.lastMinutes, first)
+        else "${r.routeNo}번 ${if (first) "첫차" else "막차"}가 약 ${r.leadMin}분 뒤 ${r.stopName}에 와요 (예상 ${clock(r.stopMinutes)}, 기점 ${clock(r.lastMinutes)} 출발). 도로 사정에 따라 다를 수 있어요."
+
     fun lastBusText(routeNo: String, leadMin: Int, lastMinutes: Int, first: Boolean = false): String =
         if (first) "${routeNo}번 첫차가 약 ${leadMin}분 뒤입니다 (기점 ${clock(lastMinutes)} 출발). 정류장에 따라 시각이 다를 수 있어요."
         else "${routeNo}번 막차가 약 ${leadMin}분 뒤입니다 (기점 ${clock(lastMinutes)} 출발). 정류장에 따라 시각이 다를 수 있으니 서두르세요."
