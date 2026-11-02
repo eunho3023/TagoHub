@@ -1615,10 +1615,11 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             onFavorite = { vm.toggleFavorite(vm.routeFavorite(d)) },
             onRefresh = vm::refreshNow,
         )
-        // 목록일 땐 정보 카드·막차 알림이 정류장 목록과 함께 스크롤됨 (고정이면 목록이 들어갈 자리가 없어짐). 배치도에서만 위에 고정
+        // 목록일 땐 정보 카드·첫차·막차 알림이 정류장 목록과 함께 스크롤됨 (고정이면 목록이 들어갈 자리가 없어짐). 배치도에서만 위에 고정
         var diagram by rememberSaveable { mutableStateOf(false) }
         if (diagram) {
             r?.let { RouteInfoCard(it) }
+            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true) }
             r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
         }
         val dir by d.dir.collectAsStateWithLifecycle()
@@ -1736,6 +1737,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 item {
                     r?.let { RouteInfoCard(it) }
+                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true) }
                     r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime) }
                 }
                 itemsIndexed(list) { i, s ->

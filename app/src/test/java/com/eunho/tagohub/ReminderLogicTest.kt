@@ -90,9 +90,13 @@ class ReminderLogicTest {
         val list = listOf(
             LastBusReminder("R|1", "123", "25", "기점 | 이름", 25 * 60 + 10, 30),
             LastBusReminder("R2", "5-1", "11", "서울역", 23 * 60, 15),
+            LastBusReminder("R2", "5-1", "11", "서울역", 5 * 60 + 30, 60, first = true),
         )
         assertEquals(list, ReminderCodec.decodeLastBus(ReminderCodec.encodeLastBus(list)))
         assertEquals(emptyList<LastBusReminder>(), ReminderCodec.decodeLastBus("깨진|줄\n\n a|b|c|d|x|30"))
+        // 예전에 저장한 6칸 줄은 막차 알림으로 읽음
+        assertEquals(false, ReminderCodec.decodeLastBus("R|1|2|기점|1400|30").single().first)
+        assertTrue(ReminderLogic.lastBusText("5-1", 60, 5 * 60 + 30, first = true).contains("첫차"))
         val c = CommuteReminder(true, 9 * 60)
         assertEquals(c, ReminderCodec.decodeCommute(ReminderCodec.encodeCommute(c)))
         assertEquals(CommuteReminder(false, 480), ReminderCodec.decodeCommute("0|480"))

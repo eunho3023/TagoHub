@@ -13,6 +13,7 @@ import java.time.ZonedDateTime
  */
 object ReminderScheduler {
     const val ACTION_LAST_BUS = "com.eunho.tagohub.reminder.LAST_BUS"
+    const val ACTION_FIRST_BUS = "com.eunho.tagohub.reminder.FIRST_BUS"
     const val ACTION_COMMUTE = "com.eunho.tagohub.reminder.COMMUTE"
     const val EXTRA_ROUTE_ID = "route_id"
     private const val COMMUTE_CODE = 7001
@@ -39,15 +40,19 @@ object ReminderScheduler {
         alarms(context).cancel(pending(context, code, intent))
     }
 
-    private fun lastBusCode(routeId: String) = 8000 + (routeId.hashCode() and 0xFFFF)
+    // 첫차는 막차와 다른 요청 코드·동작이라 같은 노선의 두 알람이 서로 덮어쓰지 않음
+    private fun lastBusCode(routeId: String, first: Boolean) = (if (first) 9_000_000 else 8000) + (routeId.hashCode() and 0xFFFF)
 
-    /** 막차 [r] 의 다음 알림 예약 (울린 뒤에도 같은 함수로 다음 날 것을 다시 예약) */
+    private fun busAction(first: Boolean) = if (first) ACTION_FIRST_BUS else ACTION_LAST_BUS
+
+    /** 막차·첫차 [r] 의 다음 알림 예약 (울린 뒤에도 같은 함수로 다음 날 것을 다시 예약) */
     fun scheduleLastBus(context: Context, r: LastBusReminder, now: ZonedDateTime = ZonedDateTime.now()) {
         val fire = ReminderLogic.nextFire(now, ReminderLogic.lastBusFireMinutes(r.lastMinutes, r.leadMin))
-        set(context, lastBusCode(r.routeId), intent(context, ACTION_LAST_BUS, r.routeId), fire)
+        set(context, lastBusCode(r.routeId, r.first), intent(context, busAction(r.first), r.routeId), fire)
     }
 
-    fun cancelLastBus(context: Context, routeId: String) = cancel(context, lastBusCode(routeId), intent(context, ACTION_LAST_BUS, routeId))
+    fun cancelLastBus(context: Context, routeId: String, first: Boolean = false) =
+        cancel(context, lastBusCode(routeId, first), intent(context, busAction(first), routeId))
 
     /**
      * 출근 알림의 첫 확인을 예약. 도착 시각의 2시간 반 전(평일)이고,

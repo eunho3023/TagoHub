@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.eunho.tagohub.core.TagoTime
@@ -55,29 +56,37 @@ private fun rememberNotificationAsk(): (then: () -> Unit) -> Unit {
 }
 
 /**
- * 막차 알림 칩: "막차 15분 전 / 30분 전 / 60분 전". 켜 둔 칩을 다시 누르면 끔.
- * 막차 시각은 노선의 기점 출발 기준이라 중간 정류장은 더 늦을 수 있어서 알림 문구에 그렇게 적는다.
+ * 막차·첫차 알림 칩: "막차 알림 · 23:40  [15분 전] [30분 전] [60분 전]". 켜 둔 칩을 다시 누르면 끔.
+ * 막차·첫차 시각은 노선의 기점 출발 기준이라 중간 정류장은 더 늦을 수 있어서 알림 문구에 그렇게 적는다.
  */
 @Composable
-internal fun LastBusChips(routeId: String, routeNo: String, cityCode: String, startName: String?, lastTimeRaw: String?, modifier: Modifier = Modifier) {
+internal fun LastBusChips(
+    routeId: String, routeNo: String, cityCode: String, startName: String?, lastTimeRaw: String?,
+    modifier: Modifier = Modifier, first: Boolean = false,
+) {
     val last = TagoTime.minutesOfDay(lastTimeRaw) ?: return
     val context = LocalContext.current
     val store = remember { ReminderScheduler.store(context) }
-    var current by remember(routeId) { mutableStateOf(store.lastBusFor(routeId)) }
+    var current by remember(routeId, first) { mutableStateOf(store.lastBusFor(routeId, first)) }
     val ask = rememberNotificationAsk()
     Row(modifier.padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("막차 알림 · ${ReminderLogic.clock(last)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 폭이 좁으면 제목이 줄어들고 칩 글자는 줄바꿈하지 않음 ("60분 전"이 두 줄로 꺾이지 않게)
+        Text(
+            "${if (first) "첫차" else "막차"} 알림 · ${ReminderLogic.clock(last)}",
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+        )
         listOf(15, 30, 60).forEach { lead ->
             FilterChip(
                 selected = current?.leadMin == lead,
                 onClick = {
                     if (current?.leadMin == lead) {
-                        store.setLastBus(routeId, null)
-                        ReminderScheduler.cancelLastBus(context, routeId)
+                        store.setLastBus(routeId, null, first)
+                        ReminderScheduler.cancelLastBus(context, routeId, first)
                         current = null
                     } else {
-                        val r = LastBusReminder(routeId, routeNo, cityCode, startName.orEmpty(), last, lead)
+                        val r = LastBusReminder(routeId, routeNo, cityCode, startName.orEmpty(), last, lead, first)
                         ask {
                             store.setLastBus(routeId, r)
                             ReminderScheduler.scheduleLastBus(context, r)
@@ -85,7 +94,7 @@ internal fun LastBusChips(routeId: String, routeNo: String, cityCode: String, st
                         }
                     }
                 },
-                label = { Text("${lead}분 전") },
+                label = { Text("${lead}분 전", maxLines = 1, softWrap = false) },
             )
         }
     }
