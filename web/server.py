@@ -822,6 +822,23 @@ class RateLimiter:
 LIMITER = RateLimiter(int(os.environ.get("RATE_LIMIT_PER_MIN", "0") or 0))
 
 
+# Expo 앱의 웹 화면(개발 중 localhost:8081)처럼 다른 주소의 화면이 이 서버를 부를 수 있게 허용할 주소. 쉼표로 여러 개.
+# 폰 앱(안드로이드·아이폰)은 브라우저가 아니라서 이 제한과 상관없음. 비우면 내 PC(localhost) 주소만 허용
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
+
+def cors_origin(origin: str | None, allowed: list | None = None) -> str | None:
+    """요청한 화면 주소(Origin)가 허용 목록에 있으면 그 주소(응답 헤더에 넣을 값), 아니면 None. 목록이 비면 localhost·127.0.0.1 만"""
+    if not origin:
+        return None
+    origin = origin.rstrip("/")
+    allowed = CORS_ORIGINS if allowed is None else allowed
+    if allowed:
+        return origin if origin in allowed or "*" in allowed else None
+    host = urllib.parse.urlparse(origin).hostname
+    return origin if host in ("localhost", "127.0.0.1") else None
+
+
 def client_ip(headers, fallback: str) -> str:
     """구글 클라우드(Cloud Run)는 X-Forwarded-For 맨 끝에 진짜 접속자 주소를 붙여 줌. 앞쪽 값은 접속자가 꾸밀 수 있어 쓰지 않음"""
     forwarded = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip()
@@ -840,6 +857,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        allow = cors_origin(self.headers.get("Origin"))
+        if allow:
+            self.send_header("Access-Control-Allow-Origin", allow)
+            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(body)
 

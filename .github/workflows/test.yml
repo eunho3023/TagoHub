@@ -59,3 +59,31 @@ jobs:
           name: test-reports
           path: app/build/reports/tests/
           retention-days: 7
+
+  mobile:
+    # Expo 앱(mobile/)과 웹 서버(web/)의 시험 — 키·인터넷 없이
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: 웹 서버 시험 (파이썬)
+        working-directory: .
+        run: python3 web/test_server.py
+
+      - run: npm ci
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 순수 로직 시험
+        run: npm test
