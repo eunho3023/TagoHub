@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -413,6 +414,10 @@ private fun RestCard(r: com.eunho.tagohub.data.RestStatus) {
 @Composable
 private fun ZoneCard(z: ZoneStatus) {
     val rz = z.next ?: return
+    if (rz.zone.kind == com.eunho.tagohub.data.ZoneKind.ChildZone) {
+        SchoolZoneSign(z, rz.zone.limitKmh ?: 30)
+        return
+    }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = if (z.overspeed) BoardColor.Danger else BoardColor.AmberFill,
@@ -444,6 +449,41 @@ private fun ZoneCard(z: ZoneStatus) {
             )
             Spacer(Modifier.width(10.dp))
             Text(NavText.short(z.distance), color = ink, fontFamily = Mono, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** 어린이 보호구역 표지: 도로 표지처럼 빨간 테두리 원 안에 제한속도, 옆에 이름과 남은 거리 (제한속도를 넘으면 카드가 빨갛게) */
+@Composable
+private fun SchoolZoneSign(z: ZoneStatus, limit: Int) {
+    val ink = if (z.overspeed) Color.White else Color(0xFF1B1F27)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (z.overspeed) BoardColor.Danger else Color.White,
+        shadowElevation = 6.dp,
+        modifier = Modifier.widthIn(max = 320.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(58.dp).clip(CircleShape).background(Color.White).border(6.dp, Color(0xFFD7262E), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("$limit", color = Color(0xFF111111), fontSize = 24.sp, fontWeight = FontWeight.Black)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f, fill = false)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.ChildCare, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("어린이 보호구역", color = ink, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                }
+                Text(
+                    if (z.overspeed) "속도를 줄이세요" else "제한 ${limit}km/h",
+                    color = ink.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(NavText.short(z.distance), color = ink, fontFamily = Mono, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
         }
     }
 }
