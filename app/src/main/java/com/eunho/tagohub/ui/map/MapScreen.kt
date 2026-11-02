@@ -1315,12 +1315,14 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
+            if (d.stop.lat == null) Spacer(Modifier.weight(1f))
             if (d.stop.lat != null) {
-                androidx.compose.material3.OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                // 남은 폭을 두 버튼이 반씩 나눔 (안 그러면 "여기서 출발"이 다 차지해서 "여기로 도착"이 0 폭으로 사라짐). 좁으면 글자가 줄어듦
+                val pad = PaddingValues(horizontal = 10.dp)
+                androidx.compose.material3.OutlinedButton(onClick = { vm.useStopAs(d.stop, asOrigin = true); showMap?.invoke() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape, contentPadding = pad) {
                     com.eunho.tagohub.ui.common.FitText("여기서 출발", fontWeight = FontWeight.ExtraBold, maxSizeSp = 16f, minSizeSp = 10f)
                 }
-                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false); showMap?.invoke() }, modifier = Modifier.heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape) {
+                Button(onClick = { vm.useStopAs(d.stop, asOrigin = false); showMap?.invoke() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.CircleShape, contentPadding = pad) {
                     com.eunho.tagohub.ui.common.FitText("여기로 도착", fontWeight = FontWeight.ExtraBold, maxSizeSp = 16f, minSizeSp = 10f)
                 }
             }
