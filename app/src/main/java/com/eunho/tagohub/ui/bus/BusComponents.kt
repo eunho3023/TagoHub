@@ -244,6 +244,17 @@ internal fun TurnMarker(color: Color) {
     }
 }
 
+/** 차량번호 아래 운수회사 이름 (작게, 잘리면 글자만 줄임) */
+@Composable
+private fun CompanyText(name: String) {
+    FitText(
+        name,
+        Modifier.padding(end = 6.dp, top = 1.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxSizeSp = 10f, minSizeSp = 7f,
+    )
+}
+
 @Composable
 internal fun TimelineRow(
     s: RouteStop,
@@ -258,6 +269,8 @@ internal fun TimelineRow(
     times: String? = null,
     /** 실시간 도착 (예: "9분 33초 · 7정류장 전" 또는 "3정류장 전 · 약 5분"). 있으면 이름 아래에 빨간 글씨로 */
     live: String? = null,
+    /** 운수회사 (아는 지역만). 차량번호 알약 아래에 작게 */
+    company: String? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -271,29 +284,34 @@ internal fun TimelineRow(
         // 왼쪽 여백: 이 정류소에 있는 버스의 차량번호 알약 (노선 띠 바로 옆)
         Box(Modifier.width(TIMELINE_GUTTER).fillMaxHeight(), contentAlignment = Alignment.CenterEnd) {
             buses.firstOrNull()?.let { b ->
-                // 차량번호는 ... 으로 잘리지 않게: 자리가 모자라면 글자만 줄여 끝까지 보임
-                FitText(
-                    (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (buses.size > 1) " 외 ${buses.size - 1}" else "",
-                    Modifier
-                        .padding(end = 6.dp)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    maxSizeSp = 12f, minSizeSp = 8f,
-                    fontWeight = FontWeight.Bold,
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    // 차량번호는 ... 으로 잘리지 않게: 자리가 모자라면 글자만 줄여 끝까지 보임
+                    FitText(
+                        (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (buses.size > 1) " 외 ${buses.size - 1}" else "",
+                        Modifier
+                            .padding(end = 6.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        maxSizeSp = 12f, minSizeSp = 8f,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    company?.let { CompanyText(it) }
+                }
             }
             // 이 정류소를 떠나 다음 정류소로 가는 중인 버스: 아래쪽(다음 정류소 바로 앞)에 차량번호
             between.firstOrNull()?.let { b ->
-                FitText(
-                    (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (between.size > 1) " 외 ${between.size - 1}" else "",
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 6.dp, bottom = 2.dp)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                    maxSizeSp = 11f, minSizeSp = 8f,
-                    fontWeight = FontWeight.Bold,
-                )
+                Column(Modifier.align(Alignment.BottomEnd).padding(bottom = 2.dp), horizontalAlignment = Alignment.End) {
+                    FitText(
+                        (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (between.size > 1) " 외 ${between.size - 1}" else "",
+                        Modifier
+                            .padding(end = 6.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        maxSizeSp = 11f, minSizeSp = 8f,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    company?.let { CompanyText(it) }
+                }
             }
         }
         Box(

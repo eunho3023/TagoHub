@@ -146,6 +146,7 @@ object SeoulMappers2 {
         intervalSat = null,
         intervalSun = null,
         cityCode = "11",
+        company = BusCompany.clean(r.str("corpNm")),
     )
 
     /** 노선 모양 (getRoutePath): no 순서 */

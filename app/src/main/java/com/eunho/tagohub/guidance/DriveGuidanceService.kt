@@ -125,6 +125,8 @@ class DriveGuidanceService : Service() {
             return
         }
 
+        // 주행 기록(위치별 속도·카메라 앞 속도): 실제 주행만 (모의주행은 기록하지 않음)
+        if (!DriveGuidance.simulating.value) com.eunho.tagohub.data.DriveLog.start("경로 안내", zoneData.orEmpty())
         install(route)
         voice = GuidanceVoice(this).also { it.enabled = DriveGuidance.voiceOn.value }
         scope.launch {
@@ -188,6 +190,7 @@ class DriveGuidanceService : Service() {
         else scope.launch(Dispatchers.Default) {
             val zones = SafetyZones.load(applicationContext)
             zoneData = zones
+            com.eunho.tagohub.data.DriveLog.setZones(zones)
             currentNav?.let { matched = matchRoute(it, zones); rebuildTracker() }
         }
     }
@@ -313,6 +316,7 @@ class DriveGuidanceService : Service() {
             accuracyM = if (loc.hasAccuracy()) loc.accuracy.toDouble() else 0.0,
         )
         val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6 else 0.0
+        if (!DriveGuidance.simulating.value) com.eunho.tagohub.data.DriveLog.add(loc.latitude, loc.longitude, speedKmh.roundToInt())
         val zone = if (st.offRoute || st.arrived) null else tracker?.update(st.progressMeters, speedKmh)
         val restOn = ZoneGroup.Rest in DriveGuidance.zoneGroups.value
         val rest = if (st.offRoute || st.arrived || !restOn) null else restTracker?.update(st.progressMeters, st.remainingMeters)
@@ -445,6 +449,7 @@ class DriveGuidanceService : Service() {
 
     override fun onDestroy() {
         locationManager?.removeUpdates(listener)
+        com.eunho.tagohub.data.DriveLog.finish()
         voice?.shutdown()
         wakeLock?.takeIf { it.isHeld }?.release()
         scope.cancel()

@@ -240,6 +240,8 @@ fun MainScreen() {
     com.eunho.tagohub.ui.common.LoginGateHost(mapVm)
     com.eunho.tagohub.ui.common.EmailLinkHost()
     com.eunho.tagohub.ui.common.AccountSwitchHost()
+    // 자유주행·경로 안내가 끝나면 주행 기록 (위치별 속도, 단속카메라 앞 과속 여부)
+    com.eunho.tagohub.ui.map.DriveLogHost()
     if (showHistory) com.eunho.tagohub.ui.home.HistoryManageDialog(
         mapVm,
         onDismiss = { showHistory = false },

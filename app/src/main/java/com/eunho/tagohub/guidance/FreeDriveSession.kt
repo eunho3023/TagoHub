@@ -66,6 +66,7 @@ object FreeDriveSession {
         active.value = true
         val app = context.applicationContext
         announcer.forget()
+        com.eunho.tagohub.data.DriveLog.start("자유주행", zones)
         voice = GuidanceVoice(app)
         compass = HeadingSensor(app) { c ->
             // 달릴 때는 GPS 방향이 더 정확하므로 최근 GPS 방향이 없을 때만 나침반을 씀
@@ -75,7 +76,7 @@ object FreeDriveSession {
             }
         }
         job = scope.launch {
-            launch { zones = SafetyZones.load(app) }
+            launch { zones = SafetyZones.load(app).also { com.eunho.tagohub.data.DriveLog.setZones(it) } }
             launch { hazards = RoadHazards.load(app) }
             launch { links = RoadLinkIndex.get(app) }
             // 앱이 보일 때만 위치·나침반을 받음
@@ -102,6 +103,7 @@ object FreeDriveSession {
         }
         speedKmh = (speed * 3.6f).toInt()
         fix = loc.latitude to loc.longitude
+        com.eunho.tagohub.data.DriveLog.add(loc.latitude, loc.longitude, speedKmh)
         refresh()
     }
 
@@ -135,6 +137,7 @@ object FreeDriveSession {
     fun stop() {
         if (!active.value) return
         active.value = false
+        com.eunho.tagohub.data.DriveLog.finish()
         job?.cancel()
         job = null
         stopUpdates(); stopUpdates = {}

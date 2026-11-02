@@ -3,6 +3,7 @@ package com.eunho.tagohub.ui.bus
 import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.data.BusArrival
 import com.eunho.tagohub.data.BusStop
+import com.eunho.tagohub.data.BusSeen
 import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteSpeed
 import com.eunho.tagohub.data.TagoRepository
@@ -18,7 +19,7 @@ internal const val MAX_ESTIMATE_STOPS = 25
 /** 같은 정류장·노선의 어림 결과를 다시 쓰는 시간 (새로고침마다 노선 API 를 또 부르지 않게) */
 private const val ESTIMATE_TTL_MS = 30_000L
 private const val ESTIMATE_TIMEOUT_MS = 8_000L
-private const val MAX_ESTIMATE_ROUTES = 6
+private const val MAX_ESTIMATE_ROUTES = 10
 
 
 private fun clockMinutes(t: String?): Int? =
@@ -57,37 +58,51 @@ internal fun tripMinutes(line: TripPlanner.Line?, stops: List<com.eunho.tagohub.
     if (stops.size < 2) 0 else Math.round(TripPlanner.minutesBetween(line, stops.first().ord, stops.last().ord)).toInt()
 
 /**
+ * GPS 없는 버스(정류장 순번만 아는 버스)가 [i] 번째 정류장을 떠나 다음 정류장 쪽으로 간 비율을 머문 시간으로 어림하는 함수.
+ * [RouteLive.placement]·[RouteLive.positions] 에 넘긴다.
+ */
+internal fun timedAlong(routeId: String, stops: List<com.eunho.tagohub.data.RouteStop>, line: TripPlanner.Line?, nowMs: Long = System.currentTimeMillis()): (com.eunho.tagohub.data.BusLocation, Int) -> Double? = { b, i ->
+    val next = stops.getOrNull(i + 1)
+    val travel = next?.let { TripPlanner.minutesBetween(line, stops[i].ord, it.ord) * RouteSpeed.factor(routeId) * 60.0 }
+    RouteLive.timedAlong(BusSeen.since(routeId, b.vehicleNo, b.ord), nowMs, travel)
+}
+
+/**
  * 이 정류장에 오는 노선의 버스 위치를 보고 "몇 정류장 전"인지 센다: [BusArrival.prevStops] 가 곧 정류장 수(0 = 이미 와 있음).
  * 시간은 평소 소요 시간에 그 노선의 지금 도로 상황 보정([RouteSpeed])을 곱한 어림값이라 [BusArrival.estimated] 가 true.
- * 버스 위치를 못 받거나 이 정류장 앞쪽에 오는 버스가 없으면 null.
+ * 가까운 버스부터 두 대까지 돌려준다 (도착정보가 한 대만 줄 때 둘째 버스를 채우는 데 씀).
+ * 버스 위치를 못 받거나 이 정류장 앞쪽에 오는 버스가 없으면 빈 목록.
  */
-internal suspend fun positionArrival(repo: TagoRepository, stop: BusStop, row: StopRouteRow): BusArrival? {
+internal suspend fun positionArrivals(repo: TagoRepository, stop: BusStop, row: StopRouteRow): List<BusArrival> {
     val d = BusDest.Route(row.cityCode ?: stop.cityCode, row.routeId, row.routeNo, row.routeType, stop.nodeId)
     loadRouteData(repo, d)
     val stops = d.stops.value.valueOrNull().orEmpty()
-    if (stops.isEmpty()) return null
+    if (stops.isEmpty()) return emptyList()
     val line = TripPlanner.Line(d.routeId, d.routeNo, stops)
     // 같은 번호의 다른 기점·종점 노선과 버스 위치를 공유하는 도시가 있어서, 운행 시각 밖의 변형 노선은 버스가 있어도 여기 버스가 아님
     val nowMin = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
-    if (!runsNow(row.firstTime, row.lastTime, nowMin, tripMinutes(line, stops), variantGraceMin(row.routeId))) return null
+    if (!runsNow(row.firstTime, row.lastTime, nowMin, tripMinutes(line, stops), variantGraceMin(row.routeId))) return emptyList()
     refreshBusData(repo, d)
     val buses = d.buses.value
-    if (buses.isEmpty()) return null
-    val pos = RouteLive.positions(buses, stops)
+    if (buses.isEmpty()) return emptyList()
+    val pos = RouteLive.positions(buses, stops, timedAlong(d.routeId, stops, line))
     // 노선이 같은 정류장을 두 번 지나면(회차) 더 가까이 오는 쪽
     val best = stops.indices.filter { stops[it].nodeId == stop.nodeId }
         .mapNotNull { t -> RouteLive.stopsAway(t, pos.at, pos.left)?.takeIf { it <= MAX_ESTIMATE_STOPS }?.let { t to it } }
-        .minByOrNull { it.second } ?: return null
-    val (target, away) = best
-    val seconds = if (away == 0) 0 else {
-        val usual = TripPlanner.minutesBetween(line, stops[target - away].ord, stops[target].ord)
-        Math.round(usual * RouteSpeed.factor(d.routeId) * 60).toInt()
+        .minByOrNull { it.second } ?: return emptyList()
+    val target = best.first
+    val behind = RouteLive.allAway(target, pos.at, pos.left)
+    return behind.filter { it <= MAX_ESTIMATE_STOPS }.take(2).map { away ->
+        val seconds = if (away == 0) 0 else {
+            val usual = TripPlanner.minutesBetween(line, stops[target - away].ord, stops[target].ord)
+            Math.round(usual * RouteSpeed.factor(d.routeId) * 60).toInt()
+        }
+        BusArrival(
+            routeId = row.routeId, routeNo = row.routeNo, routeType = row.routeType,
+            vehicleType = null, prevStops = away, arrSeconds = seconds, estimated = true,
+            behind = behind,
+        )
     }
-    return BusArrival(
-        routeId = row.routeId, routeNo = row.routeNo, routeType = row.routeType,
-        vehicleType = null, prevStops = away, arrSeconds = seconds, estimated = true,
-        behind = RouteLive.allAway(target, pos.at, pos.left),
-    )
 }
 
 /**
@@ -102,20 +117,22 @@ internal suspend fun fillFromPositions(
     repo: TagoRepository,
     stop: BusStop,
     rows: List<StopRouteRow>,
-    cache: MutableMap<String, Pair<Long, BusArrival?>>,
+    cache: MutableMap<String, Pair<Long, List<BusArrival>>>,
     now: Long = System.currentTimeMillis(),
 ): List<StopRouteRow> {
     val liveNumbers = rows.filter { r -> r.arrivals.any { !it.estimated } }.map { it.routeNo }.toSet()
     fun needsEstimate(r: StopRouteRow) = r.arrivals.isEmpty() && !r.ended && r.routeNo !in liveNumbers
     fun needsCheck(r: StopRouteRow) = r.arrivals.firstOrNull()?.let { a -> !a.estimated && (a.prevStops ?: 0) >= 1 } == true
-    val targets = rows.filter { needsEstimate(it) || needsCheck(it) }.take(MAX_ESTIMATE_ROUTES)
+    // 도착정보가 한 대만 있으면 둘째 버스를 위치로 채움
+    fun needsSecond(r: StopRouteRow) = r.arrivals.size == 1 && !r.arrivals[0].estimated
+    val targets = rows.filter { needsEstimate(it) || needsCheck(it) || needsSecond(it) }.take(MAX_ESTIMATE_ROUTES)
     if (targets.isEmpty()) return rows
-    val found: Map<String, BusArrival?> = coroutineScope {
+    val found: Map<String, List<BusArrival>> = coroutineScope {
         targets.map { r ->
             async {
                 val hit = cache[r.routeId]?.takeIf { now - it.first < ESTIMATE_TTL_MS }
                 r.routeId to if (hit != null) hit.second else {
-                    val a = runCatching { withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { positionArrival(repo, stop, r) } }.getOrNull()
+                    val a = runCatching { withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { positionArrivals(repo, stop, r) } }.getOrNull().orEmpty()
                     cache[r.routeId] = now to a
                     a
                 }
@@ -123,14 +140,20 @@ internal suspend fun fillFromPositions(
         }.awaitAll().toMap()
     }
     return rows.map { r ->
-        val pos = found[r.routeId] ?: return@map r
-        when {
-            r.arrivals.isEmpty() -> r.copy(arrivals = listOf(pos))
+        val all = found[r.routeId]?.takeIf { it.isNotEmpty() } ?: return@map r
+        val pos = all.first()
+        val fixed = when {
+            r.arrivals.isEmpty() -> r.copy(arrivals = all)
             // 도착정보의 첫 버스가 바로 앞(1정류장 이내)인데 위치상 이미 와 있으면 같은 버스: 도착으로 고침 (더 먼 버스면 다른 버스라 아래에서 끼움)
             pos.prevStops == 0 && (r.arrivals.first().prevStops ?: 0) <= 1 -> r.copy(arrivals = listOf(r.arrivals.first().copy(prevStops = 0, arrSeconds = 0)) + r.arrivals.drop(1))
             // 위치에는 훨씬 가까운 버스가 보이는데 도착정보에는 없음(도착 예측 API 가 일부 버스만 줌): 그 버스를 맨 앞에 끼움
             RouteLive.preferPosition(r.arrivals.first().prevStops, pos.behind) -> r.copy(arrivals = (listOf(pos) + r.arrivals).take(2))
             else -> r
         }
+        // 아직 한 대뿐이면 위치로 본 그다음 버스(첫 버스와 같은 버스로 보이는 가장 가까운 버스 다음)를 둘째로
+        if (fixed.arrivals.size == 1) {
+            val first = fixed.arrivals[0].prevStops ?: return@map fixed
+            all.firstOrNull { (it.prevStops ?: -1) > first + 1 }?.let { fixed.copy(arrivals = fixed.arrivals + it) } ?: fixed
+        } else fixed
     }
 }
