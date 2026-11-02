@@ -13,6 +13,8 @@ import com.eunho.tagohub.data.RouteStop
 import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.data.RouteSpeed
+import com.eunho.tagohub.data.ArrivalLog
+import com.eunho.tagohub.data.BusSeen
 import com.eunho.tagohub.data.TripPlanner
 import com.eunho.tagohub.data.RouteGeom
 import com.eunho.tagohub.data.StaleGuard
@@ -86,11 +88,15 @@ sealed class BusDest {
         val rows = MutableStateFlow<Load<List<StopRouteRow>>>(Load.Loading)
         /** 도착정보를 마지막으로 받은 시각 (매초 카운트다운 기준) */
         val updated = MutableStateFlow<LocalTime?>(null)
+        /** 서버에 마지막으로 물어 답을 받은 시각 (정보가 직전과 같아도 바뀜 → 새로고침이 됐는지 화면에서 보임) */
+        val checked = MutableStateFlow<LocalTime?>(null)
 
         internal var lastArrivals: List<BusArrival>? = null
 
         /** 도착정보에 없는 노선을 버스 위치로 어림한 결과 (노선 → 시각, 결과) */
-        internal val estimated = HashMap<String, Pair<Long, BusArrival?>>()
+        internal val estimated = HashMap<String, Pair<Long, List<BusArrival>>>()
+        /** 노선 → "정류장 도착"이 처음 보인 시각 (떠난 버스가 계속 "도착"으로 남지 않게) */
+        internal val arrivedSince = HashMap<String, Long>()
 
         /** 같은 자리의 다른 시군 정류장과 그 도착정보·경유노선 */
         internal var companions: List<BusStop>? = preset
@@ -384,6 +390,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
             // 서버가 직전과 똑같은 정보를 주면(버스 위치는 30~60초마다 바뀜) 그렇다고 알림
             val unchanged = d.lastServer != null && arr.data == d.lastServer
             d.lastServer = arr.data
+            d.checked.value = LocalTime.now()
             d.note.value = if (unchanged && arr.data.isNotEmpty()) "정보가 직전과 같아요 · 버스 위치는 30~60초마다 바뀌어요" else null
             if (arr.data.isNotEmpty() || d.emptyStreak >= 1 || d.lastArrivals.isNullOrEmpty()) {
                 // 새로고침해도 남은 시간이 거꾸로 늘지 않게 (화면에서 이미 줄어든 값을 유지)
@@ -439,7 +446,10 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
             .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) },
         d.estimated,
-    )
+    ).let { rows ->
+        val now = System.currentTimeMillis()
+        rows.map { r -> r.copy(arrivals = com.eunho.tagohub.data.ArrivedHold.filter(r.routeId, r.arrivals, d.arrivedSince, now)) }
+    }
     val mainNos = main.map { it.routeNo }.toSet()
     val others = entries.flatMap { c ->
         mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
@@ -595,6 +605,9 @@ internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
     if (d.buses.value.isNotEmpty() && !variantRunning(d)) d.buses.value = emptyList()
     // 버스가 정류장을 옮겨 간 실제 시간으로 이 노선의 도로 상황(평소 대비 느림/빠름)을 갱신
     val buses = d.buses.value
+    // 차량이 정류장에 처음 보인 시각(GPS 없는 버스의 출발 어림)과 정류장 도착 기록(요일별 예상 시간표)
+    BusSeen.update(d.routeId, buses)
+    d.stops.value.valueOrNull()?.let { ArrivalLog.observe(d.routeId, buses, it) }
     if (buses.isEmpty()) return
     val line by lazy { TripPlanner.Line(d.routeId, d.routeNo, d.stops.value.valueOrNull().orEmpty()) }
     RouteSpeed.observe(d.routeId, buses) { a, b -> TripPlanner.minutesBetween(line, a, b) }
@@ -760,4 +773,23 @@ private suspend fun dropPassedBySeoulPosition(d: BusDest.Stop, list: List<BusArr
         if (com.eunho.tagohub.data.PassedByPosition.passed(stopOrds, busOrds)) gone += a
     }
     return if (gone.isEmpty()) list else list.filterNot { x -> gone.any { it === x } }
+}
+
+private val companyCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+/**
+ * 노선의 운수회사. 서울시·경기 노선 정보 API 에만 있어서 그 지역만 (앱 안 노선 데이터에는 없음).
+ * 노선마다 한 번만 묻고 기억한다. 모르면 null.
+ */
+internal suspend fun routeCompany(routeId: String): String? {
+    companyCache[routeId]?.let { return it.ifEmpty { null } }
+    val name = runCatching {
+        when {
+            SeoulBus.isSeoul(routeId) -> (Graph.seoulBus.routeInfo(routeId) as? TagoResult.Success)?.data?.company
+            Gyeonggi.isGyeonggi(routeId) -> (Graph.gyeonggi.routeInfo(routeId) as? TagoResult.Success)?.data?.company
+            else -> null
+        }
+    }.getOrNull()
+    companyCache[routeId] = name.orEmpty()
+    return name
 }

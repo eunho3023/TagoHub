@@ -33,7 +33,16 @@ data class BusRoute(
     val intervalSun: Int?,
     /** 이 노선의 TAGO 도시코드 (전국 검색 결과에서 노선을 열 때 사용) */
     val cityCode: String = "",
+    /** 운수회사 (서울시·경기 노선 정보에만 있음). 모르면 null */
+    val company: String? = null,
 )
+
+/** 운수회사 이름 다듬기: 서울시 API 는 "동아운수 02-123-4567"처럼 전화번호를 붙여 줌 */
+object BusCompany {
+    private val phone = Regex("""\(?0\d{1,3}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}""")
+
+    fun clean(raw: String?): String? = raw?.replace(phone, "")?.replace(Regex("""\s+"""), " ")?.trim()?.ifBlank { null }
+}
 
 data class BusArrival(
     val routeId: String,

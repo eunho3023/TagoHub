@@ -67,14 +67,54 @@ object RouteLive {
         val fractions: List<Float>,
     )
 
-    fun placement(buses: List<BusLocation>, stops: List<RouteStop>): Placement {
+    /** 정류장에 닿은 버스가 문을 열고 닫는 데 걸리는 시간(초). 순번만 아는 버스는 이만큼 지나면 떠난 것으로 봄 */
+    const val DWELL_SEC = 25
+
+    /**
+     * GPS 가 없는 버스(전주·경기처럼 정류장 순번만 주거나, TAGO 일부 지역처럼 정류장 좌표를 주는 API)인지.
+     * 이런 버스는 다음 정류장에 닿을 때까지 계속 같은 정류장으로 알려 와서, 시간으로 어림하지 않으면 "정류장 도착"으로 멈춰 보인다.
+     */
+    fun noGps(bus: BusLocation, here: RouteStop): Boolean {
+        val lat = bus.lat ?: return true
+        val lng = bus.lng ?: return true
+        val sLat = here.lat ?: return false
+        val sLng = here.lng ?: return false
+        return com.eunho.tagohub.core.Geo.meters(sLat, sLng, lat, lng) < SAME_POINT_M
+    }
+
+    /** 이 거리 안이면 버스 좌표가 정류장 좌표 그대로인 것 (실제 GPS 가 아님) */
+    private const val SAME_POINT_M = 5.0
+
+    /**
+     * 순번만 아는 버스가 [sinceMs] 에 이 정류장에서 처음 보였고 지금이 [nowMs] 일 때, 정류장을 떠나 다음 정류장 쪽으로 간 비율(0~0.9).
+     * 머문 시간이 [DWELL_SEC] 이하면 아직 정류장에 있는 것이라 null. [travelSec] 은 다음 정류장까지 평소 걸리는 초(모르면 60초로 봄).
+     */
+    fun timedAlong(sinceMs: Long?, nowMs: Long, travelSec: Double?): Double? {
+        val since = sinceMs ?: return null
+        val gone = (nowMs - since) / 1000.0 - DWELL_SEC
+        if (gone <= 0) return null
+        val t = travelSec?.takeIf { it.isFinite() && it > 0 } ?: 60.0
+        return (gone / t).coerceIn(0.05, 0.9)
+    }
+
+    /**
+     * 버스가 [i] 번째 정류장을 떠나 간 비율: GPS·상태값으로 알 수 있으면 그것, GPS 가 없으면 [timed] 로 어림.
+     * 첫 정류장(기점, 출발을 기다리며 오래 서 있음)과 마지막 정류장은 어림하지 않는다.
+     */
+    private fun along(b: BusLocation, stops: List<RouteStop>, i: Int, timed: (BusLocation, Int) -> Double?): Double? {
+        departedAlong(b, stops[i], stops.getOrNull(i + 1))?.let { return it }
+        if (b.state == 1 || i == 0 || i >= stops.lastIndex || !noGps(b, stops[i])) return null
+        return timed(b, i)
+    }
+
+    fun placement(buses: List<BusLocation>, stops: List<RouteStop>, timed: (BusLocation, Int) -> Double? = { _, _ -> null }): Placement {
         val at = HashMap<Int, MutableList<BusLocation>>()
         val between = HashMap<Int, MutableList<BusLocation>>()
         val fractions = ArrayList<Float>()
         for (b in buses) {
             val i = stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }
             if (i < 0) continue
-            val t = departedAlong(b, stops[i], stops.getOrNull(i + 1))
+            val t = along(b, stops, i, timed)
             if (t != null) {
                 between.getOrPut(i) { ArrayList() } += b
                 fractions += i + t.coerceIn(0.15, 0.85).toFloat()
@@ -87,13 +127,13 @@ object RouteLive {
     }
 
     /** [buses] 각각이 [stops] 목록 안 어느 정류장에 있는지, 그리고 그 정류장을 떠났는지 */
-    fun positions(buses: List<BusLocation>, stops: List<RouteStop>): Positions {
+    fun positions(buses: List<BusLocation>, stops: List<RouteStop>, timed: (BusLocation, Int) -> Double? = { _, _ -> null }): Positions {
         val at = ArrayList<Int>()
         val left = ArrayList<Int>()
         for (b in buses) {
             val i = stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }
             if (i < 0) continue
-            if (departed(b, stops[i], stops.getOrNull(i + 1))) left += i else at += i
+            if (along(b, stops, i, timed) != null) left += i else at += i
         }
         return Positions(at, left)
     }
@@ -117,6 +157,17 @@ object RouteLive {
         val nearest = aways.minOrNull() ?: return false
         if (apiPrevStops == null || nearest == 0 || nearest <= apiPrevStops - NEARER_GAP) return true
         return nearest < apiPrevStops && aways.any { it != nearest && kotlin.math.abs(it - apiPrevStops) <= 1 }
+    }
+
+    /**
+     * 노선 목록에서 고른 정류장에 그 정류장의 도착정보(API)를 그대로 보일지. 위아래 정류장은 버스 위치로 세므로,
+     * 도착정보가 센 정류장 수가 위치로 센 가장 가까운 버스와 1정류장 넘게 다르면(다른 버스이거나 API 가 늦음) 위치를 따라
+     * 앞뒤 정류장과 말이 맞게 한다 (전주: 앞 정류장은 "1정류장 전 · 1분 28초"인데 고른 정류장만 "29분 · 4정류장 전").
+     */
+    fun useApiAtFocus(apiPrevStops: Int?, aways: List<Int>): Boolean {
+        val nearest = aways.minOrNull() ?: return true
+        if (preferPosition(apiPrevStops, aways)) return false
+        return apiPrevStops != null && kotlin.math.abs(apiPrevStops - nearest) <= 1
     }
 
     fun text(stopsAway: Int, minutes: Int?): String = when {

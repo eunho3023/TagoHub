@@ -64,6 +64,7 @@ object GyeonggiMappers {
         intervalSat = r.int("satPeekAlloc"),
         intervalSun = r.int("sunPeekAlloc"),
         cityCode = "31",
+        company = BusCompany.clean(r.str("companyName")),
     )
 
     /** 경유 정류소 (좌표 포함: x 경도, y 위도). 회차점(turnYn=Y)까지 상행 "0", 그 뒤 하행 "1" */

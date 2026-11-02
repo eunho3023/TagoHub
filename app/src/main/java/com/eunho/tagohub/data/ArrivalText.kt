@@ -41,3 +41,23 @@ object PassedBus {
         return sec - elapsedSec < -GRACE_SEC && (a.prevStops == null || a.prevStops <= 1)
     }
 }
+
+/**
+ * "정류장 도착"이 계속 남는 것 막기. 정류장 순번만 아는 지역 API(전주 등)는 버스가 다음 정류장에 닿을 때까지
+ * 이 정류장에 와 있다(0정류장 전)고 알려 줘서, 버스가 떠난 뒤에도 몇 분씩 "정류장 도착"이 떠 있었다.
+ * 노선마다 "도착"이 처음 보인 시각을 기억해 [HOLD_SEC] 가 지나면 그 버스는 떠난 것으로 보고 뺀다.
+ */
+object ArrivedHold {
+    const val HOLD_SEC = 90
+
+    /** [since] 는 노선 → "도착"이 처음 보인 시각(ms). 정류장 화면이 들고 있음 */
+    fun filter(routeId: String, arrivals: List<BusArrival>, since: MutableMap<String, Long>, nowMs: Long): List<BusArrival> {
+        val first = arrivals.firstOrNull()
+        if (first == null || first.prevStops != 0) {
+            since.remove(routeId)
+            return arrivals
+        }
+        val at = since.getOrPut(routeId) { nowMs }
+        return if (nowMs - at > HOLD_SEC * 1000L) arrivals.drop(1) else arrivals
+    }
+}

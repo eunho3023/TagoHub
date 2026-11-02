@@ -38,6 +38,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,6 +133,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -184,6 +186,18 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 
 private fun LocalTime.hhmm() = TagoTime.clockText(hour * 60 + minute)
+/** 새로고침이 됐는지 보이게 초까지: "17:12:31" */
+private fun LocalTime.hhmmss() = "%02d:%02d:%02d".format(hour, minute, second)
+
+/** 새로고침 버튼: 누르면 아이콘이 한 바퀴 돌아 눌렸다는 것을 보여 줌 */
+@Composable
+private fun RefreshButton(onRefresh: () -> Unit) {
+    var spins by remember { mutableIntStateOf(0) }
+    val angle by androidx.compose.animation.core.animateFloatAsState(spins * 360f, androidx.compose.animation.core.tween(700), label = "refresh-spin")
+    IconButton(onClick = { spins++; onRefresh() }) {
+        Icon(Icons.Filled.Refresh, contentDescription = "새로고침", modifier = Modifier.graphicsLayer { rotationZ = angle })
+    }
+}
 
 @Composable
 fun MapScreen(
@@ -1113,7 +1127,7 @@ private fun PanelHeader(
             }
         }
         if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
-        onRefresh?.let { r -> IconButton(onClick = r) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") } }
+        onRefresh?.let { r -> RefreshButton(r) }
         if (favorite != null) {
             IconButton(onClick = onFavorite) {
                 Icon(
@@ -1157,7 +1171,7 @@ private fun RouteBandHeader(
             }
             Text(routeNo, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
-            IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") }
+            RefreshButton(onRefresh)
             IconButton(onClick = onFavorite) {
                 Icon(
                     if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
@@ -1226,6 +1240,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val rows by d.rows.collectAsStateWithLifecycle()
     val updated by d.updated.collectAsStateWithLifecycle()
+    val checked by d.checked.collectAsStateWithLifecycle()
     val liveNote by d.note.collectAsStateWithLifecycle()
     val others by d.others.collectAsStateWithLifecycle()
     val direction by d.direction.collectAsStateWithLifecycle()
@@ -1243,7 +1258,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     PanelSurface {
         PanelHeader(
             title = d.stop.name.replace(Regex("\\.지하철(\\d+호선)$"), " (\$1)"),   // "당산역.지하철2호선" → "당산역 (2호선)"
-            subtitle = listOfNotNull(numbers, updated?.let { "${it.hhmm()} 갱신" }).joinToString(" · ").ifEmpty { null },
+            subtitle = listOfNotNull(numbers, (checked ?: updated)?.let { "${it.hhmmss()} 갱신" }).joinToString(" · ").ifEmpty { null },
             color = ModeColor.Bus,
             onClose = vm::closePanel,
             switchLabel = if (hasRoute) "노선 보기" else null,
@@ -1261,7 +1276,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
         Box(Modifier.weight(1f)) {
             val tt = timetable
             if (tt != null) {
-                StopTimetable(vm, tt)
+                StopTimetable(vm, tt, d.stop.nodeId)
             } else {
                 LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
                     LazyColumn(Modifier.fillMaxSize()) {
@@ -1315,7 +1330,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
 
 /** 정류장 예상 시간표: 요일 → 노선 → 이 정류장에 서는 예상 시각 (다음 차 강조) */
 @Composable
-private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
+private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeId: String) {
     val day by vm.timetableDay.collectAsStateWithLifecycle()
     val preferredRouteId by vm.timetablePreferredRouteId.collectAsStateWithLifecycle()
     var pick by remember(preferredRouteId) { mutableStateOf(preferredRouteId) }
@@ -1385,6 +1400,16 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>) {
                             }
                         }
                     }
+                }
+                // 계획 시각(첫차·막차·배차) ↔ 지난 운행 기록(이 폰이 본 실제 도착을 요일별로)
+                var observed by rememberSaveable { mutableStateOf(false) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !observed, onClick = { observed = false }, label = { Text("계획 시각") })
+                    FilterChip(selected = observed, onClick = { observed = true }, label = { Text("지난 운행 기록") })
+                }
+                if (observed) {
+                    ObservedTimetable(cur.routeId, nodeId, busRouteColor(cur.routeType))
+                    return@Column
                 }
                 // 전국 노선은 고를 때 계산 (첫차·막차·배차간격 + 이 정류장까지 소요시간)
                 LaunchedEffect(cur.routeId, cur.loaded) { if (!cur.loaded) vm.ensureTimes(cur.routeId) }
@@ -1549,6 +1574,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val updated by d.updated.collectAsStateWithLifecycle()
     val r = info.valueOrNull()
     val color = busRouteColor(d.routeType ?: r?.routeType)
+    // 운수회사 (서울·경기 노선만 알 수 있음): 차량번호 아래에 표시
+    val company by produceState(r?.company, d.routeId, r?.company) { value = r?.company ?: com.eunho.tagohub.ui.bus.routeCompany(d.routeId) }
     // 정류장에서 들어왔으면 그 정류장의 도착정보(정류장 화면과 같은 값)를 목록에도 그대로 보여 줌
     val selectedStop by vm.selected.collectAsStateWithLifecycle()
     val noRows = remember { kotlinx.coroutines.flow.MutableStateFlow<com.eunho.tagohub.core.Load<List<com.eunho.tagohub.ui.bus.StopRouteRow>>>(com.eunho.tagohub.core.Load.Idle) }
@@ -1578,7 +1605,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             detail = listOfNotNull(
                 r?.interval?.let { "배차 ${it}분" },
                 "운행 중 ${buses.size}대",
-                updated?.let { "${it.hhmm()} 갱신" },
+                updated?.let { "${it.hhmmss()} 갱신" },
             ).joinToString(" · "),
             color = color,
             onClose = vm::closePanel,
@@ -1627,11 +1654,19 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
-            // 버스를 정류장에 서 있는 것과, 정류장을 떠나 다음 정류장으로 가는 중인 것(GPS)으로 나눔
-            val placement = remember(buses, list) { com.eunho.tagohub.data.RouteLive.placement(buses, list) }
-            // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
-            val busPos = remember(buses, list) { com.eunho.tagohub.data.RouteLive.positions(buses, list) }
             val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
+            // GPS 없는 버스(전주·경기 등)가 정류장을 떠났는지는 머문 시간으로 어림하므로 몇 초마다 다시 나눔
+            val nowTick by produceState(System.currentTimeMillis()) {
+                while (true) {
+                    delay(5_000L)
+                    value = System.currentTimeMillis()
+                }
+            }
+            val timed = remember(list, routeLine, nowTick) { com.eunho.tagohub.ui.bus.timedAlong(d.routeId, list, routeLine, nowTick) }
+            // 버스를 정류장에 서 있는 것과, 정류장을 떠나 다음 정류장으로 가는 중인 것(GPS, 없으면 머문 시간)으로 나눔
+            val placement = remember(buses, list, timed) { com.eunho.tagohub.data.RouteLive.placement(buses, list, timed) }
+            // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
+            val busPos = remember(buses, list, timed) { com.eunho.tagohub.data.RouteLive.positions(buses, list, timed) }
             // 서버에서 같은 위치가 반복되어도 카운트다운은 이어가고, 버스 위치가 바뀌었을 때만 새 기준으로 시작한다.
             val routeReceivedAt = remember(buses) { updated }
             val routeElapsedSec by produceState(arrivalAgeSeconds(routeReceivedAt), buses) {
@@ -1645,7 +1680,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val liveOf = { i: Int, s: RouteStop ->
                 // 도착정보(API)와 버스 위치가 어긋나면 위치를 믿음: 이미 와 있는데 "1정류장 전", 가까이 버스가 보이는데 "7정류장 전"(API 가 그 버스를 빠뜨림)
                 val away = com.eunho.tagohub.data.RouteLive.stopsAway(i, busPos.at, busPos.left)
-                if (s.nodeId == d.focusNodeId && focusArrival != null && !com.eunho.tagohub.data.RouteLive.preferPosition(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
+                // 고른 정류장은 도착정보가 위치와 맞을 때만 그대로 (어긋나면 앞뒤 정류장처럼 위치로 세서 말이 맞게)
+                if (s.nodeId == d.focusNodeId && focusArrival != null && com.eunho.tagohub.data.RouteLive.useApiAtFocus(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
                 else away?.let { n ->
                     val from = list[i - n]
                     val seconds = if (n > 0) {
@@ -1713,6 +1749,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         focused = s.nodeId == d.focusNodeId,
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
                         live = liveOf(i, s),
+                        company = company,
                     ) { vm.focusRouteStop(s.nodeId) }
                 }
             }
@@ -2741,4 +2778,72 @@ private fun hintSeen(context: android.content.Context, key: String): Boolean =
 
 private fun markHintSeen(context: android.content.Context, key: String) {
     runCatching { context.getSharedPreferences("hints", android.content.Context.MODE_PRIVATE).edit().putBoolean(key, true).apply() }
+}
+
+/**
+ * 지난 운행 기록으로 만든 요일별 예상 시간표 (월~일). 이 폰이 버스 위치를 받으며 본 실제 도착 시각을 묶어
+ * 예상(가운데 값)·가장 빠른·가장 늦은 시각을 보여 준다. 기록은 휴대폰에만 있고 6주 지나면 지움.
+ */
+@Composable
+private fun ObservedTimetable(routeId: String, nodeId: String, color: Color) {
+    val days = java.time.DayOfWeek.entries
+    var day by rememberSaveable { mutableStateOf(java.time.LocalDate.now().dayOfWeek) }
+    val hits by produceState(emptyList<com.eunho.tagohub.data.ArrivalLog.Hit>(), routeId) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.ArrivalLog.read(routeId) }
+    }
+    val table = remember(hits, nodeId, day) { com.eunho.tagohub.data.ArrivalLog.table(hits, nodeId, day) }
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            "이 폰에서 본 실제 도착 시각으로 만든 예상 시간표예요. 실제 상황과 다를 수 있어요.",
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(days) { k ->
+                com.eunho.tagohub.ui.common.PillChip(k.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.KOREAN), k == day, { day = k })
+            }
+        }
+        if (table.slots.isEmpty()) {
+            Text(
+                "아직 이 요일의 기록이 없어요. 이 노선이나 정류장을 열어 두면 버스가 정류장을 지날 때마다 시각이 쌓이고, 같은 요일에 여러 번 쌓일수록 정확해져요.",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+        Text(
+            "기록된 날 ${table.days}일 · ${table.slots.size}회",
+            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val clock = { m: Int -> "%02d:%02d".format(m / 60, m % 60) }
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)).padding(vertical = 10.dp)) {
+            listOf("예상 시간표", "가장 빠른", "가장 늦은").forEach {
+                Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            itemsIndexed(table.slots) { i, slot ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        if (i == 0) {
+                            Text("첫", Modifier.border(1.dp, color, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp), color = color, style = MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(clock(slot.expected), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Text(clock(slot.earliest), Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(clock(slot.latest), Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
+    }
 }
