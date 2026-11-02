@@ -673,6 +673,11 @@ class KakaoCanvas(
         }
         val l = layer(TRIP_LAYER) ?: return
         for (m in marks) {
+            if (m.tag) {
+                val st = styles("tg${m.color}${m.label}") { LabelStyles.from(icon(icons.routeTag(m.label, m.color), 0.5f, 0.5f)) }
+                l.addLabel(LabelOptions.from(KLatLng.from(m.lat, m.lng)).setStyles(st))?.let { tripLabels += it }
+                continue
+            }
             val st = styles("tm${m.color}") { LabelStyles.from(withText(icon(icons.tripMark(m.color), 0.5f, 0.5f), 12f)) }
             l.addLabel(LabelOptions.from(KLatLng.from(m.lat, m.lng)).setStyles(st).setTexts(text(m.label)))?.let { tripLabels += it }
         }
