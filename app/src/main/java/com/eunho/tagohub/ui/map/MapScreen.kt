@@ -751,6 +751,7 @@ private tailrec fun android.content.Context.findActivity(): android.app.Activity
     else -> null
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -1739,8 +1740,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     onStop = { vm.focusRouteStop(it.nodeId) },
                     modifier = Modifier.fillMaxSize(),
                 )
-            } else
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 item {
                     r?.let { RouteInfoCard(it) }
                     r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
