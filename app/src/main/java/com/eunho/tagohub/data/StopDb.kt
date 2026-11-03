@@ -99,6 +99,28 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
             .map { (_, list) -> list.minBy { it.second }.first }
     }
 
+    /**
+     * 근처([radiusM] 안)의 같은 이름(공백 무시) 정류장, 가까운 순. 실시간이 없는 지역 정류장(예: 완주 TSB 우석대학교)을 눌렀을 때
+     * 바로 옆 실시간 지역 정류장(전주 우석대학교)으로 이어 주려고 씀
+     */
+    fun nearbySameName(stop: BusStop, radiusM: Double = 150.0): List<BusStop> {
+        val lat = stop.lat ?: return emptyList()
+        val lng = stop.lng ?: return emptyList()
+        val dLat = radiusM / 111_000.0
+        val dLng = radiusM / 90_000.0
+        val key = stop.name.replace(" ", "")
+        return query(
+            """SELECT id, name, lat, lng, no, city FROM stops
+               WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND id <> ?""",
+            arrayOf((lat - dLat).toString(), (lat + dLat).toString(), (lng - dLng).toString(), (lng + dLng).toString(), stop.nodeId),
+        ) { it.toStop() }
+            .filter { it.name.replace(" ", "") == key }
+            .map { it to com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat!!, it.lng!!) }
+            .filter { it.second <= radiusM }
+            .sortedBy { it.second }
+            .map { it.first }
+    }
+
     private val cityCache: Map<String, String> by lazy { cityNames() }
 
     // ── 한국교통안전공단 노선 (TSB…, 농어촌·시외 지역) ──
