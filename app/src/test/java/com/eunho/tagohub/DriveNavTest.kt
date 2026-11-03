@@ -158,7 +158,7 @@ class DriveNavTest {
             DriveGuide("반환점", "유턴하세요", 5000, 5, lat0, lng0 + 5000 * mLng),
             DriveGuide("목적지", "목적지", 5040, DriveGuide.TYPE_DESTINATION, lat0 + 40 * mLat, lng0),
         )
-        val route = NavRoute(pts, guides, emptyList(), 600)
+        val route = NavRoute(pts, guides, emptyList(), 10040, 600)
         val engine = NavEngine(route)
         // 출발점에서 시작: 40m 떨어진 도착 쪽이 아니라 처음 쪽으로 잡아야 함
         assertTrue(engine.update(lat0, lng0, 0.0).progressMeters < 100)

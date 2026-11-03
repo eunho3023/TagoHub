@@ -118,9 +118,7 @@ fun AirScreen(vm: AirViewModel = viewModel()) {
         if (showInfo) {
             // 출발 공항(없으면 도착 공항)이 한국공항공사 공항이면 그 공항부터
             val table = if (intl) vm.intl else vm.table
-            val dep by table.dep.collectAsStateWithLifecycle()
-            val arr by table.arr.collectAsStateWithLifecycle()
-            val picked = dep?.name ?: arr?.name
+            val picked = table.dep.value?.name ?: table.arr.value?.name
             AirportInfoSheet(initial = picked, onDismiss = { showInfo = false })
         }
         if (intl) {

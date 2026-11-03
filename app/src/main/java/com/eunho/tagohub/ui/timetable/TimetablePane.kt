@@ -299,7 +299,7 @@ fun TimetablePane(
                 picking = null
             },
             loader = { q -> c.placesFor(isDep, q) },
-            browse = (c.browseLoader != null || c.geo != null) && !(c.restrictsPicker && (if (isDep) arr else dep) != null),
+            browse = (c.browseLoader != null || c.geo != null) && !(c.restrictsPicker && (if (isDep) c.arr.value else c.dep.value) != null),
             geo = c.geo,
         )
     }
