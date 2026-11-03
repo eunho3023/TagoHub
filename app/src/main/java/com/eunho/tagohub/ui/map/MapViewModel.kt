@@ -870,10 +870,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     val hideKeyboard = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     fun onMapTouched() { hideKeyboard.tryEmit(Unit) }
 
-    /** 홈 화면의 검색창을 눌러 지도로 올 때: 지도 위 검색창에 바로 커서를 둠 */
-    val searchFocus = MutableStateFlow(0)
-    fun requestSearchFocus() { searchFocus.value += 1 }
-
     /** 검색창의 장소 검색 (카카오 키워드 검색 — REST 키 필요) */
     suspend fun searchPlaces(q: String): List<com.eunho.tagohub.data.Place2> {
         // 카카오 장소 검색은 초성을 못 알아듣고 엉뚱한 결과만 줌 → 초성이 섞인 말은 지하철역·정류소 등 앱 안 자료로만 찾음

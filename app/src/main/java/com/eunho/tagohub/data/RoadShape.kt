@@ -246,41 +246,6 @@ object Shapes {
         return listOf(stops[k], stops[k + 1])
     }
 
-    /** 이 점에 가장 가까운 선형 꼭짓점 (from 부터, 그 뒤 maxAheadM 안에서만) */
-    fun nearestIndex(shape: List<LatLng>, p: LatLng, from: Int = 0, maxAheadM: Double = Double.MAX_VALUE): Int {
-        var best = from.coerceIn(0, shape.lastIndex)
-        var bestD = Double.MAX_VALUE
-        var walked = 0.0
-        var i = best
-        while (i < shape.size) {
-            if (i > from) {
-                walked += Geo.meters(shape[i - 1].lat, shape[i - 1].lng, shape[i].lat, shape[i].lng)
-                if (walked > maxAheadM) break
-            }
-            val d = Geo.meters(p.lat, p.lng, shape[i].lat, shape[i].lng)
-            if (d < bestD) {
-                bestD = d
-                best = i
-            }
-            i++
-        }
-        return best
-    }
-
-    /**
-     * GPS 두 점 사이를 도로(노선 선형)를 따라 잇는다.
-     * 선형이 없거나, 거꾸로 가거나, 너무 돌아가면(직선의 3배+200m 초과) 그냥 직선.
-     */
-    fun roadPath(a: LatLng, b: LatLng, shape: List<LatLng>?): List<LatLng> {
-        if (shape == null || shape.size < 2) return listOf(a, b)
-        val ia = nearestIndex(shape, a)
-        val ib = nearestIndex(shape, b, from = ia, maxAheadM = 3000.0)
-        if (ib <= ia) return listOf(a, b)
-        val path = listOf(a) + shape.subList(ia, ib + 1) + b
-        val straight = Geo.meters(a.lat, a.lng, b.lat, b.lng)
-        return if (length(path) <= straight * 3 + 200) path else listOf(a, b)
-    }
-
     /** 점을 경로에 투영: (경로 길이 대비 위치 0~1, 경로까지 거리 m) */
     fun project(path: List<LatLng>, p: LatLng): Pair<Double, Double> {
         if (path.size < 2) return 0.0 to (path.firstOrNull()?.let { Geo.meters(p.lat, p.lng, it.lat, it.lng) } ?: Double.MAX_VALUE)

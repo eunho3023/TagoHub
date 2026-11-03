@@ -429,7 +429,6 @@ class DriveGuidanceService : Service() {
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT < 26) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             // 소리는 음성 안내가 내므로 알림 자체는 조용하게

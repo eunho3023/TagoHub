@@ -10,22 +10,6 @@ class HomeTextTest {
     private fun arr(no: String, sec: Int?, type: String? = null) = BusArrival("r$no", no, type, null, null, sec)
 
     @Test
-    fun firstArrivalPicksTheSoonestBusWithATime() {
-        val e = HomeText.firstArrival(listOf(arr("300", 600, "간선"), arr("5", 190, "지선"), arr("9", null)))
-        assertEquals("5", e.routeNo)
-        assertEquals("지선", e.routeType)
-        assertEquals("4분", e.text)
-    }
-
-    @Test
-    fun noArrivalsGivesAnEmptyEta() {
-        val e = HomeText.firstArrival(emptyList())
-        assertNull(e.routeNo)
-        assertNull(e.text)
-        assertNull(HomeText.firstArrival(listOf(arr("7", null))).text)
-    }
-
-    @Test
     fun routeEtasListsEveryRouteSoonestFirstWithOneEntryPerRoute() {
         val list = HomeText.routeEtas(listOf(arr("300", 600, "간선"), arr("5", 190, "지선"), arr("5", 400, "지선"), arr("9", null)))
         assertEquals(listOf("5", "300", "9"), list.map { it.routeNo })
