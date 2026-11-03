@@ -158,8 +158,16 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
     fun routeRealtime(id: String): String? =
         query("SELECT realtime FROM routes WHERE id = ?", arrayOf(TagoIds.legacy(id))) { if (it.isNull(0)) null else it.getString(0) }.firstOrNull()
 
-    /** 앱에 넣어둔 노선의 정류장 순서 (서울·인천·세종·원주·포항). 없으면 빈 목록 → 서버에서 */
-    fun routeStops(routeId: String): List<RouteStop> = query(
+    /**
+     * 앱에 넣어둔 노선의 정류장 순서 (서울·인천·세종·원주·포항 + 데이터 저장소가 채운 TAGO 노선). 없으면 빈 목록 → 서버에서.
+     * TAGO 와 같은 ID 로 실시간이 되는 노선인데 정류장이 군데군데 빠져 있으면([RouteStopsCheck]) 빈 목록 → 서버의 지금 목록을 씀
+     * (2026-11-01 데이터: 익산 노선 211개 중 191개가 빠짐 — 65번 53곳 중 19곳만 있어서 노선 선이 중간에 끊김)
+     */
+    fun routeStops(routeId: String): List<RouteStop> = routeStopsRaw(routeId).let { list ->
+        if (list.isNotEmpty() && RouteStopsCheck.incomplete(list.map { it.ord }) && routeRealtime(routeId) == "tago") emptyList() else list
+    }
+
+    private fun routeStopsRaw(routeId: String): List<RouteStop> = query(
         // 이름은 정류장 표에서 (노선 정류장 표에는 연결 안 된 정류장만 이름을 둠 → 용량 절약)
         """SELECT r.stop_id, COALESCE(NULLIF(r.name, ''), s.name, '정류장'), r.seq, r.updown, COALESCE(r.lat, s.lat), COALESCE(r.lng, s.lng), s.no
            FROM route_stops r LEFT JOIN stops s ON s.id = r.stop_id WHERE r.route_id = ? ORDER BY r.seq""",
