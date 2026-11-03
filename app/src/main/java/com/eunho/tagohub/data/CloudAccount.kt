@@ -174,6 +174,55 @@ object CloudAccount {
 
     private fun fail(e: Exception): String = if (e is InUseException) IN_USE else EmailAuth.message(codeOf(e))
 
+    /**
+     * 두 계정을 하나로 합침: [pendingSwitch] 의 로그인 방법을 가진 다른 계정의 즐겨찾기·설정을 지금 계정에 합치고([CloudSync.mergeIn]),
+     * 그 계정을 지운 뒤 그 로그인 방법(예: 전화번호)을 지금 계정에 붙임. 지금 계정의 로그인을 건드리지 않으려고
+     * 다른 계정에는 따로 만든 Firebase 인스턴스로 로그인함. 성공하면 안내, 실패하면 오류 안내.
+     * 지운 계정에만 있던 다른 로그인 방법(예: 그 계정의 이메일)은 함께 사라지므로 안내에 적어 다시 추가하게 함.
+     */
+    suspend fun mergePending(context: android.content.Context): String {
+        val credential = pendingSwitch.value ?: return "합칠 계정이 없어요"
+        val me = FirebaseAuth.getInstance().currentUser
+        if (me == null || me.isAnonymous) { pendingSwitch.value = null; return "먼저 로그인해 주세요" }
+        val app = context.applicationContext
+        val main = com.google.firebase.FirebaseApp.getInstance()
+        val second = runCatching { com.google.firebase.FirebaseApp.getInstance(MERGE_APP) }.getOrNull()
+            ?: com.google.firebase.FirebaseApp.initializeApp(app, main.options, MERGE_APP)
+        val auth2 = FirebaseAuth.getInstance(second)
+        val db2 = com.google.firebase.firestore.FirebaseFirestore.getInstance(second)
+        return try {
+            val other = auth2.signInWithCredential(credential).await().user ?: return "다른 계정에 로그인하지 못했어요"
+            if (other.uid == me.uid) return "이미 같은 계정이에요"
+            val dropped = other.providerData.map { it.providerId }
+                .filter { it in LoginMethods.ALL && it != credential.provider && me.providerData.none { p -> p.providerId == it } }
+                .distinct()
+            val otherDoc = db2.collection("users").document(other.uid)
+            val data = otherDoc.get().await().data.orEmpty()
+            // 먼저 지금 계정에 합쳐 올린 뒤에 지움 (중간에 실패해도 데이터가 사라지지 않게)
+            CloudSync.mergeIn(app, me.uid, data)
+            otherDoc.delete().await()
+            other.delete().await()
+            val linked = runCatching { me.linkWithCredential(credential).await() }
+                .onFailure { Log.w(TAG, "합친 뒤 로그인 방법 붙이기 실패", it) }.isSuccess
+            refresh()
+            buildString {
+                append("두 계정을 하나로 합쳤어요. 앱을 다시 켜면 반영돼요")
+                if (!linked) append(". ${LoginMethods.label(credential.provider)} 로그인은 '로그인 방법 추가'에서 한 번 더 인증해 주세요")
+                if (dropped.isNotEmpty()) append(". 합쳐진 계정의 ${dropped.joinToString("·") { LoginMethods.label(it) }} 로그인은 '로그인 방법 추가'에서 다시 붙여 주세요")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "계정 합치기 실패", e)
+            "합치지 못했어요. " + EmailAuth.message(codeOf(e))
+        } finally {
+            pendingSwitch.value = null
+            runCatching { auth2.signOut() }
+            runCatching { db2.terminate() }
+            runCatching { second.delete() }
+        }
+    }
+
+    private const val MERGE_APP = "account_merge"
+
     /** [pendingSwitch] 의 계정으로 바꿔 로그인함 (지금 계정의 데이터는 지금 계정에 그대로 남음). 성공하면 안내, 실패하면 오류 안내 */
     suspend fun switchToPending(context: android.content.Context): String {
         val credential = pendingSwitch.value ?: return "바꿀 계정이 없어요"
