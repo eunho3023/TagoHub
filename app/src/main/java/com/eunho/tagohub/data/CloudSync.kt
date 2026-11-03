@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
 /** 클라우드에 올릴 설정: (저장 파일 이름, 항목 이름). 위치 기록·캐시처럼 기기마다 다른 것은 넣지 않음 */
 internal object CloudSyncSpec {
@@ -75,6 +76,24 @@ object CloudSync {
         app.getSharedPreferences(META, Context.MODE_PRIVATE).edit().remove(KEY_LAST).apply()
         started = false
         start(app)
+    }
+
+    /**
+     * 다른 계정의 클라우드 설정 [other] 를 지금 계정 [uid] 에 합침 ([AccountMerge] 규칙). 이 기기 저장값을 바꾸고 클라우드에도 바로 올림.
+     * 올리지 못하면 예외 (그때는 다른 계정을 지우면 안 됨). 화면은 앱을 다시 켜면 반영됨.
+     */
+    suspend fun mergeIn(context: Context, uid: String, other: Map<String, Any?>) {
+        val app = context.applicationContext
+        stop(app)
+        try {
+            val merged = AccountMerge.merge(snapshot(app), other)
+            applyToLocal(app, merged)
+            val now = System.currentTimeMillis()
+            doc(uid).set(merged + (FIELD_UPDATED to now)).await()
+            app.getSharedPreferences(META, Context.MODE_PRIVATE).edit().putLong(KEY_LAST, now).apply()
+        } finally {
+            start(app)
+        }
     }
 
     private fun doc(uid: String) = FirebaseFirestore.getInstance().collection("users").document(uid)

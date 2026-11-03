@@ -262,8 +262,8 @@ fun EmailLinkHost() {
 }
 
 /**
- * 로그인 방법을 붙이려는데 그 방법이 이미 다른 계정의 것이었을 때: 그 계정으로 바꿀지, 지금 계정을 유지할지 물어봄.
- * (두 계정의 데이터를 합치지는 않음 — 바꾸면 그 계정에 저장된 즐겨찾기·설정을 받아 오고, 지금 계정의 것은 지금 계정에 남음)
+ * 로그인 방법(전화번호·구글·이메일)을 붙이려는데 그 방법이 이미 다른 계정의 것이었을 때: 같은 사람이면 두 계정을 하나로 합치거나
+ * ([CloudAccount.mergePending]), 그 계정으로 바꾸거나(데이터는 합치지 않음), 지금 계정을 유지할지 물어봄.
  */
 @Composable
 fun AccountSwitchHost() {
@@ -277,19 +277,30 @@ fun AccountSwitchHost() {
         title = { Text("다른 계정에서 쓰는 로그인 방법이에요") },
         text = {
             Text(
-                "이 방법은 이미 다른 계정에 연결돼 있어서 지금 계정에 붙일 수 없어요. 그 계정으로 바꿀까요? " +
-                    "바꾸면 그 계정에 저장된 즐겨찾기와 설정을 받아 오고, 지금 계정의 것은 지금 계정에 그대로 남아요.",
+                "이 방법은 이미 다른 계정에 연결돼 있어요. 둘 다 내 계정이면 하나로 합칠 수 있어요. " +
+                    "합치면 두 계정의 즐겨찾기·기록·설정을 지금 계정에 모으고, 다른 계정은 지워요. " +
+                    "그 계정으로 바꾸기만 하면 데이터는 합치지 않고 각 계정에 그대로 남아요.",
             )
         },
         confirmButton = {
-            TextButton(enabled = !busy, onClick = {
-                busy = true
-                scope.launch {
-                    val msg = CloudAccount.switchToPending(context)
-                    busy = false
-                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                }
-            }) { Text(if (busy) "바꾸는 중…" else "그 계정으로 바꾸기") }
+            Row {
+                TextButton(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        val msg = CloudAccount.switchToPending(context)
+                        busy = false
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("그 계정으로 바꾸기") }
+                TextButton(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        val msg = CloudAccount.mergePending(context)
+                        busy = false
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }) { Text(if (busy) "처리 중…" else "하나로 합치기") }
+            }
         },
         dismissButton = { TextButton(enabled = !busy, onClick = { CloudAccount.pendingSwitch.value = null }) { Text("지금 계정 유지") } },
     )
