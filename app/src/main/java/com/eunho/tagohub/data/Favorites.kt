@@ -73,7 +73,8 @@ object FavoriteCodec {
         val p = split(line)
         if (p.size < 8) return@mapNotNull null
         val kind = runCatching { Favorite.Kind.valueOf(p[0]) }.getOrNull() ?: return@mapNotNull null
-        Favorite(kind, unesc(p[1]) ?: return@mapNotNull null, unesc(p[2]) ?: "", unesc(p[3]), unesc(p[4]) ?: "",
+        // 예전에 저장한 인천 정류장·노선은 TAGO 의 지금 ID 로 ([TagoIds])
+        Favorite(kind, TagoIds.current(unesc(p[1]) ?: return@mapNotNull null), unesc(p[2]) ?: "", unesc(p[3]), unesc(p[4]) ?: "",
             p[5].toDoubleOrNull(), p[6].toDoubleOrNull(), unesc(p[7]))
     }
 
