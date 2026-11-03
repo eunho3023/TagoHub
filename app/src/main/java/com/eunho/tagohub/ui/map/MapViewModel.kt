@@ -1162,8 +1162,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private var nearbyJob: Job? = null
     private var canvas: MapCanvas? = null
 
-    /** 내장 전국 정류장 DB (열기 전·실패 시 null → TAGO 주변 정류소 API 로 대체) */
-    private var stopDb: StopDb? = null
+    /**
+     * 내장 전국 정류장 DB (열기 전·실패 시 null → TAGO 주변 정류소 API 로 대체).
+     * 새 데이터를 받으면 DB 가 바뀌고 옛 것은 60초 뒤 닫히므로, 들고 있지 않고 매번 지금 것을 씀 (옛 것을 쓰다 튕기던 문제)
+     */
+    private val stopDb: StopDb? get() = StopDb.peek()
 
     init {
         viewModelScope.launch {
@@ -1239,8 +1242,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             updateTrainLines()
         }
         viewModelScope.launch {
-            stopDb = StopDb.get(app)
-            val db = stopDb
+            val db = StopDb.get(app)
             if (db == null) {
                 banner.value = "저장된 정류장 데이터를 열지 못해 주변 정류장을 서버에서 받아옵니다."
                 return@launch
