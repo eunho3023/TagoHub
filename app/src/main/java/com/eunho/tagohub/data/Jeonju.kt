@@ -14,12 +14,6 @@ object Jeonju {
     fun isJeonju(tagoId: String) = tagoId.startsWith(PREFIX)
     fun std(tagoId: String) = tagoId.removePrefix(PREFIX)
     fun tago(stdId: String) = PREFIX + stdId.trim()
-
-    /** 노선 위치 응답에서 정류장 목록 (좌표 없이, 순번 비교용) */
-    fun routeStops(rows: List<com.eunho.tagohub.core.Row>) = JeonjuMappers.routeStops(rows) { null }
-
-    /** 노선 위치 응답에서 운행 중인 버스들이 있는 정류장 순번 */
-    fun busOrds(rows: List<com.eunho.tagohub.core.Row>): List<Int> = JeonjuMappers.buses(rows) { null }.mapNotNull { it.ord }
 }
 
 object JeonjuMappers {

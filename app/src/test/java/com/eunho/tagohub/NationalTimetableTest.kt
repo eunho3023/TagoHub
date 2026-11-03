@@ -38,4 +38,12 @@ class NationalTimetableTest {
         assertEquals(15, JeonjuTimetable.intervalFor(DayKind.Saturday, 15, null, 30))
         assertEquals(20, JeonjuTimetable.intervalFor(DayKind.Holiday, 15, 20, null))
     }
+
+    /** 배차 3분 노선(05:00~23:00)도 막차까지 (예전엔 300회에서 잘려 20:00 에서 끊김) */
+    @Test
+    fun frequentRouteReachesLastBus() {
+        val starts = JeonjuTimetable.fromInterval(5 * 60, 23 * 60, 3)
+        assertEquals(361, starts.size)
+        assertEquals(23 * 60, starts.last().minute)
+    }
 }

@@ -129,12 +129,12 @@ class JeonjuTest {
         assertEquals("06:29", JeonjuTimetable.clock(sat.first()))
     }
 
-    /** 지나간 버스 거르기: 위치 응답 하나로 정류장 순번과 버스 위치를 같이 뽑아 PassedByPosition 에 넘김 */
+    /** 지나간 버스 거르기: 위치 응답의 버스 순번이 노선 정류장 순번과 맞아 PassedByPosition 에 넘길 수 있음 */
     @Test
     fun positions_giveStopAndBusOrds() {
         val r = rows("jeonju_positions.xml")
-        val stops = Jeonju.routeStops(r)
-        val buses = Jeonju.busOrds(r)
+        val stops = JeonjuMappers.routeStops(r) { null }
+        val buses = JeonjuMappers.buses(r) { null }.mapNotNull { it.ord }
         assertTrue(stops.isNotEmpty())
         assertTrue(buses.isNotEmpty())
         assertTrue(buses.all { b -> stops.any { it.ord == b } })

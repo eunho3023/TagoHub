@@ -111,6 +111,7 @@ object JeonjuTimetable {
     /**
      * 전국 노선 예상 출발 시각: 첫차부터 배차간격마다, 막차까지 (기점 출발).
      * 막차가 자정을 넘기면 다음 날로. 배차간격을 모르면 첫차·막차만.
+     * (예전엔 300회에서 잘라 배차 3분 노선이 오후에 끊겼음 → 하루 1분 간격까지 다 담음)
      */
     fun fromInterval(first: Int, last: Int, interval: Int?, startSeq: Int = 1): List<CourseStart> {
         var end = last
@@ -118,7 +119,7 @@ object JeonjuTimetable {
         if (interval == null || interval <= 0) {
             return listOf(first, end).distinct().map { CourseStart(it, startSeq) }
         }
-        return generateSequence(first) { it + interval }.takeWhile { it <= end }.take(300)
+        return generateSequence(first) { it + interval }.takeWhile { it <= end }.take(1440)
             .map { CourseStart(it, startSeq) }.toList()
             .let { l -> if (l.last().minute != end && end - l.last().minute < interval) l + CourseStart(end, startSeq) else l }
     }
