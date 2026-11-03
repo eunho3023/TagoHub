@@ -213,7 +213,17 @@ private fun CategoryRow(selected: String?, onPick: (String) -> Unit) {
 /** 분류를 고르면: 내 주변(1.5km) 그 분류 장소, 가까운 순 */
 @Composable
 private fun CategoryResults(vm: MapViewModel, cat: Category, onPlace: (Place2) -> Unit) {
-    val list by produceState<List<Place2>?>(null, cat.code) { value = vm.nearbyCategory(cat.code) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // 지도를 아직 안 열었으면 지도가 내 위치를 몰라서, 휴대폰이 아는 위치(마지막 위치 → 새 위치)를 직접 받아 넘김
+    var noLocation by remember(cat.code) { mutableStateOf(false) }
+    val list by produceState<List<Place2>?>(null, cat.code) {
+        val here = if (com.eunho.tagohub.ui.bus.hasLocationPermission(context)) {
+            (com.eunho.tagohub.ui.bus.lastKnownLocation(context) ?: com.eunho.tagohub.ui.bus.currentLocation(context))?.let { it.latitude to it.longitude }
+        } else null
+        val found = vm.nearbyCategory(cat.code, here)
+        noLocation = found == null
+        value = found.orEmpty()
+    }
     val l = list
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -221,7 +231,12 @@ private fun CategoryResults(vm: MapViewModel, cat: Category, onPlace: (Place2) -
         }
         when {
             l == null -> item { Text("찾는 중…", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            l.isEmpty() -> item { Text("주변 1.5km 안에 ${cat.label}이(가) 없거나 위치를 알 수 없어요.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            l.isEmpty() -> item {
+                Text(
+                    if (noLocation) "내 위치를 알 수 없어요. 위치 권한과 위치(GPS)를 켜 주세요." else "주변 1.5km 안에 ${cat.label}이(가) 없어요.",
+                    Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             else -> items(l, key = { it.name + it.lat + it.lng }) { p ->
                 RecentLine(
                     Icons.Filled.Place, Color(0xFFE53935), p.name,
