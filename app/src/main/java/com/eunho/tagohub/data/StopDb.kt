@@ -89,7 +89,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         return query(
             """SELECT id, name, lat, lng, no, city FROM stops
                WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND city <> ? AND id <> ?""",
-            arrayOf((lat - dLat).toString(), (lat + dLat).toString(), (lng - dLng).toString(), (lng + dLng).toString(), stop.cityCode, stop.nodeId),
+            arrayOf((lat - dLat).toString(), (lat + dLat).toString(), (lng - dLng).toString(), (lng + dLng).toString(), stop.cityCode, TagoIds.legacy(stop.nodeId)),
         ) { it.toStop() }
             .map { it to com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat!!, it.lng!!) }
             .filter { it.second <= radiusM }
@@ -112,7 +112,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         return query(
             """SELECT id, name, lat, lng, no, city FROM stops
                WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND id <> ?""",
-            arrayOf((lat - dLat).toString(), (lat + dLat).toString(), (lng - dLng).toString(), (lng + dLng).toString(), stop.nodeId),
+            arrayOf((lat - dLat).toString(), (lat + dLat).toString(), (lng - dLng).toString(), (lng + dLng).toString(), TagoIds.legacy(stop.nodeId)),
         ) { it.toStop() }
             .filter { it.name.replace(" ", "") == key }
             .map { it to com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat!!, it.lng!!) }
@@ -139,16 +139,16 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
     /** 노선 + 노선 정보(첫차·막차·배차 — 데이터 저장소가 채운 route_info) */
     fun routeById(id: String): BusRoute? = runCatching {
         query("""SELECT r.id, r.no, r.start_name, r.end_name, r.city, r.rtype, i.first, i.last, i.interval, i.int_sat, i.int_sun
-                 FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id = ?""", arrayOf(id)) { c ->
+                 FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id = ?""", arrayOf(TagoIds.legacy(id))) { c ->
             fun str(i: Int) = if (c.isNull(i)) null else c.getString(i)
             fun int(i: Int) = if (c.isNull(i)) null else c.getInt(i)
             BusRoute(
-                routeId = c.getString(0), routeNo = c.getString(1), routeType = str(5), startName = str(2), endName = str(3),
+                routeId = TagoIds.current(c.getString(0)), routeNo = c.getString(1), routeType = str(5), startName = str(2), endName = str(3),
                 firstTime = str(6), lastTime = str(7), interval = int(8), intervalSat = int(9), intervalSun = int(10), cityCode = c.getString(4),
             )
         }.firstOrNull()
     }.getOrElse { // route_info 표가 없는 옛 데이터
-        query("SELECT id, no, start_name, end_name, city, rtype FROM routes WHERE id = ?", arrayOf(id)) { it.toRoute() }.firstOrNull()
+        query("SELECT id, no, start_name, end_name, city, rtype FROM routes WHERE id = ?", arrayOf(TagoIds.legacy(id))) { it.toRoute() }.firstOrNull()
     }
 
     /** 이 데이터의 버전 (meta) */
@@ -156,17 +156,17 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
 
     /** 앱에 넣어둔 노선의 실시간 연결 방식: tago(같은 ID) / resolve(번호로 TAGO 노선 찾기) / none(실시간 없음) / null(앱에 없음) */
     fun routeRealtime(id: String): String? =
-        query("SELECT realtime FROM routes WHERE id = ?", arrayOf(id)) { if (it.isNull(0)) null else it.getString(0) }.firstOrNull()
+        query("SELECT realtime FROM routes WHERE id = ?", arrayOf(TagoIds.legacy(id))) { if (it.isNull(0)) null else it.getString(0) }.firstOrNull()
 
     /** 앱에 넣어둔 노선의 정류장 순서 (서울·인천·세종·원주·포항). 없으면 빈 목록 → 서버에서 */
     fun routeStops(routeId: String): List<RouteStop> = query(
         // 이름은 정류장 표에서 (노선 정류장 표에는 연결 안 된 정류장만 이름을 둠 → 용량 절약)
         """SELECT r.stop_id, COALESCE(NULLIF(r.name, ''), s.name, '정류장'), r.seq, r.updown, COALESCE(r.lat, s.lat), COALESCE(r.lng, s.lng), s.no
            FROM route_stops r LEFT JOIN stops s ON s.id = r.stop_id WHERE r.route_id = ? ORDER BY r.seq""",
-        arrayOf(routeId),
+        arrayOf(TagoIds.legacy(routeId)),
     ) {
         RouteStop(
-            nodeId = if (it.isNull(0)) "x:" + routeId + ":" + it.getInt(2) else it.getString(0),
+            nodeId = if (it.isNull(0)) "x:" + routeId + ":" + it.getInt(2) else TagoIds.current(it.getString(0)),
             name = it.getString(1),
             nodeNo = if (it.isNull(6)) null else it.getString(6),
             ord = it.getInt(2),
@@ -183,7 +183,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
     fun stopRoutes(stopId: String): List<BusRoute> = query(
         """SELECT DISTINCT ro.id, ro.no, ro.start_name, ro.end_name, ro.city, ro.rtype FROM route_stops r
            JOIN routes ro ON ro.id = r.route_id WHERE r.stop_id = ? AND ro.realtime IN ('tago', 'none')""",
-        arrayOf(stopId),
+        arrayOf(TagoIds.legacy(stopId)),
     ) { it.toRoute() }
 
     /** 앱 안 경기 노선 번호 (경기도_BMS노선인가정보 5,260개 + 노선 정류장 순서의 첫·끝 정류장) */
@@ -200,7 +200,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         query("""SELECT COALESCE(NULLIF(n.name, ''), s.name) nm FROM route_stops a
                  JOIN route_stops n ON n.route_id = a.route_id AND n.seq = a.seq + 1
                  LEFT JOIN stops s ON s.id = n.stop_id
-                 WHERE a.stop_id = ? GROUP BY nm ORDER BY COUNT(*) DESC LIMIT 1""", arrayOf(stopId)) { if (it.isNull(0)) null else it.getString(0) }
+                 WHERE a.stop_id = ? GROUP BY nm ORDER BY COUNT(*) DESC LIMIT 1""", arrayOf(TagoIds.legacy(stopId))) { if (it.isNull(0)) null else it.getString(0) }
             .firstOrNull()
     }.getOrNull()
 
@@ -211,7 +211,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
 
     /** 이 정류장을 지나는 노선 ID (앱 안 노선 정류장 순서에서, prefix 예: "GGB") */
     fun routeIdsAtStop(stopId: String, prefix: String): List<String> =
-        query("SELECT DISTINCT route_id FROM route_stops WHERE stop_id = ? AND route_id LIKE ?", arrayOf(stopId, "$prefix%")) { it.getString(0) }
+        query("SELECT DISTINCT route_id FROM route_stops WHERE stop_id = ? AND route_id LIKE ?", arrayOf(TagoIds.legacy(stopId), "$prefix%")) { TagoIds.current(it.getString(0)) }
 
     /** 앱에 넣어둔 실제 운행 시간표 (광주): 방향 이름 → 출발 시각(분) */
     fun timetable(city: String, routeNo: String): Map<String, List<Int>> =
@@ -237,8 +237,9 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
     fun tagoCity(code: String): String? =
         query("SELECT tago FROM city_alias WHERE code = ?", arrayOf(code)) { it.getString(0) }.firstOrNull()
 
+    /** 파일의 예전 ID 는 TAGO 가 지금 쓰는 ID 로 바꿔 내보냄 ([TagoIds]) */
     private fun Cursor.toRoute() = BusRoute(
-        routeId = getString(0),
+        routeId = TagoIds.current(getString(0)),
         routeNo = getString(1),
         routeType = if (columnCount > 5 && !isNull(5)) getString(5) else null, // 농어촌(교통안전공단), 간선·지선(서울) …
         startName = if (isNull(2)) null else getString(2),
@@ -270,23 +271,25 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         if (ids.isEmpty()) return emptyMap()
         val out = HashMap<String, LatLng>()
         ids.chunked(400).forEach { part ->
+            // 파일은 예전 ID 라서 되돌려 찾고, 결과는 물어본 ID 로 돌려줌
+            val asked = part.associateBy { TagoIds.legacy(it) }
             query(
                 "SELECT id, lat, lng FROM stops WHERE id IN (${part.joinToString(",") { "?" }})",
-                part.toTypedArray(),
-            ) { it.getString(0) to LatLng(it.getDouble(1), it.getDouble(2)) }.forEach { (k, v) -> out[k] = v }
+                asked.keys.toTypedArray(),
+            ) { it.getString(0) to LatLng(it.getDouble(1), it.getDouble(2)) }.forEach { (k, v) -> out[asked[k] ?: k] = v }
         }
         return out
     }
 
     fun byId(id: String): BusStop? =
-        query("SELECT id, name, lat, lng, no, city FROM stops WHERE id = ?", arrayOf(id)) { it.toStop() }.firstOrNull()
+        query("SELECT id, name, lat, lng, no, city FROM stops WHERE id = ?", arrayOf(TagoIds.legacy(id))) { it.toStop() }.firstOrNull()
 
     fun cityNames(): Map<String, String> =
         query("SELECT code, name FROM cities", emptyArray()) { it.getString(0) to it.getString(1) }.toMap()
 
     private fun Cursor.toStop() = BusStop(
         cityCode = getString(5),
-        nodeId = getString(0),
+        nodeId = TagoIds.current(getString(0)),
         name = getString(1),
         nodeNo = if (isNull(4)) null else getString(4),
         lat = getDouble(2),

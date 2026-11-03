@@ -62,7 +62,7 @@ object ReminderCodec {
         val last = p[4].toIntOrNull() ?: return@mapNotNull null
         val lead = p[5].toIntOrNull() ?: return@mapNotNull null
         LastBusReminder(
-            unesc(p[0]), unesc(p[1]), unesc(p[2]), unesc(p[3]), last, lead, first = p.getOrNull(6) == "f",
+            com.eunho.tagohub.data.TagoIds.current(unesc(p[0])), unesc(p[1]), unesc(p[2]), unesc(p[3]), last, lead, first = p.getOrNull(6) == "f",
             offsetMin = p.getOrNull(7)?.toIntOrNull() ?: 0, stopName = p.getOrNull(8)?.let(::unesc).orEmpty(),
         )
     }
