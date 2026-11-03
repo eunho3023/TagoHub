@@ -395,7 +395,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
             if (arr.data.isNotEmpty() || d.emptyStreak >= 1 || d.lastArrivals.isNullOrEmpty()) {
                 // 새로고침해도 남은 시간이 거꾸로 늘지 않게 (화면에서 이미 줄어든 값을 유지)
                 val elapsed = d.updated.value?.let { java.time.Duration.between(it, LocalTime.now()).seconds.toInt().coerceIn(0, 600) } ?: 0
-                d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, dropPassedBySeoulPosition(d, arr.data))
+                d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, dropPassedByPosition(d, arr.data))
                 // 서버 정보가 그대로면 "받은 시각"을 그대로 둠: 새로고침할 때마다 시각을 지금으로 바꾸면 남은 초가 도로 늘어나 보임
                 if (!unchanged || d.updated.value == null) d.updated.value = LocalTime.now()
             }
@@ -751,25 +751,42 @@ private val busPosCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Lo
 private const val BUS_POS_TTL_MS = 15_000L
 private const val BUS_POS_MAX_ROUTES = 5
 
+private val jeonjuStopOrdCache = java.util.concurrent.ConcurrentHashMap<String, List<Int>>()
+
 /**
- * 서울: 곧 도착(1정류장 전 이내)으로 뜬 첫 버스가 실시간 위치상 이미 정류장을 지나갔으면 목록에서 뺀다.
+ * 서울·전주: 곧 도착(2정류장 전 이내)으로 뜬 첫 버스가 실시간 위치상 이미 정류장을 지나갔으면 목록에서 뺀다.
+ * (도착 예측이 늦게 갱신돼 지나간 버스가 "2정류장 전 · 1분 18초" 로 남는 경우)
  * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 15초 동안 결과를 재사용한다.
  * 위치를 못 받거나 정류장이 노선에 여러 번 나오면 판단하지 않고 그대로 둔다.
  */
-private suspend fun dropPassedBySeoulPosition(d: BusDest.Stop, list: List<BusArrival>): List<BusArrival> {
-    if (!SeoulBus.isSeoul(d.stop.nodeId)) return list
-    val db = StopDb.peek() ?: return list
-    val firsts = list.filter { (it.prevStops ?: Int.MAX_VALUE) <= 1 }
+private suspend fun dropPassedByPosition(d: BusDest.Stop, list: List<BusArrival>): List<BusArrival> {
+    val seoul = SeoulBus.isSeoul(d.stop.nodeId)
+    if (!seoul && !Jeonju.isJeonju(d.stop.nodeId)) return list
+    val db = if (seoul) StopDb.peek() ?: return list else null
+    val firsts = list.filter { (it.prevStops ?: Int.MAX_VALUE) <= 2 }
         .groupBy { it.routeId }.values.map { g -> g.minBy { it.arrSeconds ?: Int.MAX_VALUE } }.take(BUS_POS_MAX_ROUTES)
     if (firsts.isEmpty()) return list
     val gone = ArrayList<BusArrival>()
     for (a in firsts) {
-        val stopOrds = withContext(Dispatchers.IO) { db.routeStops(a.routeId) }.filter { it.nodeId == d.stop.nodeId }.map { it.ord }
-        if (stopOrds.size != 1) continue
         val now = System.currentTimeMillis()
         val cached = busPosCache[a.routeId]?.takeIf { now - it.first < BUS_POS_TTL_MS }?.second
-        val busOrds = cached ?: (Graph.seoulBus.buses(a.routeId) as? TagoResult.Success)?.data?.mapNotNull { it.ord }
-            ?.also { busPosCache[a.routeId] = now to it } ?: continue
+        val (stopOrds, busOrds) = if (db != null) {
+            val ords = withContext(Dispatchers.IO) { db.routeStops(a.routeId) }.filter { it.nodeId == d.stop.nodeId }.map { it.ord }
+            if (ords.size != 1) continue
+            ords to (cached ?: (Graph.seoulBus.buses(a.routeId) as? TagoResult.Success)?.data?.mapNotNull { it.ord }
+                ?.also { busPosCache[a.routeId] = now to it } ?: continue)
+        } else {
+            // 전주: 위치 응답 한 번에 정류장 순번과 버스 위치가 함께 옴
+            val key = a.routeId + "|" + d.stop.nodeId
+            val known = jeonjuStopOrdCache[key]
+            if (cached != null && known != null) known to cached
+            else {
+                val rows = (Graph.jeonju.positions(a.routeId) as? TagoResult.Success)?.data ?: continue
+                val ords = Jeonju.routeStops(rows).filter { it.nodeId == d.stop.nodeId }.map { it.ord }.also { jeonjuStopOrdCache[key] = it }
+                val buses = Jeonju.busOrds(rows).also { busPosCache[a.routeId] = now to it }
+                ords to buses
+            }
+        }
         if (com.eunho.tagohub.data.PassedByPosition.passed(stopOrds, busOrds)) gone += a
     }
     return if (gone.isEmpty()) list else list.filterNot { x -> gone.any { it === x } }

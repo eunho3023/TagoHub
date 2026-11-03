@@ -111,7 +111,7 @@ class JeonjuTest {
         assertEquals(53, courses.size)
         assertEquals(360, courses.first().minute)              // 06:00
         assertEquals(21 * 60 + 45, courses.last().minute)       // 21:45 = 노선 정보의 막차와 같음
-        assertTrue(courses.any { it.startSeq == 8 })            // 중간 정류장에서 시작하는 운행
+        assertTrue(courses.all { it.startSeq == 1 })            // 응답의 startSeq(1~8)는 회차라 모두 첫 정류장 출발
         val sch = JeonjuTimetable.schedule(rows("jeonju_routeinfo.xml").single())
         assertEquals(360, sch.firstMinute)
         assertEquals(21 * 60 + 45, sch.lastMinute)
@@ -122,8 +122,27 @@ class JeonjuTest {
         val seqs = stops.filter { it.nodeId == "JUB306101044" }.map { it.ord }
         val times = JeonjuTimetable.stopTimes(courses, seqs) { a, b -> (b - a).toDouble() }
         assertEquals("06:14", JeonjuTimetable.clock(times.first()))
-        // 순번 8 에서 시작하는 운행은 7정류장만 더함
+        // 모든 운행을 첫 정류장 출발로 계산 (예전엔 8회차를 8번째 정류장 출발로 읽어 21:52 로 나왔음)
+        assertEquals(53, times.size)
+        assertEquals("21:59", JeonjuTimetable.clock(times.last()))
         val sat = JeonjuTimetable.stopTimes(JeonjuTimetable.startsFor(DayKind.Saturday, courses, sch), seqs) { a, b -> (b - a).toDouble() }
         assertEquals("06:29", JeonjuTimetable.clock(sat.first()))
+    }
+
+    /** 지나간 버스 거르기: 위치 응답 하나로 정류장 순번과 버스 위치를 같이 뽑아 PassedByPosition 에 넘김 */
+    @Test
+    fun positions_giveStopAndBusOrds() {
+        val r = rows("jeonju_positions.xml")
+        val stops = Jeonju.routeStops(r)
+        val buses = Jeonju.busOrds(r)
+        assertTrue(stops.isNotEmpty())
+        assertTrue(buses.isNotEmpty())
+        assertTrue(buses.all { b -> stops.any { it.ord == b } })
+        // 버스가 바로 다음 정류장에 있고 앞쪽 6정류장 안에는 없으면 "지나감"
+        val bus = buses.first()
+        val passedStop = listOf(bus - 1)
+        if (buses.none { it in (bus - 1 - com.eunho.tagohub.data.PassedByPosition.APPROACH_STOPS)..(bus - 1) }) {
+            assertTrue(com.eunho.tagohub.data.PassedByPosition.passed(passedStop, buses))
+        }
     }
 }

@@ -2276,6 +2276,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             !Jeonju.isJeonju(d.stop.nodeId) && !com.eunho.tagohub.data.SeoulBus.isSeoul(d.stop.nodeId) &&
             // 서울처럼 TAGO 실시간은 없어도 앱 안 노선 데이터가 있으면 노선 목록은 보여준다
             stopDb?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(d.stop.nodeId) } }.isNullOrEmpty()) {
+            // 바로 옆에 같은 이름의 실시간 지역 정류장이 있으면 그 정류장으로 (예: 완주 TSB 우석대학교 → 전주 우석대학교, 전주 버스가 섬)
+            val alt = stopDb?.let { db -> withContext(Dispatchers.IO) { db.nearbySameName(d.stop) } }.orEmpty().firstOrNull { s ->
+                s.cityCode in supported || com.eunho.tagohub.data.Jeju.isJeju(s.nodeId) || com.eunho.tagohub.data.Gyeonggi.isGyeonggi(s.nodeId) ||
+                    Jeonju.isJeonju(s.nodeId) || com.eunho.tagohub.data.SeoulBus.isSeoul(s.nodeId)
+            }
+            if (alt != null && selected.value === d) {
+                stops[alt.nodeId] = alt
+                selected.value = BusDest.Stop(alt, merged[alt.nodeId]?.others)
+                pushStops()
+                return
+            }
             val name = cityNames.value[d.stop.cityCode] ?: "이 지역"
             d.rows.value = Load.Fail("$name 은(는) 국토교통부 TAGO 실시간 버스 서비스 지역이 아니라 도착정보를 받을 수 없어요. 정류장 위치만 표시해요.")
             return

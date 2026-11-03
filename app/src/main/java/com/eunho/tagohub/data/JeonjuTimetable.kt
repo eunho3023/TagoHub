@@ -60,8 +60,13 @@ object JeonjuTimetable {
         return if (m < 60 && h < 30) h * 60 + m else null
     }
 
+    /**
+     * 평일 운행 출발 시각. 응답의 startSeq 는 출발 정류장 순번이 아니라 그 버스의 몇 번째 운행(회차)이라
+     * (309번: 1회차 06:00~08:57, 2회차 09:19~13:02 … 5회차 22:40) 모든 운행을 첫 정류장 출발로 본다.
+     * 예전엔 순번으로 읽어서 뒤 정류장일수록 늦은 회차만 남아 시간표가 08:57 같은 데서 끊겼음.
+     */
     fun courses(rows: List<Row>): List<CourseStart> = rows.mapNotNull { r ->
-        CourseStart(minute(r.str("courseStime")) ?: return@mapNotNull null, r.int("startSeq") ?: 1)
+        CourseStart(minute(r.str("courseStime")) ?: return@mapNotNull null, 1)
     }.distinct().sortedBy { it.minute }
 
     /** " 06:15 07:02 08:10\n 09:02" → 분 목록 */
