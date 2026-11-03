@@ -1,0 +1,5 @@
+# TagoHub 공공데이터 중계 서버 (Cloudflare Workers 무료 요금제: 하루 10만 요청)
+# 비밀 값은 이 파일에 쓰지 않고 `npx wrangler secret put` 으로 넣음 (DATA_GO_KR_KEY, APP_TOKEN) — README.md
+name = "tagohub-proxy"
+main = "src/index.js"
+compatibility_date = "2025-10-01"

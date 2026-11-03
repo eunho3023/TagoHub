@@ -52,6 +52,9 @@ android {
         buildConfigField("String", "KMA_ROAD_KEY", "\"${localProps.getProperty("KMA_ROAD_KEY", "")}\"")
         buildConfigField("String", "ITS_API_KEY", "\"${localProps.getProperty("ITS_API_KEY", "")}\"")
         // CCTV 영상 중계 서버 (집 PC, tools/cctv_proxy.py). 비워 두면 원래 영상 주소로 직접 재생
+        // 공공데이터 중계 서버 (server/tago-proxy, Cloudflare Workers). 둘 다 있으면 TAGO 를 서버로 묻고 앱은 키를 쓰지 않음, 비우면 예전처럼 직접
+        buildConfigField("String", "TAGO_PROXY_URL", "\"${localProps.getProperty("TAGO_PROXY_URL", "")}\"")
+        buildConfigField("String", "TAGO_PROXY_TOKEN", "\"${localProps.getProperty("TAGO_PROXY_TOKEN", "")}\"")
         buildConfigField("String", "CCTV_PROXY_URL", "\"${localProps.getProperty("CCTV_PROXY_URL", "")}\"")
         buildConfigField("String", "CCTV_PROXY_KEY", "\"${localProps.getProperty("CCTV_PROXY_KEY", "")}\"")
         // 서울 열린데이터광장 실시간 지하철 인증키 (swopenapi)
