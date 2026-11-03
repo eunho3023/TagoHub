@@ -125,6 +125,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
 import com.eunho.tagohub.data.Favorite
+import com.eunho.tagohub.data.VisitLog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.filled.Star
@@ -1236,6 +1237,7 @@ fun BusDetailScreen(vm: MapViewModel, runLoops: Boolean, onShowMap: () -> Unit, 
 @Composable
 private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     val showMap = LocalShowMap.current
+    val context = LocalContext.current
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val rows by d.rows.collectAsStateWithLifecycle()
     val updated by d.updated.collectAsStateWithLifecycle()
@@ -1268,6 +1270,17 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
         )
         val timetable by vm.stopTimetable.collectAsStateWithLifecycle()
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        androidx.compose.material3.OutlinedButton(
+            onClick = {
+                val saved = VisitLog.addStop(d.stop)
+                android.widget.Toast.makeText(context, if (saved) "방문 장소에 저장했어요." else "이 정류장의 위치 정보가 없어요.", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            enabled = d.stop.lat != null && d.stop.lng != null,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("방문 장소로 저장", Modifier.padding(start = 8.dp))
+        }
         liveNote?.let {
             Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }
