@@ -522,6 +522,7 @@ class TripController(
     fun select(p: TripPlan?) {
         selected.value = p
         liveJob?.cancel()
+        boardStops.clear()
         live.value = null
         if (p == null) {
             canvas()?.setTrip(emptyList(), emptyList())
@@ -540,28 +541,49 @@ class TripController(
         }
     }
 
-    /** 한 구간의 타는 정류장 실시간 도착 (그 노선만) */
+    /**
+     * 한 구간의 타는 정류장 실시간 도착 (그 노선만).
+     * 카카오 구간은 타는 곳 근처의 같은 이름 정류장을 시군마다 모두 물어서 합침: 시군 경계 정류장은 같은 자리에
+     * 시군마다 정류장이 따로 있어서(예: 완주 우석대학교 = 익산 정류장에만 익산 버스 도착정보) 한 곳만 물으면 다른 지역 버스가 안 나왔음.
+     */
     private suspend fun liveFor(leg: TripLeg): List<com.eunho.tagohub.data.BusArrival> {
         if (leg.subway) return emptyList()
         val db = StopDb.peek() ?: return emptyList()
         val kakao = com.eunho.tagohub.data.KakaoTransit.isKakao(leg.routeId)
-        val stop = withContext(Dispatchers.IO) {
-            if (kakao) boardStopNear(db, leg) else db.byId(leg.boardStopId)
-        } ?: return emptyList()
-        val all = (com.eunho.tagohub.ui.bus.arrivalsFor(repo, stop) as? TagoResult.Success)?.data.orEmpty()
-        return if (kakao) {
-            val nos = listOf(leg.routeNo) + leg.alternatives
-            all.filter { a -> nos.any { com.eunho.tagohub.data.KakaoTransit.sameRouteNo(it, a.routeNo) } }
-        } else all.filter { it.routeId == leg.routeId }
+        if (!kakao) {
+            val stop = withContext(Dispatchers.IO) { db.byId(leg.boardStopId) } ?: return emptyList()
+            val all = (com.eunho.tagohub.ui.bus.arrivalsFor(repo, stop) as? TagoResult.Success)?.data.orEmpty()
+            return all.filter { it.routeId == leg.routeId }
+        }
+        val stops = boardStops.getOrPut(leg) { boardStopsNear(db, leg) }
+        val nos = listOf(leg.routeNo) + leg.alternatives
+        val all = coroutineScope {
+            stops.map { s -> async { (com.eunho.tagohub.ui.bus.arrivalsFor(repo, s) as? TagoResult.Success)?.data.orEmpty() } }.awaitAll().flatten()
+        }
+        return all.filter { a -> nos.any { com.eunho.tagohub.data.KakaoTransit.sameRouteNo(it, a.routeNo) } }
+            .distinctBy { Triple(it.routeNo, it.prevStops, it.arrSeconds) } // 같은 버스가 두 정류장 정보에 함께 올 때
+            .sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
     }
 
-    /** 카카오 구간의 타는 곳: 경로 시작점 80m 안 정류장 중 이름이 같은 것, 없으면 가장 가까운 것 */
-    private fun boardStopNear(db: StopDb, leg: TripLeg): BusStop? {
-        val lat = leg.boardLat ?: return null
-        val lng = leg.boardLng ?: return null
-        val near = db.near(lat, lng, 80.0, 10)
+    /** 경로마다 타는 곳 정류장 목록은 한 번만 찾음 (20초마다 다시 찾지 않게) */
+    private val boardStops = java.util.concurrent.ConcurrentHashMap<TripLeg, List<BusStop>>()
+
+    /**
+     * 카카오 구간의 타는 곳: 경로 시작점 80m 안에서 이름이 같은 정류장을 시군마다 하나씩(가까운 것), 최대 4곳.
+     * 앱 안 정류장 파일에 없는 정류장(예: 익산 ISB…)도 있어서 TAGO 주변 정류장도 봄. 같은 이름이 없으면 가장 가까운 정류장 하나.
+     */
+    private suspend fun boardStopsNear(db: StopDb, leg: TripLeg): List<BusStop> {
+        val lat = leg.boardLat ?: return emptyList()
+        val lng = leg.boardLng ?: return emptyList()
         fun n(s: String) = s.replace(Regex("[\\s.·()]"), "")
-        return near.firstOrNull { n(it.first.name) == n(leg.boardName) }?.first ?: near.firstOrNull()?.first
+        val fromFile = withContext(Dispatchers.IO) { db.near(lat, lng, 80.0, 20) }
+        val fromTago = (repo.busStopsNear(lat, lng) as? TagoResult.Success)?.data?.stops.orEmpty()
+            .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat, s.lng) else null }
+            .filter { it.second <= 80.0 }
+        val all = (fromFile + fromTago).distinctBy { it.first.nodeId }.sortedBy { it.second }
+        val same = all.filter { n(it.first.name) == n(leg.boardName) }
+            .groupBy { it.first.cityCode }.map { (_, l) -> l.first() }.sortedBy { it.second }.take(4).map { it.first }
+        return same.ifEmpty { listOfNotNull(all.firstOrNull()?.first) }
     }
 
     private suspend fun draw(p: TripPlan) {
