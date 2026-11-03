@@ -1,0 +1,9 @@
+{
+  "name": "tagohub-proxy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/proxy.test.js",
+    "deploy": "npx wrangler@4.45.0 deploy"
+  }
+}
