@@ -226,10 +226,14 @@ class KakaoCanvas(
         km.setOnTerrainLongClickListener { _, position, _ ->
             main.post { vm.onMapTouched(); vm.onMapLongPress(position.latitude, position.longitude) }
         }
-        // 나침반: 기본 자리가 검색창에 가려져서 검색창 아래 왼쪽으로 (지도를 돌리면 방위가 보임, 누르면 북쪽으로)
+        // 나침반: 오른쪽 위 버튼들(내 위치 · 지도 설정) 바로 밑으로 (지도를 돌리면 방위가 보임, 누르면 북쪽으로)
         km.compass?.let {
             it.setBackToNorthOnClick(true)
-            it.setPosition(com.kakao.vectormap.MapGravity.TOP or com.kakao.vectormap.MapGravity.LEFT, 16 * density, 104 * density)
+            val res = android.content.res.Resources.getSystem()
+            val statusBar = res.getIdentifier("status_bar_height", "dimen", "android")
+                .takeIf { id -> id > 0 }?.let { id -> res.getDimension(id) } ?: (24 * density)
+            // 버튼 열: 위 12dp · 버튼 40dp 두 개 · 사이 8dp 두 번 → 108dp 아래
+            it.setPosition(com.kakao.vectormap.MapGravity.TOP or com.kakao.vectormap.MapGravity.RIGHT, 12 * density, statusBar + 112 * density)
             it.hide()   // 북쪽이면 숨김, 돌리면 보임 (카메라 이동 끝에서)
         }
         km.scaleBar?.let { it.setAutoHide(true); it.show() }
