@@ -44,5 +44,6 @@ class PathMathTest {
         assertEquals(401, MapErrors.kakaoCode("com.kakao.vectormap.MapAuthException: MapAuthException(401): Unauthorized"))
         assertEquals(-2, MapErrors.kakaoCode("MapAuthException(-2): connect fail"))
         assertEquals(null, MapErrors.kakaoCode("RenderViewException: no gl"))
+        assertTrue(MapErrors.kakaoNeedsRegistration(401) && !MapErrors.kakaoNeedsRegistration(-2))
     }
 }

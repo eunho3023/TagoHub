@@ -36,6 +36,12 @@ interface SeoulBusApi {
     @GET("busRouteInfo/getStaionByRoute")
     suspend fun stationsByRoute(@Query("busRouteId") busRouteId: String): String
 
+    /** 대중교통 환승경로: 버스+지하철 / 지하철만 (좌표 WGS84) */
+    @GET("pathinfo/getPathInfoByBusNSub")
+    suspend fun pathBusSub(@Query("startX") sx: String, @Query("startY") sy: String, @Query("endX") ex: String, @Query("endY") ey: String): String
+
+    @GET("pathinfo/getPathInfoBySubway")
+    suspend fun pathSubway(@Query("startX") sx: String, @Query("startY") sy: String, @Query("endX") ex: String, @Query("endY") ey: String): String
 }
 
 class SeoulBusRepository(private val api: SeoulBusApi) {
@@ -86,6 +92,23 @@ class SeoulBusRepository(private val api: SeoulBusApi) {
     suspend fun path(routeAppId: String) = run {
         synchronized(pathCache) { pathCache[routeAppId] } ?: SeoulMappers2.path(rows { api.routePath(SeoulBus.std(routeAppId)) })
             .also { if (it.size >= 2) synchronized(pathCache) { pathCache[routeAppId] = it } }
+    }
+
+    /** 서울시 경로검색: 버스+지하철과 지하철만 경로를 함께 받아 앱 길찾기 결과로 */
+    suspend fun paths(fromLat: Double, fromLng: Double, toLat: Double, toLng: Double) = run {
+        val a = listOf(fromLng, fromLat, toLng, toLat).map { "%.7f".format(java.util.Locale.US, it) }
+        val both = runCatching { gate.withPermit { SeoulPathParser.parse(api.pathBusSub(a[0], a[1], a[2], a[3])) } }.getOrDefault(emptyList())
+        val sub = runCatching { gate.withPermit { SeoulPathParser.parse(api.pathSubway(a[0], a[1], a[2], a[3])) } }.getOrDefault(emptyList())
+        val db = StopDb.peek()
+        val count: (String, String, String) -> Int? = { routeId, board, alight ->
+            db?.routeStops(routeId)?.let { stops ->
+                val i = stops.indexOfFirst { it.nodeId == board }
+                val j = stops.indexOfFirst { it.nodeId == alight && stops.indexOf(it) > i }
+                if (i >= 0 && j > i) j - i else null
+            }
+        }
+        (both + sub).mapNotNull { SeoulPathParser.toPlan(it, fromLat, fromLng, toLat, toLng, count) }
+            .distinctBy { p -> p.legs.joinToString("|") { it.routeNo + it.boardName } }
     }
 
     companion object {

@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -83,7 +84,7 @@ class ReminderReceiver : BroadcastReceiver() {
     private fun notify(context: Context, id: Int, title: String, text: String) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(CHANNEL) == null) {
+        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "막차·첫차·출근 알림", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "막차·첫차 시각과 출근 때 나갈 시각을 알려줍니다."
             })
