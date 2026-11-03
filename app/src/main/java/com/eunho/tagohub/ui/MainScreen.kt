@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -159,11 +161,23 @@ fun MainScreen() {
 
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))).clearFocusOnTapOutside()) {
         // 지도 탭: 지도 아래에 하단 탭 (달리는 중에는 숨김)
+        // 지도는 하단 탭 위에서 끝나므로, 키보드가 올라올 때 패널을 키보드 높이 전체만큼 올리면 하단 탭 높이만큼 더 떠서
+        // 패널과 키보드 사이로 지도가 보였음 → 하단 탭 높이는 이미 쓴 것으로 쳐서 그만큼 덜 올림
+        var bottomNavPx by remember { mutableStateOf(0) }
+        val density = androidx.compose.ui.platform.LocalDensity.current
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .consumeWindowInsets(androidx.compose.foundation.layout.PaddingValues(bottom = with(density) { bottomNavPx.toDp() })),
+            ) {
                 if (mapStarted) MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
             }
-            if (dest == Dest.Map && !guiding && !freeDriving) com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Map, ::onTab)
+            if (dest == Dest.Map && !guiding && !freeDriving) {
+                Box(Modifier.onSizeChanged { bottomNavPx = it.height }) { com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Map, ::onTab) }
+            } else if (bottomNavPx != 0) {
+                LaunchedEffect(Unit) { bottomNavPx = 0 }
+            }
         }
         if (dest != Dest.Map) {
             // 지도 위를 덮는 화면: 뒤의 지도가 터치를 받지 않게 막음
