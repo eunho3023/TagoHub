@@ -176,8 +176,8 @@ class KakaoCanvas(
         km.routeLineManager?.addLayer(ITS_FLOW_LAYER, 4)
         km.setOnCameraMoveEndListener { _, position, _ ->
             main.post {
-                // 방위표시: 지도가 북쪽에서 조금이라도 돌아갔을 때만 (각도가 라디안·도 어느 쪽이어도 0.01 넘으면)
-                runCatching { if (kotlin.math.abs(position.rotationAngle) > 0.01) map?.compass?.show() else map?.compass?.hide() }
+                // 방위표시: 지도가 북쪽에서 조금이라도 돌아가거나 눕혀졌을 때만 (각도가 라디안·도 어느 쪽이어도 0.01 넘으면)
+                runCatching { if (kotlin.math.abs(position.rotationAngle) > 0.01 || kotlin.math.abs(position.tiltAngle) > 0.01) map?.compass?.show() else map?.compass?.hide() }
                 vm.onMapTouched()
                 val z = position.zoomLevel
                 // 카카오맵은 세계 전체가 보일 만큼 축소하면 가운데가 엉뚱한 곳으로 옮겨짐 → 한국 전체가 보이는 배율까지만 허용

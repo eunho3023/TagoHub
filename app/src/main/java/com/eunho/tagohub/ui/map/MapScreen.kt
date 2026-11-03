@@ -1884,7 +1884,6 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { com.eunho.tagohub.ui.ModeJump.drawer.value = true }) { Icon(Icons.Filled.Menu, contentDescription = "메뉴") }
                 SearchBox(
                     query,
                     {
@@ -1902,11 +1901,6 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
                     },
                     focusRequester = searchFocus,
                 )
-                IconButton(onClick = {
-                    query = ""
-                    focus.clearFocus()
-                    vm.openPlanner()
-                }) { Icon(Icons.Filled.Directions, contentDescription = "길찾기", tint = ModeColor.Bus) }
             }
             // 즐겨찾기: 검색어가 없을 때 검색창 바로 아래 (누르면 바로 열기)
             val favs by vm.favorites.collectAsStateWithLifecycle()
