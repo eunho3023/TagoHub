@@ -21,7 +21,7 @@ object ArrivalText {
         }
         return listOfNotNull(
             if (a.estimated && sec != null && sec > 30) "약 ${((sec + 30) / 60).coerceAtLeast(1)}분" else time(sec),
-            a.prevStops?.let { if (it <= 0) "이번 정류장" else "${it}정류장 전" },
+            a.prevStops?.let { if (it <= 0) "이번 정류장" else "${it}정류장 전" } ?: if (a.scheduled) "배차 기준" else null,
             a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" },
         ).joinToString(" · ")
     }

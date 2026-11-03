@@ -451,11 +451,13 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         rows.map { r -> r.copy(arrivals = com.eunho.tagohub.data.ArrivedHold.filter(r.routeId, r.arrivals, d.arrivedSince, now)) }
     }
     val mainNos = main.map { it.routeNo }.toSet()
+    // 같은 자리의 다른 시군 정류장 노선도 버스 위치·배차로 둘째 버스를 채움 (전에는 이 정류장 노선만)
     val others = entries.flatMap { c ->
-        mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
+        val rows = mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
             .map { it.copy(region = regionLabel(db, c.cityCode), cityCode = c.cityCode) }
-    }.filter { it.routeNo !in mainNos } // 이미 이 정류장 정보에 있는 노선은 두 번 안 보이게
-        .distinctBy { it.routeId + "|" + it.cityCode }
+            .filter { it.routeNo !in mainNos } // 이미 이 정류장 정보에 있는 노선은 두 번 안 보이게
+        if (rows.isEmpty()) rows else fillFromPositions(repo, c, rows, d.estimated)
+    }.distinctBy { it.routeId + "|" + it.cityCode }
     d.rows.value = Load.Ok((main + others).sortedWith(stopRowOrder))
 }
 
