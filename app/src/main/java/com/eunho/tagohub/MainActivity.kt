@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.ui.theme.ThemeSettings.load(applicationContext)
         com.eunho.tagohub.data.RecentDestinations.load(applicationContext)
         com.eunho.tagohub.data.SearchHistory.load(applicationContext)
+        com.eunho.tagohub.data.RecentItems.load(applicationContext)
         com.eunho.tagohub.data.RouteHistory.load(applicationContext)
         com.eunho.tagohub.data.VisitLog.load(applicationContext)
         com.eunho.tagohub.data.NightSettings.load(applicationContext)

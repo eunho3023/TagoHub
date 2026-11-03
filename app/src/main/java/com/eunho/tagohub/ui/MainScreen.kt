@@ -248,6 +248,26 @@ fun MainScreen() {
                 }
             }
         }
+        // 전체 화면 검색: 홈·지도 검색창을 누르면 모든 화면 위에 뜸 (고르면 닫히고 지도에서 열림)
+        val searchOpen by com.eunho.tagohub.ui.home.SearchPageState.open.collectAsStateWithLifecycle()
+        if (searchOpen) com.eunho.tagohub.ui.home.SearchPage(
+            vm = mapVm,
+            actions = searchActions,
+            onFavorite = { f -> mapVm.openFavorite(f); if (f.kind == com.eunho.tagohub.data.Favorite.Kind.Station) openMap(MapMode.Subway) else openBus() },
+            onGoTo = { place ->
+                openMap(MapMode.Transit)
+                mapVm.openPlanner()
+                mapVm.trip.goTo(place)
+            },
+            // 경로 기록을 누르면 그 도착지로 다시 길찾기 (기록 관리 창과 같게)
+            onTrip = { r ->
+                openMap(MapMode.Transit)
+                mapVm.openPlanner()
+                mapVm.trip.goTo(com.eunho.tagohub.data.SavedPlace(r.toName, r.toLat, r.toLng))
+            },
+            onEditHomeWork = { onTab(AppTab.Navi) },
+            onClose = { com.eunho.tagohub.ui.home.SearchPageState.open.value = false },
+        )
     }
     if (showNotices) NoticesDialog { showNotices = false }
     if (showReport) ReportDialog { showReport = false }

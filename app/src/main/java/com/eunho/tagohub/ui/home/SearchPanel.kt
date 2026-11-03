@@ -91,31 +91,7 @@ fun SearchPanel(
         )
     }
     val history by com.eunho.tagohub.data.SearchHistory.items.collectAsStateWithLifecycle()
-    val busResult by vm.busResult.collectAsStateWithLifecycle()
-    val progress by vm.busProgress.collectAsStateWithLifecycle()
-    val names by vm.cityNames.collectAsStateWithLifecycle()
-    var settled by remember { mutableStateOf("") }
     var focused by remember { mutableStateOf(false) }      // 검색창을 눌러 글자를 칠 수 있는 상태인지 (최근 검색은 이때만 보임)
-    val places by produceState(emptyList<Place2>(), query, scope) {
-        value = emptyList()
-        if (scope == SearchScope.All && query.isNotBlank()) {
-            kotlinx.coroutines.delay(300)
-            value = vm.searchPlaces(query)
-        }
-    }
-    val stations = remember(query, scope) { if (scope != SearchScope.Bus && query.isNotBlank()) vm.searchStations(query, 10) else emptyList() }
-
-    LaunchedEffect(query, scope) {
-        if (query.isBlank()) {
-            settled = ""
-            vm.clearBusSearch()
-            return@LaunchedEffect
-        }
-        kotlinx.coroutines.delay(300)
-        settled = query
-        if (scope != SearchScope.Subway && !query.any(Char::isDigit)) vm.searchBus(query)
-    }
-    DisposableEffect(Unit) { onDispose { vm.clearBusSearch() } }
 
     Column(modifier.fillMaxWidth()) {
         SearchBox(
@@ -139,7 +115,43 @@ fun SearchPanel(
             if (focused) whenFocused()
             return@Column
         }
+        SearchResults(vm, scope, query, actions)
+    }
+}
 
+/**
+ * 검색 결과 (장소·지하철역·노선·정류장). 검색어를 멈추면(0.3초) 바로 찾고, 숫자가 든 말(노선번호)은 엔터를 눌렀을 때만 전국 검색.
+ * [SearchPanel] 과 전체 화면 검색([SearchPage])이 함께 씀. 검색어가 비면 화면에서 빠지면서 버스 검색을 비움.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SearchResults(vm: MapViewModel, scope: SearchScope, query: String, actions: SearchActions) {
+    val busResult by vm.busResult.collectAsStateWithLifecycle()
+    val progress by vm.busProgress.collectAsStateWithLifecycle()
+    val names by vm.cityNames.collectAsStateWithLifecycle()
+    var settled by remember { mutableStateOf("") }
+    val places by produceState(emptyList<Place2>(), query, scope) {
+        value = emptyList()
+        if (scope == SearchScope.All && query.isNotBlank()) {
+            kotlinx.coroutines.delay(300)
+            value = vm.searchPlaces(query)
+        }
+    }
+    val stations = remember(query, scope) { if (scope != SearchScope.Bus && query.isNotBlank()) vm.searchStations(query, 10) else emptyList() }
+
+    LaunchedEffect(query, scope) {
+        if (query.isBlank()) {
+            settled = ""
+            vm.clearBusSearch()
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(300)
+        settled = query
+        if (scope != SearchScope.Subway && !query.any(Char::isDigit)) vm.searchBus(query)
+    }
+    DisposableEffect(Unit) { onDispose { vm.clearBusSearch() } }
+
+    Column(Modifier.fillMaxWidth()) {
         progress?.let { (done, total) ->
             LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth(), color = ModeColor.Bus)
             Text(

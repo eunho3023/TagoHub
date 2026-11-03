@@ -1872,7 +1872,6 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     val names by vm.cityNames.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
-    val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     // 엔터를 안 쳐도 입력을 멈추면 바로 검색 (장소·역·정류소). 숫자가 든 말은 전국 노선 검색(느리고 호출이 많음)이라 엔터 때만
     LaunchedEffect(query) {
         if (query.isBlank()) return@LaunchedEffect
@@ -1884,23 +1883,8 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SearchBox(
-                    query,
-                    {
-                        query = it
-                        if (it.isEmpty()) {
-                            vm.clearBusSearch()
-                            searched = ""
-                        }
-                    },
-                    "검색하기",
-                    Modifier.weight(1f),
-                    onSearch = {
-                        searched = query
-                        vm.searchBus(query)
-                    },
-                    focusRequester = searchFocus,
-                )
+                // 누르면 전체 화면 검색 (분류·집/회사·최근 기록). 고른 결과는 이 지도에서 열림
+                com.eunho.tagohub.ui.home.SearchBarButton(Modifier.weight(1f), placeholder = "검색하기")
             }
             // 즐겨찾기: 검색어가 없을 때 검색창 바로 아래 (누르면 바로 열기)
             val favs by vm.favorites.collectAsStateWithLifecycle()
