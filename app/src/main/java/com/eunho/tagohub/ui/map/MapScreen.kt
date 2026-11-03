@@ -2179,6 +2179,11 @@ private fun PlannerPanel(vm: MapViewModel) {
     val editing by t.editing.collectAsStateWithLifecycle()
     val selected by t.selected.collectAsStateWithLifecycle()
     val note by t.note.collectAsStateWithLifecycle()
+    val saving by t.saving.collectAsStateWithLifecycle()
+    // 누른 칸(출발·도착)이 바로 입력칸 (길찾기 탭과 같게. 집·회사로 저장할 때만 아래 검색칸)
+    var q by rememberSaveable(editing) { mutableStateOf("") }
+    fun inputFor(field: PlanField): Triple<String, (String) -> Unit, () -> Unit>? =
+        if (editing == field && saving == null) Triple(q, { v: String -> q = v; t.search(v) }, { t.search(q) }) else null
 
     PanelSurface {
         PanelHeader(
@@ -2193,8 +2198,8 @@ private fun PlannerPanel(vm: MapViewModel) {
             if (editing == null) HomeWorkChips(t)
             Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PlanPointField("출발", origin?.name ?: "내 위치", active = editing == PlanField.Origin) { t.edit(PlanField.Origin) }
-                    PlanPointField("도착", dest?.name ?: "목적지를 입력하세요", active = editing == PlanField.Dest, placeholder = dest == null) {
+                    PlanPointField("출발", if (editing == PlanField.Origin) "출발지를 입력하세요" else origin?.name ?: "내 위치", active = editing == PlanField.Origin, input = inputFor(PlanField.Origin)) { t.edit(PlanField.Origin) }
+                    PlanPointField("도착", dest?.name ?: "목적지를 입력하세요", active = editing == PlanField.Dest, placeholder = dest == null, input = inputFor(PlanField.Dest)) {
                         t.edit(PlanField.Dest)
                     }
                 }
@@ -2204,7 +2209,8 @@ private fun PlannerPanel(vm: MapViewModel) {
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         when {
-            editing != null -> PlanSearch(t, editing!!)
+            // 경유지는 출발·도착 칸이 없어서 아래 검색칸으로
+            editing != null -> PlanSearch(t, editing!!, showBox = saving != null || editing == PlanField.Via)
             selected != null -> PlanDetail(t, selected!!)
             else -> PlanList(t, cards = true)
         }
