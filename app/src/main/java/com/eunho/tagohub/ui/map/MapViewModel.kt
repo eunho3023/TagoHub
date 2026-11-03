@@ -2298,13 +2298,27 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             tracked { loadStopBoard(repo, d) }
             if (first) {
                 first = false
+                // 실시간 지역인데 지나는 노선이 하나도 없는 정류장: 같은 자리의 다른 ID 정류장으로
+                // (예: 익산 금마터미널 TSB308000649 → TAGO 는 익산 정류장 ISB308000085 로만 노선을 줌. 익산 교통안전공단 정류장 1,476곳이 이럼)
+                if ((d.rows.value as? Load.Ok)?.value?.isEmpty() == true) {
+                    val alt = nearestSameNameLive(d.stop, supported.orEmpty())
+                    if (alt != null && selected.value === d) {
+                        stops[alt.nodeId] = alt
+                        selected.value = BusDest.Stop(alt, merged[alt.nodeId]?.others)
+                        pushStops()
+                        return
+                    }
+                }
                 viewModelScope.launch { loadDirection(repo, d) }
             }
             delay(15_000)
         }
     }
 
-    /** [stop] 과 같은 이름(공백 무시)이고 150m 안에 있는 실시간 지역 정류장 중 가장 가까운 것 (앱 안 파일 + TAGO 주변 정류장) */
+    /**
+     * [stop] 과 같은 이름(공백 무시)이고 150m 안에 있는 실시간 지역 정류장 중, 지나는 노선이 실제로 있는 가장 가까운 것 (앱 안 파일 + TAGO 주변 정류장).
+     * 노선이 없는 정류장끼리(같은 자리의 교통안전공단 정류장 두 개 등) 서로 넘겨주며 도는 일이 없게 가까운 3곳까지 노선을 확인한다.
+     */
     private suspend fun nearestSameNameLive(stop: BusStop, supported: Set<String>): BusStop? {
         val lat = stop.lat ?: return null
         val lng = stop.lng ?: return null
@@ -2314,10 +2328,15 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val fromFile = stopDb?.let { db -> withContext(Dispatchers.IO) { db.nearbySameName(stop) } }.orEmpty()
         val fromTago = (repo.busStopsNear(lat, lng) as? TagoResult.Success)?.data?.stops.orEmpty()
             .filter { it.nodeId != stop.nodeId && it.name.replace(" ", "") == key }
-        return (fromFile + fromTago).filter(::live).distinctBy { it.nodeId }
+        val cands = (fromFile + fromTago).filter(::live).distinctBy { it.nodeId }
             .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat, s.lng) else null }
             .filter { it.second <= 150.0 }
-            .minByOrNull { it.second }?.first
+            .sortedBy { it.second }
+            .take(3)
+            .map { it.first }
+        return cands.firstOrNull { s ->
+            (com.eunho.tagohub.ui.bus.stopRoutesFor(repo, s) as? TagoResult.Success)?.data?.isNotEmpty() == true
+        }
     }
 
     suspend fun runRoute(d: BusDest.Route) {
