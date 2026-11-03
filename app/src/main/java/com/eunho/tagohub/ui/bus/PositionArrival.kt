@@ -4,6 +4,7 @@ import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.data.BusArrival
 import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.BusSeen
+import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteSpeed
 import com.eunho.tagohub.data.TagoRepository
@@ -16,10 +17,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** 위치로 어림한 도착이 의미 있는 최대 거리(정류장 수). 이보다 멀리 있는 버스는 "곧 온다"고 하기 어려움 */
 internal const val MAX_ESTIMATE_STOPS = 25
 
+/** 둘째 버스는 조금 더 멀리까지 (첫 버스 뒤에 오는 버스라 멀어도 "다음 차"로 의미가 있음) */
+private const val MAX_SECOND_STOPS = 40
+
 /** 같은 정류장·노선의 어림 결과를 다시 쓰는 시간 (새로고침마다 노선 API 를 또 부르지 않게) */
 private const val ESTIMATE_TTL_MS = 30_000L
 private const val ESTIMATE_TIMEOUT_MS = 8_000L
-private const val MAX_ESTIMATE_ROUTES = 10
+private const val MAX_ESTIMATE_ROUTES = 14
 
 
 private fun clockMinutes(t: String?): Int? =
@@ -92,7 +96,7 @@ internal suspend fun positionArrivals(repo: TagoRepository, stop: BusStop, row: 
         .minByOrNull { it.second } ?: return emptyList()
     val target = best.first
     val behind = RouteLive.allAway(target, pos.at, pos.left)
-    return behind.filter { it <= MAX_ESTIMATE_STOPS }.take(2).map { away ->
+    return behind.filterIndexed { i, away -> away <= if (i == 0) MAX_ESTIMATE_STOPS else MAX_SECOND_STOPS }.take(2).map { away ->
         val seconds = if (away == 0) 0 else {
             val usual = TripPlanner.minutesBetween(line, stops[target - away].ord, stops[target].ord)
             Math.round(usual * RouteSpeed.factor(d.routeId) * 60).toInt()
@@ -155,5 +159,41 @@ internal suspend fun fillFromPositions(
             val first = fixed.arrivals[0].prevStops ?: return@map fixed
             all.firstOrNull { (it.prevStops ?: -1) > first + 1 }?.let { fixed.copy(arrivals = fixed.arrivals + it) } ?: fixed
         } else fixed
+    }.let { out -> withHeadwaySecond(repo, stop, out) }
+}
+
+/**
+ * 그래도 한 대뿐인 노선: 버스 위치에 다음 버스가 안 보이면(노선에 한 대만 다니는 중이거나 아직 기점을 안 떠남)
+ * 배차 간격으로 다음 차를 어림한다 ("약 N분 · 배차 기준"). 막차가 이미 떠났으면 채우지 않음.
+ * 노선 정보·운행 시각은 캐시돼 있어 호출이 거의 늘지 않는다.
+ */
+private suspend fun withHeadwaySecond(repo: TagoRepository, stop: BusStop, rows: List<StopRouteRow>): List<StopRouteRow> = coroutineScope {
+    rows.map { r ->
+        async {
+            val first = r.arrivals.singleOrNull()?.takeIf { !it.scheduled } ?: return@async r
+            val gap = runCatching { withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { headwayMinutes(repo, stop, r) } }.getOrNull() ?: return@async r
+            val sec = first.arrSeconds ?: return@async r
+            r.copy(arrivals = r.arrivals + first.copy(
+                prevStops = null, arrSeconds = sec + gap * 60, vehicleType = null, atStop = null,
+                estimated = true, scheduled = true, behind = emptyList(),
+            ))
+        }
+    }.awaitAll()
+}
+
+/** 지금 시각의 배차 간격(분). 전주는 실제 운행 출발 시각 사이 간격, 그 밖은 노선 정보의 요일별 배차간격. 모르거나 막차가 떠났으면 null */
+private suspend fun headwayMinutes(repo: TagoRepository, stop: BusStop, r: StopRouteRow): Int? {
+    val nowMin = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+    val day = com.eunho.tagohub.data.DayKind.today()
+    if (com.eunho.tagohub.data.Jeonju.isJeonju(r.routeId)) {
+        val courses = (Graph.jeonju.courses(r.routeId) as? com.eunho.tagohub.core.TagoResult.Success)?.data.orEmpty()
+        val schedule = if (day != com.eunho.tagohub.data.DayKind.Weekday) (Graph.jeonju.schedule(r.routeId) as? com.eunho.tagohub.core.TagoResult.Success)?.data else null
+        val starts = com.eunho.tagohub.data.JeonjuTimetable.startsFor(day, courses, schedule).map { it.minute }
+        return com.eunho.tagohub.data.Headway.gapNear(starts, nowMin)
     }
+    val info = routeInfoFor(repo, r.routeId, r.cityCode ?: stop.cityCode) ?: return null
+    // 제주 노선 정보의 intervalSun 칸은 최대 배차간격이라 요일 구분에 쓰지 않음
+    val sun = if (com.eunho.tagohub.data.Jeju.isJeju(r.routeId)) null else info.intervalSun
+    val iv = com.eunho.tagohub.data.JeonjuTimetable.intervalFor(day, info.interval, info.intervalSat, sun) ?: return null
+    return com.eunho.tagohub.data.Headway.fromInterval(iv, info.firstTime, info.lastTime, nowMin)
 }

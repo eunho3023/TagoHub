@@ -59,6 +59,8 @@ data class BusArrival(
     val estimated: Boolean = false,
     /** 위치로 어림한 경우, 이 정류장 앞쪽에 달리는 모든 버스의 정류장 수(가까운 순). 도착정보의 버스가 그중 어느 것인지 가려내는 데 씀 */
     val behind: List<Int> = emptyList(),
+    /** 버스 위치에도 안 보여서 배차 간격으로 어림한 다음 차 ("약 N분 · 배차 기준") */
+    val scheduled: Boolean = false,
 )
 
 data class RouteStop(
