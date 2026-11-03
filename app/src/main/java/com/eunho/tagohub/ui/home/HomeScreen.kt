@@ -161,8 +161,8 @@ fun HomeScreen(
         Tile(ModeJump.Kind.Road.label, Icons.Outlined.Traffic, Color(0xFF8A4B1F), Color(0xFF8A4B1F)) { onOpenPage(ModeJump.Kind.Road) },
         Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
     )
-    var query by rememberSaveable { mutableStateOf("") }
-    val blank = query.isBlank()
+    // 검색은 전체 화면 검색에서 하므로 홈 카드는 늘 접힌 모양
+    val blank = true
     // 시트 안에서 「즐겨찾기」「최근」 칸을 누르면 그 구역으로 내려감
     val sheetScroll = rememberScrollState()
     val sheetScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -186,7 +186,8 @@ fun HomeScreen(
                             BrandHeader(Modifier.riseIn(0))
                             Spacer(Modifier.height(12.dp))
                         }
-                        Box(Modifier.riseIn(2)) { SearchPanel(vm, SearchScope.All, query, { query = it }, search) }
+                        // 누르면 전체 화면 검색 (분류·집/회사·최근 기록, 결과도 그 화면에서)
+                        Box(Modifier.riseIn(2)) { SearchBarButton() }
                     }
                 }
             }

@@ -3,7 +3,7 @@ package com.eunho.tagohub.data
 /**
  * 같은 사람의 두 계정(예: 구글로 가입한 것과 이메일로 가입한 것)을 하나로 합칠 때 클라우드 설정(users/{uid} 문서)을 합치는 규칙.
  * 값은 [CloudSyncSpec.field] 이름 → 문자열 또는 문자열 목록. Firebase 호출과 따로 두어 시험하기 쉽게.
- * - 즐겨찾기·지도 레이어·검색 기록·경로 기록: 두 계정 것을 모두 모음 (같은 것은 하나로, 지금 계정 것이 앞)
+ * - 즐겨찾기·지도 레이어·검색 기록·경로 기록·최근 기록: 두 계정 것을 모두 모음 (같은 것은 하나로, 지금 계정 것이 앞)
  * - 그 밖의 설정(집/회사·지역·테마 등): 지금 계정에 값이 있으면 그것, 없으면 다른 계정 것
  */
 object AccountMerge {
@@ -11,6 +11,7 @@ object AccountMerge {
     private val OVERLAYS = CloudSyncSpec.field("bus", "overlays")
     private val SEARCHES = CloudSyncSpec.field("search_history", "items")
     private val ROUTES = CloudSyncSpec.field("route_history", "items")
+    private val RECENT = CloudSyncSpec.field("recent_items", "items")
 
     /** [mine] 은 지금 로그인한 계정, [other] 는 합쳐 들어올 계정. 동기화 항목이 아닌 값(updatedAt 등)은 버림 */
     fun merge(mine: Map<String, Any?>, other: Map<String, Any?>): Map<String, Any> {
@@ -27,6 +28,7 @@ object AccountMerge {
                     OVERLAYS -> (a.split(',') + b.split(',')).map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(",")
                     SEARCHES -> searches(a, b)
                     ROUTES -> routes(a, b)
+                    RECENT -> RecentLogic.encode(RecentLogic.merge(RecentLogic.decode(a), RecentLogic.decode(b)))
                     else -> a
                 }
                 else -> a

@@ -25,6 +25,7 @@ internal object CloudSyncSpec {
         "ui" to "vehicle_icon",
         "search_history" to "items",
         "route_history" to "items",
+        "recent_items" to "items",
     )
 
     /** Firestore 필드 이름 (점이 들어가면 경로로 해석되니 밑줄 두 개로 잇는다) */

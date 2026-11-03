@@ -880,6 +880,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         return addr + com.eunho.tagohub.data.PlaceSearch.search(q, near)
     }
 
+    /** 검색 화면의 분류(음식점·카페 …) 버튼: 내 위치(모르면 지도 가운데) 주변 그 분류 장소, 가까운 순 (카카오 분류 검색) */
+    suspend fun nearbyCategory(code: String): List<com.eunho.tagohub.data.Place2> {
+        val (lat, lng) = me ?: lastView?.let { it.first to it.second } ?: return emptyList()
+        return com.eunho.tagohub.data.KakaoExtra.category(code, lat, lng).sortedBy { it.distance ?: Int.MAX_VALUE }
+    }
+
     /** 검색 결과의 장소를 누름 → 지도 이동 + 출발·경유·도착·정보 카드 */
     /** 지도가 만들어지기 전에 고른 곳 (지도가 뜨면 그리로 이동) */
     private var pendingFocus: Pair<Double, Double>? = null
