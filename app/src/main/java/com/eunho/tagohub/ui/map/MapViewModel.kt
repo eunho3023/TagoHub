@@ -2278,11 +2278,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             !Jeonju.isJeonju(d.stop.nodeId) && !com.eunho.tagohub.data.SeoulBus.isSeoul(d.stop.nodeId) &&
             // 서울처럼 TAGO 실시간은 없어도 앱 안 노선 데이터가 있으면 노선 목록은 보여준다
             stopDb?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(d.stop.nodeId) } }.isNullOrEmpty()) {
-            // 바로 옆에 같은 이름의 실시간 지역 정류장이 있으면 그 정류장으로 (예: 완주 TSB 우석대학교 → 전주 우석대학교, 전주 버스가 섬)
-            val alt = stopDb?.let { db -> withContext(Dispatchers.IO) { db.nearbySameName(d.stop) } }.orEmpty().firstOrNull { s ->
-                s.cityCode in supported || com.eunho.tagohub.data.Jeju.isJeju(s.nodeId) || com.eunho.tagohub.data.Gyeonggi.isGyeonggi(s.nodeId) ||
-                    Jeonju.isJeonju(s.nodeId) || com.eunho.tagohub.data.SeoulBus.isSeoul(s.nodeId)
-            }
+            // 바로 옆에 같은 이름의 실시간 지역 정류장이 있으면 가장 가까운 그 정류장으로.
+            // 앱 안 정류장 파일에 없는 정류장도 있어서 TAGO 주변 정류장까지 봄
+            // (예: 완주 TSB 우석대학교 3120093 → 6m 옆 익산 우석대학교 ISB312000010, 익산 버스만 섬. 파일에는 67m 떨어진 전주 정류장만 있음)
+            val alt = nearestSameNameLive(d.stop, supported)
             if (alt != null && selected.value === d) {
                 stops[alt.nodeId] = alt
                 selected.value = BusDest.Stop(alt, merged[alt.nodeId]?.others)
@@ -2303,6 +2302,22 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
             delay(15_000)
         }
+    }
+
+    /** [stop] 과 같은 이름(공백 무시)이고 150m 안에 있는 실시간 지역 정류장 중 가장 가까운 것 (앱 안 파일 + TAGO 주변 정류장) */
+    private suspend fun nearestSameNameLive(stop: BusStop, supported: Set<String>): BusStop? {
+        val lat = stop.lat ?: return null
+        val lng = stop.lng ?: return null
+        fun live(s: BusStop) = s.cityCode in supported || com.eunho.tagohub.data.Jeju.isJeju(s.nodeId) || com.eunho.tagohub.data.Gyeonggi.isGyeonggi(s.nodeId) ||
+            Jeonju.isJeonju(s.nodeId) || com.eunho.tagohub.data.SeoulBus.isSeoul(s.nodeId)
+        val key = stop.name.replace(" ", "")
+        val fromFile = stopDb?.let { db -> withContext(Dispatchers.IO) { db.nearbySameName(stop) } }.orEmpty()
+        val fromTago = (repo.busStopsNear(lat, lng) as? TagoResult.Success)?.data?.stops.orEmpty()
+            .filter { it.nodeId != stop.nodeId && it.name.replace(" ", "") == key }
+        return (fromFile + fromTago).filter(::live).distinctBy { it.nodeId }
+            .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat, s.lng) else null }
+            .filter { it.second <= 150.0 }
+            .minByOrNull { it.second }?.first
     }
 
     suspend fun runRoute(d: BusDest.Route) {
