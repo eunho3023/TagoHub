@@ -293,12 +293,17 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         lng = getDouble(3),
     )
 
-    private fun <T> query(sql: String, args: Array<String>, map: (Cursor) -> T): List<T> =
+    /** 새 데이터로 바뀌어 이 DB 가 이미 닫혔으면(옛 참조를 들고 있던 곳) 지금 열린 DB 로 다시 물음 */
+    private fun <T> query(sql: String, args: Array<String>, map: (Cursor) -> T): List<T> = try {
         db.rawQuery(sql, args).use { c ->
             val out = ArrayList<T>(c.count)
             while (c.moveToNext()) out += map(c)
             out
         }
+    } catch (e: IllegalStateException) {
+        val now = instance
+        if (!db.isOpen && now != null && now !== this) now.query(sql, args, map) else throw e
+    }
 
     companion object {
         /** 데이터 버전이 바뀌면 기기에서 새로 복사 (교통안전공단 정류장·노선 반영) */
