@@ -64,3 +64,16 @@ test("카카오 저장 시간", () => {
   assert.equal(hostTtl("apis-navi.kakaomobility.com", "/v1/directions"), 60);
   assert.equal(hostTtl("apis.data.go.kr", "/1613000/ArvlInfoInqireService/x"), 5);
 });
+
+import { webRequest } from "../src/proxy.js";
+
+test("웹 버전: 실시간 도착·위치만, 질의는 정해진 것만", () => {
+  const r = webRequest("/w/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", "?nodeId=JJB306000104&cityCode=35020&serviceKey=x&evil=1");
+  assert.equal(r.path, "1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList");
+  assert.equal(r.search, "?cityCode=35020&nodeId=JJB306000104&pageNo=1&numOfRows=100&_type=xml");
+  assert.ok(webRequest("/w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", "?cityCode=25&routeId=DJB30300004"));
+  assert.equal(webRequest("/w/dg/1613000/TrainInfo/GetStrtpntAlocFndTrainInfo", "?cityCode=25"), null);
+  assert.equal(webRequest("/w/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", "?cityCode=25"), null);
+  assert.equal(webRequest("/w/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", "?cityCode=2a&nodeId=X"), null);
+  assert.equal(webRequest("/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", "?cityCode=25&nodeId=X"), null);
+});

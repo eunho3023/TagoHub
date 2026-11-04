@@ -25,7 +25,7 @@ kotlin {
         }
         androidMain.dependencies { api("io.ktor:ktor-client-okhttp:$ktor") }
         jvmMain.dependencies { api("io.ktor:ktor-client-okhttp:$ktor") }
-        wasmJsMain.dependencies { implementation("io.ktor:ktor-client-js:$ktor") }
+        wasmJsMain.dependencies { api("io.ktor:ktor-client-js:$ktor") }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation("io.ktor:ktor-client-mock:$ktor")

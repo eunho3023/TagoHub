@@ -44,6 +44,10 @@ server/tago-proxy/.wrangler/
 # 공용 모듈(shared) 웹 빌드가 만드는 파일
 /kotlin-js-store/
 /shared/build
+/composeApp/build
 
 # 서버에 올리는 정류장·노선 자료 조각 (deploy.ps1 이 pipeline/build_web_data.py 로 만듦)
 server/tago-proxy/public/data/
+# 웹 버전 빌드 결과·글꼴 (deploy.ps1 이 composeApp 에서 만들어 넣음)
+server/tago-proxy/public/*
+!server/tago-proxy/public/_headers

@@ -78,6 +78,31 @@ if ($py) {
     Write-Host '  파이썬이 없어서 자료 조각은 건너뜀 (웹·PC 버전의 정류장 찾기만 빠짐)'
 }
 
+Write-Host '준비: 웹 버전(화면) 만드는 중...'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$pub = Join-Path $PSScriptRoot 'public'
+if (-not $env:JAVA_HOME) {
+    $jbr = 'C:\Program Files\Android\Android Studio\jbr'
+    if (Test-Path $jbr) { $env:JAVA_HOME = $jbr }
+}
+& (Join-Path $root 'gradlew.bat') -p $root -q ':composeApp:wasmJsBrowserDistribution'
+$dist = Join-Path $root 'composeApp\build\dist\wasmJs\productionExecutable'
+if (Test-Path (Join-Path $dist 'index.html')) {
+    # 예전 빌드 파일 지우고 새로 (자료 조각 data, 글꼴 fonts, _headers 는 그대로)
+    Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
+    if (Test-Path (Join-Path $pub 'composeResources')) { Remove-Item (Join-Path $pub 'composeResources') -Recurse -Force }
+    Get-ChildItem $dist | Where-Object { $_.Name -notlike '*.map' } | Copy-Item -Destination $pub -Recurse -Force
+    # 한글 글꼴 (웹 화면은 브라우저 글꼴을 못 씀). 처음 한 번만 받음 (Google Fonts, OFL 사용권)
+    $font = Join-Path $pub 'fonts\NotoSansKR.ttf'
+    if (-not (Test-Path $font)) {
+        New-Item -ItemType Directory -Force (Split-Path $font) | Out-Null
+        Invoke-WebRequest 'https://github.com/google/fonts/raw/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf' -OutFile $font -UseBasicParsing
+    }
+    Write-Host '  웹 버전 준비됨 (서버 주소로 열면 보임)'
+} else {
+    Write-Host '  웹 버전을 만들지 못해 건너뜀 (서버는 그대로 올림)'
+}
+
 Write-Host '1/3 서버 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
 Write-Host $out
