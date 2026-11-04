@@ -11,7 +11,19 @@ Cloudflare Workers 무료 요금제로 돌리는 작은 서버입니다. 하루 
 
 앱은 `https://<주소>/dg/1613000/ArvlInfoInqireService/...`처럼 키 없이 묻고, 서버가 `https://apis.data.go.kr/1613000/...`에 키를 붙여 묻습니다.
 
-## 처음 한 번 배포하기 (PC 터미널에서)
+## 가장 쉬운 배포 (브라우저 로그인 없이)
+
+1. https://dash.cloudflare.com/profile/api-tokens 에서 **Create Token** → **Edit Cloudflare Workers** 템플릿 → **Use template**
+2. Account Resources: 내 계정, Zone Resources: **All zones** → **Continue to summary** → **Create Token** → 토큰 복사
+3. PC 터미널에서:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File server	ago-proxy\deploy.ps1
+```
+
+토큰을 물으면 붙여 넣습니다. 스크립트가 서버를 올리고, 공공데이터포털 키(`local.properties`의 `TAGO_SERVICE_KEY`)와 새로 만든 앱 토큰을 서버에 넣습니다. 그리고 `local.properties`에 `TAGO_PROXY_URL`·`TAGO_PROXY_TOKEN`을 적습니다.
+
+## 처음 한 번 배포하기 (PC 터미널에서, 브라우저 로그인)
 
 ```bash
 cd server/tago-proxy
