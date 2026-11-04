@@ -10,9 +10,9 @@ test("허락한 기관 경로만 중계", () => {
   assert.equal(upstreamPath("/other/1613000/x"), null);
 });
 
-test("저장 시간: 도착·위치 15초, 목록 하루, 주변 1시간", () => {
-  assert.equal(ttlFor("1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList"), 15);
-  assert.equal(ttlFor("1613000/BusLcInfoInqireService/getRouteAcctoBusLcList"), 15);
+test("저장 시간: 도착·위치 5초, 목록 하루, 주변 1시간", () => {
+  assert.equal(ttlFor("1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList"), 5);
+  assert.equal(ttlFor("1613000/BusLcInfoInqireService/getRouteAcctoBusLcList"), 5);
   assert.equal(ttlFor("1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList"), 86400);
   assert.equal(ttlFor("1613000/BusSttnInfoInqireService/getCtyCodeList"), 86400);
   assert.equal(ttlFor("1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList"), 3600);
@@ -62,5 +62,5 @@ test("자리표시를 키로: 주소는 인코딩, 헤더는 그대로, 없는 �
 test("카카오 저장 시간", () => {
   assert.equal(hostTtl("dapi.kakao.com", "/v2/local/search/keyword.json"), 86400);
   assert.equal(hostTtl("apis-navi.kakaomobility.com", "/v1/directions"), 60);
-  assert.equal(hostTtl("apis.data.go.kr", "/1613000/ArvlInfoInqireService/x"), 15);
+  assert.equal(hostTtl("apis.data.go.kr", "/1613000/ArvlInfoInqireService/x"), 5);
 });
