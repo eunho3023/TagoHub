@@ -46,7 +46,8 @@ android {
         // 한국공항공사 항공 스케줄 API (공공데이터포털 flight-schedule). 비우면 TAGO_SERVICE_KEY 를 대신 씀
         buildConfigField("String", "KAC_API_KEY", "\"${apiKey("KAC_API_KEY", "TAGO_SERVICE_KEY")}\"")
         buildConfigField("String", "KRIC_SUBWAY_KEY", "\"${apiKey("KRIC_SUBWAY_KEY")}\"")
-        buildConfigField("String", "UTIC_API_KEY", "\"${apiKey("UTIC_API_KEY")}\"")
+        // 도시교통정보센터는 등록한 IP 에서만 응답해서 중계 서버를 써도 앱에 둠
+        buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
         // 서울 교통빅데이터 플랫폼(T Data) 실시간 교차로 신호 인증키. 비우면 서울 실시간 신호는 지도에 나오지 않음
         buildConfigField("String", "SEOUL_SIGNAL_KEY", "\"${apiKey("SEOUL_SIGNAL_KEY")}\"")
         // 한국도로공사 고속도로 공공데이터(data.ex.co.kr) 인증키

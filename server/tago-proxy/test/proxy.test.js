@@ -44,6 +44,7 @@ test("여러 기관 중계: 허락한 호스트만", () => {
   assert.deepEqual(hostTarget("/h/http/swopenapi.seoul.go.kr/api/subway/TAGOHUB_SEOUL_SUBWAY_KEY/xml/x"), { scheme: "http", host: "swopenapi.seoul.go.kr", path: "/api/subway/TAGOHUB_SEOUL_SUBWAY_KEY/xml/x" });
   assert.equal(hostTarget("/h/https/evil.example.com/x"), null);
   assert.equal(hostTarget("/h/https/openapi.its.go.kr/x"), null);   // 9443 포트라 중계 못 함
+  assert.equal(hostTarget("/h/http/www.utic.go.kr/guide/x"), null);   // 등록한 IP 에서만 응답
   assert.equal(hostTarget("/h/ftp/apis.data.go.kr/x"), null);
   assert.equal(hostTarget("/h/https/apis.data.go.kr/../x"), null);
 });
@@ -53,7 +54,7 @@ test("자리표시를 키로: 주소는 인코딩, 헤더는 그대로, 없는 �
   assert.equal(fillKeys("?serviceKey=TAGOHUB_TAGO_SERVICE_KEY&a=1", env, true), "?serviceKey=ab%2Bc%2Fd%3D%3D&a=1");
   assert.equal(fillKeys("KakaoAK TAGOHUB_KAKAO_REST_KEY", env, false), "KakaoAK kk");
   assert.equal(fillKeys("/api/subway/TAGOHUB_SEOUL_SUBWAY_KEY/xml", env, false), "/api/subway/5a6b/xml");
-  assert.throws(() => fillKeys("?k=TAGOHUB_UTIC_API_KEY", env, true), /UTIC_API_KEY/);
+  assert.throws(() => fillKeys("?k=TAGOHUB_EX_API_KEY", env, true), /EX_API_KEY/);
   assert.throws(() => fillKeys("?k=TAGOHUB_PATH_KEY", { PATH_KEY: "x" }, true));   // 목록에 없는 이름은 안 바꿈
   assert.equal(fillKeys("?a=1", env, true), "?a=1");
 });
