@@ -10,16 +10,28 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.readRawBytes
+import kotlinx.coroutines.await
+import org.khronos.webgl.ArrayBuffer
+import org.khronos.webgl.Int8Array
+import org.khronos.webgl.get
+import kotlin.js.Promise
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** 브라우저의 decodeURIComponent */
 private fun decodeURIComponent(s: String): String = js("decodeURIComponent(s)")
 
-/** 한글 글꼴 (웹 화면은 브라우저 글꼴을 못 씀). 필요한 글자만 남긴 작은 파일 (pipeline/build_web_font.py), 서버가 페이지와 같이 둠 */
-private const val FONT_PATH = "fonts/NotoSansKR-sub.ttf"
+/** 한글 글꼴 (웹 화면은 브라우저 글꼴을 못 씀). index.html 이 페이지를 열자마자 받기 시작한 것 (pipeline/build_web_font.py 로 만든 작은 파일) */
+@JsFun("() => window.TAGOHUB_FONT || Promise.resolve(null)")
+private external fun fontPromise(): Promise<JsAny?>
+
+private suspend fun fontBytes(): ByteArray? {
+    val buf = fontPromise().await<JsAny?>() as? ArrayBuffer ?: return null
+    val a = Int8Array(buf)
+    return ByteArray(a.length) { a[it] }
+}
 
 /** 웹 버전: 페이지를 내준 서버(중계 서버)에 그대로 물음 */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -30,10 +42,15 @@ fun main() {
         ?.let { decodeURIComponent(it) }?.takeIf { it.startsWith("https://") } ?: origin
     val http = HttpClient()
     val repo = WebRepo(server, http)
-    ComposeViewport(document.body!!) {
+    ComposeViewport(document.getElementById("app") ?: document.body!!) {
         var font by remember { mutableStateOf<FontFamily?>(null) }
         LaunchedEffect(Unit) {
-            font = runCatching { FontFamily(Font("NotoSansKR", http.get(origin + FONT_PATH).readRawBytes())) }.getOrNull()
+            // 불러오는 중 화면(index.html 의 #splash)은 한글 글꼴이 오면 지움 (글꼴 없이 그리면 한글이 네모로 보임). 늦어도 5초 뒤엔 지움
+            val splashOff = launch { delay(5_000); document.getElementById("splash")?.remove() }
+            font = runCatching { fontBytes()?.let { FontFamily(Font("NotoSansKR", it)) } }.getOrNull()
+            splashOff.cancel()
+            delay(150)   // 글꼴로 다시 그려진 뒤에 지움 (한 장면이라도 네모 글자가 보이지 않게)
+            document.getElementById("splash")?.remove()
         }
         App(repo, font, http)
     }
