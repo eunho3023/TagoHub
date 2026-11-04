@@ -61,6 +61,8 @@ data class BusArrival(
     val behind: List<Int> = emptyList(),
     /** 버스 위치에도 안 보여서 배차 간격으로 어림한 다음 차 ("약 N분 · 배차 기준") */
     val scheduled: Boolean = false,
+    /** [scheduled] 인데 배차 간격이 아니라 지난 운행 기록으로 어림함 ("지난 기록 기준") */
+    val fromLog: Boolean = false,
 )
 
 data class RouteStop(
