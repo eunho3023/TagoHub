@@ -4,6 +4,7 @@
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
+import { handleShape } from "./shape.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -30,6 +31,11 @@ const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-
 async function web(request, url, env, ctx) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: WEB_HEADERS });
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
+  if (env.WEB_LIMIT && url.pathname.startsWith("/w/shape/")) {
+    const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+  }
+  if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   if (env.WEB_LIMIT) {
