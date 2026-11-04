@@ -5,6 +5,8 @@ plugins {
     id("com.android.kotlin.multiplatform.library")
 }
 
+val ktor = "3.2.3"
+
 kotlin {
     androidLibrary {
         namespace = "com.eunho.tagohub.shared"
@@ -16,7 +18,18 @@ kotlin {
     wasmJs { browser() }   // 웹
 
     sourceSets {
-        commonMain.dependencies { api("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1") }
-        commonTest.dependencies { implementation(kotlin("test")) }
+        commonMain.dependencies {
+            api("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
+            // 통신 (Ktor): 폰·PC 는 OkHttp, 웹은 브라우저 fetch
+            api("io.ktor:ktor-client-core:$ktor")
+        }
+        androidMain.dependencies { api("io.ktor:ktor-client-okhttp:$ktor") }
+        jvmMain.dependencies { api("io.ktor:ktor-client-okhttp:$ktor") }
+        wasmJsMain.dependencies { implementation("io.ktor:ktor-client-js:$ktor") }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("io.ktor:ktor-client-mock:$ktor")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+        }
     }
 }

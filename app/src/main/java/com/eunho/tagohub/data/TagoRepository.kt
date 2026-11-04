@@ -18,7 +18,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import retrofit2.HttpException
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.time.LocalDate
@@ -43,10 +42,9 @@ class TagoRepository(private val api: TagoApi) {
 
     private fun message(e: Throwable): String = when (e) {
         is TagoApiException -> e.message ?: "API 오류"
-        is HttpException -> {
+        is HttpStatusException -> {
             // 4xx/5xx 바디에 게이트웨이 오류 XML 이 들어있는 경우가 많다
-            val body = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
-            body?.let { runCatching { TagoXml.parse(it) }.exceptionOrNull()?.message } ?: "HTTP ${e.code()} 오류"
+            e.body.takeIf { it.isNotBlank() }?.let { runCatching { TagoXml.parse(it) }.exceptionOrNull()?.message } ?: "HTTP ${e.code} 오류"
         }
         is SocketTimeoutException -> "응답 시간이 초과됐습니다. 잠시 후 다시 시도하세요."
         is IOException -> "네트워크 연결을 확인하세요."

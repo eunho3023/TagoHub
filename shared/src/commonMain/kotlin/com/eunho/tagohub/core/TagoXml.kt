@@ -1,12 +1,5 @@
 package com.eunho.tagohub.core
 
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import org.w3c.dom.Node
-import org.xml.sax.InputSource
-import java.io.StringReader
-import javax.xml.parsers.DocumentBuilderFactory
-
 /**
  * <item> 하나. 키는 대소문자 무시로 조회한다.
  * TAGO 는 서비스마다 필드명 규칙이 다르다:
@@ -70,43 +63,22 @@ object TagoXml {
         }
 
         val doc = try {
-            builder().parse(InputSource(StringReader(text)))
+            MiniXml.parse(text)
         } catch (e: Exception) {
             throw TagoApiException("FORMAT", "응답 XML을 해석하지 못했습니다: ${e.message}")
         }
 
-        val code = doc.firstText("resultCode")
+        val code = doc.first("resultCode")
         // 00 정상, 03 NODATA(=빈 목록으로 취급)
         if (code != null && code != "00" && code != "03") {
-            throw TagoApiException(code, describe(code, doc.firstText("resultMsg")))
+            throw TagoApiException(code, describe(code, doc.first("resultMsg")))
         }
 
-        val nodes = doc.getElementsByTagName("item")
-        val rows = ArrayList<Row>(nodes.length)
-        for (i in 0 until nodes.length) {
-            val el = nodes.item(i) as? Element ?: continue
-            val map = HashMap<String, String>()
-            val children = el.childNodes
-            for (j in 0 until children.length) {
-                val c = children.item(j)
-                if (c.nodeType == Node.ELEMENT_NODE) map[c.nodeName] = c.textContent ?: ""
-            }
-            rows += Row(map)
-        }
+        val rows = doc.all("item").map { el -> Row(el.children.associate { it.name to it.text }) }
         // 등급·코드 목록 API 는 totalCount 자체가 없다 → 받은 개수가 전체
-        val total = doc.firstText("totalCount")?.toIntOrNull() ?: rows.size
+        val total = doc.first("totalCount")?.toIntOrNull() ?: rows.size
         return TagoPage(rows, total)
     }
-
-    private fun Document.firstText(tag: String): String? {
-        val list = getElementsByTagName(tag)
-        return if (list.length > 0) list.item(0).textContent?.trim() else null
-    }
-
-    private fun builder() = DocumentBuilderFactory.newInstance().apply {
-        isNamespaceAware = false
-        runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-    }.newDocumentBuilder()
 
     fun describe(code: String, raw: String?): String {
         val msg = when (code) {
@@ -119,7 +91,7 @@ object TagoXml {
             "12" -> "해당 OpenAPI 서비스가 없거나 폐기됨"
             "20" -> "서비스 접근 거부: 이 API의 활용신청 승인 여부를 확인하세요"
             "22" -> "일일 트래픽 한도 초과"
-            "30" -> com.eunho.tagohub.core.DevMode.msg("등록되지 않은 서비스키: local.properties의 키를 확인하세요")
+            "30" -> DevMode.msg("등록되지 않은 서비스키: local.properties의 키를 확인하세요")
             "31" -> "활용기간이 만료된 서비스키"
             "32" -> "등록되지 않은 IP"
             else -> "API 오류"
