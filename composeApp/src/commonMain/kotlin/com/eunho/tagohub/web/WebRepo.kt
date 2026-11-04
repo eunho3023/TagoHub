@@ -17,6 +17,15 @@ import kotlinx.coroutines.sync.withLock
 /** 정류장 하나 (서버 자료 조각의 한 줄: [id, 이름, 위도, 경도, 번호, 시군, [노선...]]) */
 data class WebStop(val id: String, val name: String, val lat: Double, val lng: Double, val no: String?, val city: String, val routes: List<String>)
 
+/** 노선 요약 (서버 routesum 조각): 정류장을 누르자마자 실시간보다 먼저 보여 줌 */
+data class RouteSum(
+    val id: String, val no: String, val start: String?, val end: String?, val type: String?,
+    val first: String?, val last: String?, val interval: Int?, val intervalSat: Int?, val intervalSun: Int?,
+) {
+    /** 오늘(요일 [isoDay]: 월 1 … 일 7) 배차 간격(분) */
+    fun intervalOn(isoDay: Int): Int? = when (isoDay) { 6 -> intervalSat ?: interval; 7 -> intervalSun ?: intervalSat ?: interval; else -> interval }
+}
+
 /** 실시간 도착을 받은 결과 */
 sealed interface Arrivals {
     data class Ok(val list: List<BusArrival>, val atMs: Long) : Arrivals
@@ -33,21 +42,40 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
     private val base = base.trimEnd('/') + "/"
     private val names = HashMap<String, List<WebStop>>()
     private val tiles = HashMap<String, List<WebStop>>()
+    private val sums = HashMap<String, Map<String, RouteSum>>()
     private var cities: Cities? = null
     private val citiesLock = Mutex()
 
     /** cities.json: 시군 이름, TS… 시군 → TAGO 도시코드 */
     private class Cities(val names: Map<String, String>, val alias: Map<String, String>)
 
-    /** 이름에 [query] 가 든 정류장 (조각은 검색어 첫 글자로 나눠 둠). 이름이 검색어로 시작하는 것 먼저 */
+    /**
+     * 이름에 [query] 가 든 정류장 (조각은 검색어 첫 글자로 나눠 둠, 폐지·미사용 정류장은 서버가 이미 뺌). 이름이 검색어로 시작하는 것 먼저.
+     * 같은 이름이 같은 자리([SAME_SPOT_M] 안)에 여러 시군으로 들어 있으면 하나로 (노선이 가장 많은 것) — 도착 정보는 [sameSpot] 으로 같이 물음.
+     */
     suspend fun search(query: String, limit: Int = 60): List<WebStop> {
         val q = query.trim()
         val path = WebData.namePath(q) ?: return emptyList()
         val rows = names[path] ?: parseStops(http.getText(base + path)).also { names[path] = it }
         val key = q.replace(" ", "")
-        return rows.filter { it.name.replace(" ", "").contains(key) }
+        return mergeSameSpot(rows.filter { it.name.replace(" ", "").contains(key) })
             .sortedWith(compareBy({ !it.name.startsWith(q) }, { it.name.length }, { it.name }))
             .take(limit)
+    }
+
+    /** 노선 요약들 (묶음 파일을 한꺼번에 받고 기억). 없는 노선은 빠짐 */
+    suspend fun routeSums(ids: Collection<String>): Map<String, RouteSum> = coroutineScope {
+        val byPath = ids.groupBy { WebData.routeSumPath(it) }
+        val loaded = byPath.keys.map { path ->
+            async { path to (sums[path] ?: runCatching { parseSums(http.getText(base + path)) }.getOrDefault(emptyMap()).also { sums[path] = it }) }
+        }.awaitAll().toMap()
+        ids.mapNotNull { id -> loaded[WebData.routeSumPath(id)]?.get(id)?.let { id to it } }.toMap()
+    }
+
+    /** 정류장 화면 첫 표시: 이 정류장과 같은 자리 정류장들에 서는 노선 요약 (실시간 없이, 서버 자료만이라 바로 나옴) */
+    suspend fun stopRoutes(stop: WebStop): List<RouteSum> {
+        val ids = (listOf(stop) + sameSpot(stop)).flatMap { it.routes }.distinct()
+        return routeSums(ids).values.distinctBy { TagoIds.current(it.id) }.map { it.copy(id = TagoIds.current(it.id)) }
     }
 
     /** cities.json (한 번만 받음, 동시에 여럿이 물어도 한 번) */
@@ -158,6 +186,31 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         private val OTHER_SOURCES = listOf("SEB", "GGB")
 
         fun tagoStop(stop: WebStop): Boolean = stop.city.isNotEmpty() && OTHER_SOURCES.none { stop.id.startsWith(it) }
+
+        /** 같은 이름·같은 자리 정류장 묶기: 노선이 가장 많은 것(같으면 TAGO 시군 코드인 것) 하나만 */
+        fun mergeSameSpot(stops: List<WebStop>): List<WebStop> {
+            val out = ArrayList<WebStop>()
+            val ordered = stops.sortedWith(compareBy({ -it.routes.size }, { it.city.startsWith("TS") }))
+            for (s in ordered) {
+                if (out.none { it.name == s.name && meters(it.lat, it.lng, s.lat, s.lng) <= SAME_SPOT_M }) out += s
+            }
+            return out
+        }
+
+        /** routesum 조각: {노선 id: [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]} */
+        fun parseSums(json: String): Map<String, RouteSum> {
+            val root = MiniJson.parse(json) as? Map<*, *> ?: return emptyMap()
+            fun Any?.str() = this?.toString()?.takeIf { it.isNotBlank() && it != "null" }
+            return root.entries.mapNotNull { (k, v) ->
+                val a = v as? List<*> ?: return@mapNotNull null
+                val id = k.toString()
+                id to RouteSum(
+                    id, a.getOrNull(0).str() ?: return@mapNotNull null, a.getOrNull(1).str(), a.getOrNull(2).str(), a.getOrNull(3).str(),
+                    a.getOrNull(4).str(), a.getOrNull(5).str(),
+                    a.getOrNull(6).str()?.toDoubleOrNull()?.toInt(), a.getOrNull(7).str()?.toDoubleOrNull()?.toInt(), a.getOrNull(8).str()?.toDoubleOrNull()?.toInt(),
+                )
+            }.toMap()
+        }
 
         /** 조각 JSON 을 정류장 목록으로 */
         fun parseStops(json: String): List<WebStop> {

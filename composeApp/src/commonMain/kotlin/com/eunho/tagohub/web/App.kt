@@ -44,6 +44,8 @@ import com.eunho.tagohub.data.PassedBus
 import kotlinx.coroutines.delay
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.toLocalDateTime
 
 /** 도착 정보를 다시 받는 간격 (폰 앱과 같게 15초) */
 private const val REFRESH_MS = 15_000L
@@ -149,20 +151,52 @@ private fun SearchPane(repo: WebRepo, st: SearchState, onPick: (WebStop) -> Unit
     }
 }
 
-/** 노선 하나: 가장 빠른 버스와 그다음 버스 */
-private data class RouteRow(val routeId: String, val routeNo: String, val routeType: String?, val arrivals: List<BusArrival>)
+/** 노선 하나: 서버의 노선 요약(바로 나옴) + 실시간 도착(가장 빠른 버스와 그다음 버스) */
+internal data class RouteRow(
+    val routeId: String, val routeNo: String, val routeType: String?, val arrivals: List<BusArrival>, val sum: RouteSum? = null,
+)
 
-private fun rows(list: List<BusArrival>): List<RouteRow> =
-    list.groupBy { it.routeId.ifEmpty { it.routeNo } }
-        .map { (id, l) -> RouteRow(id, l.first().routeNo, l.first().routeType, l.sortedBy { it.arrSeconds ?: Int.MAX_VALUE }) }
-        .sortedBy { it.arrivals.firstOrNull()?.arrSeconds ?: Int.MAX_VALUE }
+/**
+ * 노선 요약과 실시간 도착을 합친 줄. 실시간이 있는 노선 먼저(빨리 오는 순), 없는 노선은 번호순.
+ * 실시간에만 있는 노선(서버 자료에 아직 없는 새 노선)도 넣음.
+ */
+internal fun mergeRows(sums: List<RouteSum>, arrivals: List<BusArrival>): List<RouteRow> {
+    val byId = arrivals.groupBy { it.routeId.ifEmpty { it.routeNo } }
+    val fromSums = sums.map { s ->
+        val a = (byId[s.id] ?: arrivals.filter { it.routeId.isEmpty() && it.routeNo == s.no }).sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
+        RouteRow(s.id, s.no, s.type, a, s)
+    }
+    val known = sums.map { it.id }.toSet()
+    val extra = byId.filterKeys { it !in known && fromSums.none { r -> r.arrivals.any { a -> a.routeId == it } } }
+        .map { (id, l) -> RouteRow(id, l.first().routeNo, l.first().routeType, l.sortedBy { it.arrSeconds ?: Int.MAX_VALUE }, null) }
+    return (fromSums + extra).sortedWith(
+        compareBy<RouteRow>({ it.arrivals.isEmpty() }, { it.arrivals.firstOrNull()?.arrSeconds ?: Int.MAX_VALUE })
+            .thenComparator { x, y -> naturalCompare(x.routeNo, y.routeNo) },
+    )
+}
+
+/** "10" < "100", "2" < "10" 처럼 숫자는 크기로 */
+internal fun naturalCompare(a: String, b: String): Int {
+    val na = a.takeWhile { it.isDigit() }.toIntOrNull()
+    val nb = b.takeWhile { it.isDigit() }.toIntOrNull()
+    if (na != null && nb != null && na != nb) return na.compareTo(nb)
+    if (na != null && nb == null) return -1
+    if (na == null && nb != null) return 1
+    return a.compareTo(b)
+}
+
+@OptIn(ExperimentalTime::class)
+private fun todayIso(): Int = Clock.System.now().toLocalDateTime(com.eunho.tagohub.data.ArrivalStats.SEOUL).dayOfWeek.isoDayNumber
 
 @Composable
 private fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit) {
     var state by remember(stop.id) { mutableStateOf<Arrivals?>(null) }
+    var sums by remember(stop.id) { mutableStateOf<List<RouteSum>?>(null) }
     var now by remember { mutableLongStateOf(nowMs()) }
     var city by remember(stop.city) { mutableStateOf<String?>(null) }
     LaunchedEffect(stop.city) { city = repo.cityName(stop.city) }
+    // 서버에 저장한 노선·시간표를 먼저 (작은 파일이라 바로 나옴), 실시간은 그 위에 채움
+    LaunchedEffect(stop.id) { sums = runCatching { repo.stopRoutes(stop) }.getOrDefault(emptyList()) }
     LaunchedEffect(stop.id) {
         while (true) {
             state = repo.arrivals(stop, nowMs())
@@ -177,20 +211,25 @@ private fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit) {
     }
     Header(stop.name, listOfNotNull(city, stop.no?.let { "정류장 번호 $it" }).joinToString("  ·  ").ifEmpty { null }, onBack)
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
-    when (val s = state) {
-        null -> Note("도착 정보를 받는 중...")
-        Arrivals.Unsupported -> Note("이 지역(서울·경기)의 실시간 도착은 웹·PC 버전에서 아직 볼 수 없어요. 폰 앱에서 볼 수 있어요.")
-        is Arrivals.Failed -> Note("도착 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요.")
-        is Arrivals.Ok -> {
-            val elapsed = ((now - s.atMs) / 1000).toInt().coerceAtLeast(0)
-            val shown = rows(s.list.filterNot { PassedBus.passed(it, elapsed) })
-            if (shown.isEmpty()) Note("지금 도착 예정인 버스가 없어요")
-            LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-                items(shown, key = { it.routeId }) { row ->
-                    RouteItem(row, elapsed, variant)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
-            }
+    val s = state
+    val live = (s as? Arrivals.Ok)
+    val elapsed = live?.let { ((now - it.atMs) / 1000).toInt().coerceAtLeast(0) } ?: 0
+    val arrivals = live?.list?.filterNot { PassedBus.passed(it, elapsed) }.orEmpty()
+    val rows = mergeRows(sums.orEmpty(), arrivals)
+    val day = remember { todayIso() }
+    // 실시간 상태 한 줄 (노선 목록은 그대로 보임)
+    when {
+        sums == null && s == null -> Note("불러오는 중...")
+        s == null -> Note("실시간 도착을 받는 중...")
+        s == Arrivals.Unsupported -> Note("이 지역(서울·경기)의 실시간 도착은 웹·PC 버전에서 아직 볼 수 없어요. 폰 앱에서 볼 수 있어요.")
+        s is Arrivals.Failed -> Note("실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+        rows.isEmpty() -> Note("이 정류장에 서는 버스 정보가 없어요")
+        arrivals.isEmpty() -> Note("지금 도착 예정인 버스가 없어요")
+    }
+    LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+        items(rows, key = { it.routeId }) { row ->
+            RouteItem(row, elapsed, variant, day, liveKnown = live != null)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
@@ -200,9 +239,12 @@ private fun Note(text: String) {
     Text(text, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
 }
 
-/** 앱 정류장 화면의 한 줄과 같은 모양: 왼쪽 노선 색 칩에 번호, 오른쪽 남은 시간 크게 + 정류장 수, 다음 버스 작게 */
+/**
+ * 앱 정류장 화면의 한 줄과 같은 모양: 왼쪽 노선 색 칩에 번호 + 기점 → 종점, 오른쪽 남은 시간 크게 + 정류장 수, 다음 버스 작게.
+ * 실시간이 없으면 서버에 저장한 시간표(첫차·막차·배차)를 보여 줌.
+ */
 @Composable
-private fun RouteItem(row: RouteRow, elapsed: Int, variant: Color) {
+private fun RouteItem(row: RouteRow, elapsed: Int, variant: Color, isoDay: Int, liveKnown: Boolean) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
@@ -210,14 +252,25 @@ private fun RouteItem(row: RouteRow, elapsed: Int, variant: Color) {
                 Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
                 color = Color.White, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            row.routeType?.let {
+            val ends = listOfNotNull(row.sum?.start, row.sum?.end).joinToString(" → ")
+            val sub = ends.ifEmpty { row.routeType.orEmpty() }
+            if (sub.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = variant)
+                Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val first = row.arrivals.firstOrNull() ?: return@Column
+            val first = row.arrivals.firstOrNull()
+            if (first == null) {
+                Text(if (liveKnown) "도착 정보 없음" else "", style = MaterialTheme.typography.bodyLarge, color = variant, textAlign = TextAlign.End)
+                val t = row.sum
+                val plan = listOfNotNull(
+                    t?.first?.let { "첫차 $it" }, t?.last?.let { "막차 $it" }, t?.intervalOn(isoDay)?.takeIf { it > 0 }?.let { "배차 ${it}분" },
+                ).joinToString(" · ")
+                if (plan.isNotEmpty()) Text(plan, style = MaterialTheme.typography.bodySmall, color = variant, textAlign = TextAlign.End)
+                return@Column
+            }
             val parts = ArrivalText.line(first, elapsed).split(" · ")
             val soon = (first.arrSeconds ?: 0) - elapsed <= 180
             Text(

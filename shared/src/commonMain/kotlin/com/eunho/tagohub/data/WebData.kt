@@ -34,6 +34,8 @@ object WebData {
 
     fun tilePath(tile: String) = "data/tiles/$tile.json"
     fun routePath(routeId: String) = "data/routes/${bucket(routeId)}.json"
+    /** 노선 요약 (번호·기점·종점·종류·첫차·막차·배차): 정류장 화면 첫 표시용 작은 파일 */
+    fun routeSumPath(routeId: String) = "data/routesum/${bucket(routeId)}.json"
     fun namePath(query: String) = nameShard(query)?.let { "data/names/$it.json" }
     const val CITIES_PATH = "data/cities.json"
     const val ROUTES_BY_NO_PATH = "data/routes_by_no.json"
