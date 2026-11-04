@@ -105,11 +105,15 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
     }
     val buses = (pos as? Positions.Ok)?.buses.orEmpty()
     val at = busAtStops(r.stops, buses)
+    // 목록에서 점을 눌러 지도에 보여 주는 정류장
+    var focusSeq by remember(routeId) { mutableStateOf<Int?>(null) }
     val dots = buildList {
         r.stops.forEach { s ->
             if (s.lat != null && s.lng != null && map.zoom >= 14) {
                 val here = s.id != null && fromStopId != null && TagoIds.legacy(s.id) == TagoIds.legacy(fromStopId)
-                add(MapDot("s:${s.seq}", s.lat, s.lng, if (here) SoonColor else Color.White, if (here) 7f else 4f, ring = color))
+                val focused = focusSeq == s.seq
+                add(MapDot("s:${s.seq}", s.lat, s.lng, if (here || focused) SoonColor else Color.White, if (here || focused) 7f else 4f, ring = color,
+                    label = s.name.takeIf { focused }))
             }
         }
         buses.forEach { b ->
@@ -159,8 +163,16 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
                 }.padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 노선 줄 + 정류장 점 (버스가 있으면 노선 색으로 채움)
-                Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+                // 노선 줄 + 정류장 점 (버스가 있으면 노선 색으로 채움). 점을 누르면 위 지도에서 그 정류장 자리로
+                Box(
+                    Modifier.width(28.dp).height(28.dp).clickable(enabled = s.lat != null && s.lng != null) {
+                        val la = s.lat ?: return@clickable
+                        val lo = s.lng ?: return@clickable
+                        focusSeq = s.seq
+                        map.moveTo(la, lo, 17)
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Box(
                         Modifier.size(if (busHere.isNotEmpty()) 16.dp else 10.dp)
                             .background(if (busHere.isNotEmpty()) color else Color.White, CircleShape)
@@ -191,9 +203,11 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
  * 지도 화면: 끌어서 옮기고 확대하면([STOPS_ZOOM] 이상) 보이는 곳의 정류장이 나옴. 정류장을 누르면 아래 카드 → 도착 정보.
  */
 @Composable
-internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, onBack: () -> Unit, onStop: (WebStop) -> Unit) {
+internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, focus: WebStop?, onBack: () -> Unit, onStop: (WebStop) -> Unit) {
     var stops by remember { mutableStateOf<List<WebStop>>(emptyList()) }
-    var picked by remember { mutableStateOf<WebStop?>(null) }
+    var picked by remember { mutableStateOf(focus) }
+    // 정류장 모양을 눌러 왔으면 그 정류장 자리로
+    LaunchedEffect(focus) { focus?.let { map.moveTo(it.lat, it.lng, 17); picked = it } }
     var city by remember { mutableStateOf<String?>(null) }
     // 지도를 옮기거나 확대하면 잠깐 기다렸다가 보이는 곳의 정류장을 받음
     val key = Triple((map.lat * 2000).toInt(), (map.lng * 2000).toInt(), map.zoom)
@@ -210,8 +224,9 @@ internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, onBack: ()
         val primary = MaterialTheme.colorScheme.primary
         MapHost(
             map, tiles, Modifier.fillMaxWidth().weight(1f),
-            dots = stops.map { s -> MapDot(s.id, s.lat, s.lng, if (picked?.id == s.id) SoonColor else primary, if (picked?.id == s.id) 8f else 5f) },
-            onDot = { d -> picked = stops.firstOrNull { it.id == d.id } },
+            dots = (stops.filterNot { s -> picked?.let { WebRepo.same(it, s) } == true } + listOfNotNull(picked))
+                .map { s -> MapDot(s.id, s.lat, s.lng, if (picked?.id == s.id) SoonColor else primary, if (picked?.id == s.id) 8f else 5f) },
+            onDot = { d -> picked = stops.firstOrNull { it.id == d.id } ?: picked?.takeIf { it.id == d.id } },
             onTap = { picked = null },
         )
         val p = picked

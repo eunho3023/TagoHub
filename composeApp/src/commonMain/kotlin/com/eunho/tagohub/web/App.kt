@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,7 +61,8 @@ internal fun nowMs(): Long = Clock.System.now().toEpochMilliseconds()
 /** 화면 (뒤로 가기 쌓기) */
 internal sealed interface Screen {
     data object Search : Screen
-    data object Map : Screen
+    /** 지도 ([focus] 가 있으면 그 정류장 자리를 열고 골라 둠) */
+    data class Map(val focus: WebStop? = null) : Screen
     data class Stop(val stop: WebStop) : Screen
     data class Route(val routeId: String, val fromStopId: String?) : Screen
 }
@@ -79,14 +81,25 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val map = remember { MapState(36.3504, 127.3845, 16) }
                     val tiles = remember { TileLoader(http ?: io.ktor.client.HttpClient()) }
                     when (val top = stack.last()) {
-                        Screen.Search -> SearchPane(repo, search, onMap = { go(Screen.Map) }) { go(Screen.Stop(it)) }
-                        Screen.Map -> MapPane(repo, map, tiles, onBack = ::back) { go(Screen.Stop(it)) }
-                        is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back) { go(Screen.Route(it, top.stop.id)) }
+                        Screen.Search -> SearchPane(repo, search, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }) { go(Screen.Stop(it)) }
+                        is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
+                        is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
                         is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }
                     }
                 }
             }
         }
+    }
+}
+
+/** 정류장 모양 (지도의 정류장 점과 같은 동그라미). 누르면 지도에서 위치를 여는 곳에 씀 */
+@Composable
+internal fun StopMark(modifier: Modifier = Modifier) {
+    Box(modifier) {
+        Box(
+            Modifier.size(22.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                .padding(5.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape),
+        )
     }
 }
 
@@ -127,7 +140,7 @@ private class SearchState {
 }
 
 @Composable
-private fun SearchPane(repo: WebRepo, st: SearchState, onMap: () -> Unit, onPick: (WebStop) -> Unit) {
+private fun SearchPane(repo: WebRepo, st: SearchState, onMap: () -> Unit, onLocate: (WebStop) -> Unit, onPick: (WebStop) -> Unit) {
     var query by st::query
     var result by st::result
     var message by st::message
@@ -159,14 +172,18 @@ private fun SearchPane(repo: WebRepo, st: SearchState, onMap: () -> Unit, onPick
     if (result.isNotEmpty()) {
         LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp).background(MaterialTheme.colorScheme.surface)) {
             items(result, key = { it.id }) { s ->
-                Column(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text(s.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    var city by remember(s.city) { mutableStateOf<String?>(null) }
-                    LaunchedEffect(s.city) { city = repo.cityName(s.city) }
-                    Text(
-                        listOfNotNull(city, s.no?.let { "정류장 번호 $it" }).joinToString("  ·  "),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Row(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(start = 6.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // 정류장 모양: 누르면 지도에서 위치
+                    StopMark(Modifier.clickable { onLocate(s) }.padding(10.dp))
+                    Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                        Text(s.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        var city by remember(s.city) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(s.city) { city = repo.cityName(s.city) }
+                        Text(
+                            listOfNotNull(city, s.no?.let { "정류장 번호 $it" }).joinToString("  ·  "),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
@@ -212,7 +229,7 @@ internal fun naturalCompare(a: String, b: String): Int {
 internal fun todayIso(): Int = Clock.System.now().toLocalDateTime(com.eunho.tagohub.data.ArrivalStats.SEOUL).dayOfWeek.isoDayNumber
 
 @Composable
-internal fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit, onRoute: (String) -> Unit) {
+internal fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit, onLocate: () -> Unit, onRoute: (String) -> Unit) {
     var state by remember(stop.id) { mutableStateOf<Arrivals?>(null) }
     var sums by remember(stop.id) { mutableStateOf<List<RouteSum>?>(null) }
     var now by remember { mutableLongStateOf(nowMs()) }
@@ -232,7 +249,7 @@ internal fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit, onRoute:
             now = nowMs()
         }
     }
-    Header(stop.name, listOfNotNull(city, stop.no?.let { "정류장 번호 $it" }).joinToString("  ·  ").ifEmpty { null }, onBack)
+    Header(stop.name, listOfNotNull(city, stop.no?.let { "정류장 번호 $it" }).joinToString("  ·  ").ifEmpty { null }, onBack, action = "위치", onAction = onLocate)
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     val s = state
     val live = (s as? Arrivals.Ok)
