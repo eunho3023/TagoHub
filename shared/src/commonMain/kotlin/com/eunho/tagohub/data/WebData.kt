@@ -36,5 +36,6 @@ object WebData {
     fun routePath(routeId: String) = "data/routes/${bucket(routeId)}.json"
     fun namePath(query: String) = nameShard(query)?.let { "data/names/$it.json" }
     const val CITIES_PATH = "data/cities.json"
+    const val ROUTES_BY_NO_PATH = "data/routes_by_no.json"
     fun filePath(name: String) = "data/files/$name"
 }

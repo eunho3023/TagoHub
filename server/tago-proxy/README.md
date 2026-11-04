@@ -96,7 +96,7 @@ npm test
 
 ## 웹 버전 (화면 + 토큰 없는 실시간 통로)
 
-`deploy.ps1` 이 `composeApp`(Compose Multiplatform) 웹 빌드를 `public/` 에 넣고 한글 글꼴(Noto Sans KR, OFL)을 받아 같이 올린다.
+`deploy.ps1` 이 `composeApp`(Compose Multiplatform) 웹 빌드를 `public/` 에 넣고, 한글 글꼴(Noto Sans KR, OFL)에서 필요한 글자만 남긴 작은 파일(`pipeline/build_web_font.py`, 약 2MB)을 같이 올린다.
 서버 주소(`https://….workers.dev/`)를 브라우저로 열면 웹 버전이 보인다.
 
 - 웹 페이지에는 앱 토큰을 넣을 수 없으므로, 실시간은 `/w/dg/1613000/...` 로 토큰 없이 받는다.

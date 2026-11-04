@@ -46,7 +46,7 @@ class WebRepoTest {
         assertEquals(listOf("104", "165"), a.list.map { it.routeNo })
         assertEquals(
             "https://p.example.workers.dev/w/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?cityCode=35010&nodeId=JJB306000104",
-            seen.single(),
+            seen.single { "/w/" in it },
         )
     }
 
@@ -57,11 +57,20 @@ class WebRepoTest {
         assertEquals(listOf("35011", "35010", "35020"), r.cityCandidates(stop))
     }
 
+    @Test fun sameSpotStopsAreAskedFirst() = runTest {
+        val stop = WebStop("TSB306000038", "전주역", 35.8487, 127.1606, "3060038", "TS306", emptyList())
+        // 10m 옆 전주시 정류장(같은 곳), 200m 떨어진 정류장(다른 곳)
+        val tile = """[["JJB306000038","전주역","35.84879","127.1606","1","35010",[]],["JJB9","먼 정류장","35.8505","127.1606","2","35010",[]]]"""
+        val r = repo(mapOf("data/cities.json" to """{"names":{},"alias":{"TS306":"35010"}}""", "data/tiles/" to tile))
+        assertEquals(listOf("JJB306000038"), r.sameSpot(stop).map { it.id })
+        assertEquals(listOf("35010" to "JJB306000038", "35010" to "TSB306000038"), r.targets(stop))
+    }
+
     @Test fun otherSourcesAreUnsupportedAndErrorsReported() = runTest {
         val stops = WebRepo.parseStops(names)
         val r = repo(emptyMap())
         assertEquals(Arrivals.Unsupported, r.arrivals(stops[2], 0L))
-        assertTrue(seen.isEmpty())
+        assertTrue(seen.none { "/w/" in it })   // 실시간은 묻지 않음 (같은 자리 정류장 찾기로 칸 자료만 받음)
         assertTrue(r.arrivals(stops[1], 0L) is Arrivals.Failed)
     }
 }

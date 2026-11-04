@@ -5,7 +5,8 @@
   names/{첫 글자 코드}.json      : 이름의 낱말(점·공백으로 나눔)이 그 글자로 시작하는 정류장 (검색용, 칸 파일과 같은 모양)
   routes/{0~1023}.json          : 노선 묶음 {노선 id: {no, start, end, city, region, rtype, realtime, info, stops}}
                                   묶음 번호 = FNV-1a 32비트(노선 id, UTF-8) % 1024 (앱 공용 코드 WebData.bucket 과 같게)
-  cities.json                   : names {시군 코드: 이름}, alias {TS… 시군: TAGO 도시코드}, routesByNo {시군 코드: {노선 번호: [노선 id...]}}
+  cities.json                   : names {시군 코드: 이름}, alias {TS… 시군: TAGO 도시코드}
+  routes_by_no.json             : {시군 코드: {노선 번호: [노선 id...]}}
   files/*                       : 앱 assets 의 다른 자료 파일 (열차 시간표, 지하철역 등) 그대로
   manifest.json                 : 만든 때, DB 버전, 파일 수
 
@@ -101,7 +102,9 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
     cities = {c: n for c, n in db.execute("SELECT code, name FROM cities")}
     # 교통안전공단 정류장(TS… 시군) → TAGO 도시코드 대응표 (앱 StopDb.tagoCity 와 같음)
     alias = {c: t for c, t in db.execute("SELECT code, tago FROM city_alias")} if "city_alias" in tables else {}
-    dump(out / "cities.json", {"names": cities, "alias": alias, "routesByNo": by_no})
+    # 첫 화면이 바로 받는 작은 파일(이름·대응표)과 노선 번호 찾기용 큰 파일을 나눔
+    dump(out / "cities.json", {"names": cities, "alias": alias})
+    dump(out / "routes_by_no.json", by_no)
 
     copied = 0
     if assets.exists():
