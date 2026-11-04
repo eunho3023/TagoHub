@@ -2,13 +2,14 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response("ok");
+    if (url.pathname.startsWith("/w/")) return web(request, url, env, ctx);
     if (!env.APP_TOKEN || request.headers.get("X-TagoHub-Token") !== env.APP_TOKEN) {
       return new Response("forbidden", { status: 403 });
     }
@@ -19,32 +20,57 @@ export default {
     if (!path) return new Response("not allowed", { status: 404 });
     if (!env.DATA_GO_KR_KEY) return new Response("server key missing", { status: 500 });
 
-    const cache = caches.default;
-    const key = new Request(cacheKey(path, url.search));
-    const hit = await cache.match(key);
-    if (hit) {
-      const r = new Response(hit.body, hit);
-      r.headers.set("X-Cache", "HIT");
-      return r;
-    }
-
-    const upstream = await fetch(upstreamUrl(path, url.search, env.DATA_GO_KR_KEY), {
-      headers: { Accept: request.headers.get("Accept") || "application/xml, text/xml;q=0.9, */*;q=0.8" },
-    });
-    const body = await upstream.text();
-    const headers = {
-      "Content-Type": upstream.headers.get("Content-Type") || "application/xml; charset=utf-8",
-      "X-Cache": "MISS",
-    };
-    if (cacheable(upstream.status, body)) {
-      const ttl = ttlFor(path);
-      const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": `public, max-age=${ttl}` } });
-      ctx.waitUntil(cache.put(key, stored.clone()));
-      return stored;
-    }
-    return new Response(body, { status: upstream.status, headers });
+    return dataGo(path, url.search, request.headers.get("Accept"), env, ctx, {});
   },
 };
+
+const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET" };
+
+/** 웹 버전: 토큰 없이 실시간 버스 도착·위치만 (proxy.js webRequest), 주소(IP)마다 분당 요청 수 제한 */
+async function web(request, url, env, ctx) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: WEB_HEADERS });
+  if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
+  const r = webRequest(url.pathname, url.search);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  if (env.WEB_LIMIT) {
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const { success } = await env.WEB_LIMIT.limit({ key: ip });
+    if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+  }
+  if (!env.DATA_GO_KR_KEY) return new Response("server key missing", { status: 500, headers: WEB_HEADERS });
+  return dataGo(r.path, r.search, "application/xml", env, ctx, WEB_HEADERS);
+}
+
+/** 공공데이터포털에 서버 키로 묻고, 정상 응답은 잠시 저장해 같은 요청에 나눠 줌. [extra] 는 응답에 덧붙일 헤더 */
+async function dataGo(path, search, accept, env, ctx, extra) {
+  const cache = caches.default;
+  const key = new Request(cacheKey(path, search));
+  const hit = await cache.match(key);
+  if (hit) {
+    const r = new Response(hit.body, hit);
+    r.headers.set("X-Cache", "HIT");
+    for (const [k, v] of Object.entries(extra)) r.headers.set(k, v);
+    return r;
+  }
+
+  const upstream = await fetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
+    headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
+  });
+  const body = await upstream.text();
+  const headers = {
+    "Content-Type": upstream.headers.get("Content-Type") || "application/xml; charset=utf-8",
+    "X-Cache": "MISS",
+  };
+  if (cacheable(upstream.status, body)) {
+    const ttl = ttlFor(path);
+    const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": `public, max-age=${ttl}` } });
+    ctx.waitUntil(cache.put(key, stored.clone()));
+    const out = new Response(stored.body, stored);
+    for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);
+    return out;
+  }
+  return new Response(body, { status: upstream.status, headers: { ...headers, ...extra } });
+}
 
 /** 여러 기관 중계: 자리표시를 키로 바꿔 원래 호스트에 묻고, 정상 응답은 잠시 저장 */
 async function relay(request, url, env, ctx) {
