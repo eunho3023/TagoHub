@@ -14,6 +14,14 @@ data class TrainStation(val id: String, val name: String, val region: String)
 /** 화면에 보일 열차 한 편: 시간표(바로) + 국토교통부 조회(종류·요금, 나중에 채움) */
 data class TrainTrip(val no: String, val kind: String?, val depMin: Int, val arrMin: Int, val fare: Int?)
 
+/** 고속(NAEK…)·시외(NAI…) 버스 터미널 */
+data class CoachTerminal(val id: String, val name: String, val region: String) {
+    val express: Boolean get() = id.startsWith("NAEK")
+}
+
+/** 고속·시외버스 한 편 (하루 중 분, 등급, 요금) */
+data class CoachTrip(val depMin: Int, val arrMin: Int?, val grade: String, val fare: Int?)
+
 /** 지하철역 (국토교통부 역 찾기) */
 data class SubwayStationW(val id: String, val name: String, val line: String)
 
@@ -31,6 +39,7 @@ class TransitRepo(base: String, private val http: HttpClient) {
     private var trains: List<TrainTable.Train>? = null
     private var stations: List<TrainStation>? = null
     private val schedules = HashMap<String, List<SubwayDep>>()
+    private var terminals: List<CoachTerminal>? = null
 
     /** 열차 시간표 전체 (약 230KB, 한 번만) */
     suspend fun trains(): List<TrainTable.Train> = lock.withLock {
@@ -67,6 +76,33 @@ class TransitRepo(base: String, private val http: HttpClient) {
             no to (r.str("traingradename") to r.int("adultcharge")?.takeIf { it > 0 })
         }.toMap()
     }.getOrDefault(emptyMap())
+
+    /** 고속·시외버스 터미널 (서버 data/files/coach_terminals.tsv, 한 번만) */
+    suspend fun coachTerminals(): List<CoachTerminal> = terminals ?: http.getText(base + WebData.filePath("coach_terminals.tsv"))
+        .lineSequence().mapNotNull { line ->
+            val f = line.split('\t')
+            if (f.size < 3 || !f[0].startsWith("NA")) null else CoachTerminal(f[0], f[1].trim(), f[2].trim())
+        }.distinctBy { it.id }.toList().also { terminals = it }
+
+    /** 시외버스 터미널 찾기 (서버 파일에 없는 작은 터미널까지, 국토교통부) */
+    suspend fun searchSuburbTerminals(q: String): List<CoachTerminal> = runCatching {
+        val xml = http.getText(base + "w/dg/1613000/SuburbsBusInfo/GetSuberbsBusTrminlList", query = listOf("terminalNm" to q.trim()))
+        TagoXml.parse(xml).rows.mapNotNull { r ->
+            val id = r.str("terminalId") ?: return@mapNotNull null
+            CoachTerminal(id, r.text("terminalNm"), r.text("cityName"))
+        }
+    }.getOrDefault(emptyList())
+
+    /** [dep] → [arr] 그날([ymd] "20261105") 고속(둘 다 NAEK) 또는 시외(둘 다 NAI) 버스, 출발 시각순 */
+    suspend fun coachTrips(dep: CoachTerminal, arr: CoachTerminal, ymd: String): List<CoachTrip> {
+        val path = when {
+            dep.express && arr.express -> "w/dg/1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo"
+            !dep.express && !arr.express -> "w/dg/1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo"
+            else -> return emptyList()
+        }
+        val xml = http.getText(base + path, query = listOf("depTerminalId" to dep.id, "arrTerminalId" to arr.id, "depPlandTime" to ymd))
+        return parseCoach(TagoXml.parse(xml).rows.map { r -> listOf(r.str("depPlandTime"), r.str("arrPlandTime"), r.str("gradeNm"), r.str("charge")) })
+    }
 
     /** 지하철역 찾기 (이름) */
     suspend fun subwayStations(q: String): List<SubwayStationW> {
@@ -107,6 +143,22 @@ class TransitRepo(base: String, private val http: HttpClient) {
             val min = d ?: a ?: return@mapNotNull null
             SubwayDep(min, end, d == null)
         }.distinctBy { it.min to it.end }.sortedBy { it.min }
+
+        /** "202611051430" → 하루 중 분 (날짜가 다음 날이면 1440 더함은 하지 않음: 출발은 같은 날) */
+        fun planMinute(s: String?): Int? {
+            val d = s?.filter(Char::isDigit)?.takeIf { it.length >= 12 } ?: return null
+            val h = d.substring(8, 10).toIntOrNull() ?: return null
+            val m = d.substring(10, 12).toIntOrNull() ?: return null
+            return h * 60 + m
+        }
+
+        /** 고속·시외버스 행 [출발, 도착, 등급, 요금] → 편 (출발 시각순, 같은 시각·등급은 한 번) */
+        fun parseCoach(rows: List<List<String?>>): List<CoachTrip> = rows.mapNotNull { r ->
+            val dep = planMinute(r.getOrNull(0)) ?: return@mapNotNull null
+            var arr = planMinute(r.getOrNull(1))
+            if (arr != null && arr < dep) arr += 1440
+            CoachTrip(dep, arr, r.getOrNull(2)?.trim().orEmpty().ifEmpty { "일반" }, r.getOrNull(3)?.toIntOrNull()?.takeIf { it > 0 })
+        }.distinctBy { it.depMin to it.grade }.sortedBy { it.depMin }
 
         /** 오늘 요일 → 지하철 시간표 요일 코드 (01 평일, 02 토, 03 일) */
         fun dayCode(isoDay: Int): String = when (isoDay) { 6 -> "02"; 7 -> "03"; else -> "01" }

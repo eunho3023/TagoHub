@@ -44,7 +44,7 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 /** 버스·지하철·기차 고르기 (찾기 화면 위) */
-internal enum class Mode(val label: String) { Bus("버스"), Subway("지하철"), Train("기차") }
+internal enum class Mode(val label: String) { Bus("버스"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공") }
 
 @Composable
 internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {
@@ -63,7 +63,14 @@ internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {
 }
 
 @OptIn(ExperimentalTime::class)
-private fun seoulNow() = Clock.System.now().toLocalDateTime(com.eunho.tagohub.data.ArrivalStats.SEOUL)
+internal fun seoulNow() = Clock.System.now().toLocalDateTime(com.eunho.tagohub.data.ArrivalStats.SEOUL)
+
+/** 오늘 날짜 (한국 시각) */
+internal fun seoulDate() = seoulNow().date
+
+/** 출발·도착 칸 (기차역·터미널) */
+@Composable
+internal fun PlaceBox(label: String, name: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) = StationBox(label, name, active, modifier, onClick)
 
 /** 지금 하루 중 분 (한국 시각) */
 internal fun nowMinute(): Int = seoulNow().let { it.hour * 60 + it.minute }
@@ -71,7 +78,7 @@ internal fun nowMinute(): Int = seoulNow().let { it.hour * 60 + it.minute }
 /** "2시간 5분" / "48분" */
 internal fun duration(min: Int): String = if (min >= 60) "${min / 60}시간" + (if (min % 60 > 0) " ${min % 60}분" else "") else "${min}분"
 
-private fun won(v: Int): String {
+internal fun won(v: Int): String {
     val s = v.toString()
     return s.reversed().chunked(3).joinToString(",").reversed() + "원"
 }
@@ -190,7 +197,7 @@ internal fun TrainPane(repo: TransitRepo, st: TrainState, modeChips: @Composable
 }
 
 @Composable
-private fun StationBox(label: String, name: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun StationBox(label: String, name: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier.background(if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
