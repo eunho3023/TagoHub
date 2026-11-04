@@ -1,6 +1,7 @@
 package com.eunho.tagohub
 
 import com.eunho.tagohub.data.ArrivalLog
+import com.eunho.tagohub.data.ArrivalStats
 import com.eunho.tagohub.data.ArrivedHold
 import com.eunho.tagohub.data.BusArrival
 import com.eunho.tagohub.data.BusCompany
@@ -99,11 +100,11 @@ class BusLiveAndDriveLogTest {
 
     @Test
     fun hitsSpreadTheArrivalTimesOverTheStopsPassed() {
-        val hits = ArrivalLog.hits(mapOf("1916" to 1), 0L, listOf(bus(3)), 60_000L, stops)
+        val hits = ArrivalStats.hits(mapOf("1916" to 1), 0L, listOf(bus(3)), 60_000L, stops)
         assertEquals(listOf("N2" to 30L, "N3" to 60L), hits.map { it.nodeId to it.epochSec })
         // 너무 오래 못 받았거나 뒤로 간 경우는 기록하지 않음
-        assertTrue(ArrivalLog.hits(mapOf("1916" to 1), 0L, listOf(bus(3)), 10 * 60_000L, stops).isEmpty())
-        assertTrue(ArrivalLog.hits(mapOf("1916" to 3), 0L, listOf(bus(2)), 60_000L, stops).isEmpty())
+        assertTrue(ArrivalStats.hits(mapOf("1916" to 1), 0L, listOf(bus(3)), 10 * 60_000L, stops).isEmpty())
+        assertTrue(ArrivalStats.hits(mapOf("1916" to 3), 0L, listOf(bus(2)), 60_000L, stops).isEmpty())
     }
 
     @Test
@@ -112,10 +113,10 @@ class BusLiveAndDriveLogTest {
         fun at(day: Int, h: Int, m: Int) = ZonedDateTime.of(2026, 10, day, h, m, 0, 0, zone).toEpochSecond()
         // 10월 19·26일 = 월요일, 20일 = 화요일
         val hits = listOf(
-            ArrivalLog.Hit("S", at(19, 6, 9)), ArrivalLog.Hit("S", at(26, 6, 7)), ArrivalLog.Hit("S", at(12, 6, 10)),
-            ArrivalLog.Hit("S", at(19, 6, 21)), ArrivalLog.Hit("S", at(26, 6, 22)),
-            ArrivalLog.Hit("S", at(20, 6, 30)),                 // 화요일
-            ArrivalLog.Hit("X", at(19, 6, 9)),                  // 다른 정류장
+            ArrivalStats.Hit("S", at(19, 6, 9)), ArrivalStats.Hit("S", at(26, 6, 7)), ArrivalStats.Hit("S", at(12, 6, 10)),
+            ArrivalStats.Hit("S", at(19, 6, 21)), ArrivalStats.Hit("S", at(26, 6, 22)),
+            ArrivalStats.Hit("S", at(20, 6, 30)),                 // 화요일
+            ArrivalStats.Hit("X", at(19, 6, 9)),                  // 다른 정류장
         )
         val t = ArrivalLog.table(hits, "S", DayOfWeek.MONDAY, zone)
         assertEquals(3, t.days)

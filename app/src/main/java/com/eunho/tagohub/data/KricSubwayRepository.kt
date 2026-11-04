@@ -20,23 +20,6 @@ import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-data class KricSubwayCodes(
-    val operatorCode: String,
-    val lineCode: String,
-    val stationCode: String,
-) {
-    companion object {
-        fun candidates(stationId: String): List<KricSubwayCodes> {
-            if (!stationId.startsWith("MTR") || stationId.length <= 6) return emptyList()
-            val operatorCode = stationId.substring(3, 5)
-            val remaining = stationId.substring(5)
-            return (1 until remaining.length).map { split ->
-                KricSubwayCodes(operatorCode, remaining.substring(0, split), remaining.substring(split))
-            }
-        }
-    }
-}
-
 data class KricStationCode(
     val operatorCode: String,
     val operatorName: String,

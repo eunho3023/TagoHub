@@ -28,7 +28,7 @@ object SharedArrivalLog {
     /** 같은 정류장에서 이만큼(초) 안의 기록은 같은 버스로 봄 (여러 폰이 같은 버스를 올린 경우) */
     const val SAME_BUS_SEC = 120L
 
-    private val pending = ConcurrentHashMap<String, MutableList<ArrivalLog.Hit>>()
+    private val pending = ConcurrentHashMap<String, MutableList<ArrivalStats.Hit>>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var flushing = false
 
@@ -37,7 +37,7 @@ object SharedArrivalLog {
     }
 
     /** [ArrivalLog] 가 새 기록을 남길 때 부름 */
-    fun enqueue(routeId: String, hits: List<ArrivalLog.Hit>) {
+    fun enqueue(routeId: String, hits: List<ArrivalStats.Hit>) {
         if (hits.isEmpty() || DataProxy.current == null) return
         pending.getOrPut(routeId) { java.util.Collections.synchronizedList(ArrayList()) }.addAll(hits)
         if (flushing) return
@@ -72,7 +72,7 @@ object SharedArrivalLog {
     }
 
     /** 서버에 모인 이 노선·정류장 기록 (최근 6주). 서버를 안 쓰거나 실패하면 빈 목록 */
-    suspend fun fetch(routeId: String, nodeId: String): List<ArrivalLog.Hit> = withContext(Dispatchers.IO) {
+    suspend fun fetch(routeId: String, nodeId: String): List<ArrivalStats.Hit> = withContext(Dispatchers.IO) {
         val proxy = DataProxy.current ?: return@withContext emptyList()
         runCatching {
             val url = proxy.url.trimEnd('/').toHttpUrl().newBuilder()
@@ -86,19 +86,19 @@ object SharedArrivalLog {
         }.getOrDefault(emptyList())
     }
 
-    internal fun parseMinutes(nodeId: String, json: String): List<ArrivalLog.Hit> {
+    internal fun parseMinutes(nodeId: String, json: String): List<ArrivalStats.Hit> {
         val arr = JSONObject(json).optJSONArray("minutes") ?: return emptyList()
-        return (0 until arr.length()).map { ArrivalLog.Hit(nodeId, arr.getLong(it) * 60 + 30) }
+        return (0 until arr.length()).map { ArrivalStats.Hit(nodeId, arr.getLong(it) * 60 + 30) }
     }
 
     /**
      * 이 폰의 기록과 서버 기록 합치기. 같은 정류장에서 [SAME_BUS_SEC] 안의 기록은 같은 버스라 하나만 남김
      * (이 폰이 올린 것이 서버에도 있으므로). 이 폰의 기록을 먼저 남김.
      */
-    fun merge(local: List<ArrivalLog.Hit>, remote: List<ArrivalLog.Hit>): List<ArrivalLog.Hit> {
+    fun merge(local: List<ArrivalStats.Hit>, remote: List<ArrivalStats.Hit>): List<ArrivalStats.Hit> {
         if (remote.isEmpty()) return local
         val kept = HashMap<String, java.util.TreeSet<Long>>()
-        val out = ArrayList<ArrivalLog.Hit>(local.size + remote.size)
+        val out = ArrayList<ArrivalStats.Hit>(local.size + remote.size)
         for (h in local + remote) {
             val set = kept.getOrPut(h.nodeId) { java.util.TreeSet() }
             val near = set.ceiling(h.epochSec - SAME_BUS_SEC)

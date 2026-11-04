@@ -127,7 +127,7 @@ class StationPoiTest {
 }
 
 class SharedArrivalLogTest {
-    private fun h(n: String, s: Long) = com.eunho.tagohub.data.ArrivalLog.Hit(n, s)
+    private fun h(n: String, s: Long) = com.eunho.tagohub.data.ArrivalStats.Hit(n, s)
 
     /** 이 폰 기록 + 서버 기록: 같은 정류장 2분 안은 같은 버스라 하나만 (이 폰이 올린 것이 서버에도 있음) */
     @Test
@@ -173,7 +173,7 @@ class ObservedScheduleTest {
 
     @Test
     fun nextAfterUsesSlotsSeenOnSeveralDays() {
-        val t = com.eunho.tagohub.data.ArrivalLog.Table(3, listOf(com.eunho.tagohub.data.ArrivalLog.Slot(480, 478, 483, 3), com.eunho.tagohub.data.ArrivalLog.Slot(500, 500, 500, 1), com.eunho.tagohub.data.ArrivalLog.Slot(520, 518, 525, 2), com.eunho.tagohub.data.ArrivalLog.Slot(700, 700, 700, 3)))
+        val t = com.eunho.tagohub.data.ArrivalStats.Table(3, listOf(com.eunho.tagohub.data.ArrivalStats.Slot(480, 478, 483, 3), com.eunho.tagohub.data.ArrivalStats.Slot(500, 500, 500, 1), com.eunho.tagohub.data.ArrivalStats.Slot(520, 518, 525, 2), com.eunho.tagohub.data.ArrivalStats.Slot(700, 700, 700, 3)))
         val s = com.eunho.tagohub.data.ObservedSchedule
         assertEquals(480, s.nextAfter(t, 470, 470))
         assertEquals(520, s.nextAfter(t, 485, 470))     // 500 은 하루만 기록돼서 건너뜀

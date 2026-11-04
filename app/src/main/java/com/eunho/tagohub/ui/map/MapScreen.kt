@@ -2979,7 +2979,7 @@ private fun markHintSeen(context: android.content.Context, key: String) {
 private fun ObservedTimetable(routeId: String, nodeId: String, color: Color) {
     val days = java.time.DayOfWeek.entries
     var day by rememberSaveable { mutableStateOf(java.time.LocalDate.now().dayOfWeek) }
-    val hits by produceState(emptyList<com.eunho.tagohub.data.ArrivalLog.Hit>(), routeId, nodeId) {
+    val hits by produceState(emptyList<com.eunho.tagohub.data.ArrivalStats.Hit>(), routeId, nodeId) {
         // 이 폰의 기록을 먼저 보여주고, 서버에 모인 다른 사용자들의 기록이 오면 합침
         val local = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.ArrivalLog.read(routeId) }
         value = local
