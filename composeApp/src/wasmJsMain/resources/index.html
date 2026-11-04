@@ -4,11 +4,31 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>TagoHub</title>
-    <style>html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }</style>
+    <!-- 한글 글꼴은 화면 코드와 같이 바로 받기 시작 (화면 코드가 다 받아진 뒤에 받으면 그만큼 늦음). main.kt 가 이것을 기다려 씀 -->
+    <script>window.TAGOHUB_FONT = fetch("fonts/NotoSansKR-sub.ttf").then(function (r) { return r.ok ? r.arrayBuffer() : null; }).catch(function () { return null; });</script>
+    <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #f4f6f9; }
+        /* 화면(Compose)은 이 칸에만 그림: body 에 그리면 body 의 다른 것(불러오는 중 화면·카카오 지도 칸)이 가려짐 */
+        #app { position: fixed; inset: 0; }
+        /* 화면 코드(약 5MB)를 받는 동안 보이는 첫 화면. 화면이 뜨고 한글 글꼴이 오면 main.kt 가 지움 */
+        #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+                  font-family: system-ui, -apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color: #5b6573; background: #f4f6f9; z-index: 20; }
+        #splash .bar { position: absolute; top: 0; left: 0; right: 0; height: 64px; background: #0f2747; }
+        #splash b { color: #111827; font-size: 22px; margin-bottom: 8px; }
+        #splash i { width: 28px; height: 28px; margin-top: 18px; border: 3px solid #d5dbe3; border-top-color: #2563eb; border-radius: 50%; animation: s 0.9s linear infinite; }
+        @keyframes s { to { transform: rotate(360deg); } }
+        @media (prefers-color-scheme: dark) {
+            html, body, #splash { background: #0e1217; }
+            #splash { color: #a9b4c0; } #splash .bar { background: #111b2b; } #splash b { color: #f3f5f7; } #splash i { border-color: #262e38; border-top-color: #7da2ff; }
+        }
+    </style>
     <!-- 카카오 지도 키 (서버 배포 때 만들어 넣음; 없으면 OpenStreetMap 지도) -->
     <script src="config.js"></script>
     <script src="kakaomap.js"></script>
     <script type="application/javascript" src="tagohub.js"></script>
 </head>
-<body></body>
+<body>
+<div id="app"></div>
+<div id="splash"><div class="bar"></div><b>TagoHub</b>버스 정류장 실시간 도착<br>처음 열 때는 몇 초 걸려요 (다음부터는 빨라요)<i></i></div>
+</body>
 </html>
