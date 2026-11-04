@@ -1,5 +1,6 @@
 ﻿# TagoHub 중계 서버 배포 (한 번만 실행). 브라우저 로그인 대신 Cloudflare API 토큰을 씀.
-# 1) 서버를 올리고  2) 비밀 값 두 개(공공데이터포털 키, 앱 토큰)를 넣고  3) local.properties 에 서버 주소·앱 토큰을 적음.
+# 1) 서버를 올리고  2) 비밀 값(앱 토큰, local.properties 의 API 키들)을 넣고  3) local.properties 에 서버 주소·앱 토큰을 적음.
+# 다시 실행해도 됨: 앱 토큰은 local.properties 에 있으면 그대로 씀 (앱을 다시 빌드하지 않아도 되게).
 # 키와 토큰은 화면에 보여 주지 않음. 공공데이터포털 키는 local.properties 의 TAGO_SERVICE_KEY 를 그대로 씀.
 # npx 가 경고를 stderr 로 내도 멈추지 않게 (PowerShell 5.1 은 그것을 오류로 봄). 실패는 아래에서 직접 확인
 $ErrorActionPreference = 'Continue'
@@ -12,9 +13,13 @@ if (-not $env:CLOUDFLARE_API_TOKEN) {
     $env:CLOUDFLARE_API_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 }
 
-$line = Get-Content $props -Encoding UTF8 | Where-Object { $_ -match '^\s*TAGO_SERVICE_KEY\s*=' } | Select-Object -First 1
-if (-not $line) { throw 'local.properties 에 TAGO_SERVICE_KEY 가 없어요' }
-$dataKey = ($line -split '=', 2)[1].Trim()
+$lines = Get-Content $props -Encoding UTF8
+function Prop([string]$name) {
+    $l = $lines | Where-Object { $_ -match ('^\s*' + $name + '\s*=') } | Select-Object -First 1
+    if ($l) { return ($l -split '=', 2)[1].Trim() } else { return '' }
+}
+$dataKey = Prop 'TAGO_SERVICE_KEY'
+if (-not $dataKey) { throw 'local.properties 에 TAGO_SERVICE_KEY 가 없어요' }
 
 Write-Host '1/3 서버 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy 2>&1 | Out-String)
@@ -27,9 +32,22 @@ if (-not $m.Success) {
 $url = $m.Value
 
 Write-Host '2/3 비밀 값 넣는 중...'
-$appToken = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
-$dataKey | & npx --yes wrangler@4.45.0 secret put DATA_GO_KR_KEY | Out-Null
+$appToken = Prop 'TAGO_PROXY_TOKEN'
+if (-not $appToken) { $appToken = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N') }
 $appToken | & npx --yes wrangler@4.45.0 secret put APP_TOKEN | Out-Null
+$dataKey | & npx --yes wrangler@4.45.0 secret put DATA_GO_KR_KEY | Out-Null
+# 앱이 자리표시(TAGOHUB_<이름>)로 보내는 키들 (src/proxy.js 의 KEY_NAMES). 비어 있는 것은 건너뜀
+$fallback = @{ 'KLID_BUS_KEY' = 'TAGO_SERVICE_KEY'; 'KAC_API_KEY' = 'TAGO_SERVICE_KEY' }
+foreach ($name in @('TAGO_SERVICE_KEY', 'KLID_BUS_KEY', 'KAC_API_KEY', 'KRIC_SUBWAY_KEY', 'UTIC_API_KEY', 'SEOUL_SIGNAL_KEY', 'EX_API_KEY', 'SEOUL_SUBWAY_KEY', 'KAKAO_REST_KEY')) {
+    $v = Prop $name
+    if (-not $v -and $fallback.ContainsKey($name)) { $v = Prop $fallback[$name] }
+    if ($v) {
+        $v | & npx --yes wrangler@4.45.0 secret put $name | Out-Null
+        Write-Host "  $name 넣음"
+    } else {
+        Write-Host "  $name 없음 (건너뜀)"
+    }
+}
 
 Write-Host '3/3 local.properties 에 서버 주소 적는 중...'
 $keep = Get-Content $props -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*TAGO_PROXY_(URL|TOKEN)\s*=' }

@@ -11,6 +11,11 @@ Cloudflare Workers 무료 요금제로 돌리는 작은 서버입니다. 하루 
 
 앱은 `https://<주소>/dg/1613000/ArvlInfoInqireService/...`처럼 키 없이 묻고, 서버가 `https://apis.data.go.kr/1613000/...`에 키를 붙여 묻습니다.
 
+**여러 기관 중계** (`/h/<http|https>/<호스트>/<경로>`): 앱은 키 자리에 `TAGOHUB_<키 이름>`을 넣어 보내고, 서버가 같은 이름의 비밀 값으로 바꿉니다. 검색 조건·경로·카카오 `Authorization` 헤더 어디든 됩니다.
+- 대상: 공공데이터포털, 카카오, 철도공사 지하철, 서울 지하철·신호, 도시교통정보센터, 도로공사, 울산 버스
+- 비밀 값: `TAGO_SERVICE_KEY`, `KLID_BUS_KEY`, `KAC_API_KEY`, `KRIC_SUBWAY_KEY`, `UTIC_API_KEY`, `SEOUL_SIGNAL_KEY`, `EX_API_KEY`, `SEOUL_SUBWAY_KEY`, `KAKAO_REST_KEY` (`deploy.ps1`이 local.properties에서 읽어 넣음)
+- 국가교통정보센터(`openapi.its.go.kr:9443`)는 Cloudflare가 9443 포트를 못 불러서 앱에 키를 둡니다. 카카오 지도 키(네이티브)와 Firebase 설정도 앱에 있어야 합니다.
+
 ## 가장 쉬운 배포 (브라우저 로그인 없이)
 
 1. https://dash.cloudflare.com/profile/api-tokens 에서 **Create Token** → **Edit Cloudflare Workers** 템플릿 → **Use template**

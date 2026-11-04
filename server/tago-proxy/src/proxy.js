@@ -61,3 +61,53 @@ export function cacheable(status, body) {
   if (status !== 200) return false;
   return !/SERVICE_KEY_IS_NOT|LIMITED_NUMBER_OF_SERVICE|SERVICE_ACCESS_DENIED|returnAuthMsg|SERVICE ERROR|APPLICATION_ERROR/.test(body);
 }
+
+// ── 여러 기관 중계 (/h/<http|https>/<호스트>/<경로>) ──────────────────────────────
+// 앱은 키 자리에 자리표시("TAGOHUB_<키 이름>")를 넣어 보내고, 서버가 같은 이름의 비밀 값으로 바꿔 넣는다.
+// 키가 주소의 검색 조건·경로·Authorization 헤더 어디에 있든 같은 방식이라 기관마다 따로 짜지 않아도 됨.
+
+// 중계를 허락하는 호스트 (기본 포트만. 국가교통정보센터 openapi.its.go.kr 는 9443 포트라 Cloudflare 가 못 불러서 제외)
+export const HOSTS = [
+  "apis.data.go.kr",       // 공공데이터포털: TAGO·지자체 버스·공항·코레일 등
+  "dapi.kakao.com",        // 카카오 로컬·길찾기 (REST 키는 Authorization 헤더)
+  "apis-navi.kakaomobility.com", // 카카오모빌리티 길찾기
+  "openapi.kric.go.kr",    // 철도공사 지하철
+  "swopenapi.seoul.go.kr", // 서울 실시간 지하철 (키가 경로에)
+  "t-data.seoul.go.kr",    // 서울 신호등
+  "www.utic.go.kr",        // 도시교통정보센터
+  "tsihub.utic.go.kr",
+  "data.ex.co.kr",         // 한국도로공사
+  "openapi.its.ulsan.kr",  // 울산 버스
+];
+
+// 서버 비밀 값으로 둘 수 있는 키 이름 (자리표시 TAGOHUB_<이름>)
+export const KEY_NAMES = [
+  "TAGO_SERVICE_KEY", "KLID_BUS_KEY", "KAC_API_KEY", "KRIC_SUBWAY_KEY", "UTIC_API_KEY",
+  "SEOUL_SIGNAL_KEY", "EX_API_KEY", "SEOUL_SUBWAY_KEY", "KAKAO_REST_KEY",
+];
+export const PLACEHOLDER = /TAGOHUB_([A-Z_]+?_KEY)/g;
+
+/** "/h/https/apis.data.go.kr/1613000/..." → { scheme, host, path }. 허락하지 않은 것이면 null */
+export function hostTarget(pathname) {
+  const m = /^\/h\/(https?)\/([a-z0-9.-]+)(\/.*)?$/.exec(pathname);
+  if (!m || !HOSTS.includes(m[2])) return null;
+  const path = m[3] || "/";
+  if (path.includes("..")) return null;
+  return { scheme: m[1], host: m[2], path };
+}
+
+/** 글자 안의 자리표시를 비밀 값으로 바꿈. [encode] 면 주소에 넣을 수 있게 인코딩. 없는 키를 쓰면 그 이름을 던짐 */
+export function fillKeys(text, env, encode) {
+  return text.replace(PLACEHOLDER, (_, name) => {
+    const v = KEY_NAMES.includes(name) ? env[name] : undefined;
+    if (!v) throw new Error("missing " + name);
+    return encode ? encodeKey(v) : v.trim();
+  });
+}
+
+/** 다시 쓸 시간: 공공데이터 규칙에 더해, 카카오 장소·주소 검색은 하루, 길찾기는 1분 */
+export function hostTtl(host, path) {
+  if (host === "dapi.kakao.com") return /search|geo/.test(path) ? 86400 : 60;
+  if (host === "apis-navi.kakaomobility.com") return 60;
+  return ttlFor(path);
+}

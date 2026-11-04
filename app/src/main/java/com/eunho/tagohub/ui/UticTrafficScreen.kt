@@ -38,6 +38,8 @@ import com.eunho.tagohub.data.UticFeeds
 fun UticTrafficScreen() {
     val context = LocalContext.current
     val key = BuildConfig.UTIC_API_KEY.trim()
+    // 키를 중계 서버에 두면 앱에는 자리표시만 있어서 브라우저로 원본을 열 수 없음
+    val onServer = key.startsWith("TAGOHUB_")
     var error by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize()) {
@@ -49,6 +51,7 @@ fun UticTrafficScreen() {
         )
         Text(
             if (key.isBlank()) com.eunho.tagohub.core.DevMode.msg("local.properties 에 UTIC_API_KEY 를 설정하세요.")
+            else if (onServer) "인증키를 서버에 보관하고 있어서 원본 데이터를 브라우저로 열 수 없어요."
             else "항목을 누르면 UTIC 원본 데이터를 브라우저에서 엽니다.",
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             style = MaterialTheme.typography.bodyMedium,
@@ -67,7 +70,7 @@ fun UticTrafficScreen() {
             items(UticFeeds.all, key = { it.title }) { feed ->
                 UticFeedCard(
                     feed = feed,
-                    enabled = key.isNotBlank(),
+                    enabled = key.isNotBlank() && !onServer,
                     onClick = {
                         try {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(feed.url(key))))
