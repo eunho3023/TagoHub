@@ -3,8 +3,8 @@ package com.eunho.tagohub.data
 import com.eunho.tagohub.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import retrofit2.Retrofit
-import retrofit2.converter.scalars.ScalarsConverterFactory
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -48,12 +48,11 @@ object Network {
         }
         .build()
 
-    val api: TagoApi = Retrofit.Builder()
-        .baseUrl(proxy?.base("1613000") ?: BASE_URL)
-        .client(client)
-        .addConverterFactory(ScalarsConverterFactory.create())
-        .build()
-        .create(TagoApi::class.java)
+    /** Ktor 로 묻되 실제 통신은 위 OkHttp(키·형식·중계 서버를 붙이는 인터셉터, 공유 연결 풀)가 함 */
+    private val ktor = HttpClient(OkHttp) { engine { preconfigured = client } }
+    private val base = proxy?.base("1613000") ?: BASE_URL
+
+    val api: TagoApi = TagoApi { path, query -> ktor.getText(base, path, query) }
 }
 
 object Graph {

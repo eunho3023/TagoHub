@@ -1,5 +1,6 @@
 package com.eunho.tagohub
 
+import com.eunho.tagohub.core.init
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
