@@ -92,12 +92,16 @@ if (Test-Path (Join-Path $dist 'index.html')) {
     Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
     if (Test-Path (Join-Path $pub 'composeResources')) { Remove-Item (Join-Path $pub 'composeResources') -Recurse -Force }
     Get-ChildItem $dist | Where-Object { $_.Name -notlike '*.map' } | Copy-Item -Destination $pub -Recurse -Force
-    # 한글 글꼴 (웹 화면은 브라우저 글꼴을 못 씀). 처음 한 번만 받음 (Google Fonts, OFL 사용권)
-    $font = Join-Path $pub 'fonts\NotoSansKR.ttf'
-    if (-not (Test-Path $font)) {
-        New-Item -ItemType Directory -Force (Split-Path $font) | Out-Null
-        Invoke-WebRequest 'https://github.com/google/fonts/raw/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf' -OutFile $font -UseBasicParsing
+    # 한글 글꼴 (웹 화면은 브라우저 글꼴을 못 씀): 원본 10MB 에서 필요한 글자만 남긴 작은 파일 (pipeline/build_web_font.py)
+    $font = Join-Path $pub 'fonts\NotoSansKR-sub.ttf'
+    $oldFont = Join-Path $pub 'fonts\NotoSansKR.ttf'
+    if (Test-Path $oldFont) { Remove-Item $oldFont -Force }
+    if ($py) {
+        & $py -c "import fontTools" 2>$null
+        if ($LASTEXITCODE -ne 0) { & $py -m pip install --user -q fonttools }
+        & $py (Join-Path $root 'pipeline\build_web_font.py') --data (Join-Path $pub 'data') --out $font
     }
+    if (-not (Test-Path $font)) { Write-Host '  한글 글꼴을 만들지 못했어요 (웹 화면의 한글이 네모로 보일 수 있음)' }
     Write-Host '  웹 버전 준비됨 (서버 주소로 열면 보임)'
 } else {
     Write-Host '  웹 버전을 만들지 못해 건너뜀 (서버는 그대로 올림)'

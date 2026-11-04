@@ -43,7 +43,8 @@ def test_build_small_db():
         assert r["stops"] == [[1, "S1", "홍산로전북도교육청.동암고", 35.8235, 127.1478, "0"], [2, "S2", "우전초교", 35.8241, 127.149, "0"],
                               [3, None, "새 정류장", 35.83, 127.15, "1"]]
         c = json.loads((out / "cities.json").read_text(encoding="utf-8"))
-        assert c["names"] == {"35010": "전주"} and c["routesByNo"] == {"35010": {"104": ["R1"]}}
+        assert c["names"] == {"35010": "전주"}
+        assert json.loads((out / "routes_by_no.json").read_text(encoding="utf-8")) == {"35010": {"104": ["R1"]}}
         assert c["alias"] == {"TS305": "35010"}
         assert not (out / "files/bus_stops.db").exists()
 

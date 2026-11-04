@@ -73,7 +73,7 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         if (!stop.city.startsWith("TS")) return listOf(stop.city)
         val out = LinkedHashSet<String>()
         cities().alias[stop.city]?.let { out += it }
-        val near = WebData.tiles(stop.lat - 0.1, stop.lng - 0.1, stop.lat + 0.1, stop.lng + 0.1).flatMap { tile(it) }
+        val near = WebData.tiles(stop.lat - 0.07, stop.lng - 0.07, stop.lat + 0.07, stop.lng + 0.07).flatMap { tile(it) }
             .filter { it.id.startsWith("TSB") && it.city.isNotEmpty() && it.city.all(Char::isDigit) }
             .groupBy { it.city }
             .mapValues { (_, l) -> l.minOf { (it.lat - stop.lat) * (it.lat - stop.lat) + (it.lng - stop.lng) * (it.lng - stop.lng) } }
@@ -82,13 +82,35 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         return out.take(MAX_CITIES)
     }
 
+    /**
+     * 같은 자리의 다른 시군 정류장 ([SAME_SPOT_M] 안, 시군마다 가장 가까운 하나). 폰 앱 StopDb.sameSpot 과 같음:
+     * 교통안전공단 파일의 정류장(TSB…)과 그 시의 정류장(JJB… 등)이 같은 곳에 따로 들어 있어서, 둘 다 물어야 버스가 다 나옴.
+     */
+    internal suspend fun sameSpot(stop: WebStop): List<WebStop> {
+        val d = 0.0005
+        return WebData.tiles(stop.lat - d, stop.lng - d, stop.lat + d, stop.lng + d).flatMap { tile(it) }
+            .filter { it.city != stop.city && it.id != stop.id }
+            .map { it to meters(stop.lat, stop.lng, it.lat, it.lng) }
+            .filter { it.second <= SAME_SPOT_M }
+            .groupBy { it.first.city }
+            .map { (_, l) -> l.minBy { it.second }.first }
+    }
+
+    /** 실제로 물을 (도시코드, 정류장 id): 같은 자리 정류장 먼저 (그 시의 id 가 TAGO 에 더 잘 나옴), 그다음 고른 정류장 */
+    internal suspend fun targets(stop: WebStop): List<Pair<String, String>> {
+        val out = LinkedHashSet<Pair<String, String>>()
+        for (s in sameSpot(stop).filter(::tagoStop) + listOf(stop).filter(::tagoStop)) {
+            for (c in cityCandidates(s)) out += c to s.id
+        }
+        return out.take(MAX_TARGETS)
+    }
+
     /** 정류장 실시간 도착 (가까운 순). TAGO 가 다루지 않는 지역(서울·경기 등)은 [Arrivals.Unsupported] */
     suspend fun arrivals(stop: WebStop, nowMs: Long): Arrivals {
-        if (!tagoStop(stop)) return Arrivals.Unsupported
         return try {
-            val codes = cityCandidates(stop)
-            if (codes.isEmpty()) return Arrivals.Unsupported
-            val results = coroutineScope { codes.map { c -> async { runCatching { arrivalsIn(c, stop.id) } } }.awaitAll() }
+            val todo = targets(stop)
+            if (todo.isEmpty()) return Arrivals.Unsupported
+            val results = coroutineScope { todo.map { (c, id) -> async { runCatching { arrivalsIn(c, id) } } }.awaitAll() }
             if (results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
             val list = results.flatMap { it.getOrDefault(emptyList()) }
                 .distinctBy { it.routeId + "|" + it.arrSeconds }
@@ -120,6 +142,17 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
     companion object {
         /** 한 정류장에 물어볼 시군 수 (웹 통로 요청 수 제한 안에서) */
         const val MAX_CITIES = 3
+        /** 한 번 새로 고칠 때 묻는 최대 수 (15초마다 → 분당 20번, 서버 제한 120번 안) */
+        const val MAX_TARGETS = 5
+        /** 같은 정류장으로 보는 거리 (앱과 같게 30m) */
+        const val SAME_SPOT_M = 30.0
+
+        /** 두 점 사이 거리(m), 짧은 거리용 근사 */
+        fun meters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+            val dy = (lat2 - lat1) * 111_000.0
+            val dx = (lng2 - lng1) * 111_000.0 * kotlin.math.cos(lat1 * kotlin.math.PI / 180)
+            return kotlin.math.sqrt(dx * dx + dy * dy)
+        }
 
         /** 폰 앱은 따로 받는 지역 (서울·경기 버스 API): TAGO 에는 실시간이 없어 웹 통로로는 못 받음 */
         private val OTHER_SOURCES = listOf("SEB", "GGB")
