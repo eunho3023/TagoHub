@@ -71,6 +71,17 @@ class PassedByPositionTest {
         assertEquals(false, p.passed(listOf(20), emptyList()))       // 위치 없음 → 모름
         assertEquals(false, p.passed(listOf(3, 40), listOf(41)))     // 순환 노선: 정류장이 두 번 나와 판단 안 함
     }
+
+    /** 도착 정보는 "3정류장 전"인데 위치로는 이미 정류장에 와 있거나 지나간 경우 (전주 104번) */
+    @Test
+    fun staleArrivalIsCorrectedByPosition() {
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.AT_STOP, p.verdict(listOf(30), listOf(30, 14), 3))   // 와 있음, 다음 차는 16정류장 뒤
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.PASSED, p.verdict(listOf(30), listOf(31, 14), 3))    // 막 지나감
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(30), listOf(30, 27), 3))      // 3정류장 뒤에 오는 버스가 따로 있음
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(30), listOf(31, 22), 7))      // 도착 정보가 말하는 자리(8정류장 뒤) 근처에 버스
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(30), listOf(30), 0))          // 이미 "정류장 도착"
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(30), emptyList(), 3))         // 위치 없음 → 모름
+    }
 }
 
 class RailMatchTest {
