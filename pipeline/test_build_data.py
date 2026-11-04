@@ -250,6 +250,26 @@ def test_tsb_stops_written():
         db.close()
 
 
+def test_incomplete_stops_refetched():
+    """정류장 순서가 빠져 보이면(저장된 앞쪽만 있는 등) 저장본 없이 한 번 더 받아 더 많은 쪽을 씀"""
+    def st(n):
+        return {"nodeid": f"N{n}", "nodenm": str(n), "nodeord": n}
+
+    class F(FakeFetcher):
+        def get(self, url, params, cache_file, max_age):
+            self.calls += 1
+            self.urls.append((max_age, params["pageNo"]))
+            if max_age > 0:   # 저장본: 1쪽만, totalCount 6
+                return resp([st(1), st(2), st(3)], total=6) if params["pageNo"] == 1 else None
+            return resp([st(n) for n in range(1, 7)], total=6)
+    f = F()
+    got = bd.route_stops(f, "21", "R1")
+    assert [s["nodeord"] for s in got] == [1, 2, 3, 4, 5, 6]
+    assert (0, 1) in f.urls
+    assert bd.stops_incomplete([st(1), st(2), st(5), st(6)]) and not bd.stops_incomplete([st(1), st(2), st(3)])
+    assert not bd.stops_incomplete([st(1), st(2), st(1001), st(1002)])   # 방향마다 따로 매긴 번호
+
+
 def test_helpers():
     assert bd.clock("0530") == "05:30" and bd.clock(530) == "05:30" and bd.clock(2310) == "23:10" and bd.clock(None) is None
     assert bd.region_name("경상남도 김해시") == "김해" and bd.region_name("부산광역시") == "부산" and bd.region_name("충청북도 청주시") == "청주"
@@ -262,6 +282,6 @@ def test_helpers():
 
 
 if __name__ == "__main__":
-    for t in (test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

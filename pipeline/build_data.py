@@ -206,17 +206,43 @@ class Fetcher:
         return None
 
 
-def list_all(fx, url, params, cache_prefix, max_age, rows):
-    """totalCount 를 보고 여러 쪽(pageNo)을 모두 받기 (최대 20쪽)"""
+def list_all(fx, url, params, cache_prefix, max_age, rows, with_total=False):
+    """totalCount 를 보고 여러 쪽(pageNo)을 모두 받기 (최대 20쪽). with_total 이면 (목록, 첫 쪽의 totalCount)"""
     out = []
+    first_total = None
     for page in range(1, 21):
         t = fx.get(url, {**params, "numOfRows": rows, "pageNo": page}, f"{cache_prefix}_p{page}.json", max_age)
         got = items(t)
         out += got
         total = total_count(t) if t else None
+        if page == 1:
+            first_total = total
         if not got or total is None or len(out) >= total:
             break
-    return out
+    return (out, first_total) if with_total else out
+
+
+def stops_incomplete(stops, total=None):
+    """정류장 순서가 빠져 보이는지: 받은 수가 totalCount 보다 적거나, 순번 사이 빈 번호가 2개 이상이고 전체의 10% 이상
+    (앱 RouteStopsCheck.incomplete 와 같은 규칙. 30 넘게 뛰는 것은 방향마다 1001·2001 로 매긴 번호라 셈하지 않음)"""
+    if total is not None and len(stops) < total:
+        return True
+    q = sorted(to_int(s.get("nodeord")) or 0 for s in stops)
+    missing = sum(b - a - 1 for a, b in zip(q, q[1:]) if 1 <= b - a - 1 < 30)
+    return missing >= 2 and missing >= len(q) * 0.1
+
+
+def route_stops(fx, code, rid):
+    """노선의 정류장 순서. 빠져 보이면(뒤쪽 쪽이 실패해 앞쪽만 저장돼 7일 동안 그대로 쓰던 것 등) 저장본 없이 한 번 더 받아 더 많은 쪽을 씀"""
+    url = f"{TAGO}/getRouteAcctoThrghSttnList"
+    params = {"_type": "json", "cityCode": code, "routeId": rid}
+    prefix = f"tago/{code}/stops_{rid}"
+    got, total = list_all(fx, url, params, prefix, 7 * DAY, 500, with_total=True)
+    if got and stops_incomplete(got, total):
+        again, _ = list_all(fx, url, params, prefix, 0, 500, with_total=True)
+        if len(again) > len(got):
+            got = again
+    return got
 
 
 def run_parallel(fx, jobs, fn, label):
@@ -278,8 +304,7 @@ def fetch_tago(fx, targets):
 
         def stops_of(job):
             code, rid, r = job
-            r["stops"] = list_all(fx, f"{TAGO}/getRouteAcctoThrghSttnList", {"_type": "json", "cityCode": code, "routeId": rid},
-                                  f"tago/{code}/stops_{rid}", 7 * DAY, 500)
+            r["stops"] = route_stops(fx, code, rid)
 
         def info_of(job):
             code, rid, r = job
@@ -288,6 +313,8 @@ def fetch_tago(fx, targets):
             r["info"] = info[0] if info else None
 
         run_parallel(fx, jobs, stops_of, "정류장 순서")
+        gaps = sum(1 for _, _, r in jobs if r["stops"] and stops_incomplete(r["stops"]))
+        print(f"  정류장 순서가 아직 빠져 보이는 노선 {gaps}개 (다시 받아도 TAGO 가 그렇게 줌)", flush=True)
         run_parallel(fx, jobs, info_of, "노선 정보")
     except Limit:
         print(f"하루 호출 한도에 도달 (호출 {fx.calls}) — 받은 데까지로 만들고 다음 실행에서 이어 받음", flush=True)
@@ -384,8 +411,7 @@ def fetch_tsb_stops(fx, base_db):
 
     def one(job):
         code, rid, r = job
-        r["stops"] = list_all(fx, f"{TAGO}/getRouteAcctoThrghSttnList", {"_type": "json", "cityCode": code, "routeId": rid},
-                              f"tago/{code}/stops_{rid}", 7 * DAY, 500)
+        r["stops"] = route_stops(fx, code, rid)
     try:
         run_parallel(fx, jobs, one, "교통안전공단 노선 정류장 순서")
     except (Limit, KeyError_):
