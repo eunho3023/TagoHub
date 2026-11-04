@@ -10,16 +10,14 @@ import java.util.concurrent.ConcurrentHashMap
  * 여러 날 같은 무렵에 기록된 운행만 믿는다 ([MIN_DAYS]).
  */
 object ObservedSchedule {
-    /** 이 수 이상의 날에 기록된 운행만 씀 (하루 기록은 우연일 수 있음) */
-    const val MIN_DAYS = 2
-    /** 이보다 먼 다음 차는 보여 주지 않음 (분) */
-    const val MAX_AHEAD_MIN = 120
+    const val MIN_DAYS = ArrivalStats.MIN_DAYS
+    const val MAX_AHEAD_MIN = ArrivalStats.MAX_AHEAD_MIN
     private const val TTL_MS = 10 * 60_000L
 
-    private val cache = ConcurrentHashMap<String, Pair<Long, List<ArrivalLog.Hit>>>()
+    private val cache = ConcurrentHashMap<String, Pair<Long, List<ArrivalStats.Hit>>>()
 
     /** 이 노선·정류장의 기록 (10분 동안 재사용) */
-    suspend fun hits(routeId: String, nodeId: String, nowMs: Long = System.currentTimeMillis()): List<ArrivalLog.Hit> {
+    suspend fun hits(routeId: String, nodeId: String, nowMs: Long = System.currentTimeMillis()): List<ArrivalStats.Hit> {
         val key = "$routeId|$nodeId"
         cache[key]?.takeIf { nowMs - it.first < TTL_MS }?.let { return it.second }
         val local = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ArrivalLog.read(routeId) }.filter { it.nodeId == nodeId }
@@ -28,12 +26,8 @@ object ObservedSchedule {
         return merged
     }
 
-    /**
-     * [afterMin](오늘 하루 중 분) 뒤로 기록상 처음 오는 운행의 예상 시각(분). 여러 날 기록된 운행만, [MAX_AHEAD_MIN] 안에서. 없으면 null.
-     */
-    fun nextAfter(table: ArrivalLog.Table, afterMin: Int, nowMin: Int): Int? =
-        table.slots.filter { it.days >= MIN_DAYS && it.expected > afterMin && it.expected - nowMin <= MAX_AHEAD_MIN }
-            .minByOrNull { it.expected }?.expected
+    /** [ArrivalStats.nextAfter] (공용 코드) */
+    fun nextAfter(table: ArrivalStats.Table, afterMin: Int, nowMin: Int): Int? = ArrivalStats.nextAfter(table, afterMin, nowMin)
 
     /** 지금부터 [afterSec] 초 뒤 다음으로 기록상 오는 버스까지 남은 초. 없으면 null */
     suspend fun nextSec(routeId: String, nodeId: String, afterSec: Int, now: ZonedDateTime = ZonedDateTime.now(ArrivalLog.zone)): Int? {
