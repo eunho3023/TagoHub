@@ -4,6 +4,7 @@ import com.eunho.tagohub.core.Load
 import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.naturalOrder
 import com.eunho.tagohub.core.toLoad
+import com.eunho.tagohub.data.PassedByPosition
 import com.eunho.tagohub.data.BusArrival
 import com.eunho.tagohub.data.BusLocation
 import com.eunho.tagohub.data.BusRoute
@@ -754,18 +755,20 @@ private const val BUS_POS_TTL_MS = 30_000L
 private const val BUS_POS_MAX_ROUTES = 5
 
 /**
- * 전국: 곧 도착(2정류장 전 이내)으로 뜬 첫 버스가 실시간 위치상 이미 정류장을 지나갔으면 목록에서 뺀다.
- * (도착 예측이 늦게 갱신돼 지나간 버스가 "2정류장 전 · 1분 18초" 로 남는 경우)
+ * 전국: 가까이(6정류장 전 이내) 뜬 노선별 첫 버스를 실시간 위치와 맞춰 본다. 앞쪽에 오는 버스가 없는데
+ * 이미 정류장을 지나갔으면 목록에서 빼고, 정류장에 서 있으면 "정류장 도착"으로 바꾼다
+ * (도착 예측이 늦게 갱신돼 지나간 버스가 "3정류장 전 · 3분" 으로 남는 경우).
  * 버스 위치는 지역마다 받는 곳이 달라서([busOrdsOnRoute]) 노선 정류장 목록의 정류장 ID 로 순번을 맞춘다.
  * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 30초 동안 결과를 재사용한다
  * (버스 위치는 30~60초마다 바뀜). 위치를 못 받거나 정류장이 노선에 여러 번 나오면 판단하지 않고 그대로 둔다.
  */
 private suspend fun dropPassedByPosition(repo: TagoRepository, d: BusDest.Stop, list: List<BusArrival>): List<BusArrival> {
-    val firsts = list.filter { (it.prevStops ?: Int.MAX_VALUE) <= 2 }
-        .groupBy { it.routeId }.values.map { g -> g.minBy { it.arrSeconds ?: Int.MAX_VALUE } }.take(BUS_POS_MAX_ROUTES)
+    val firsts = list.filter { !it.scheduled && (it.prevStops ?: Int.MAX_VALUE) <= PassedByPosition.APPROACH_STOPS }
+        .groupBy { it.routeId }.values.map { g -> g.minBy { it.arrSeconds ?: Int.MAX_VALUE } }
+        .sortedBy { it.arrSeconds ?: Int.MAX_VALUE }.take(BUS_POS_MAX_ROUTES)
     if (firsts.isEmpty()) return list
     val city = runCatching { tagoCity(repo, d.stop) }.getOrDefault(d.stop.cityCode)
-    val gone = coroutineScope {
+    val verdicts = coroutineScope {
         firsts.map { a ->
             async {
                 runCatching {
@@ -776,12 +779,20 @@ private suspend fun dropPassedByPosition(repo: TagoRepository, d: BusDest.Stop, 
                     val busOrds = busPosCache[a.routeId]?.takeIf { now - it.first < BUS_POS_TTL_MS }?.second
                         ?: busOrdsOnRoute(repo, a.routeId, city, stops)?.also { busPosCache[a.routeId] = now to it }
                         ?: return@runCatching null
-                    a.takeIf { com.eunho.tagohub.data.PassedByPosition.passed(stopOrds, busOrds) }
+                    PassedByPosition.verdict(stopOrds, busOrds, a.prevStops).takeIf { it != PassedByPosition.Verdict.KEEP }?.let { a to it }
                 }.getOrNull()
             }
         }.awaitAll().filterNotNull()
     }
-    return if (gone.isEmpty()) list else list.filterNot { x -> gone.any { it === x } }
+    if (verdicts.isEmpty()) return list
+    // 지나간 버스는 빼고, 정류장에 와 있는 버스는 "정류장 도착"으로 (도착 정보가 아직 "3정류장 전"이어도)
+    return list.mapNotNull { x ->
+        when (verdicts.firstOrNull { it.first === x }?.second) {
+            PassedByPosition.Verdict.PASSED -> null
+            PassedByPosition.Verdict.AT_STOP -> x.copy(prevStops = 0, arrSeconds = 0, atStop = null, estimated = false)
+            else -> x
+        }
+    }
 }
 
 /**
