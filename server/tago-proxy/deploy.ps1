@@ -22,17 +22,27 @@ $dataKey = Prop 'TAGO_SERVICE_KEY'
 if (-not $dataKey) { throw 'local.properties 에 TAGO_SERVICE_KEY 가 없어요' }
 
 Write-Host '준비: 지난 운행 기록 데이터베이스(D1, 이름 tagohub-log) 확인 중...'
+$d1Err = Join-Path $env:TEMP 'tagohub-d1.err'
+# 데이터베이스 목록 (못 받으면 $null, 하나도 없으면 빈 목록). 화면 안내 줄이 섞여도 끝의 JSON 만 읽음
 function D1List {
-    $j = (& npx --yes wrangler@4.45.0 d1 list --json 2>$null | Out-String)
-    try { return @($j | ConvertFrom-Json) } catch { return $null }
+    $raw = (& npx --yes wrangler@4.45.0 d1 list --json 2>$d1Err | Out-String)
+    $m = [regex]::Match($raw, '(?s)(?:^|\n)\s*(\[.*\])\s*$')
+    if (-not $m.Success) { $script:d1Why = $raw + (Get-Content $d1Err -Raw -ErrorAction SilentlyContinue); return $null }
+    try { $parsed = ConvertFrom-Json $m.Groups[1].Value } catch { $script:d1Why = $raw; return $null }
+    return ,@($parsed | ForEach-Object { $_ })
 }
+function FindLog($list) { return $list | Where-Object { $_.name -eq 'tagohub-log' } | Select-Object -First 1 }
+$d1Why = ''
 $dbs = D1List
 $db = $null
-if ($dbs -ne $null) {
-    $db = $dbs | Where-Object { $_.name -eq 'tagohub-log' } | Select-Object -First 1
+if ($null -ne $dbs) {
+    $db = FindLog $dbs
     if (-not $db) {
-        & npx --yes wrangler@4.45.0 d1 create tagohub-log 2>&1 | Out-Null
-        $db = D1List | Where-Object { $_.name -eq 'tagohub-log' } | Select-Object -First 1
+        Write-Host '  처음이라 새로 만드는 중...'
+        $made = (& npx --yes wrangler@4.45.0 d1 create tagohub-log 2>&1 | Out-String)
+        $again = D1List
+        if ($null -ne $again) { $db = FindLog $again }
+        if (-not $db) { $d1Why = $made }
     }
 }
 $config = 'wrangler.toml'
@@ -44,7 +54,10 @@ if ($db -and $db.uuid) {
     $config = 'wrangler.deploy.toml'
     Write-Host '  데이터베이스 있음'
 } else {
-    Write-Host '  데이터베이스를 만들지 못했어요: API 토큰에 "D1 - 편집(Edit)" 권한을 더해 주세요. 지난 운행 기록 모으기만 빼고 서버는 그대로 올려요'
+    Write-Host '  데이터베이스를 만들지 못했어요. 지난 운행 기록 모으기만 빼고 서버는 그대로 올려요. 이유:'
+    # wrangler 메시지에서 오류 줄만 (키·토큰은 들어 있지 않음)
+    ($d1Why -split "`n" | Where-Object { $_ -match 'ERROR|error|Authentication|permission|code:|10000|7403' } | Select-Object -First 6) | ForEach-Object { Write-Host "    $_" }
+    Write-Host '  "Authentication error" 나 권한 이야기가 나오면: API 토큰에 Account - D1 - Edit 권한을 더한 뒤 다시 실행'
 }
 
 Write-Host '1/3 서버 올리는 중...'
