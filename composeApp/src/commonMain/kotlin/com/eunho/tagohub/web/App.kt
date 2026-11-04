@@ -85,12 +85,17 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     var mode by remember { mutableStateOf(Mode.Bus) }
                     val trainState = remember { TrainState() }
                     val subwayState = remember { SubwaySearchState() }
+                    val coachState = remember { CoachState() }
+                    val air = remember { AirRepo(repo.server, repo.client) }
+                    val airState = remember { AirState() }
                     val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
                     when (val top = stack.last()) {
                         Screen.Search -> when (mode) {
                             Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }) { go(Screen.Stop(it)) }
                             Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { go(Screen.Map()) }) { go(Screen.Subway(it)) }
                             Mode.Train -> TrainPane(transit, trainState, chips, onMap = { go(Screen.Map()) })
+                            Mode.Coach -> CoachPane(transit, coachState, chips, onMap = { go(Screen.Map()) })
+                            Mode.Air -> AirPane(air, airState, chips, onMap = { go(Screen.Map()) })
                         }
                         is Screen.Subway -> SubwayStationPane(transit, top.station, onBack = ::back)
                         is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }

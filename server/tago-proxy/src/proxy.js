@@ -125,15 +125,23 @@ export const WEB_OPS = {
   "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": ["subwayStationId", "dailyTypeCode", "upDownTypeCode"],
   // 기차: 출발역 → 도착역 그날 열차 (종류·요금)
   "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": ["depPlaceId", "arrPlaceId", "depPlandTime"],
+  // 고속·시외버스: 출발 → 도착 그날 버스 (등급·요금), 시외버스 터미널 찾기
+  "1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo": ["depTerminalId", "arrTerminalId", "depPlandTime"],
+  "1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo": ["depTerminalId", "arrTerminalId", "depPlandTime"],
+  "1613000/SuburbsBusInfo/GetSuberbsBusTrminlList": ["terminalNm"],
 };
 const WEB_VALUE = {
   cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
   subwayStationName: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/, subwayStationId: /^[A-Za-z0-9]{1,16}$/,
   dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
   depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,
+  depTerminalId: /^NA[A-Z0-9]{3,10}$/, arrTerminalId: /^NA[A-Z0-9]{3,10}$/, terminalNm: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/,
 };
 /** 한 번에 받는 개수 (지하철 역 시간표는 하루치가 수백 개라 한 쪽에) */
-const WEB_ROWS = { "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300" };
+const WEB_ROWS = {
+  "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300",
+  "1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo": "300", "1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo": "300",
+};
 
 /** "/w/dg/1613000/..." + 검색 조건 → {path, search} (질의는 허락한 것만, 쪽 번호·개수는 정해 둠). 허락하지 않으면 null */
 export function webRequest(pathname, search) {

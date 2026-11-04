@@ -95,3 +95,13 @@ test("웹 버전: 지하철 역 찾기·시간표, 기차 열차 (질의 검사,
   assert.equal(ttlFor("1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList"), 86400);
   assert.equal(ttlFor("1613000/TrainInfo/GetStrtpntAlocFndTrainInfo"), 1800);
 });
+
+test("웹 버전: 고속·시외버스 (터미널 id 모양 검사)", () => {
+  const a = webRequest("/w/dg/1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo", "?depTerminalId=NAEK010&arrTerminalId=NAEK700&depPlandTime=20261105");
+  assert.ok(a && a.search.includes("numOfRows=300"));
+  assert.ok(webRequest("/w/dg/1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo", "?depTerminalId=NAI3214401&arrTerminalId=NAI3507401&depPlandTime=20261105"));
+  assert.ok(webRequest("/w/dg/1613000/SuburbsBusInfo/GetSuberbsBusTrminlList", "?terminalNm=" + encodeURIComponent("전주")));
+  assert.equal(webRequest("/w/dg/1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo", "?depTerminalId=X1&arrTerminalId=NAEK700&depPlandTime=20261105"), null);
+  assert.equal(ttlFor("1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo"), 1800);
+  assert.equal(ttlFor("1613000/SuburbsBusInfo/GetSuberbsBusTrminlList"), 86400);
+});
