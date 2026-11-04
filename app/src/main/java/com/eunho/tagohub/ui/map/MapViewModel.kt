@@ -2695,7 +2695,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         /** 지하철 열차 모형을 선로에서 비켜 놓는 거리(m) */
         const val TRAIN_SIDE_M = 7.0
-        const val KLID_BUS_REFRESH_MS = 30_000L
+        const val KLID_BUS_REFRESH_MS = 15_000L
         const val MAX_KLID_BUS_PINS = 300
         const val KLID_BUS_COLOR = 0xFF008577.toInt()
         const val MAX_STOPS = 400

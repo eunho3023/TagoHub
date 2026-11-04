@@ -21,7 +21,7 @@ internal const val MAX_ESTIMATE_STOPS = 25
 private const val MAX_SECOND_STOPS = 40
 
 /** 같은 정류장·노선의 어림 결과를 다시 쓰는 시간 (새로고침마다 노선 API 를 또 부르지 않게) */
-private const val ESTIMATE_TTL_MS = 30_000L
+private const val ESTIMATE_TTL_MS = 14_000L
 private const val ESTIMATE_TIMEOUT_MS = 8_000L
 private const val MAX_ESTIMATE_ROUTES = 14
 
