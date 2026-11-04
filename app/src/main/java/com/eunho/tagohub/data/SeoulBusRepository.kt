@@ -10,32 +10,41 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.scalars.ScalarsConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /** 서울시 버스 API (ws.bus.go.kr/api/rest). 변수명 대소문자 구분 */
 interface SeoulBusApi {
-    @GET("stationinfo/getStationByUid")
-    suspend fun stationArrivals(@Query("arsId") arsId: String): String
+    suspend fun stationArrivals(arsId: String): String
 
-    @GET("buspos/getBusPosByRtid")
-    suspend fun busPositions(@Query("busRouteId") busRouteId: String): String
+    suspend fun busPositions(busRouteId: String): String
 
-    @GET("busRouteInfo/getRouteInfo")
-    suspend fun routeInfo(@Query("busRouteId") busRouteId: String): String
+    suspend fun routeInfo(busRouteId: String): String
 
-    @GET("busRouteInfo/getRoutePath")
-    suspend fun routePath(@Query("busRouteId") busRouteId: String): String
+    suspend fun routePath(busRouteId: String): String
 
     /** 노선 정류장 (회차지 여부 transYn 으로 방면 나누기) */
-    @GET("busRouteInfo/getStaionByRoute")
-    suspend fun stationsByRoute(@Query("busRouteId") busRouteId: String): String
+    suspend fun stationsByRoute(busRouteId: String): String
 
+}
+
+/** [SeoulBusApi] 를 Ktor 로 (기본 주소·OkHttp 설정은 [httpGetter] 를 만드는 쪽이 정함) */
+class SeoulBusApiHttp(private val get: HttpGetter) : SeoulBusApi {
+    override suspend fun stationArrivals(arsId: String): String =
+        get("stationinfo/getStationByUid", listOf("arsId" to arsId))
+
+    override suspend fun busPositions(busRouteId: String): String =
+        get("buspos/getBusPosByRtid", listOf("busRouteId" to busRouteId))
+
+    override suspend fun routeInfo(busRouteId: String): String =
+        get("busRouteInfo/getRouteInfo", listOf("busRouteId" to busRouteId))
+
+    override suspend fun routePath(busRouteId: String): String =
+        get("busRouteInfo/getRoutePath", listOf("busRouteId" to busRouteId))
+
+    override suspend fun stationsByRoute(busRouteId: String): String =
+        get("busRouteInfo/getStaionByRoute", listOf("busRouteId" to busRouteId))
 }
 
 class SeoulBusRepository(private val api: SeoulBusApi) {
@@ -101,8 +110,7 @@ class SeoulBusRepository(private val api: SeoulBusApi) {
                 }
                 .build()
             return SeoulBusRepository(
-                Retrofit.Builder().baseUrl("http://ws.bus.go.kr/api/rest/").client(client)
-                    .addConverterFactory(ScalarsConverterFactory.create()).build().create(SeoulBusApi::class.java)
+                SeoulBusApiHttp(httpGetter("http://ws.bus.go.kr/api/rest/", client))
             )
         }
     }

@@ -12,36 +12,50 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.scalars.ScalarsConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** 제주 버스정보 OPEN API (제주_BIS_Open-API_Guide.xlsx). JSON, 인증키 없음 */
 interface JejuApi {
-    @GET("searchBusRouteList.do")
     suspend fun routes(): String
 
-    @GET("searchBusRouteStationList.do")
-    suspend fun routeStations(@Query("route_id") routeId: String): String
+    suspend fun routeStations(routeId: String): String
 
-    @GET("searchArrivalInfoList.do")
-    suspend fun arrivals(@Query("station_id") stationId: String): String
+    suspend fun arrivals(stationId: String): String
 
-    @GET("searchRouteByStationList.do")
-    suspend fun stopRoutes(@Query("station_id") stationId: String): String
+    suspend fun stopRoutes(stationId: String): String
 
     /** 전체 버스 위치 (노선 구분 없이 한 번에) */
-    @GET("searchBusAllocList.do")
     suspend fun allBuses(): String
+}
+
+/** [JejuApi] 를 Ktor 로 (기본 주소·OkHttp 설정은 [httpGetter] 를 만드는 쪽이 정함) */
+class JejuApiHttp(private val get: HttpGetter) : JejuApi {
+    override suspend fun routes(): String =
+        get("searchBusRouteList.do", listOf())
+
+    override suspend fun routeStations(routeId: String): String =
+        get("searchBusRouteStationList.do", listOf("route_id" to routeId))
+
+    override suspend fun arrivals(stationId: String): String =
+        get("searchArrivalInfoList.do", listOf("station_id" to stationId))
+
+    override suspend fun stopRoutes(stationId: String): String =
+        get("searchRouteByStationList.do", listOf("station_id" to stationId))
+
+    override suspend fun allBuses(): String =
+        get("searchBusAllocList.do", listOf())
 }
 
 /** 정류소 좌표 보충용 (OpenAPI 정의서 Ver2.0 의 Station, XML). 내장 DB 에 없는 새 정류장만 */
 interface JejuOpenApi {
-    @GET("Station")
-    suspend fun stations(@Query("pageNo") page: Int, @Query("numOfRows") rows: Int): String
+    suspend fun stations(page: Int, rows: Int): String
+}
+
+/** [JejuOpenApi] 를 Ktor 로 (기본 주소·OkHttp 설정은 [httpGetter] 를 만드는 쪽이 정함) */
+class JejuOpenApiHttp(private val get: HttpGetter) : JejuOpenApi {
+    override suspend fun stations(page: Int, rows: Int): String =
+        get("Station", listOf("pageNo" to page.toString(), "numOfRows" to rows.toString()))
 }
 
 /**
@@ -107,9 +121,9 @@ class JejuRepository(
         // 실제 원인을 그대로 보여준다 (예: SocketTimeoutException, CLEARTEXT not permitted, Connection reset)
         Log.w("TagoMap", "제주 버스 API 연결 실패", e)
         TagoResult.Error("제주 버스 API 연결 실패: ${e.javaClass.simpleName}${e.message?.let { " ($it)" }.orEmpty()}")
-    } catch (e: retrofit2.HttpException) {
-        Log.w("TagoMap", "제주 버스 API HTTP ${e.code()}", e)
-        TagoResult.Error("제주 버스 API 응답 오류: HTTP ${e.code()}")
+    } catch (e: HttpStatusException) {
+        Log.w("TagoMap", "제주 버스 API HTTP ${e.code}", e)
+        TagoResult.Error("제주 버스 API 응답 오류: HTTP ${e.code}")
     } catch (e: Exception) {
         Log.w("TagoMap", "제주 버스 API 오류", e)
         TagoResult.Error("제주 버스 API 오류: ${e.message ?: e.javaClass.simpleName}")
@@ -210,12 +224,10 @@ class JejuRepository(
                     )
                 }
                 .build()
-            fun retrofit(base: String) = Retrofit.Builder().baseUrl(base).client(client)
-                .addConverterFactory(ScalarsConverterFactory.create()).build()
             return JejuRepository(
-                retrofit("http://bus.jeju.go.kr/api/").create(JejuApi::class.java),
-                retrofit("https://bus.jeju.go.kr/api/").create(JejuApi::class.java),
-                retrofit("http://busopen.jeju.go.kr/OpenAPI/service/bis/").create(JejuOpenApi::class.java),
+                JejuApiHttp(httpGetter("http://bus.jeju.go.kr/api/", client)),
+                JejuApiHttp(httpGetter("https://bus.jeju.go.kr/api/", client)),
+                JejuOpenApiHttp(httpGetter("http://busopen.jeju.go.kr/OpenAPI/service/bis/", client)),
                 trust,
             )
         }

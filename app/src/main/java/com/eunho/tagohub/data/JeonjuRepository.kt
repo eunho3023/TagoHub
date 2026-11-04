@@ -10,10 +10,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import retrofit2.Retrofit
-import retrofit2.converter.scalars.ScalarsConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
@@ -21,33 +17,48 @@ import java.util.concurrent.TimeUnit
 /** 전주시 버스정보 API (apis.data.go.kr/4641000). 파라미터는 사용자가 확인한 요청 URL 그대로 */
 interface JeonjuApi {
     /** 정류장 도착 예정 (일반) */
-    @GET("realtime/bus_location_busstop_infomation_common")
-    suspend fun arrivals(@Query("stopStdid") stopStdid: String): String
+    suspend fun arrivals(stopStdid: String): String
 
     /** 노선 전체 정류장 + 버스 위치 */
-    @GET("realtime/bus_location_bus_position_common")
-    suspend fun positions(@Query("brtStdid") brtStdid: String): String
+    suspend fun positions(brtStdid: String): String
 
     /** 노선 모양 */
-    @GET("nosun/bus_nosun_drawing_common")
-    suspend fun drawing(@Query("brtStdid") brtStdid: String): String
+    suspend fun drawing(brtStdid: String): String
 
     /**
      * 노선 운행 시각표 / 노선 정보. 이 두 API 는 요청 파라미터 이름이 확인되지 않아
      * 다른 노선 API 의 brtStdid 와 응답에 나오는 brtStdId·stdId 를 함께 보낸다 (모르는 파라미터는 무시됨).
      */
-    @GET("nosun/bus_location_time_common")
-    suspend fun courses(@Query("brtStdid") a: String, @Query("brtStdId") b: String, @Query("stdId") c: String): String
+    suspend fun courses(a: String, b: String, c: String): String
 
-    @GET("nosun/bus_location_busstop_info_common")
-    suspend fun routeInfo(@Query("brtStdid") a: String, @Query("brtStdId") b: String, @Query("stdId") c: String): String
+    suspend fun routeInfo(a: String, b: String, c: String): String
 
     /**
      * 정류장 경유노선. 요청 이름은 응답의 빈 칸(stopStandardid) 규칙으로 추정 —
      * 다른 정류장 API 의 stopStdid 도 함께 보낸다 (모르는 파라미터는 무시됨)
      */
-    @GET("busstop/general_busstop_common")
-    suspend fun stopRoutes(@Query("stopStandardid") a: String, @Query("stopStdid") b: String): String
+    suspend fun stopRoutes(a: String, b: String): String
+}
+
+/** [JeonjuApi] 를 Ktor 로 (기본 주소·OkHttp 설정은 [httpGetter] 를 만드는 쪽이 정함) */
+class JeonjuApiHttp(private val get: HttpGetter) : JeonjuApi {
+    override suspend fun arrivals(stopStdid: String): String =
+        get("realtime/bus_location_busstop_infomation_common", listOf("stopStdid" to stopStdid))
+
+    override suspend fun positions(brtStdid: String): String =
+        get("realtime/bus_location_bus_position_common", listOf("brtStdid" to brtStdid))
+
+    override suspend fun drawing(brtStdid: String): String =
+        get("nosun/bus_nosun_drawing_common", listOf("brtStdid" to brtStdid))
+
+    override suspend fun courses(a: String, b: String, c: String): String =
+        get("nosun/bus_location_time_common", listOf("brtStdid" to a, "brtStdId" to b, "stdId" to c))
+
+    override suspend fun routeInfo(a: String, b: String, c: String): String =
+        get("nosun/bus_location_busstop_info_common", listOf("brtStdid" to a, "brtStdId" to b, "stdId" to c))
+
+    override suspend fun stopRoutes(a: String, b: String): String =
+        get("busstop/general_busstop_common", listOf("stopStandardid" to a, "stopStdid" to b))
 }
 
 class JeonjuRepository(private val api: JeonjuApi) {
@@ -135,12 +146,7 @@ class JeonjuRepository(private val api: JeonjuApi) {
                 }
                 .build()
             return JeonjuRepository(
-                Retrofit.Builder()
-                    .baseUrl("https://apis.data.go.kr/4641000/")
-                    .client(client)
-                    .addConverterFactory(ScalarsConverterFactory.create())
-                    .build()
-                    .create(JeonjuApi::class.java)
+                JeonjuApiHttp(httpGetter("https://apis.data.go.kr/4641000/", client))
             )
         }
     }

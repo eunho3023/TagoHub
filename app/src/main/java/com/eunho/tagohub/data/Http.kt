@@ -1,5 +1,7 @@
 package com.eunho.tagohub.data
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -29,4 +31,16 @@ object Http {
 
     /** 공유 연결 풀·스레드를 쓰는 새 빌더 */
     fun builder(): OkHttpClient.Builder = base.newBuilder()
+}
+
+/** 경로·질의 값(null 은 뺌)으로 GET 해서 본문 글자를 돌려주는 함수 (각 API 의 ...ApiHttp 가 씀) */
+typealias HttpGetter = suspend (path: String, query: List<Pair<String, String?>>) -> String
+
+/**
+ * [base] 주소 아래로 묻는 [HttpGetter]. 통신은 Ktor 로 하되 엔진은 [client] (그 API 의 제한 시간·헤더·키 인터셉터, 공유 연결 풀)를 그대로 씀.
+ * 2xx 가 아니면 [HttpStatusException].
+ */
+fun httpGetter(base: String, client: OkHttpClient): HttpGetter {
+    val ktor = HttpClient(OkHttp) { engine { preconfigured = client } }
+    return { path, query -> ktor.getText(base, path, query) }
 }

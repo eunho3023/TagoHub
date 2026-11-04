@@ -3,8 +3,6 @@ package com.eunho.tagohub.data
 import com.eunho.tagohub.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -19,7 +17,7 @@ object Network {
 
     /**
      * Encoding 키(%2F 포함)는 그대로, Decoding 키(+, / 포함)는 직접 인코딩.
-     * Retrofit @Query 에 맡기면 '+' 가 인코딩되지 않아 서버가 공백으로 읽고
+     * 질의 값으로 넣으면 '+' 가 인코딩되지 않아 서버가 공백으로 읽고
      * SERVICE_KEY_IS_NOT_REGISTERED(30) 를 돌려주는 문제가 있다.
      */
     private val encodedKey: String by lazy {
@@ -49,10 +47,7 @@ object Network {
         .build()
 
     /** Ktor 로 묻되 실제 통신은 위 OkHttp(키·형식·중계 서버를 붙이는 인터셉터, 공유 연결 풀)가 함 */
-    private val ktor = HttpClient(OkHttp) { engine { preconfigured = client } }
-    private val base = proxy?.base("1613000") ?: BASE_URL
-
-    val api: TagoApi = TagoApi { path, query -> ktor.getText(base, path, query) }
+    val api: TagoApi = TagoApi(httpGetter(proxy?.base("1613000") ?: BASE_URL, client))
 }
 
 object Graph {

@@ -13,8 +13,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import retrofit2.Retrofit
-import retrofit2.converter.scalars.ScalarsConverterFactory
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
@@ -232,12 +230,7 @@ class KricSubwayRepository(
                     chain.proceed(chain.request().newBuilder().url(url).build())
                 }
                 .build()
-            val api = Retrofit.Builder()
-                .baseUrl("https://openapi.kric.go.kr/openapi/trainUseInfo/")
-                .client(client)
-                .addConverterFactory(ScalarsConverterFactory.create())
-                .build()
-                .create(KricSubwayApi::class.java)
+            val api = KricSubwayApiHttp(httpGetter("https://openapi.kric.go.kr/openapi/trainUseInfo/", client))
             return KricSubwayRepository(api)
         }
     }
