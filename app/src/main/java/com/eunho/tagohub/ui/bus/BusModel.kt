@@ -751,15 +751,15 @@ private fun mergeWithGrace(d: BusDest.Route, freshRaw: List<BusLocation>): List<
 }
 
 private val busPosCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<Int>>>()
-private const val BUS_POS_TTL_MS = 30_000L
+private const val BUS_POS_TTL_MS = 14_000L   // 정류장 화면은 15초마다 새로고침: 매번 새 위치로
 private const val BUS_POS_MAX_ROUTES = 5
 
 /**
  * 전국: 가까이(6정류장 전 이내) 뜬 노선별 첫 버스를 실시간 위치와 맞춰 본다. 앞쪽에 오는 버스가 없는데
- * 이미 정류장을 지나갔으면 목록에서 빼고, 정류장에 서 있으면 "정류장 도착"으로 바꾼다
+ * 이미 정류장을 지나갔거나(도착 정보는 아직 "N정류장 전"인데) 정류장에 서 있으면 서울처럼 목록에서 뺀다
  * (도착 예측이 늦게 갱신돼 지나간 버스가 "3정류장 전 · 3분" 으로 남는 경우).
  * 버스 위치는 지역마다 받는 곳이 달라서([busOrdsOnRoute]) 노선 정류장 목록의 정류장 ID 로 순번을 맞춘다.
- * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 30초 동안 결과를 재사용한다
+ * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 14초 동안 결과를 재사용한다
  * (버스 위치는 30~60초마다 바뀜). 위치를 못 받거나 정류장이 노선에 여러 번 나오면 판단하지 않고 그대로 둔다.
  */
 private suspend fun dropPassedByPosition(repo: TagoRepository, d: BusDest.Stop, list: List<BusArrival>): List<BusArrival> {
@@ -785,11 +785,11 @@ private suspend fun dropPassedByPosition(repo: TagoRepository, d: BusDest.Stop, 
         }.awaitAll().filterNotNull()
     }
     if (verdicts.isEmpty()) return list
-    // 지나간 버스는 빼고, 정류장에 와 있는 버스는 "정류장 도착"으로 (도착 정보가 아직 "3정류장 전"이어도)
+    // 서울처럼: 지나간 버스, 도착 정보는 "3정류장 전"인데 이미 정류장에 서 있는 버스는 뺌 (위치 정보도 15초 늦을 수 있어 떠나는 중으로 봄)
     return list.mapNotNull { x ->
         when (verdicts.firstOrNull { it.first === x }?.second) {
             PassedByPosition.Verdict.PASSED -> null
-            PassedByPosition.Verdict.AT_STOP -> x.copy(prevStops = 0, arrSeconds = 0, atStop = null, estimated = false)
+            PassedByPosition.Verdict.AT_STOP -> null
             else -> x
         }
     }
