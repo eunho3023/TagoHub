@@ -53,14 +53,8 @@ object TrainTimetable {
     }
 
     /** 역 이름 비교용: 괄호 안 설명과 공백을 뺌 ("울산(통도사)" = "울산") */
-    fun norm(name: String): String = name.replace(Regex("\\(.*?\\)"), "").replace(Regex("\\s+"), "").let {
-        // 시간표 이름과 TAGO 이름이 다른 몇 곳
-        when (it) {
-            "여수엑스포", "여수EXPO" -> "여수EXPO"
-            "평택지제" -> "지제"
-            else -> it
-        }
-    }
+    /** 역 이름 맞추기 (공용 코드 [TrainTable.norm]) */
+    fun norm(name: String): String = TrainTable.norm(name)
 
     fun parse(text: String): List<Train> = text.lineSequence().mapNotNull { line ->
         val f = line.split('\t')
@@ -100,19 +94,8 @@ object TrainTimetable {
         }
     }
 
-    /** 운행요일 표기("실적평일"·"실적토"·"실적일"·"금토일"·"월화수" …)가 이 날짜에 다니는 열차인지 */
-    fun runsOn(remark: String, date: java.time.LocalDate): Boolean {
-        val dow = date.dayOfWeek
-        val weekend = dow == java.time.DayOfWeek.SATURDAY || dow == java.time.DayOfWeek.SUNDAY
-        val r = remark.removePrefix("실적")
-        return when {
-            r == "평일" -> !weekend
-            r == "토" -> dow == java.time.DayOfWeek.SATURDAY
-            r == "일" -> dow == java.time.DayOfWeek.SUNDAY
-            r.isNotEmpty() && r.all { it in "월화수목금토일" } -> "월화수목금토일"[dow.value - 1] in r
-            else -> false
-        }
-    }
+    /** 운행요일 표기가 이 날짜에 다니는 열차인지 (공용 코드 [TrainTable.runsOn]) */
+    fun runsOn(remark: String, date: java.time.LocalDate): Boolean = TrainTable.runsOn(remark, date.dayOfWeek.value)
 
     /**
      * 한국철도공사 시간표만으로 만든 [depName]→[arrName] 그날 열차 (출발 시각순). 국토교통부(TAGO) 조회가 비는 날(오늘 등)을 채우는 용도라

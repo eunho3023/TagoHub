@@ -65,6 +65,7 @@ internal sealed interface Screen {
     data class Map(val focus: WebStop? = null) : Screen
     data class Stop(val stop: WebStop) : Screen
     data class Route(val routeId: String, val fromStopId: String?) : Screen
+    data class Subway(val station: SubwayStationW) : Screen
 }
 
 @Composable
@@ -80,8 +81,18 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val search = remember { SearchState() }
                     val map = remember { MapState(36.3504, 127.3845, 16) }
                     val tiles = remember { TileLoader(http ?: io.ktor.client.HttpClient()) }
+                    val transit = remember { TransitRepo(repo.server, repo.client) }
+                    var mode by remember { mutableStateOf(Mode.Bus) }
+                    val trainState = remember { TrainState() }
+                    val subwayState = remember { SubwaySearchState() }
+                    val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
                     when (val top = stack.last()) {
-                        Screen.Search -> SearchPane(repo, search, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }) { go(Screen.Stop(it)) }
+                        Screen.Search -> when (mode) {
+                            Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }) { go(Screen.Stop(it)) }
+                            Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { go(Screen.Map()) }) { go(Screen.Subway(it)) }
+                            Mode.Train -> TrainPane(transit, trainState, chips, onMap = { go(Screen.Map()) })
+                        }
+                        is Screen.Subway -> SubwayStationPane(transit, top.station, onBack = ::back)
                         is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
                         is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
                         is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }
@@ -140,7 +151,7 @@ private class SearchState {
 }
 
 @Composable
-private fun SearchPane(repo: WebRepo, st: SearchState, onMap: () -> Unit, onLocate: (WebStop) -> Unit, onPick: (WebStop) -> Unit) {
+private fun SearchPane(repo: WebRepo, st: SearchState, modeChips: @Composable () -> Unit, onMap: () -> Unit, onLocate: (WebStop) -> Unit, onPick: (WebStop) -> Unit) {
     var query by st::query
     var result by st::result
     var message by st::message
@@ -159,6 +170,7 @@ private fun SearchPane(repo: WebRepo, st: SearchState, onMap: () -> Unit, onLoca
             .onFailure { result = emptyList(); message = "정류장 자료를 받지 못했어요" }
     }
     Header("TagoHub", "버스 정류장 실시간 도착", action = "지도", onAction = onMap)
+    modeChips()
     Surface(color = MaterialTheme.colorScheme.surface) {
         OutlinedTextField(
             query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),

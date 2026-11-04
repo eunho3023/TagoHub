@@ -30,6 +30,8 @@ export function ttlFor(path) {
   const p = path.toLowerCase();
   if (/arvl|buslc|location|arrival|realtime|position/.test(p)) return 5;
   if (/prxmt|crdnt/.test(p)) return 3600;
+  if (/schdul|kwrdfnd/.test(p)) return 86400;   // 지하철 역 시간표·역 찾기
+  if (/strtpnt/.test(p)) return 1800;           // 기차 출발→도착 열차 (종류·요금)
   if (/ctycode|thrghsttn|routeinfo|routeno|sttnno|trminl|grad|sttnlist|nosun|drawing/.test(p)) return 86400;
   return 60;
 }
@@ -118,8 +120,20 @@ export function hostTtl(host, path) {
 export const WEB_OPS = {
   "1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList": ["cityCode", "nodeId"],
   "1613000/BusLcInfoInqireService/getRouteAcctoBusLcList": ["cityCode", "routeId"],
+  // 지하철: 역 찾기, 역 시간표 (하루 저장)
+  "1613000/SubwayInfo/GetKwrdFndSubwaySttnList": ["subwayStationName"],
+  "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": ["subwayStationId", "dailyTypeCode", "upDownTypeCode"],
+  // 기차: 출발역 → 도착역 그날 열차 (종류·요금)
+  "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": ["depPlaceId", "arrPlaceId", "depPlandTime"],
 };
-const WEB_VALUE = { cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/ };
+const WEB_VALUE = {
+  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
+  subwayStationName: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/, subwayStationId: /^[A-Za-z0-9]{1,16}$/,
+  dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
+  depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,
+};
+/** 한 번에 받는 개수 (지하철 역 시간표는 하루치가 수백 개라 한 쪽에) */
+const WEB_ROWS = { "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300" };
 
 /** "/w/dg/1613000/..." + 검색 조건 → {path, search} (질의는 허락한 것만, 쪽 번호·개수는 정해 둠). 허락하지 않으면 null */
 export function webRequest(pathname, search) {
@@ -135,7 +149,7 @@ export function webRequest(pathname, search) {
     out.set(n, v);
   }
   out.set("pageNo", "1");
-  out.set("numOfRows", "100");
+  out.set("numOfRows", WEB_ROWS[path] || "100");
   out.set("_type", "xml");
   return { path, search: "?" + out.toString() };
 }

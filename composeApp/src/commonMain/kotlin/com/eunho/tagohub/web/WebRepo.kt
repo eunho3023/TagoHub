@@ -56,6 +56,10 @@ sealed interface Arrivals {
  */
 class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
     private val base = base.trimEnd('/') + "/"
+    /** 서버 주소 (기차·지하철 자료도 같은 서버) */
+    val server: String get() = base
+    /** 같은 연결을 기차·지하철 자료도 같이 씀 */
+    val client: HttpClient get() = http
     private val names = HashMap<String, List<WebStop>>()
     private val tiles = HashMap<String, List<WebStop>>()
     private val sums = HashMap<String, Map<String, RouteSum>>()

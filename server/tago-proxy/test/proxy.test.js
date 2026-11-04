@@ -16,7 +16,7 @@ test("저장 시간: 도착·위치 5초, 목록 하루, 주변 1시간", () => 
   assert.equal(ttlFor("1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList"), 86400);
   assert.equal(ttlFor("1613000/BusSttnInfoInqireService/getCtyCodeList"), 86400);
   assert.equal(ttlFor("1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList"), 3600);
-  assert.equal(ttlFor("1613000/TrainInfo/GetStrtpntAlocFndTrainInfo"), 60);
+  assert.equal(ttlFor("1613000/TrainInfo/GetStrtpntAlocFndTrainInfo"), 1800);
 });
 
 test("키는 서버 것으로, 앱이 보낸 키는 버림", () => {
@@ -81,4 +81,17 @@ test("웹 버전: 실시간 도착·위치만, 질의는 정해진 것만", () =
 test("공공데이터포털이 잠시 바쁘다는 답(99)은 저장하지 않음", () => {
   assert.equal(cacheable(200, "<response><header><resultCode>99</resultCode><resultMsg>가용한 세션이 존재하지 않습니다. (30/30)</resultMsg></header></response>"), false);
   assert.equal(cacheable(200, "<response><header><resultCode>00</resultCode></header><body><totalCount>4</totalCount></body></response>"), true);
+});
+
+test("웹 버전: 지하철 역 찾기·시간표, 기차 열차 (질의 검사, 개수 정함)", () => {
+  const a = webRequest("/w/dg/1613000/SubwayInfo/GetKwrdFndSubwaySttnList", "?subwayStationName=" + encodeURIComponent("서울역"));
+  assert.ok(a && a.search.includes("numOfRows=100"));
+  const b = webRequest("/w/dg/1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList", "?subwayStationId=MTRS11133&dailyTypeCode=01&upDownTypeCode=U");
+  assert.ok(b && b.search.includes("numOfRows=1000"));
+  assert.equal(webRequest("/w/dg/1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList", "?subwayStationId=MTRS11133&dailyTypeCode=04&upDownTypeCode=U"), null);
+  const c = webRequest("/w/dg/1613000/TrainInfo/GetStrtpntAlocFndTrainInfo", "?depPlaceId=NAT010000&arrPlaceId=NAT014445&depPlandTime=20261105");
+  assert.ok(c && c.search.includes("numOfRows=300"));
+  assert.equal(webRequest("/w/dg/1613000/TrainInfo/GetStrtpntAlocFndTrainInfo", "?depPlaceId=X&arrPlaceId=NAT014445&depPlandTime=20261105"), null);
+  assert.equal(ttlFor("1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList"), 86400);
+  assert.equal(ttlFor("1613000/TrainInfo/GetStrtpntAlocFndTrainInfo"), 1800);
 });
