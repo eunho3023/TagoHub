@@ -31,6 +31,8 @@ import com.eunho.tagohub.data.JeonjuMappers
 import com.eunho.tagohub.data.StopDb
 import com.eunho.tagohub.data.TagoRepository
 import com.eunho.tagohub.core.Row
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
@@ -385,7 +387,21 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         a.await() to r?.await()
     }
     (routes as? TagoResult.Success)?.let { d.lastRoutes = it.data }
+    val db = StopDb.peek()
 
+    // 지나간 버스 확인(노선마다 버스 위치 조회)·같은 자리 다른 정류장 조회는 몇 초 걸려서,
+    // 처음 열 때는 받은 도착 정보를 먼저 보여주고 다 끝나면 고친 목록으로 바꿈
+    if (arr is TagoResult.Success && arr.data.isNotEmpty() && d.lastArrivals == null) {
+        d.rows.value = Load.Ok(
+            mergeStopRows(arr.data, d.lastRoutes.orEmpty())
+                .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
+                .sortedWith(stopRowOrder)
+        )
+    }
+    // 위치 확인은 아래 다른 정류장 조회와 함께 돌림
+    val fixedJob = (arr as? TagoResult.Success)?.let { s -> CoroutineScope(currentCoroutineContext()).async { runCatching { dropPassedByPosition(repo, d, s.data) }.getOrDefault(s.data) } }
+
+    var applyFixed: (suspend () -> Unit)? = null
     when (arr) {
         is TagoResult.Success -> {
             // 서버가 직전과 똑같은 정보를 주면(버스 위치는 30~60초마다 바뀜) 그렇다고 알림
@@ -395,10 +411,12 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
             d.note.value = if (unchanged && arr.data.isNotEmpty()) "정보가 직전과 같아요 · 버스 위치는 30~60초마다 바뀌어요" else null
             if (arr.data.isNotEmpty() || d.emptyStreak >= 1 || d.lastArrivals.isNullOrEmpty()) {
                 // 새로고침해도 남은 시간이 거꾸로 늘지 않게 (화면에서 이미 줄어든 값을 유지)
-                val elapsed = d.updated.value?.let { java.time.Duration.between(it, LocalTime.now()).seconds.toInt().coerceIn(0, 600) } ?: 0
-                d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, dropPassedByPosition(repo, d, arr.data))
-                // 서버 정보가 그대로면 "받은 시각"을 그대로 둠: 새로고침할 때마다 시각을 지금으로 바꾸면 남은 초가 도로 늘어나 보임
-                if (!unchanged || d.updated.value == null) d.updated.value = LocalTime.now()
+                applyFixed = {
+                    val elapsed = d.updated.value?.let { java.time.Duration.between(it, LocalTime.now()).seconds.toInt().coerceIn(0, 600) } ?: 0
+                    d.lastArrivals = com.eunho.tagohub.data.ArrivalSmoothing.bus(d.lastArrivals, elapsed, fixedJob?.await() ?: arr.data)
+                    // 서버 정보가 그대로면 "받은 시각"을 그대로 둠: 새로고침할 때마다 시각을 지금으로 바꾸면 남은 초가 도로 늘어나 보임
+                    if (!unchanged || d.updated.value == null) d.updated.value = LocalTime.now()
+                }
             }
             d.emptyStreak = if (arr.data.isEmpty()) d.emptyStreak + 1 else 0
         }
@@ -412,7 +430,6 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         }
     }
     // 같은 자리의 다른 시군 정류장 (번호를 함께 보여주고, 그 정류장에 서는 버스도 같은 목록에)
-    val db = StopDb.peek()
     val comps = d.companions ?: findCompanions(repo, d.stop, db).also { d.companions = it }
     if (d.others.value != comps) d.others.value = comps
     // 조회 대상: 자체 API 지역 정류장은 그대로, TSB 정류장은 버스가 서는 시군마다 하나씩
@@ -441,6 +458,8 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
             (a as? TagoResult.Success)?.let { d.compArrivals[entryKey(c)] = it.data } // 실패하면 직전 정보 유지
         }
     }
+
+    applyFixed?.invoke()
 
     val main = fillFromPositions(
         repo, d.stop,
