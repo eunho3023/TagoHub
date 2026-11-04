@@ -184,7 +184,7 @@ class TagoRepository(private val api: TagoApi) {
     suspend fun busStopsNear(lat: Double, lng: Double) = run {
         val stops = all(listOf(100), 2) { p, n -> api.busStopsNear(lat, lng, p, n) }.map { Mappers.busStop(it) }
         BusSearch(
-            stops = stops.sortedBy { s -> if (s.lat != null && s.lng != null) Geo.meters(lat, lng, s.lat, s.lng) else Double.MAX_VALUE },
+            stops = stops.sortedBy { s -> if (s.lat != null && s.lng != null) Geo.meters(lat, lng, s.lat!!, s.lng!!) else Double.MAX_VALUE },
             routes = emptyList(),
             origin = lat to lng,
         )

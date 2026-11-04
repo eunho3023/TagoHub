@@ -46,7 +46,7 @@ object StopMerge {
             while (j < byLat.size && byLat[j].lat!! - a.lat!! <= dLat) {
                 val b = byLat[j]
                 if (a.cityCode != b.cityCode) {
-                    val d = Geo.meters(a.lat, a.lng!!, b.lat!!, b.lng!!)
+                    val d = Geo.meters(a.lat!!, a.lng!!, b.lat!!, b.lng!!)
                     if (d <= RADIUS_M) {
                         listOf(a to b, b to a).forEach { (x, y) ->
                             val m = partner.getOrPut(x.nodeId) { HashMap() }

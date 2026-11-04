@@ -23,8 +23,8 @@ object Headway {
     /** 노선 정보의 배차간격([interval], 분). 첫차 전이나 막차가 떠난 뒤면 null (막차가 자정을 넘기면 다음 날로) */
     fun fromInterval(interval: Int, firstTime: String?, lastTime: String?, nowMin: Int): Int? {
         if (interval !in 1..MAX_GAP_MIN) return null
-        val first = JeonjuTimetable.parseClock(firstTime)
-        var last = JeonjuTimetable.parseClock(lastTime) ?: return interval
+        val first = Clock.parse(firstTime)
+        var last = Clock.parse(lastTime) ?: return interval
         var now = nowMin
         if (first != null && last < first) {
             last += 1440

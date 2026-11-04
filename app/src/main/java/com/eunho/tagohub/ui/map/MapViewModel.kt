@@ -911,7 +911,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 40) } }.orEmpty().map { it.first }
             val cachedStops = stops.values.filter { stop ->
                 stop.lat != null && stop.lng != null &&
-                    com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat, stop.lng) <= 300.0
+                    com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat!!, stop.lng!!) <= 300.0
             }
             val near = (dbStops + cachedStops).distinctBy { it.nodeId }
             val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
@@ -1635,7 +1635,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushStops()
         if (stop.lat != null && stop.lng != null) canvas?.setPin(stop.lat, stop.lng)
         // 누른 정류장을 현위치 버튼과 똑같이 지도 정중앙에
-        if (stop.lat != null && stop.lng != null) canvas?.focus(stop.lat, stop.lng)
+        if (stop.lat != null && stop.lng != null) canvas?.focus(stop.lat!!, stop.lng!!)
     }
 
     fun onStationClick(id: String) {
@@ -1837,12 +1837,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private var tappedPin: Pair<Double, Double>? = null
 
     fun pickStop(s: BusStop, at: Pair<Double, Double>? = null) {
-        if (canvas == null && s.lat != null && s.lng != null) pendingFocus = s.lat to s.lng
+        if (canvas == null && s.lat != null && s.lng != null) pendingFocus = s.lat!! to s.lng!!
         clearBusSearch()
         closeStopTimetable()
         stops[s.nodeId] = s
         tappedPin = at
-        if (at == null && s.lat != null && s.lng != null) canvas?.focus(s.lat, s.lng)
+        if (at == null && s.lat != null && s.lng != null) canvas?.focus(s.lat!!, s.lng!!)
         selected.value = BusDest.Stop(s, merged[s.nodeId]?.others)
         panel.value = MapPanel.Stop
         pushStops()
@@ -1859,7 +1859,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 노선 타임라인에서 정류소를 누름 */
     fun focusRouteStop(nodeId: String) {
         val s = routeStopAsBusStop(nodeId) ?: return
-        if (s.lat != null && s.lng != null) canvas?.focus(s.lat, s.lng)
+        if (s.lat != null && s.lng != null) canvas?.focus(s.lat!!, s.lng!!)
         onStopClick(nodeId)
     }
 
@@ -2338,7 +2338,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val fromTago = (repo.busStopsNear(lat, lng) as? TagoResult.Success)?.data?.stops.orEmpty()
             .filter { it.nodeId != stop.nodeId && it.name.replace(" ", "") == key }
         val cands = (fromFile + fromTago).filter(::live).distinctBy { it.nodeId }
-            .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat, s.lng) else null }
+            .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat!!, s.lng!!) else null }
             .filter { it.second <= 150.0 }
             .sortedBy { it.second }
             .take(3)
@@ -2669,7 +2669,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 지도에 꽂을 핀 자리: 고른 장소 → 열린 정류장 → 열린 역. 아무것도 없으면 null */
     private fun expectedPin(p: PickedPlace?, pn: MapPanel, sel: BusDest.Stop?, st: StationDetail?, lineName: String? = null): Pair<Double, Double>? = when {
         p != null -> p.lat to p.lng
-        pn == MapPanel.Stop && sel?.stop?.lat != null && sel.stop.lng != null -> tappedPin ?: (sel.stop.lat to sel.stop.lng)
+        pn == MapPanel.Stop && sel?.stop?.lat != null && sel.stop.lng != null -> tappedPin ?: (sel.stop.lat!! to sel.stop.lng!!)
         pn == MapPanel.Station && st != null -> stationPin(st, lineName)
         else -> null
     }

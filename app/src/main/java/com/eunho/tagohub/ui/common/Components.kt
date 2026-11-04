@@ -584,7 +584,7 @@ fun PlacePickerSheet(
                     items(list) { p ->
                         ListItem(
                             headlineContent = { Text(p.name) },
-                            supportingContent = if (p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
+                            supportingContent = if (p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub!!)) } } else null,
                             trailingContent = {
                                 Text(p.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             },
@@ -611,7 +611,7 @@ private fun DistancePlaceList(list: List<Place>, geo: PlaceGeo, here: android.lo
         items(sorted, key = { it.first.id }) { (p, meters) ->
             ListItem(
                 headlineContent = { Text(p.name) },
-                supportingContent = if (!p.sub.isNullOrBlank()) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
+                supportingContent = if (!p.sub.isNullOrBlank()) { { Text(PlaceGroups.shortRegion(p.sub!!)) } } else null,
                 trailingContent = {
                     Text(
                         meters?.let { if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it.toInt()}m" } ?: "위치 모름",
@@ -659,7 +659,7 @@ private fun GroupedPlaceList(list: List<Place>, byRegion: Boolean, onPick: (Plac
                 items(places, key = { it.id }) { p ->
                     ListItem(
                         headlineContent = { Text(p.name) },
-                        supportingContent = if (!byRegion && p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub)) } } else null,
+                        supportingContent = if (!byRegion && p.sub != null) { { Text(PlaceGroups.shortRegion(p.sub!!)) } } else null,
                         leadingContent = { StationDot() },
                             modifier = Modifier.clickable { onPick(p) },
                     )

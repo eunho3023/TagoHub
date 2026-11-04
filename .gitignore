@@ -40,3 +40,7 @@ outputs/
 # 중계 서버 배포용 설정 (deploy.ps1 이 데이터베이스 번호를 넣어 만듦)
 server/tago-proxy/wrangler.deploy.toml
 server/tago-proxy/.wrangler/
+
+# 공용 모듈(shared) 웹 빌드가 만드는 파일
+/kotlin-js-store/
+/shared/build

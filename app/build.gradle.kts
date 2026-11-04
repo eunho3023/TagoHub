@@ -116,6 +116,8 @@ android {
 }
 
 dependencies {
+    // 폰·웹·PC 공용 코드 (shared/)
+    implementation(project(":shared"))
     val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     implementation("androidx.compose.animation:animation")

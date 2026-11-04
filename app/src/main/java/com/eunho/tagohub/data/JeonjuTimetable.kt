@@ -101,12 +101,7 @@ object JeonjuTimetable {
         }.sorted()
 
     /** "05:30" / "0530" → 330 */
-    fun parseClock(t: String?): Int? {
-        val m = Regex("(\\d{1,2}):?(\\d{2})").find(t ?: return null) ?: return null
-        val h = m.groupValues[1].toInt()
-        val mm = m.groupValues[2].toInt()
-        return if (h < 30 && mm < 60) h * 60 + mm else null
-    }
+    fun parseClock(t: String?): Int? = Clock.parse(t)
 
     /**
      * 전국 노선 예상 출발 시각: 첫차부터 배차간격마다, 막차까지 (기점 출발).

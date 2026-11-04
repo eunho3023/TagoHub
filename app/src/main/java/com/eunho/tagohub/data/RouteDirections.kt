@@ -65,7 +65,7 @@ object RouteDirections {
 
     private fun dist(a: RouteStop, b: RouteStop): Double {
         if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return 0.0
-        return Geo.meters(a.lat, a.lng, b.lat, b.lng)
+        return Geo.meters(a.lat!!, a.lng!!, b.lat!!, b.lng!!)
     }
     private fun near(a: RouteStop, b: RouteStop, m: Double) = a.lat != null && b.lat != null && dist(a, b) <= m
 }
