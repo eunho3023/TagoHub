@@ -2969,20 +2969,24 @@ private fun markHintSeen(context: android.content.Context, key: String) {
 }
 
 /**
- * 지난 운행 기록으로 만든 요일별 예상 시간표 (월~일). 이 폰이 버스 위치를 받으며 본 실제 도착 시각을 묶어
- * 예상(가운데 값)·가장 빠른·가장 늦은 시각을 보여 준다. 기록은 휴대폰에만 있고 6주 지나면 지움.
+ * 지난 운행 기록으로 만든 요일별 예상 시간표 (월~일). 이 폰과 다른 사용자들(중계 서버에 모은 기록)이 본 실제 도착 시각을 묶어
+ * 예상(가운데 값)·가장 빠른·가장 늦은 시각을 보여 준다. 기록은 6주 지나면 지움.
  */
 @Composable
 private fun ObservedTimetable(routeId: String, nodeId: String, color: Color) {
     val days = java.time.DayOfWeek.entries
     var day by rememberSaveable { mutableStateOf(java.time.LocalDate.now().dayOfWeek) }
-    val hits by produceState(emptyList<com.eunho.tagohub.data.ArrivalLog.Hit>(), routeId) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.ArrivalLog.read(routeId) }
+    val hits by produceState(emptyList<com.eunho.tagohub.data.ArrivalLog.Hit>(), routeId, nodeId) {
+        // 이 폰의 기록을 먼저 보여주고, 서버에 모인 다른 사용자들의 기록이 오면 합침
+        val local = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.data.ArrivalLog.read(routeId) }
+        value = local
+        val remote = com.eunho.tagohub.data.SharedArrivalLog.fetch(routeId, nodeId)
+        if (remote.isNotEmpty()) value = com.eunho.tagohub.data.SharedArrivalLog.merge(local, remote)
     }
     val table = remember(hits, nodeId, day) { com.eunho.tagohub.data.ArrivalLog.table(hits, nodeId, day) }
     Column(Modifier.fillMaxSize()) {
         Text(
-            "이 폰에서 본 실제 도착 시각으로 만든 예상 시간표예요. 실제 상황과 다를 수 있어요.",
+            "TagoHub 사용자들이 본 실제 도착 시각으로 만든 예상 시간표예요. 실제 상황과 다를 수 있어요.",
             Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

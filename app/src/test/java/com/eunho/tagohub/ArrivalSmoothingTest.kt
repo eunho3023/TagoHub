@@ -125,3 +125,18 @@ class StationPoiTest {
         assertEquals(false, p.looksLikeStation("강남역 정류장"))
     }
 }
+
+class SharedArrivalLogTest {
+    private fun h(n: String, s: Long) = com.eunho.tagohub.data.ArrivalLog.Hit(n, s)
+
+    /** 이 폰 기록 + 서버 기록: 같은 정류장 2분 안은 같은 버스라 하나만 (이 폰이 올린 것이 서버에도 있음) */
+    @Test
+    fun mergeDropsSameBusFromServer() {
+        val m = com.eunho.tagohub.data.SharedArrivalLog
+        val local = listOf(h("A", 1000), h("A", 5000))
+        val remote = listOf(h("A", 1050), h("A", 3000), h("B", 1000), h("A", 5110))
+        assertEquals(listOf(h("A", 1000), h("A", 5000), h("A", 3000), h("B", 1000)), m.merge(local, remote))
+        assertEquals(local, m.merge(local, emptyList()))
+        assertEquals(listOf(h("A", 10)), m.merge(emptyList(), listOf(h("A", 10), h("A", 60))))
+    }
+}

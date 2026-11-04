@@ -79,3 +79,10 @@ curl https://tagohub-proxy.<계정>.workers.dev/health
 ```bash
 npm test
 ```
+
+## 지난 운행 기록 (D1)
+
+- `POST /log/hits` `{ routeId, hits: [[nodeId, epochSec], ...] }`: 앱이 본 "버스가 정류장을 지난 시각"을 모음 (노선·정류장·분만, 같은 분은 한 번).
+- `GET /log/stop?route=&node=`: 그 노선·정류장의 최근 6주 기록(분)을 돌려줌. 정류장 시간표의 "지난 운행 기록"이 이 폰 기록과 합쳐 씀.
+- 데이터베이스 `tagohub-log` 는 `deploy.ps1` 이 만들고 `wrangler.deploy.toml`(저장소에 안 올림)로 연결해 배포함. API 토큰에 **D1 편집** 권한이 있어야 함. 없으면 이 기능만 빠지고(503) 나머지는 그대로.
+- 6주 지난 기록은 올릴 때 가끔(2%) 지움. 무료 한도: 하루 10만 줄 쓰기.
