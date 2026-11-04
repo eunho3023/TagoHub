@@ -111,3 +111,10 @@ npm test
 D1 `shapes` 표에 저장하고 모두에게 나눠 준다 (`src/shape.js`, 폰 앱 RoadShapeClient 와 같은 방법: 25개씩 구간 요청,
 정류장 사이 블록을 한 바퀴 도는 구간은 직선). 처음 보는 노선만 1~3초, 그 뒤로는 바로. 정류장 목록이 바뀌면 다시 만든다.
 노선 정류장은 정적 파일(`public/data/routes`)을 `env.ASSETS` 로 읽음. OSRM 공개 서버는 대량 사용용이 아니라, 사용자가 많아지면 자체 OSRM 으로 바꿀 것.
+
+## 카카오 지도 (웹 버전)
+
+웹 버전은 폰 앱과 같은 카카오 지도를 쓴다 (`composeApp/src/wasmJsMain/resources/kakaomap.js`). `deploy.ps1` 이 `local.properties` 의 `KAKAO_JS_KEY`
+(카카오 JavaScript 키, 웹 페이지에 들어가도 되는 키)를 `public/config.js` 로 넣는다. 카카오 개발자 사이트 → 내 애플리케이션 → 앱 설정 →
+플랫폼 키 → JavaScript 키 → **JavaScript SDK 도메인**에 서버 주소(`https://….workers.dev`)를 등록해야 지도가 보인다 (로컬 시험은 `http://localhost:8090` 도).
+키가 없거나 도메인이 안 맞으면 OpenStreetMap 지도로 보인다. PC 버전은 늘 OpenStreetMap.

@@ -102,6 +102,11 @@ if (Test-Path (Join-Path $dist 'index.html')) {
         & $py (Join-Path $root 'pipeline\build_web_font.py') --data (Join-Path $pub 'data') --out $font
     }
     if (-not (Test-Path $font)) { Write-Host '  한글 글꼴을 만들지 못했어요 (웹 화면의 한글이 네모로 보일 수 있음)' }
+    # 카카오 지도 JavaScript 키 (local.properties 의 KAKAO_JS_KEY). 웹 페이지에 들어가는 키라 공개돼도 되는 종류이고, 카카오에 등록한 도메인에서만 동작
+    # 키가 없으면 빈 값 → 웹 버전은 OpenStreetMap 지도
+    $jsKey = (Prop 'KAKAO_JS_KEY') -replace '[^A-Za-z0-9]', ''
+    [IO.File]::WriteAllText((Join-Path $pub 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
+    if ($jsKey) { Write-Host '  카카오 지도 키 넣음 (카카오 개발자 사이트에서 이 서버 주소를 JavaScript SDK 도메인으로 등록해야 지도가 보임)' } else { Write-Host '  카카오 지도 키 없음 → OpenStreetMap 지도' }
     Write-Host '  웹 버전 준비됨 (서버 주소로 열면 보임)'
 } else {
     Write-Host '  웹 버전을 만들지 못해 건너뜀 (서버는 그대로 올림)'
