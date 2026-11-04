@@ -3,15 +3,17 @@
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl } from "./proxy.js";
+import { handleLog } from "./log.js";
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response("ok");
-    if (request.method !== "GET") return new Response("GET only", { status: 405 });
     if (!env.APP_TOKEN || request.headers.get("X-TagoHub-Token") !== env.APP_TOKEN) {
       return new Response("forbidden", { status: 403 });
     }
+    if (url.pathname.startsWith("/log/")) return handleLog(request, url, env, ctx);
+    if (request.method !== "GET") return new Response("GET only", { status: 405 });
     if (url.pathname.startsWith("/h/")) return relay(request, url, env, ctx);
     const path = upstreamPath(url.pathname);
     if (!path) return new Response("not allowed", { status: 404 });

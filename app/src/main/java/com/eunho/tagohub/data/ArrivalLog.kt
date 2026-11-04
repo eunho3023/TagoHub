@@ -40,7 +40,8 @@ object BusSeen {
 /**
  * 지난 운행 기록으로 만드는 요일별 예상 시간표.
  * 앱이 버스 위치를 받을 때마다(노선 패널, 정류장 화면의 위치 어림) 버스가 정류장을 옮겨 간 것을 보면,
- * 그 사이 지난 정류장마다 "몇 시 몇 분에 도착했다"를 휴대폰에만 저장한다 (서버로 보내지 않음).
+ * 그 사이 지난 정류장마다 "몇 시 몇 분에 도착했다"를 휴대폰에 저장한다. 중계 서버를 쓰면 노선·정류장·시각만
+ * 서버에도 모아서 다른 사용자들의 기록과 함께 쓴다 ([SharedArrivalLog]).
  * 같은 요일의 기록을 시각별로 묶어 예상 시각·가장 빠른·가장 늦은 시각을 보여 준다.
  */
 object ArrivalLog {
@@ -95,8 +96,14 @@ object ArrivalLog {
         val ords = buses.mapNotNull { b -> b.vehicleNo?.takeIf { !it.startsWith("#") }?.let { v -> b.ord?.let { v to it } } }.toMap()
         val prev = last.put(routeId, Snap(nowMs, ords)) ?: return
         val found = hits(prev.ords, prev.atMs, buses, nowMs, stops)
-        if (found.isNotEmpty()) append(routeId, found)
+        if (found.isNotEmpty()) {
+            append(routeId, found)
+            onHits?.invoke(routeId, found)
+        }
     }
+
+    /** 새 기록을 남길 때마다 부름 (앱은 [SharedArrivalLog.enqueue] 로 서버에 모음) */
+    @Volatile var onHits: ((String, List<Hit>) -> Unit)? = null
 
     private fun file(routeId: String): File? = dir?.let { File(it, routeId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".tsv") }
 

@@ -21,8 +21,34 @@ function Prop([string]$name) {
 $dataKey = Prop 'TAGO_SERVICE_KEY'
 if (-not $dataKey) { throw 'local.properties 에 TAGO_SERVICE_KEY 가 없어요' }
 
+Write-Host '준비: 지난 운행 기록 데이터베이스(D1, 이름 tagohub-log) 확인 중...'
+function D1List {
+    $j = (& npx --yes wrangler@4.45.0 d1 list --json 2>$null | Out-String)
+    try { return @($j | ConvertFrom-Json) } catch { return $null }
+}
+$dbs = D1List
+$db = $null
+if ($dbs -ne $null) {
+    $db = $dbs | Where-Object { $_.name -eq 'tagohub-log' } | Select-Object -First 1
+    if (-not $db) {
+        & npx --yes wrangler@4.45.0 d1 create tagohub-log 2>&1 | Out-Null
+        $db = D1List | Where-Object { $_.name -eq 'tagohub-log' } | Select-Object -First 1
+    }
+}
+$config = 'wrangler.toml'
+if ($db -and $db.uuid) {
+    # 데이터베이스 번호를 넣은 배포용 설정 (저장소에는 안 올림: .gitignore)
+    $toml = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'wrangler.toml'), [Text.Encoding]::UTF8)
+    $toml += "`n[[d1_databases]]`nbinding = `"DB`"`ndatabase_name = `"tagohub-log`"`ndatabase_id = `"$($db.uuid)`"`n"
+    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'wrangler.deploy.toml'), $toml, (New-Object Text.UTF8Encoding $false))
+    $config = 'wrangler.deploy.toml'
+    Write-Host '  데이터베이스 있음'
+} else {
+    Write-Host '  데이터베이스를 만들지 못했어요: API 토큰에 "D1 - 편집(Edit)" 권한을 더해 주세요. 지난 운행 기록 모으기만 빼고 서버는 그대로 올려요'
+}
+
 Write-Host '1/3 서버 올리는 중...'
-$out = (& npx --yes wrangler@4.45.0 deploy 2>&1 | Out-String)
+$out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
 Write-Host $out
 $m = [regex]::Match($out, 'https://[A-Za-z0-9.-]+\.workers\.dev')
 if (-not $m.Success) {
