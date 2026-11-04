@@ -187,13 +187,16 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
      * 교통안전공단 파일의 정류장(TSB…)과 그 시의 정류장(JJB… 등)이 같은 곳에 따로 들어 있어서, 둘 다 물어야 버스가 다 나옴.
      */
     internal suspend fun sameSpot(stop: WebStop): List<WebStop> {
-        val d = 0.0005
+        val d = 0.005
         return WebData.tiles(stop.lat - d, stop.lng - d, stop.lat + d, stop.lng + d).flatMap { tile(it) }
-            .filter { it.city != stop.city && it.id != stop.id }
-            .map { it to meters(stop.lat, stop.lng, it.lat, it.lng) }
-            .filter { it.second <= SAME_SPOT_M }
-            .groupBy { it.first.city }
-            .map { (_, l) -> l.minBy { it.second }.first }
+            .filter { it.id != stop.id }
+            .filter { o ->
+                val m = meters(stop.lat, stop.lng, o.lat, o.lng)
+                // 정류장 번호가 같은 것(같은 시군이어도), 또는 다른 시군의 바로 붙은 정류장
+                (stop.no != null && o.no == stop.no && m <= SAME_NO_M) || (o.city != stop.city && m <= SAME_SPOT_M)
+            }
+            .groupBy { it.city + "|" + (it.no ?: it.id) }
+            .map { (_, l) -> l.minBy { meters(stop.lat, stop.lng, it.lat, it.lng) } }
     }
 
     /** 실제로 물을 (도시코드, 정류장 id): 같은 자리 정류장 먼저 (그 시의 id 가 TAGO 에 더 잘 나옴), 그다음 고른 정류장 */
@@ -246,6 +249,8 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         const val MAX_TARGETS = 5
         /** 같은 정류장으로 보는 거리 (앱과 같게 30m) */
         const val SAME_SPOT_M = 30.0
+        /** 정류장 번호가 같으면 이만큼 떨어져 있어도 같은 정류장 (자료마다 좌표가 조금씩 다름) */
+        const val SAME_NO_M = 500.0
 
         /** 두 점 사이 거리(m), 짧은 거리용 근사 */
         fun meters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
@@ -263,10 +268,18 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         fun mergeSameSpot(stops: List<WebStop>): List<WebStop> {
             val out = ArrayList<WebStop>()
             val ordered = stops.sortedWith(compareBy({ -it.routes.size }, { it.city.startsWith("TS") }))
-            for (s in ordered) {
-                if (out.none { it.name == s.name && meters(it.lat, it.lng, s.lat, s.lng) <= SAME_SPOT_M }) out += s
-            }
+            for (s in ordered) if (out.none { same(it, s) }) out += s
             return out
+        }
+
+        /**
+         * 같은 정류장인지: 정류장 번호가 같으면(여러 시군·자료에 따로 들어 있어도) 같은 정류장 ([SAME_NO_M] 안),
+         * 번호가 없거나 달라도 이름이 같고 바로 붙어 있으면([SAME_SPOT_M] 안) 같은 정류장
+         */
+        fun same(a: WebStop, b: WebStop): Boolean {
+            val d = meters(a.lat, a.lng, b.lat, b.lng)
+            if (a.no != null && a.no == b.no && d <= SAME_NO_M) return true
+            return a.name == b.name && d <= SAME_SPOT_M
         }
 
         /** routesum 조각: {노선 id: [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]} */

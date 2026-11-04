@@ -58,3 +58,19 @@ class KakaoBitsTest {
         assertEquals("#000000", androidx.compose.ui.graphics.Color.Black.hex())
     }
 }
+
+class SameStopTest {
+    private fun st(id: String, name: String, lat: Double, lng: Double, no: String?, city: String, routes: Int = 0) =
+        WebStop(id, name, lat, lng, no, city, List(routes) { "R$it" })
+
+    @Test fun sameNumberIsOneStop() {
+        // 같은 번호: 이름이 조금 달라도, 150m 떨어져 있어도 하나 (노선 많은 쪽을 남김)
+        val a = st("DJB1", "대전역", 36.3334, 127.4314, "12370", "25", 13)
+        val b = st("OCB1", "대전역(동광장)", 36.3347, 127.4318, "12370", "33330", 1)
+        val c = st("DJB2", "대전역", 36.3337, 127.4316, "12371", "25", 5)          // 번호 다름, 35m → 다른 정류장 (길 건너편)
+        val far = st("XXB1", "대전역", 36.40, 127.50, "12370", "99")              // 같은 번호지만 아주 멂 → 다른 정류장
+        assertEquals(listOf("DJB1", "DJB2", "XXB1"), WebRepo.mergeSameSpot(listOf(b, c, a, far)).map { it.id })
+        assertTrue(WebRepo.same(a, b))
+        assertTrue(!WebRepo.same(a, c))
+    }
+}
