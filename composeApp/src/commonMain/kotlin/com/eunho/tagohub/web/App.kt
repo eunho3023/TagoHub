@@ -48,7 +48,7 @@ import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.toLocalDateTime
 
 /** 도착 정보를 다시 받는 간격 (폰 앱과 같게 15초) */
-private const val REFRESH_MS = 15_000L
+internal const val REFRESH_MS = 15_000L
 
 @OptIn(ExperimentalTime::class)
 internal fun nowMs(): Long = Clock.System.now().toEpochMilliseconds()
@@ -57,17 +57,33 @@ internal fun nowMs(): Long = Clock.System.now().toEpochMilliseconds()
  * 웹·PC 버전 첫 화면: 정류장 이름으로 찾고, 고르면 실시간 도착 (15초마다 새로, 남은 시간은 매초 줄어듦).
  * 모양은 폰 앱과 같게 ([WebTheme]). [font] 는 한글 글꼴 (웹은 브라우저 글꼴을 못 써서 따로 받음, PC 는 null → 시스템 글꼴).
  */
+/** 화면 (뒤로 가기 쌓기) */
+internal sealed interface Screen {
+    data object Search : Screen
+    data object Map : Screen
+    data class Stop(val stop: WebStop) : Screen
+    data class Route(val routeId: String, val fromStopId: String?) : Screen
+}
+
 @Composable
-fun App(repo: WebRepo, font: FontFamily? = null) {
+fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient? = null) {
     WebTheme(font) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                Column(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
-                    var picked by remember { mutableStateOf<WebStop?>(null) }
-                    // 검색어·결과는 정류장 화면에서 돌아와도 그대로
+                Column(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
+                    val stack = remember { androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Search) }
+                    fun go(s: Screen) { stack += s }
+                    fun back() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+                    // 검색어·결과·지도 위치는 다른 화면에 다녀와도 그대로
                     val search = remember { SearchState() }
-                    val stop = picked
-                    if (stop == null) SearchPane(repo, search) { picked = it } else StopPane(repo, stop) { picked = null }
+                    val map = remember { MapState(36.3504, 127.3845, 16) }
+                    val tiles = remember { TileLoader(http ?: io.ktor.client.HttpClient()) }
+                    when (val top = stack.last()) {
+                        Screen.Search -> SearchPane(repo, search, onMap = { go(Screen.Map) }) { go(Screen.Stop(it)) }
+                        Screen.Map -> MapPane(repo, map, tiles, onBack = ::back) { go(Screen.Stop(it)) }
+                        is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back) { go(Screen.Route(it, top.stop.id)) }
+                        is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }
+                    }
                 }
             }
         }
@@ -76,7 +92,7 @@ fun App(repo: WebRepo, font: FontFamily? = null) {
 
 /** 앱 화면 위쪽의 남색 머리띠 (제목·부제목, 왼쪽에 뒤로 가기) */
 @Composable
-private fun Header(title: String, sub: String? = null, onBack: (() -> Unit)? = null) {
+internal fun Header(title: String, sub: String? = null, onBack: (() -> Unit)? = null, action: String? = null, onAction: () -> Unit = {}) {
     Row(
         Modifier.fillMaxWidth().background(headerColor()).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -91,6 +107,13 @@ private fun Header(title: String, sub: String? = null, onBack: (() -> Unit)? = n
             Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub != null) Text(sub, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
         }
+        if (action != null) {
+            Text(
+                action, Modifier.clickable(onClick = onAction).background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -104,7 +127,7 @@ private class SearchState {
 }
 
 @Composable
-private fun SearchPane(repo: WebRepo, st: SearchState, onPick: (WebStop) -> Unit) {
+private fun SearchPane(repo: WebRepo, st: SearchState, onMap: () -> Unit, onPick: (WebStop) -> Unit) {
     var query by st::query
     var result by st::result
     var message by st::message
@@ -122,7 +145,7 @@ private fun SearchPane(repo: WebRepo, st: SearchState, onPick: (WebStop) -> Unit
             .onSuccess { result = it; message = if (it.isEmpty()) "찾는 정류장이 없어요" else null }
             .onFailure { result = emptyList(); message = "정류장 자료를 받지 못했어요" }
     }
-    Header("TagoHub", "버스 정류장 실시간 도착")
+    Header("TagoHub", "버스 정류장 실시간 도착", action = "지도", onAction = onMap)
     Surface(color = MaterialTheme.colorScheme.surface) {
         OutlinedTextField(
             query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -186,10 +209,10 @@ internal fun naturalCompare(a: String, b: String): Int {
 }
 
 @OptIn(ExperimentalTime::class)
-private fun todayIso(): Int = Clock.System.now().toLocalDateTime(com.eunho.tagohub.data.ArrivalStats.SEOUL).dayOfWeek.isoDayNumber
+internal fun todayIso(): Int = Clock.System.now().toLocalDateTime(com.eunho.tagohub.data.ArrivalStats.SEOUL).dayOfWeek.isoDayNumber
 
 @Composable
-private fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit) {
+internal fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit, onRoute: (String) -> Unit) {
     var state by remember(stop.id) { mutableStateOf<Arrivals?>(null) }
     var sums by remember(stop.id) { mutableStateOf<List<RouteSum>?>(null) }
     var now by remember { mutableLongStateOf(nowMs()) }
@@ -228,14 +251,14 @@ private fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit) {
     }
     LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
         items(rows, key = { it.routeId }) { row ->
-            RouteItem(row, elapsed, variant, day, liveKnown = live != null)
+            RouteItem(row, elapsed, variant, day, liveKnown = live != null, onClick = { onRoute(row.routeId) })
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
 
 @Composable
-private fun Note(text: String) {
+internal fun Note(text: String) {
     Text(text, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
 }
 
@@ -244,8 +267,8 @@ private fun Note(text: String) {
  * 실시간이 없으면 서버에 저장한 시간표(첫차·막차·배차)를 보여 줌.
  */
 @Composable
-private fun RouteItem(row: RouteRow, elapsed: Int, variant: Color, isoDay: Int, liveKnown: Boolean) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun RouteItem(row: RouteRow, elapsed: Int, variant: Color, isoDay: Int, liveKnown: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
                 row.routeNo,

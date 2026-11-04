@@ -26,6 +26,22 @@ data class RouteSum(
     fun intervalOn(isoDay: Int): Int? = when (isoDay) { 6 -> intervalSat ?: interval; 7 -> intervalSun ?: intervalSat ?: interval; else -> interval }
 }
 
+/** 노선의 정류장 하나 (서버 routes 조각: [순번, 정류장 id, 이름, 위도, 경도, 상하행]) */
+data class RouteStopW(val seq: Int, val id: String?, val name: String, val lat: Double?, val lng: Double?, val upDown: String?)
+
+/** 노선 전체 (서버 routes 조각) */
+data class RouteFull(
+    val id: String, val no: String, val start: String?, val end: String?, val city: String, val region: String?, val type: String?,
+    val sum: RouteSum?, val stops: List<RouteStopW>,
+)
+
+/** 버스 위치를 받은 결과 */
+sealed interface Positions {
+    data class Ok(val buses: List<com.eunho.tagohub.data.BusLocation>) : Positions
+    data object Unsupported : Positions
+    data class Failed(val why: String) : Positions
+}
+
 /** 실시간 도착을 받은 결과 */
 sealed interface Arrivals {
     data class Ok(val list: List<BusArrival>, val atMs: Long) : Arrivals
@@ -43,6 +59,7 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
     private val names = HashMap<String, List<WebStop>>()
     private val tiles = HashMap<String, List<WebStop>>()
     private val sums = HashMap<String, Map<String, RouteSum>>()
+    private val routeFiles = HashMap<String, Map<String, RouteFull>>()
     private var cities: Cities? = null
     private val citiesLock = Mutex()
 
@@ -70,6 +87,52 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
             async { path to (sums[path] ?: runCatching { parseSums(http.getText(base + path)) }.getOrDefault(emptyMap()).also { sums[path] = it }) }
         }.awaitAll().toMap()
         ids.mapNotNull { id -> loaded[WebData.routeSumPath(id)]?.get(id)?.let { id to it } }.toMap()
+    }
+
+    /** 노선 전체 (정류장 순서·좌표·시간표). 파일의 예전 id 로 찾고 지금 id 로 돌려줌 ([TagoIds]) */
+    suspend fun route(id: String): RouteFull? {
+        val legacy = TagoIds.legacy(id)
+        val path = WebData.routePath(legacy)
+        val file = routeFiles[path] ?: parseRoutes(http.getText(base + path)).also { routeFiles[path] = it }
+        return file[legacy]?.copy(id = TagoIds.current(legacy))
+    }
+
+    /** 노선의 실시간 버스 위치 (웹 통로). TAGO 가 다루지 않는 노선(서울·경기·교통안전공단)은 [Positions.Unsupported] */
+    suspend fun positions(route: RouteFull): Positions {
+        if (route.city.isEmpty() || !route.city.all(Char::isDigit) || OTHER_SOURCES.any { route.id.startsWith(it) } || route.id.startsWith("TSB")) {
+            return Positions.Unsupported
+        }
+        return try {
+            val xml = http.getText(
+                base + "w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList",
+                query = listOf("cityCode" to route.city, "routeId" to route.id),
+            )
+            Positions.Ok(TagoXml.parse(xml).rows.map { r ->
+                com.eunho.tagohub.data.BusLocation(
+                    nodeId = r.str("nodeid"), nodeName = r.str("nodenm"), ord = r.int("nodeord"),
+                    vehicleNo = r.str("vehicleno"), lat = r.double("gpslati"), lng = r.double("gpslong"),
+                )
+            })
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Positions.Failed(e.message ?: "알 수 없는 오류")
+        }
+    }
+
+    /** 이 범위 안의 정류장 (지도에 보이는 칸 조각들, 폐지·미사용 정류장도 칸에는 있어서 노선이 서는 것만) */
+    suspend fun stopsIn(south: Double, west: Double, north: Double, east: Double, limit: Int = 400): List<WebStop> {
+        val names = WebData.tiles(south, west, north, east)
+        if (names.size > 12) return emptyList()   // 너무 넓으면 받지 않음 (지도를 더 확대해야 보임)
+        return coroutineScope { names.map { async { tile(it) } }.awaitAll() }.flatten()
+            .filter { it.lat in south..north && it.lng in west..east && (it.routes.isNotEmpty() || it.city.startsWith("TS") || it.id.startsWith("JEB") || it.id.startsWith("JUB")) }
+            .let { mergeSameSpot(it) }
+            .take(limit)
+    }
+
+    /** 정류장 id 로 정류장 (그 자리 칸 조각에서). 노선 화면에서 정류장을 누를 때 */
+    suspend fun stopAt(id: String, lat: Double, lng: Double): WebStop? {
+        val legacy = TagoIds.legacy(id)
+        return tile(WebData.tile(lat, lng)).firstOrNull { it.id == legacy || it.id == id }
     }
 
     /** 정류장 화면 첫 표시: 이 정류장과 같은 자리 정류장들에 서는 노선 요약 (실시간 없이, 서버 자료만이라 바로 나옴) */
@@ -209,6 +272,28 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
                     a.getOrNull(4).str(), a.getOrNull(5).str(),
                     a.getOrNull(6).str()?.toDoubleOrNull()?.toInt(), a.getOrNull(7).str()?.toDoubleOrNull()?.toInt(), a.getOrNull(8).str()?.toDoubleOrNull()?.toInt(),
                 )
+            }.toMap()
+        }
+
+        /** routes 조각: {노선 id: {no, start, end, city, region, rtype, realtime, info, stops}} */
+        fun parseRoutes(json: String): Map<String, RouteFull> {
+            val root = MiniJson.parse(json) as? Map<*, *> ?: return emptyMap()
+            fun Any?.str() = this?.toString()?.takeIf { it.isNotBlank() && it != "null" }
+            return root.entries.mapNotNull { (k, v) ->
+                val m = v as? Map<*, *> ?: return@mapNotNull null
+                val id = k.toString()
+                val info = m["info"] as? List<*>
+                val no = m["no"].str() ?: return@mapNotNull null
+                val sum = info?.let {
+                    RouteSum(id, no, m["start"].str(), m["end"].str(), m["rtype"].str(), it.getOrNull(0).str(), it.getOrNull(1).str(),
+                        it.getOrNull(2).str()?.toDoubleOrNull()?.toInt(), it.getOrNull(3).str()?.toDoubleOrNull()?.toInt(), it.getOrNull(4).str()?.toDoubleOrNull()?.toInt())
+                }
+                val stops = (m["stops"] as? List<*>).orEmpty().mapNotNull { r ->
+                    val a = r as? List<*> ?: return@mapNotNull null
+                    RouteStopW(a.getOrNull(0).str()?.toDoubleOrNull()?.toInt() ?: 0, a.getOrNull(1).str(), a.getOrNull(2).str().orEmpty(),
+                        a.getOrNull(3).str()?.toDoubleOrNull(), a.getOrNull(4).str()?.toDoubleOrNull(), a.getOrNull(5).str())
+                }.sortedBy { it.seq }
+                id to RouteFull(id, no, m["start"].str(), m["end"].str(), m["city"].str().orEmpty(), m["region"].str(), m["rtype"].str(), sum, stops)
             }.toMap()
         }
 

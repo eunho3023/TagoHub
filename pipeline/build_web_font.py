@@ -37,7 +37,7 @@ def wanted(data: pathlib.Path) -> str:
     chars = set(chr(c) for c in range(0x20, 0x7F))                 # 영문·숫자·기호
     chars.update(chr(c) for c in range(0xA0, 0x100))               # 라틴-1 기호
     chars.update(chr(c) for c in range(0x3131, 0x3190))            # 한글 자모 (입력 중)
-    chars.update("·…←→↑↓○●◎△▲▽▼□■☆★※〈〉《》「」『』【】〔〕～￦℃")
+    chars.update("·…←→↑↓−×○●◎△▲▽▼□■☆★※〈〉《》「」『』【】〔〕～￦℃")
     chars.update(common_hangul())
     chars.update(data_chars(data))
     return "".join(sorted(c for c in chars if c.isprintable() or c == " "))
