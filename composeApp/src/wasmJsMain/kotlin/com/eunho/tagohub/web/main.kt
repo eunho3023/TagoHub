@@ -35,6 +35,6 @@ fun main() {
         LaunchedEffect(Unit) {
             font = runCatching { FontFamily(Font("NotoSansKR", http.get(origin + FONT_PATH).readRawBytes())) }.getOrNull()
         }
-        App(repo, font)
+        App(repo, font, http)
     }
 }
