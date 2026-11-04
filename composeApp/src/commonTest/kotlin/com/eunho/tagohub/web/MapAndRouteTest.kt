@@ -48,3 +48,13 @@ class PolylineTest {
         assertEquals(listOf(38.5 to -120.2, 40.7 to -120.95, 43.252 to -126.453), p)
     }
 }
+
+class KakaoBitsTest {
+    @Test fun levelsAndColors() {
+        assertEquals(4, kakaoLevel(16))
+        assertEquals(16, zoomOfLevel(4))
+        assertEquals(1, kakaoLevel(MAX_ZOOM))
+        assertEquals("#d7262e", androidx.compose.ui.graphics.Color(0xFFD7262E).hex())
+        assertEquals("#000000", androidx.compose.ui.graphics.Color.Black.hex())
+    }
+}

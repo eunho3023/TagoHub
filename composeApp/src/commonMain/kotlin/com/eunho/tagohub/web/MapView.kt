@@ -61,6 +61,31 @@ import kotlin.math.tan
 expect fun decodeImage(bytes: ByteArray): ImageBitmap?
 
 /**
+ * 화면의 지도 칸. 웹은 카카오 지도(폰 앱과 같은 지도, 키·도메인이 맞을 때), 못 쓰면·PC 는 [MapView](OpenStreetMap).
+ * 카카오 지도는 화면 위에 따로 뜨는 칸이라 그 위에 Compose 를 겹쳐 그리지 말 것 (카드 등은 지도 칸 밖에).
+ */
+@Composable
+expect fun MapHost(
+    state: MapState,
+    tiles: TileLoader,
+    modifier: Modifier = Modifier,
+    lines: List<MapLine> = emptyList(),
+    dots: List<MapDot> = emptyList(),
+    onDot: (MapDot) -> Unit = {},
+    onTap: () -> Unit = {},
+)
+
+/** 카카오 지도 확대 단계(1 가까움 … 14 멂) ↔ 웹 지도 확대(z) */
+fun kakaoLevel(zoom: Int): Int = (20 - zoom).coerceIn(1, 14)
+fun zoomOfLevel(level: Int): Int = (20 - level).coerceIn(MIN_ZOOM, MAX_ZOOM)
+
+/** 색 → "#rrggbb" */
+fun Color.hex(): String {
+    val v = (red * 255).roundToInt() shl 16 or ((green * 255).roundToInt() shl 8) or (blue * 255).roundToInt()
+    return "#" + v.toString(16).padStart(6, '0')
+}
+
+/**
  * 지도 바탕 그림: OpenStreetMap 공식 타일 (키 없이, 브라우저에서 받을 수 있음; 화면에 출처를 표시해야 함).
  * 이용 규칙상 많이 쓰면 다른 타일 서버로 바꿔야 함 — 주소는 여기 한 곳.
  */
@@ -103,6 +128,10 @@ class MapState(lat: Double, lng: Double, zoom: Int) {
     var lng by mutableDoubleStateOf(lng)
     var zoom by mutableIntStateOf(zoom)
     var size by mutableStateOf(IntSize.Zero)
+    /** 카카오 지도가 알려 준 실제 보이는 범위 (남, 서, 북, 동). 없으면 메르카토르로 계산 */
+    var shownBounds by mutableStateOf<DoubleArray?>(null)
+    /** 카카오 지도에 "이 점들이 다 보이게" 부탁 (지도가 처리하면 null 로) */
+    var fitRequest by mutableStateOf<List<Pair<Double, Double>>?>(null)
 
     fun moveTo(lat: Double, lng: Double, zoom: Int = this.zoom) {
         this.lat = lat; this.lng = lng; this.zoom = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
@@ -111,6 +140,7 @@ class MapState(lat: Double, lng: Double, zoom: Int) {
     /** 이 점들이 다 보이게 */
     fun fit(pts: List<Pair<Double, Double>>) {
         if (pts.isEmpty()) return
+        fitRequest = pts
         val z = Mercator.fitZoom(pts, size.width, size.height)
         val cx = (pts.minOf { Mercator.x(it.second, z) } + pts.maxOf { Mercator.x(it.second, z) }) / 2
         val cy = (pts.minOf { Mercator.y(it.first, z) } + pts.maxOf { Mercator.y(it.first, z) }) / 2
@@ -119,6 +149,7 @@ class MapState(lat: Double, lng: Double, zoom: Int) {
 
     /** 화면에 보이는 범위 (남, 서, 북, 동) */
     fun bounds(): DoubleArray {
+        shownBounds?.let { return it }
         val cx = Mercator.x(lng, zoom); val cy = Mercator.y(lat, zoom)
         val hw = size.width / 2.0; val hh = size.height / 2.0
         return doubleArrayOf(Mercator.lat(cy + hh, zoom), Mercator.lng(cx - hw, zoom), Mercator.lat(cy - hh, zoom), Mercator.lng(cx + hw, zoom))

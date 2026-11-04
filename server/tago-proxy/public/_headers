@@ -14,3 +14,7 @@
   Cache-Control: no-cache
 /tagohub.js
   Cache-Control: no-cache
+/config.js
+  Cache-Control: no-cache
+/kakaomap.js
+  Cache-Control: no-cache

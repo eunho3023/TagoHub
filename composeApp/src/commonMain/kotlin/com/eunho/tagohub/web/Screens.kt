@@ -117,7 +117,7 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
         }
     }
     val list = rememberLazyListState()
-    MapView(
+    MapHost(
         map, tiles, Modifier.fillMaxWidth().fillMaxHeight(0.42f),
         lines = listOf(MapLine(road ?: pts, color)), dots = dots,
         onDot = { d ->
@@ -205,10 +205,11 @@ internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, onBack: ()
     }
     LaunchedEffect(picked) { city = picked?.let { repo.cityName(it.city) } }
     Header("지도", if (map.zoom < STOPS_ZOOM) "확대하면 정류장이 보여요" else "정류장 ${stops.size}곳", onBack)
-    Box(Modifier.fillMaxSize()) {
+    // 카드는 지도 아래에 (웹 카카오 지도는 위에 겹쳐 그릴 수 없음)
+    Column(Modifier.fillMaxSize()) {
         val primary = MaterialTheme.colorScheme.primary
-        MapView(
-            map, tiles, Modifier.fillMaxSize(),
+        MapHost(
+            map, tiles, Modifier.fillMaxWidth().weight(1f),
             dots = stops.map { s -> MapDot(s.id, s.lat, s.lng, if (picked?.id == s.id) SoonColor else primary, if (picked?.id == s.id) 8f else 5f) },
             onDot = { d -> picked = stops.firstOrNull { it.id == d.id } },
             onTap = { picked = null },
@@ -216,8 +217,8 @@ internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, onBack: ()
         val p = picked
         if (p != null) {
             Surface(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp).clickable { onStop(p) },
-                shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp,
+                Modifier.fillMaxWidth().clickable { onStop(p) },
+                color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp,
             ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
