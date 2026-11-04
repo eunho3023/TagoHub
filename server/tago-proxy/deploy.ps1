@@ -60,6 +60,24 @@ if ($db -and $db.uuid) {
     Write-Host '  "Authentication error" 나 권한 이야기가 나오면: API 토큰에 Account - D1 - Edit 권한을 더한 뒤 다시 실행'
 }
 
+Write-Host '준비: 정류장·노선 자료 조각 만드는 중 (웹·PC 버전용, 최신 DB 를 받아서)...'
+# 파이썬 찾기 (윈도우 스토어 가짜 python 은 건너뜀)
+$py = $null
+foreach ($p in @("$env:LOCALAPPDATA\Python\pythoncore-*\python.exe", "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe", "C:\Program Files\Python3*\python.exe")) {
+    $found = Get-ChildItem $p -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($found) { $py = $found.FullName; break }
+}
+if (-not $py) {
+    $cmd = Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1
+    if ($cmd) { $py = $cmd.Source }
+}
+if ($py) {
+    $env:PYTHONIOENCODING = 'utf-8'
+    & $py (Join-Path $PSScriptRoot '..\..\pipeline\build_web_data.py') --out (Join-Path $PSScriptRoot 'public\data')
+} else {
+    Write-Host '  파이썬이 없어서 자료 조각은 건너뜀 (웹·PC 버전의 정류장 찾기만 빠짐)'
+}
+
 Write-Host '1/3 서버 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
 Write-Host $out

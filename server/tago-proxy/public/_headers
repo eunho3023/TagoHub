@@ -1,0 +1,4 @@
+# 정류장·노선 자료 조각 (pipeline/build_web_data.py 가 만듦): 웹·PC 버전이 어디서든 받게, 1시간 저장
+/data/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=3600

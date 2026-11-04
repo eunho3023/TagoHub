@@ -86,3 +86,10 @@ npm test
 - `GET /log/stop?route=&node=`: 그 노선·정류장의 최근 6주 기록(분)을 돌려줌. 정류장 시간표의 "지난 운행 기록"이 이 폰 기록과 합쳐 씀.
 - 데이터베이스 `tagohub-log` 는 `deploy.ps1` 이 만들고 `wrangler.deploy.toml`(저장소에 안 올림)로 연결해 배포함. API 토큰에 **D1 편집** 권한이 있어야 함. 없으면 이 기능만 빠지고(503) 나머지는 그대로.
 - 6주 지난 기록은 올릴 때 가끔(2%) 지움. 무료 한도: 하루 10만 줄 쓰기.
+
+## 정류장·노선 자료 조각 (정적 파일)
+
+- `deploy.ps1` 이 `pipeline/build_web_data.py` 로 최신 정류장 DB(GitHub Release data-latest)를 작은 JSON 조각으로 나눠 `public/data/` 에 만들고 함께 올림 (약 3천 개, 90MB, 저장소에는 안 올림).
+- 주소: `/data/tiles/{위도*10}_{경도*10}.json`, `/data/names/{첫 글자 16진수}.json`, `/data/routes/{0~1023}.json`, `/data/cities.json`, `/data/files/{앱 자료 파일}`, `/data/manifest.json`.
+- 공개 자료라 앱 토큰 없이 받을 수 있고(CORS 허용), 1시간 저장. 조각 규칙은 앱 공용 코드 `WebData` 와 같음.
+- 무료 요금제: 파일 하나 25MB, 2만 개까지. 정적 파일 요청은 하루 10만 요청 한도에 들어가지 않음.
