@@ -18,6 +18,15 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// 공공데이터 중계 서버(server/tago-proxy)를 쓰면 아래 키들은 앱에 넣지 않고 자리표시("TAGOHUB_<이름>")만 넣음.
+// 앱은 그 자리표시로 요청하고(Http 가 서버로 돌림), 서버가 같은 이름의 비밀 값으로 바꿔 넣는다. 서버를 안 쓰면 예전처럼 진짜 키.
+val proxyOn = localProps.getProperty("TAGO_PROXY_URL", "").trim().startsWith("https://") &&
+    localProps.getProperty("TAGO_PROXY_TOKEN", "").isNotBlank()
+fun apiKey(name: String, fallback: String? = null): String {
+    val v = localProps.getProperty(name, fallback?.let { localProps.getProperty(it, "") } ?: "").trim()
+    return if (proxyOn && v.isNotEmpty()) "TAGOHUB_$name" else v
+}
+
 android {
     namespace = "com.eunho.tagohub"
     compileSdk = 37
@@ -32,37 +41,32 @@ android {
         manifestPlaceholders["crashlyticsEnabled"] = "false"
         // 사용 통계(Google Analytics)도 같은 기준: 개발 중 실행은 통계에 섞지 않음
         manifestPlaceholders["analyticsEnabled"] = "false"
-        buildConfigField(
-            "String", "TAGO_SERVICE_KEY",
-            "\"${localProps.getProperty("TAGO_SERVICE_KEY", "")}\""
-        )
-        buildConfigField(
-            "String", "KLID_BUS_KEY",
-            "\"${localProps.getProperty("KLID_BUS_KEY", localProps.getProperty("TAGO_SERVICE_KEY", ""))}\""
-        )
+        buildConfigField("String", "TAGO_SERVICE_KEY", "\"${apiKey("TAGO_SERVICE_KEY")}\"")
+        buildConfigField("String", "KLID_BUS_KEY", "\"${apiKey("KLID_BUS_KEY", "TAGO_SERVICE_KEY")}\"")
         // 한국공항공사 항공 스케줄 API (공공데이터포털 flight-schedule). 비우면 TAGO_SERVICE_KEY 를 대신 씀
-        buildConfigField("String", "KAC_API_KEY", "\"${localProps.getProperty("KAC_API_KEY", localProps.getProperty("TAGO_SERVICE_KEY", ""))}\"")
-        buildConfigField("String", "KRIC_SUBWAY_KEY","\"${localProps.getProperty("KRIC_SUBWAY_KEY", "")}\"")
-        buildConfigField("String", "UTIC_API_KEY", "\"${localProps.getProperty("UTIC_API_KEY", "")}\"")
+        buildConfigField("String", "KAC_API_KEY", "\"${apiKey("KAC_API_KEY", "TAGO_SERVICE_KEY")}\"")
+        buildConfigField("String", "KRIC_SUBWAY_KEY", "\"${apiKey("KRIC_SUBWAY_KEY")}\"")
+        buildConfigField("String", "UTIC_API_KEY", "\"${apiKey("UTIC_API_KEY")}\"")
         // 서울 교통빅데이터 플랫폼(T Data) 실시간 교차로 신호 인증키. 비우면 서울 실시간 신호는 지도에 나오지 않음
-        buildConfigField("String", "SEOUL_SIGNAL_KEY", "\"${localProps.getProperty("SEOUL_SIGNAL_KEY", "")}\"")
+        buildConfigField("String", "SEOUL_SIGNAL_KEY", "\"${apiKey("SEOUL_SIGNAL_KEY")}\"")
         // 한국도로공사 고속도로 공공데이터(data.ex.co.kr) 인증키
-        buildConfigField("String", "EX_API_KEY", "\"${localProps.getProperty("EX_API_KEY", "")}\"")
+        buildConfigField("String", "EX_API_KEY", "\"${apiKey("EX_API_KEY")}\"")
         // 기상청 CCTV 기반 도로날씨 인증키 (공공데이터포털 RoadWthrInfoService)
         buildConfigField("String", "KMA_ROAD_KEY", "\"${localProps.getProperty("KMA_ROAD_KEY", "")}\"")
+        // 국가교통정보센터는 9443 포트라 Cloudflare 가 못 불러서 중계 서버를 써도 앱에 둠
         buildConfigField("String", "ITS_API_KEY", "\"${localProps.getProperty("ITS_API_KEY", "")}\"")
         // CCTV 영상 중계 서버 (집 PC, tools/cctv_proxy.py). 비워 두면 원래 영상 주소로 직접 재생
-        // 공공데이터 중계 서버 (server/tago-proxy, Cloudflare Workers). 둘 다 있으면 TAGO 를 서버로 묻고 앱은 키를 쓰지 않음, 비우면 예전처럼 직접
+        // 공공데이터 중계 서버 (server/tago-proxy, Cloudflare Workers). 둘 다 있으면 공공데이터·카카오 등을 서버로 묻고 앱에는 키를 넣지 않음, 비우면 예전처럼 직접
         buildConfigField("String", "TAGO_PROXY_URL", "\"${localProps.getProperty("TAGO_PROXY_URL", "")}\"")
         buildConfigField("String", "TAGO_PROXY_TOKEN", "\"${localProps.getProperty("TAGO_PROXY_TOKEN", "")}\"")
         buildConfigField("String", "CCTV_PROXY_URL", "\"${localProps.getProperty("CCTV_PROXY_URL", "")}\"")
         buildConfigField("String", "CCTV_PROXY_KEY", "\"${localProps.getProperty("CCTV_PROXY_KEY", "")}\"")
         // 서울 열린데이터광장 실시간 지하철 인증키 (swopenapi)
-        buildConfigField("String", "SEOUL_SUBWAY_KEY", "\"${localProps.getProperty("SEOUL_SUBWAY_KEY", "")}\"")
+        buildConfigField("String", "SEOUL_SUBWAY_KEY", "\"${apiKey("SEOUL_SUBWAY_KEY")}\"")
         // 카카오맵 네이티브 앱 키 (카카오 개발자 사이트 → 내 애플리케이션 → 앱 키)
         buildConfigField("String", "KAKAO_NATIVE_KEY", "\"${localProps.getProperty("KAKAO_NATIVE_KEY", "")}\"")
         // 카카오 로컬 API (길찾기 장소 이름 검색) — 같은 카카오 앱의 REST API 키
-        buildConfigField("String", "KAKAO_REST_KEY", "\"${localProps.getProperty("KAKAO_REST_KEY", "")}\"")
+        buildConfigField("String", "KAKAO_REST_KEY", "\"${apiKey("KAKAO_REST_KEY")}\"")
         // 정류장·노선 데이터 저장소 안내 파일 (GitHub Release data-latest 의 manifest.json, pipeline/README.md). local.properties 로 바꿀 수 있음
         buildConfigField("String", "DATA_MANIFEST_URL", "\"${localProps.getProperty("DATA_MANIFEST_URL", "https://github.com/eunho3023/TagoHub/releases/download/data-latest/manifest.json")}\"")
     }

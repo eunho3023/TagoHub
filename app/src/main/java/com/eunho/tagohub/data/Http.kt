@@ -13,6 +13,14 @@ import java.util.concurrent.TimeUnit
 object Http {
     private val base: OkHttpClient = OkHttpClient.Builder()
         .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
+        // 공공데이터 중계 서버를 쓰면: 키를 쓰는 기관 요청을 서버로 돌리고 앱 토큰을 붙임 (키 자리표시는 서버가 바꿔 넣음)
+        .addInterceptor { chain ->
+            val req = chain.request()
+            val proxy = DataProxy.current
+            val to = proxy?.rewrite(req.url)
+            if (proxy == null || to == null) chain.proceed(req)
+            else chain.proceed(req.newBuilder().url(to).header(DataProxy.TOKEN_HEADER, proxy.token).build())
+        }
         .dispatcher(Dispatcher().apply {
             maxRequests = 64
             maxRequestsPerHost = 12   // 기본 5: 한 서버로 가는 요청이 여럿 겹치면 줄 서서 기다리던 것을 완화
