@@ -773,6 +773,11 @@ private val busPosCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Lo
 private const val BUS_POS_TTL_MS = 14_000L   // 정류장 화면은 15초마다 새로고침: 매번 새 위치로
 private const val BUS_POS_MAX_ROUTES = 5
 
+/** 승차 알림용: 이 정류장의 도착 정보에서 지나간 버스를 빼고 위치로 바로잡은 목록. 못 받으면 null */
+internal suspend fun liveArrivalsFor(repo: TagoRepository, stop: BusStop): List<BusArrival>? {
+    val r = arrivalsFor(repo, stop) as? TagoResult.Success ?: return null
+    return runCatching { dropPassedByPosition(repo, BusDest.Stop(stop), r.data) }.getOrDefault(r.data)
+}
 /**
  * 전국: 가까이(6정류장 전 이내) 뜬 노선별 첫 버스를 실시간 위치와 맞춰 본다. 앞쪽에 오는 버스가 없는데
  * 이미 정류장을 지나갔거나(도착 정보는 아직 "N정류장 전"인데) 정류장에 서 있으면 서울처럼 목록에서 뺀다

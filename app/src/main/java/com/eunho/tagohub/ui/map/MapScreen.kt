@@ -1290,12 +1290,15 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             if (tt != null) {
                 StopTimetable(vm, tt, d.stop.nodeId)
             } else {
-                LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(hideDuplicateNumbers(list)) { row ->
-                            // 노선을 누르면 지도에 노선 + 실시간 버스 위치
-                            StopRouteItem(row, elapsedSec, direction) { vm.showRoute(row) }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                val companions by d.others.collectAsStateWithLifecycle()
+                com.eunho.tagohub.ui.bus.BoardBellHost(d.stop, companions) { bellOn, onBell ->
+                    LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            items(hideDuplicateNumbers(list)) { row ->
+                                // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
+                                StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }) { vm.showRoute(row) }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
                         }
                     }
                 }

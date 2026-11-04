@@ -38,6 +38,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -139,7 +141,15 @@ internal fun StopListRow(s: BusStop, distance: String?, region: String? = null, 
 @Composable
 /** elapsedSec: 도착정보를 받은 뒤 지난 초. 다음 갱신 전까지 매초 줄어든다 */
 /** dirLabel: 정류장 방면 (회차 노선에만 붙임 — 편도 노선은 기점-종점으로 충분) */
-internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: String? = null, onClick: () -> Unit) {
+/** onBell: 승차 알림 종 (null 이면 안 보임), bellOn: 이 노선에 승차 알림이 켜져 있음 */
+internal fun StopRouteItem(
+    row0: StopRouteRow,
+    elapsedSec: Int = 0,
+    dirLabel: String? = null,
+    bellOn: Boolean = false,
+    onBell: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     // 정류장을 이미 지나간 버스는 바로 지움 (다음 새로고침을 기다리지 않고)
     val row = row0.copy(arrivals = row0.arrivals.filterNot { com.eunho.tagohub.data.PassedBus.passed(it, elapsedSec) })
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -198,6 +208,16 @@ internal fun StopRouteItem(row0: StopRouteRow, elapsedSec: Int = 0, dirLabel: St
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
                     )
                 }
+            }
+        }
+        if (onBell != null) {
+            IconButton(onClick = onBell, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    if (bellOn) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsNone,
+                    contentDescription = if (bellOn) "승차 알림 끄기" else "승차 알림",
+                    tint = if (bellOn) ModeColor.Bus else variant,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
     }

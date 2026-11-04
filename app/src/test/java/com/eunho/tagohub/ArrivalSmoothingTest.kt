@@ -140,3 +140,30 @@ class SharedArrivalLogTest {
         assertEquals(listOf(h("A", 10)), m.merge(emptyList(), listOf(h("A", 10), h("A", 60))))
     }
 }
+
+class BoardRuleTest {
+    private fun a(stops: Int?, sec: Int?, scheduled: Boolean = false, route: String = "R") =
+        com.eunho.tagohub.data.BusArrival(route, "104", null, null, stops, sec, scheduled = scheduled)
+
+    @Test
+    fun reachedByStopsOrMinutes() {
+        val three = com.eunho.tagohub.data.BoardRule(stops = 3)
+        val five = com.eunho.tagohub.data.BoardRule(minutes = 5)
+        assertEquals(true, three.reached(a(3, 400)))
+        assertEquals(false, three.reached(a(4, 100)))
+        assertEquals(true, five.reached(a(8, 300)))
+        assertEquals(true, five.reached(a(8, 320), elapsedSec = 30))
+        assertEquals(false, five.reached(a(8, 400)))
+        assertEquals(false, five.reached(a(null, 60, scheduled = true)))   // 배차 기준 어림은 안 울림
+        assertEquals(false, three.reached(null))
+    }
+
+    @Test
+    fun nextAndPhrase() {
+        val r = com.eunho.tagohub.data.BoardRule
+        assertEquals(a(2, 100), r.next(listOf(a(5, 600), a(2, 100), a(1, 50, route = "X"), a(null, 30, scheduled = true)), "R"))
+        assertEquals("3정류장 전, 약 4분 뒤 도착", r.phrase(a(3, 230)))
+        assertEquals("1정류장 전, 곧 도착", r.phrase(a(1, 20)))
+        assertEquals("정류장 도착", r.phrase(a(0, 0)))
+    }
+}

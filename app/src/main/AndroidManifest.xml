@@ -10,6 +10,8 @@
     <!-- 경로 안내: 화면이 꺼져도 위치를 받는 포그라운드 서비스(안드로이드 14부터 유형 권한 필요)와 그 알림 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- 승차 알림: 앱을 닫아도 기다리는 버스 도착 정보를 받아 알림 (위치는 안 씀) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -103,5 +105,11 @@
             android:name=".guidance.AlightService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- 승차 알림(도착 정보 20초마다 + 음성·진동). 켜 둔 동안만 동작하고 알림에 표시됨. 버스가 가까워지면 알리고 끝남 -->
+        <service
+            android:name=".guidance.BoardService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
