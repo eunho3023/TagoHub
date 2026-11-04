@@ -41,3 +41,10 @@ class MapAndRouteTest {
         assertEquals(mapOf(1 to listOf("대전75자9355"), 2 to listOf("대전75자1111")), at.mapValues { e -> e.value.map { it.vehicleNo } })
     }
 }
+
+class PolylineTest {
+    @Test fun decodesGoogleExample() {
+        val p = WebRepo.decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@", 5)
+        assertEquals(listOf(38.5 to -120.2, 40.7 to -120.95, 43.252 to -126.453), p)
+    }
+}

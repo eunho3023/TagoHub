@@ -97,6 +97,15 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         return file[legacy]?.copy(id = TagoIds.current(legacy))
     }
 
+    /**
+     * 노선 도로 모양 (서버가 한 번 만들어 저장해 둔 것, 처음 보는 노선이면 서버가 만드느라 몇 초 걸림). 못 받으면 null → 정류장 직선.
+     */
+    suspend fun shape(routeId: String): List<Pair<Double, Double>>? = runCatching {
+        val json = http.getText(base + "w/shape/" + TagoIds.legacy(routeId))
+        val poly = (MiniJson.parse(json) as? Map<*, *>)?.get("poly")?.toString() ?: return null
+        decodePolyline(poly, 5).takeIf { it.size >= 2 }
+    }.getOrNull()
+
     /** 노선의 실시간 버스 위치 (웹 통로). TAGO 가 다루지 않는 노선(서울·경기·교통안전공단)은 [Positions.Unsupported] */
     suspend fun positions(route: RouteFull): Positions {
         if (route.city.isEmpty() || !route.city.all(Char::isDigit) || OTHER_SOURCES.any { route.id.startsWith(it) } || route.id.startsWith("TSB")) {
@@ -273,6 +282,34 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
                     a.getOrNull(6).str()?.toDoubleOrNull()?.toInt(), a.getOrNull(7).str()?.toDoubleOrNull()?.toInt(), a.getOrNull(8).str()?.toDoubleOrNull()?.toInt(),
                 )
             }.toMap()
+        }
+
+        /** Google 인코딩 폴리라인 → (위도, 경도) 목록 */
+        fun decodePolyline(s: String, precision: Int): List<Pair<Double, Double>> {
+            var factor = 1.0
+            repeat(precision) { factor *= 10 }
+            val out = ArrayList<Pair<Double, Double>>()
+            var i = 0
+            var lat = 0L
+            var lng = 0L
+            fun next(): Long {
+                var shift = 0
+                var result = 0L
+                var b: Int
+                do {
+                    b = s[i++].code - 63
+                    result = result or ((b and 0x1f).toLong() shl shift)
+                    shift += 5
+                } while (b >= 0x20 && i < s.length)
+                return if (result and 1L != 0L) (result shr 1).inv() else result shr 1
+            }
+            while (i < s.length) {
+                lat += next()
+                if (i >= s.length) break
+                lng += next()
+                out += lat / factor to lng / factor
+            }
+            return out
         }
 
         /** routes 조각: {노선 id: {no, start, end, city, region, rtype, realtime, info, stops}} */

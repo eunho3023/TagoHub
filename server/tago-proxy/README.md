@@ -104,3 +104,10 @@ npm test
   질의는 `cityCode`·`nodeId`/`routeId` 만 (값 모양 검사), 쪽 번호·개수는 서버가 정함 (`src/proxy.js` `webRequest`).
 - 앱과 같은 5초 저장을 같이 쓰고, 주소(IP)마다 1분 120번까지 (`wrangler.toml` `[[ratelimits]] WEB_LIMIT`).
 - PC 버전(데스크톱)은 같은 화면을 `./gradlew :composeApp:run` 으로 띄움 (서버 주소는 local.properties 의 `TAGO_PROXY_URL`).
+
+## 노선 도로 모양 (`/w/shape/<노선 id>`)
+
+웹·PC 버전 노선 화면의 선을 정류장 직선 대신 길 따라 그리려고, 서버가 OSRM 공개 서버로 노선 모양을 한 번 만들어
+D1 `shapes` 표에 저장하고 모두에게 나눠 준다 (`src/shape.js`, 폰 앱 RoadShapeClient 와 같은 방법: 25개씩 구간 요청,
+정류장 사이 블록을 한 바퀴 도는 구간은 직선). 처음 보는 노선만 1~3초, 그 뒤로는 바로. 정류장 목록이 바뀌면 다시 만든다.
+노선 정류장은 정적 파일(`public/data/routes`)을 `env.ASSETS` 로 읽음. OSRM 공개 서버는 대량 사용용이 아니라, 사용자가 많아지면 자체 OSRM 으로 바꿀 것.

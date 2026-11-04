@@ -68,6 +68,9 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
     var route by remember(routeId) { mutableStateOf<RouteFull?>(null) }
     var failed by remember(routeId) { mutableStateOf(false) }
     var pos by remember(routeId) { mutableStateOf<Positions?>(null) }
+    // 길 따라 그린 모양 (서버 저장). 받기 전에는 정류장을 잇는 선
+    var road by remember(routeId) { mutableStateOf<List<Pair<Double, Double>>?>(null) }
+    LaunchedEffect(routeId) { road = repo.shape(routeId) }
     val map = remember(routeId) { MapState(36.35, 127.38, 13) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(routeId) {
@@ -116,7 +119,7 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
     val list = rememberLazyListState()
     MapView(
         map, tiles, Modifier.fillMaxWidth().fillMaxHeight(0.42f),
-        lines = listOf(MapLine(pts, color)), dots = dots,
+        lines = listOf(MapLine(road ?: pts, color)), dots = dots,
         onDot = { d ->
             val seq = d.id.removePrefix("s:").toIntOrNull()
             val idx = if (d.id.startsWith("s:")) r.stops.indexOfFirst { it.seq == seq } else at.entries.firstOrNull { e -> e.value.any { "b:${it.vehicleNo}" == d.id } }?.key
