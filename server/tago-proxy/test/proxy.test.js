@@ -77,3 +77,8 @@ test("웹 버전: 실시간 도착·위치만, 질의는 정해진 것만", () =
   assert.equal(webRequest("/w/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", "?cityCode=2a&nodeId=X"), null);
   assert.equal(webRequest("/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", "?cityCode=25&nodeId=X"), null);
 });
+
+test("공공데이터포털이 잠시 바쁘다는 답(99)은 저장하지 않음", () => {
+  assert.equal(cacheable(200, "<response><header><resultCode>99</resultCode><resultMsg>가용한 세션이 존재하지 않습니다. (30/30)</resultMsg></header></response>"), false);
+  assert.equal(cacheable(200, "<response><header><resultCode>00</resultCode></header><body><totalCount>4</totalCount></body></response>"), true);
+});
