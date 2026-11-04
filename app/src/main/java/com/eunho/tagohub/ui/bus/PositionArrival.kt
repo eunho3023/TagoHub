@@ -22,6 +22,10 @@ private const val MAX_SECOND_STOPS = 40
 
 /** 같은 정류장·노선의 어림 결과를 다시 쓰는 시간 (새로고침마다 노선 API 를 또 부르지 않게) */
 private const val ESTIMATE_TTL_MS = 14_000L
+/** 지난 운행 기록으로 다음 차를 어림할 노선 수 (정류장 하나에서) */
+private const val MAX_LOG_ROUTES = 6
+/** 첫 버스 도착 뒤 이만큼(초) 안의 기록은 그 첫 버스로 봄 */
+private const val LOG_SAME_BUS_SEC = 180
 private const val ESTIMATE_TIMEOUT_MS = 8_000L
 private const val MAX_ESTIMATE_ROUTES = 14
 
@@ -168,11 +172,34 @@ internal suspend fun fillFromPositions(
  * 노선 정보·운행 시각은 캐시돼 있어 호출이 거의 늘지 않는다.
  */
 private suspend fun withHeadwaySecond(repo: TagoRepository, stop: BusStop, rows: List<StopRouteRow>): List<StopRouteRow> = coroutineScope {
+    var lookups = 0
     rows.map { r ->
+        // 지난 운행 기록을 물어볼 노선 수 제한 (노선이 많은 정류장에서 요청이 몰리지 않게)
+        val useLog = (r.arrivals.size == 1 && !r.arrivals[0].scheduled || r.arrivals.isEmpty() && !r.ended) && lookups++ < MAX_LOG_ROUTES
         async {
+            // 도착 정보도 버스 위치도 없는 노선: 지난 운행 기록에 여러 날 이 무렵 온 버스가 있으면 "약 N분 · 지난 기록 기준"
+            if (r.arrivals.isEmpty()) {
+                if (!useLog) return@async r
+                val sec = runCatching { withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { com.eunho.tagohub.data.ObservedSchedule.nextSec(r.routeId, stop.nodeId, 0) } }.getOrNull()
+                    ?: return@async r
+                return@async r.copy(arrivals = listOf(com.eunho.tagohub.data.BusArrival(
+                    r.routeId, r.routeNo, r.routeType, null, null, sec, estimated = true, scheduled = true, fromLog = true,
+                )))
+            }
             val first = r.arrivals.singleOrNull()?.takeIf { !it.scheduled } ?: return@async r
+            val firstSec = first.arrSeconds ?: return@async r
+            // 다음 차: 지난 운행 기록이 있으면 그것으로, 없으면 배차 간격으로
+            val logged = if (useLog) runCatching {
+                withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { com.eunho.tagohub.data.ObservedSchedule.nextSec(r.routeId, stop.nodeId, firstSec + LOG_SAME_BUS_SEC) }
+            }.getOrNull() else null
+            if (logged != null) {
+                return@async r.copy(arrivals = r.arrivals + first.copy(
+                    prevStops = null, arrSeconds = logged, vehicleType = null, atStop = null,
+                    estimated = true, scheduled = true, fromLog = true, behind = emptyList(),
+                ))
+            }
             val gap = runCatching { withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { headwayMinutes(repo, stop, r) } }.getOrNull() ?: return@async r
-            val sec = first.arrSeconds ?: return@async r
+            val sec = firstSec
             r.copy(arrivals = r.arrivals + first.copy(
                 prevStops = null, arrSeconds = sec + gap * 60, vehicleType = null, atStop = null,
                 estimated = true, scheduled = true, behind = emptyList(),

@@ -167,3 +167,23 @@ class BoardRuleTest {
         assertEquals("정류장 도착", r.phrase(a(0, 0)))
     }
 }
+
+class ObservedScheduleTest {
+
+
+    @Test
+    fun nextAfterUsesSlotsSeenOnSeveralDays() {
+        val t = com.eunho.tagohub.data.ArrivalLog.Table(3, listOf(com.eunho.tagohub.data.ArrivalLog.Slot(480, 478, 483, 3), com.eunho.tagohub.data.ArrivalLog.Slot(500, 500, 500, 1), com.eunho.tagohub.data.ArrivalLog.Slot(520, 518, 525, 2), com.eunho.tagohub.data.ArrivalLog.Slot(700, 700, 700, 3)))
+        val s = com.eunho.tagohub.data.ObservedSchedule
+        assertEquals(480, s.nextAfter(t, 470, 470))
+        assertEquals(520, s.nextAfter(t, 485, 470))     // 500 은 하루만 기록돼서 건너뜀
+        assertEquals(null, s.nextAfter(t, 530, 530))    // 700 은 2시간 넘게 뒤
+    }
+
+    @Test
+    fun fromLogLabel() {
+        val a = com.eunho.tagohub.data.BusArrival("R", "1", null, null, null, 600, estimated = true, scheduled = true, fromLog = true)
+        assertEquals("약 10분 · 지난 기록 기준", com.eunho.tagohub.data.ArrivalText.line(a))
+        assertEquals("약 10분 · 배차 기준", com.eunho.tagohub.data.ArrivalText.line(a.copy(fromLog = false)))
+    }
+}
