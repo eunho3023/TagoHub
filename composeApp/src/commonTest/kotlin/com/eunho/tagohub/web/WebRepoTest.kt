@@ -74,3 +74,31 @@ class WebRepoTest {
         assertTrue(r.arrivals(stops[1], 0L) is Arrivals.Failed)
     }
 }
+
+class StopRowsTest {
+    private fun sum(id: String, no: String) = RouteSum(id, no, "기점", "종점", "간선", "05:30", "23:00", 12, 15, 20)
+    private fun arr(id: String, no: String, sec: Int) = com.eunho.tagohub.data.BusArrival(id, no, "간선", null, 3, sec)
+
+    @Test fun liveFirstThenTimetableByNumber() {
+        val rows = mergeRows(
+            listOf(sum("R100", "100"), sum("R2", "2"), sum("R10", "10"), sum("R5", "5")),
+            listOf(arr("R10", "10", 300), arr("R5", "5", 60), arr("R5", "5", 900), arr("RNEW", "7", 400)),
+        )
+        assertEquals(listOf("5", "10", "7", "2", "100"), rows.map { it.routeNo })
+        assertEquals(2, rows[0].arrivals.size)
+        assertEquals(null, rows[2].sum)          // 실시간에만 있는 새 노선
+        assertEquals(15, rows[3].sum!!.intervalOn(6))
+        assertEquals(20, rows[3].sum!!.intervalOn(7))
+    }
+
+    @Test fun parsesSumsAndMergesSameSpotStops() {
+        val m = WebRepo.parseSums("""{"R1":["104","송천동","평화동","일반","06:00","23:00",15,null,null],"R2":["5",null,null,null,null,null,null,null,null]}""")
+        assertEquals("평화동", m["R1"]!!.end)
+        assertEquals(15, m["R1"]!!.intervalOn(7))
+        assertEquals(null, m["R2"]!!.first)
+        val a = WebStop("DJB1", "대전역", 36.3320, 127.4340, "12370", "25", listOf("R1", "R2"))
+        val b = WebStop("SJB1", "대전역", 36.33201, 127.43401, "12370", "12", emptyList())
+        val far = WebStop("DJB2", "대전역", 36.3340, 127.4340, "12371", "25", listOf("R3"))
+        assertEquals(listOf("DJB1", "DJB2"), WebRepo.mergeSameSpot(listOf(b, a, far)).map { it.id })
+    }
+}

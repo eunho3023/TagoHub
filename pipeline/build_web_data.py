@@ -2,7 +2,9 @@
 
 웹·PC 버전이 120MB DB 를 통째로 받지 않고 필요한 조각만 받게 한다 (무료 요금제: 파일 하나 25MB, 2만 개까지).
   tiles/{위도*10}_{경도*10}.json : 그 0.1도 칸의 정류장 [id, 이름, 위도, 경도, 번호, 시군, [지나는 노선 id...]]
-  names/{첫 글자 코드}.json      : 이름의 낱말(점·공백으로 나눔)이 그 글자로 시작하는 정류장 (검색용, 칸 파일과 같은 모양)
+  names/{첫 글자 코드}.json      : 이름의 낱말(점·공백으로 나눔)이 그 글자로 시작하는 정류장 (검색용, 칸 파일과 같은 모양).
+                                  노선 자료가 있는 지역에서 노선이 하나도 안 서는 정류장(폐지·미사용)은 뺌 (칸 파일에는 남김)
+  routesum/{0~1023}.json        : 노선 요약 {노선 id: [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]} (정류장 화면 첫 표시용, 작음)
   routes/{0~1023}.json          : 노선 묶음 {노선 id: {no, start, end, city, region, rtype, realtime, info, stops}}
                                   묶음 번호 = FNV-1a 32비트(노선 id, UTF-8) % 1024 (앱 공용 코드 WebData.bucket 과 같게)
   cities.json                   : names {시군 코드: 이름}, alias {TS… 시군: TAGO 도시코드}
@@ -13,7 +15,7 @@
 실행: python pipeline/build_web_data.py [--db 경로] [--out server/tago-proxy/public/data]
 --db 를 안 주면 GitHub Release data-latest 의 최신 DB 를 받고, 못 받으면 앱에 들어 있는 DB 를 쓴다.
 """
-import argparse, gzip, json, pathlib, shutil, sqlite3, sys, tempfile, time, urllib.request
+import argparse, gzip, json, pathlib, re, shutil, sqlite3, sys, tempfile, time, urllib.request
 from collections import defaultdict
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -44,6 +46,29 @@ def words(name: str):
     return out
 
 
+# 정류장 id 앞 영문자(지역)마다 노선 정류장 자료가 이만큼 넘게 있으면, 노선이 하나도 안 서는 정류장은 폐지·미사용으로 보고 검색에서 뺌.
+# (교통안전공단 TSB·제주 JEB·전주 JUB 처럼 노선 정류장 자료가 거의 없는 지역은 그대로 둠 — 폰 앱은 그 지역 API 로 확인)
+COVERAGE_MIN = 0.5
+
+
+def region(sid: str) -> str:
+    """정류장 id 앞의 영문자 (지역): DJB8001793 → DJB"""
+    return re.match(r"[A-Za-z]*", sid).group(0)
+
+
+def route_coverage(stops, stop_routes) -> set:
+    total, served = defaultdict(int), defaultdict(int)
+    for sid, *_ in stops:
+        total[region(sid)] += 1
+        if stop_routes.get(sid):
+            served[region(sid)] += 1
+    return {p for p, n in total.items() if served[p] / n > COVERAGE_MIN}
+
+
+def closed(sid, stop_routes, covered) -> bool:
+    return region(sid) in covered and not stop_routes.get(sid)
+
+
 def dump(path: pathlib.Path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -72,9 +97,15 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
         stop_routes[sid].append(rid)
 
     tiles, names = defaultdict(list), defaultdict(list)
-    for sid, name, lat, lng, no, city in db.execute("SELECT id, name, lat, lng, no, city FROM stops"):
+    stops = db.execute("SELECT id, name, lat, lng, no, city FROM stops").fetchall()
+    covered = route_coverage(stops, stop_routes)
+    hidden = 0
+    for sid, name, lat, lng, no, city in stops:
         row = [sid, name, round(lat, 6), round(lng, 6), no, city, sorted(stop_routes.get(sid, []))]
         tiles[tile(lat, lng)].append(row)
+        if closed(sid, stop_routes, covered):
+            hidden += 1
+            continue
         for ch in words(name):
             names[f"{ord(ch):x}"].append(row)
     for k, rows in tiles.items():
@@ -99,6 +130,8 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
         by_no[city][no].append(rid)
     for b, g in groups.items():
         dump(out / "routes" / f"{b}.json", g)
+        # 정류장을 누르자마자 보여 줄 노선 요약 (정류장 목록 없이 작게): [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]
+        dump(out / "routesum" / f"{b}.json", {rid: [r["no"], r["start"], r["end"], r["rtype"], *(r["info"] or [None] * 5)] for rid, r in g.items()})
     cities = {c: n for c, n in db.execute("SELECT code, name FROM cities")}
     # 교통안전공단 정류장(TS… 시군) → TAGO 도시코드 대응표 (앱 StopDb.tagoCity 와 같음)
     alias = {c: t for c, t in db.execute("SELECT code, tago FROM city_alias")} if "city_alias" in tables else {}
@@ -115,7 +148,7 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
                 copied += 1
     version = dict(db.execute("SELECT k, v FROM meta").fetchall()).get("version") if "meta" in tables else None
     db.close()
-    manifest = {"built": int(time.time()), "dbVersion": version, "tiles": len(tiles), "names": len(names),
+    manifest = {"built": int(time.time()), "dbVersion": version, "tiles": len(tiles), "names": len(names), "hiddenStops": hidden,
                 "routeBuckets": len(groups), "files": copied, "buckets": BUCKETS}
     dump(out / "manifest.json", manifest)
     total = sum(1 for _ in out.rglob("*") if _.is_file())
