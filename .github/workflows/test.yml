@@ -50,7 +50,8 @@ jobs:
         # local.properties 가 없어도 빌드되도록 되어 있음(키는 빈 문자열). 테스트는 인터넷·키 없이 돈다
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          # shared(폰·웹·PC 공용)는 웹·PC 쪽으로도 컴파일되는지 확인 (자바·안드로이드 전용 기능이 섞이지 않게)
+          ./gradlew :app:testDebugUnitTest :shared:compileKotlinJvm :shared:compileKotlinWasmJs --no-daemon --stacktrace
 
       - name: 실패한 테스트 보고서 올리기
         if: failure()

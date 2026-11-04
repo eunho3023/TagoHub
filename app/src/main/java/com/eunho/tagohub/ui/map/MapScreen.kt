@@ -2906,7 +2906,7 @@ private fun PlanDetail(t: TripController, p: TripPlan) {
                     val ln = leg.alightLng
                     if (la != null && ln != null) com.eunho.tagohub.guidance.AlightAlert.Target(leg.alightName, la, ln, leg.subway, leg.routeNo)
                     else com.eunho.tagohub.data.StopDb.peek()?.byId(leg.alightStopId)?.let { s ->
-                        if (s.lat != null && s.lng != null) com.eunho.tagohub.guidance.AlightAlert.Target(leg.alightName, s.lat, s.lng, leg.subway, leg.routeNo) else null
+                        if (s.lat != null && s.lng != null) com.eunho.tagohub.guidance.AlightAlert.Target(leg.alightName, s.lat!!, s.lng!!, leg.subway, leg.routeNo) else null
                     }
                 }
                 alight?.let { AlightButton(it, Modifier.padding(start = 58.dp, bottom = 6.dp)) }

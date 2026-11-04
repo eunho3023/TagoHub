@@ -12,3 +12,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "TagoHub"
 include(":app")
+include(":shared")

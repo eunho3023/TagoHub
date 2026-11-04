@@ -578,7 +578,7 @@ class TripController(
         fun n(s: String) = s.replace(Regex("[\\s.·()]"), "")
         val fromFile = withContext(Dispatchers.IO) { db.near(lat, lng, 80.0, 20) }
         val fromTago = (repo.busStopsNear(lat, lng) as? TagoResult.Success)?.data?.stops.orEmpty()
-            .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat, s.lng) else null }
+            .mapNotNull { s -> if (s.lat != null && s.lng != null) s to com.eunho.tagohub.core.Geo.meters(lat, lng, s.lat!!, s.lng!!) else null }
             .filter { it.second <= 80.0 }
         val all = (fromFile + fromTago).distinctBy { it.first.nodeId }.sortedBy { it.second }
         val same = all.filter { n(it.first.name) == n(leg.boardName) }
@@ -625,7 +625,7 @@ class TripController(
                     val a = db?.byId(prev.alightStopId)
                     val b = db?.byId(leg.boardStopId)
                     if (a?.lat != null && b?.lat != null) {
-                        segs += TripSegment(walkLine(LatLng(a.lat, a.lng ?: 0.0), LatLng(b.lat, b.lng ?: 0.0)), WALK, true)
+                        segs += TripSegment(walkLine(LatLng(a.lat!!, a.lng ?: 0.0), LatLng(b.lat!!, b.lng ?: 0.0)), WALK, true)
                     }
                 }
             }
@@ -637,7 +637,7 @@ class TripController(
         d?.let { segs += TripSegment(walkLine(ds, LatLng(it.lat, it.lng)), WALK, true); all += LatLng(it.lat, it.lng) }
         o?.let { marks += TripMark(it.lat, it.lng, "출", MARK_START) }
         p.legs.getOrNull(1)?.let { _ ->
-            db?.byId(p.legs[0].alightStopId)?.let { s -> if (s.lat != null && s.lng != null) marks += TripMark(s.lat, s.lng, "환", MARK_TRANSFER) }
+            db?.byId(p.legs[0].alightStopId)?.let { s -> if (s.lat != null && s.lng != null) marks += TripMark(s.lat!!, s.lng!!, "환", MARK_TRANSFER) }
         }
         d?.let { marks += TripMark(it.lat, it.lng, "도", MARK_END) }
         c.setTrip(segs, marks)

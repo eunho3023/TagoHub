@@ -38,7 +38,7 @@ object PassedBus {
      */
     fun passed(a: BusArrival, elapsedSec: Int): Boolean {
         val sec = a.arrSeconds ?: return false
-        return sec - elapsedSec < -GRACE_SEC && (a.prevStops == null || a.prevStops <= 1)
+        return sec - elapsedSec < -GRACE_SEC && (a.prevStops == null || a.prevStops!! <= 1)
     }
 }
 

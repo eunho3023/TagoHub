@@ -19,7 +19,7 @@ object ArrivalMerge {
         val used = HashMap<String, Int>()
         val out = t.sortedBy { it.arrSeconds ?: Int.MAX_VALUE }.map { a ->
             val k = key(a.routeNo)
-            val i = used.getOrDefault(k, 0)
+            val i = used[k] ?: 0
             used[k] = i + 1
             val m = byNo[k]?.getOrNull(i) ?: byNo[k]?.firstOrNull()
             if (m == null) a else a.copy(atStop = a.atStop ?: m.atStop, towards = a.towards ?: m.towards)
