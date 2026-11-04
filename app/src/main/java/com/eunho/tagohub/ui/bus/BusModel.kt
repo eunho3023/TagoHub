@@ -758,6 +758,7 @@ private const val BUS_POS_MAX_ROUTES = 5
  * 전국: 가까이(6정류장 전 이내) 뜬 노선별 첫 버스를 실시간 위치와 맞춰 본다. 앞쪽에 오는 버스가 없는데
  * 이미 정류장을 지나갔거나(도착 정보는 아직 "N정류장 전"인데) 정류장에 서 있으면 서울처럼 목록에서 뺀다
  * (도착 예측이 늦게 갱신돼 지나간 버스가 "3정류장 전 · 3분" 으로 남는 경우).
+ * 위치로는 도착 정보보다 더 가까이 와 있으면 남은 정류장 수와 시간을 위치에 맞춘다 ([PassedByPosition.closer]).
  * 버스 위치는 지역마다 받는 곳이 달라서([busOrdsOnRoute]) 노선 정류장 목록의 정류장 ID 로 순번을 맞춘다.
  * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 14초 동안 결과를 재사용한다
  * (버스 위치는 30~60초마다 바뀜). 위치를 못 받거나 정류장이 노선에 여러 번 나오면 판단하지 않고 그대로 둔다.
@@ -779,19 +780,19 @@ private suspend fun dropPassedByPosition(repo: TagoRepository, d: BusDest.Stop, 
                     val busOrds = busPosCache[a.routeId]?.takeIf { now - it.first < BUS_POS_TTL_MS }?.second
                         ?: busOrdsOnRoute(repo, a.routeId, city, stops)?.also { busPosCache[a.routeId] = now to it }
                         ?: return@runCatching null
-                    PassedByPosition.verdict(stopOrds, busOrds, a.prevStops).takeIf { it != PassedByPosition.Verdict.KEEP }?.let { a to it }
+                    // 서울처럼: 지나간 버스, 도착 정보는 "3정류장 전"인데 이미 정류장에 서 있는 버스는 뺌 (null)
+                    if (PassedByPosition.verdict(stopOrds, busOrds, a.prevStops) != PassedByPosition.Verdict.KEEP) return@runCatching a to null
+                    // 위치로는 더 가까이 와 있으면 남은 정류장·시간을 위치에 맞춤 (도착 예측이 늦게 갱신될 때)
+                    PassedByPosition.closer(stopOrds, busOrds, a.prevStops, a.arrSeconds)
+                        ?.let { (k, sec) -> a to a.copy(prevStops = k, arrSeconds = sec ?: a.arrSeconds, atStop = null) }
                 }.getOrNull()
             }
         }.awaitAll().filterNotNull()
     }
     if (verdicts.isEmpty()) return list
-    // 서울처럼: 지나간 버스, 도착 정보는 "3정류장 전"인데 이미 정류장에 서 있는 버스는 뺌 (위치 정보도 15초 늦을 수 있어 떠나는 중으로 봄)
     return list.mapNotNull { x ->
-        when (verdicts.firstOrNull { it.first === x }?.second) {
-            PassedByPosition.Verdict.PASSED -> null
-            PassedByPosition.Verdict.AT_STOP -> null
-            else -> x
-        }
+        val hit = verdicts.firstOrNull { it.first === x } ?: return@mapNotNull x
+        hit.second
     }
 }
 

@@ -82,6 +82,19 @@ class PassedByPositionTest {
         assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(30), listOf(30), 0))          // 이미 "정류장 도착"
         assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(30), emptyList(), 3))         // 위치 없음 → 모름
     }
+
+    /** 위치로는 도착 정보보다 더 가까이 와 있으면 남은 정류장·시간을 줄임 */
+    @Test
+    fun closerByPositionShortensArrival() {
+        assertEquals(2 to 120, p.closer(listOf(30), listOf(28, 10), 4, 240))   // 4정류장 전 4분 → 위치는 2정류장 전: 2분
+        assertEquals(1 to 60, p.closer(listOf(30), listOf(29), 3, 300))        // 바로 앞이면 최대 1분
+        assertEquals(1 to null, p.closer(listOf(30), listOf(29), 3, null))
+        assertEquals(null, p.closer(listOf(30), listOf(26), 3, 180))           // 위치가 더 멀면 도착 정보를 믿음
+        assertEquals(null, p.closer(listOf(30), listOf(27), 3, 180))           // 같음
+        assertEquals(null, p.closer(listOf(30), listOf(29), 1, 40))            // 이미 1정류장 전
+        assertEquals(null, p.closer(listOf(30), listOf(31), 3, 180))           // 앞쪽에 버스 없음
+        assertEquals(null, p.closer(listOf(3, 40), listOf(39), 3, 180))        // 순환 노선
+    }
 }
 
 class RailMatchTest {

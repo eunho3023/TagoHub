@@ -23,12 +23,12 @@ export function upstreamPath(pathname) {
 }
 
 /**
- * 다시 쓸 시간(초). 버스 도착·위치는 15초(서버 갱신이 30~60초라 여러 사람이 같은 걸 보면 한 번만 부름),
+ * 다시 쓸 시간(초). 버스 도착·위치는 5초(여러 사람이 같은 걸 보면 한 번만 부르되 늦어지지 않게),
  * 노선·정류장 목록처럼 잘 안 바뀌는 것은 하루, 주변 정류장은 1시간, 그 밖은 1분.
  */
 export function ttlFor(path) {
   const p = path.toLowerCase();
-  if (/arvl|buslc|location|arrival|realtime|position/.test(p)) return 15;
+  if (/arvl|buslc|location|arrival|realtime|position/.test(p)) return 5;
   if (/prxmt|crdnt/.test(p)) return 3600;
   if (/ctycode|thrghsttn|routeinfo|routeno|sttnno|trminl|grad|sttnlist|nosun|drawing/.test(p)) return 86400;
   return 60;
