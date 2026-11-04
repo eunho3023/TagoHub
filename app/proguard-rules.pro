@@ -7,11 +7,6 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Retrofit 호출 인터페이스: 반사로 만들기 때문에 메서드(주석 달린 것)를 남김
--keepclassmembers interface com.eunho.tagohub.** {
-    @retrofit2.http.* <methods>;
-}
-
 # OkHttp 가 선택적으로 쓰는 보안 라이브러리 (없어도 됨)
 -dontwarn okhttp3.internal.platform.**
 -dontwarn org.conscrypt.**

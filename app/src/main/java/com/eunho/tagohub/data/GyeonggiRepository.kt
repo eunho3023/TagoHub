@@ -10,36 +10,49 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.scalars.ScalarsConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /** 경기도 버스정보 GBIS v2. serviceKey·format=json 은 인터셉터가 붙인다 */
 interface GyeonggiApi {
-    @GET("busrouteservice/v2/getBusRouteListv2")
-    suspend fun routes(@Query("keyword") keyword: String): String
+    suspend fun routes(keyword: String): String
 
-    @GET("busrouteservice/v2/getBusRouteInfoItemv2")
-    suspend fun routeInfo(@Query("routeId") routeId: String): String
+    suspend fun routeInfo(routeId: String): String
 
-    @GET("busrouteservice/v2/getBusRouteStationListv2")
-    suspend fun routeStations(@Query("routeId") routeId: String): String
+    suspend fun routeStations(routeId: String): String
 
-    @GET("busrouteservice/v2/getBusRouteLineListv2")
-    suspend fun routeLine(@Query("routeId") routeId: String): String
+    suspend fun routeLine(routeId: String): String
 
-    @GET("busstationservice/v2/getBusStationViaRouteListv2")
-    suspend fun stopRoutes(@Query("stationId") stationId: String): String
+    suspend fun stopRoutes(stationId: String): String
 
-    @GET("buslocationservice/v2/getBusLocationListv2")
-    suspend fun locations(@Query("routeId") routeId: String): String
+    suspend fun locations(routeId: String): String
 
-    @GET("busarrivalservice/v2/getBusArrivalListv2")
-    suspend fun arrivals(@Query("stationId") stationId: String): String
+    suspend fun arrivals(stationId: String): String
+}
+
+/** [GyeonggiApi] 를 Ktor 로 (기본 주소·OkHttp 설정은 [httpGetter] 를 만드는 쪽이 정함) */
+class GyeonggiApiHttp(private val get: HttpGetter) : GyeonggiApi {
+    override suspend fun routes(keyword: String): String =
+        get("busrouteservice/v2/getBusRouteListv2", listOf("keyword" to keyword))
+
+    override suspend fun routeInfo(routeId: String): String =
+        get("busrouteservice/v2/getBusRouteInfoItemv2", listOf("routeId" to routeId))
+
+    override suspend fun routeStations(routeId: String): String =
+        get("busrouteservice/v2/getBusRouteStationListv2", listOf("routeId" to routeId))
+
+    override suspend fun routeLine(routeId: String): String =
+        get("busrouteservice/v2/getBusRouteLineListv2", listOf("routeId" to routeId))
+
+    override suspend fun stopRoutes(stationId: String): String =
+        get("busstationservice/v2/getBusStationViaRouteListv2", listOf("stationId" to stationId))
+
+    override suspend fun locations(routeId: String): String =
+        get("buslocationservice/v2/getBusLocationListv2", listOf("routeId" to routeId))
+
+    override suspend fun arrivals(stationId: String): String =
+        get("busarrivalservice/v2/getBusArrivalListv2", listOf("stationId" to stationId))
 }
 
 class GyeonggiRepository(private val api: GyeonggiApi) {
@@ -120,12 +133,7 @@ class GyeonggiRepository(private val api: GyeonggiApi) {
                 }
                 .build()
             return GyeonggiRepository(
-                Retrofit.Builder()
-                    .baseUrl("https://apis.data.go.kr/6410000/")
-                    .client(client)
-                    .addConverterFactory(ScalarsConverterFactory.create())
-                    .build()
-                    .create(GyeonggiApi::class.java)
+                GyeonggiApiHttp(httpGetter("https://apis.data.go.kr/6410000/", client))
             )
         }
     }

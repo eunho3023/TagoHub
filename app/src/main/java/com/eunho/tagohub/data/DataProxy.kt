@@ -9,7 +9,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
  * 주소나 토큰이 비어 있으면 [of] 가 null → 예전처럼 키로 직접 물음.
  */
 data class DataProxy(val url: String, val token: String) {
-    /** 이 기관(예: 1613000 = TAGO)의 Retrofit 기본 주소 */
+    /** 이 기관(예: 1613000 = TAGO)의 기본 주소 */
     fun base(agency: String): String = "${url.trimEnd('/')}/dg/$agency/"
 
     /**
