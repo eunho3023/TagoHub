@@ -29,11 +29,13 @@ data class DataProxy(val url: String, val token: String) {
     companion object {
         const val TOKEN_HEADER = "X-TagoHub-Token"
 
-        /** 서버로 돌리는 호스트 (server/tago-proxy/src/proxy.js 의 HOSTS 와 같게). 국가교통정보센터(9443 포트)는 Cloudflare 가 못 불러서 뺌 */
+        /**
+         * 서버로 돌리는 호스트 (server/tago-proxy/src/proxy.js 의 HOSTS 와 같게).
+         * 뺀 것: 국가교통정보센터(9443 포트라 Cloudflare 가 못 부름), 도시교통정보센터 UTIC(등록한 IP 에서만 응답 → "허용된 IP가 아닙니다")
+         */
         val HOSTS = setOf(
             "apis.data.go.kr", "dapi.kakao.com", "apis-navi.kakaomobility.com", "openapi.kric.go.kr",
-            "swopenapi.seoul.go.kr", "t-data.seoul.go.kr", "www.utic.go.kr", "tsihub.utic.go.kr",
-            "data.ex.co.kr", "openapi.its.ulsan.kr",
+            "swopenapi.seoul.go.kr", "t-data.seoul.go.kr", "data.ex.co.kr", "openapi.its.ulsan.kr",
         )
 
         /** 앱 설정의 서버 (local.properties 의 TAGO_PROXY_URL·TAGO_PROXY_TOKEN). 없으면 null */

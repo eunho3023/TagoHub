@@ -66,7 +66,8 @@ export function cacheable(status, body) {
 // 앱은 키 자리에 자리표시("TAGOHUB_<키 이름>")를 넣어 보내고, 서버가 같은 이름의 비밀 값으로 바꿔 넣는다.
 // 키가 주소의 검색 조건·경로·Authorization 헤더 어디에 있든 같은 방식이라 기관마다 따로 짜지 않아도 됨.
 
-// 중계를 허락하는 호스트 (기본 포트만. 국가교통정보센터 openapi.its.go.kr 는 9443 포트라 Cloudflare 가 못 불러서 제외)
+// 중계를 허락하는 호스트 (기본 포트만). 뺀 것: 국가교통정보센터 openapi.its.go.kr(9443 포트라 Cloudflare 가 못 부름),
+// 도시교통정보센터 utic.go.kr(등록한 IP 에서만 응답해서 Cloudflare 를 거치면 "허용된 IP가 아닙니다")
 export const HOSTS = [
   "apis.data.go.kr",       // 공공데이터포털: TAGO·지자체 버스·공항·코레일 등
   "dapi.kakao.com",        // 카카오 로컬·길찾기 (REST 키는 Authorization 헤더)
@@ -74,15 +75,13 @@ export const HOSTS = [
   "openapi.kric.go.kr",    // 철도공사 지하철
   "swopenapi.seoul.go.kr", // 서울 실시간 지하철 (키가 경로에)
   "t-data.seoul.go.kr",    // 서울 신호등
-  "www.utic.go.kr",        // 도시교통정보센터
-  "tsihub.utic.go.kr",
   "data.ex.co.kr",         // 한국도로공사
   "openapi.its.ulsan.kr",  // 울산 버스
 ];
 
 // 서버 비밀 값으로 둘 수 있는 키 이름 (자리표시 TAGOHUB_<이름>)
 export const KEY_NAMES = [
-  "TAGO_SERVICE_KEY", "KLID_BUS_KEY", "KAC_API_KEY", "KRIC_SUBWAY_KEY", "UTIC_API_KEY",
+  "TAGO_SERVICE_KEY", "KLID_BUS_KEY", "KAC_API_KEY", "KRIC_SUBWAY_KEY",
   "SEOUL_SIGNAL_KEY", "EX_API_KEY", "SEOUL_SUBWAY_KEY", "KAKAO_REST_KEY",
 ];
 export const PLACEHOLDER = /TAGOHUB_([A-Z_]+?_KEY)/g;
