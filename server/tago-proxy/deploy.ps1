@@ -1,7 +1,8 @@
 ﻿# TagoHub 중계 서버 배포 (한 번만 실행). 브라우저 로그인 대신 Cloudflare API 토큰을 씀.
 # 1) 서버를 올리고  2) 비밀 값 두 개(공공데이터포털 키, 앱 토큰)를 넣고  3) local.properties 에 서버 주소·앱 토큰을 적음.
 # 키와 토큰은 화면에 보여 주지 않음. 공공데이터포털 키는 local.properties 의 TAGO_SERVICE_KEY 를 그대로 씀.
-$ErrorActionPreference = 'Stop'
+# npx 가 경고를 stderr 로 내도 멈추지 않게 (PowerShell 5.1 은 그것을 오류로 봄). 실패는 아래에서 직접 확인
+$ErrorActionPreference = 'Continue'
 Set-Location $PSScriptRoot
 $props = Join-Path $PSScriptRoot '..\..\local.properties'
 if (-not (Test-Path $props)) { throw 'local.properties 를 찾지 못했어요 (TagoHub 폴더에 있어야 함)' }
@@ -19,7 +20,10 @@ Write-Host '1/3 서버 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy 2>&1 | Out-String)
 Write-Host $out
 $m = [regex]::Match($out, 'https://[A-Za-z0-9.-]+\.workers\.dev')
-if (-not $m.Success) { throw '서버 주소를 찾지 못했어요. 위 메시지를 확인해 주세요 (workers.dev 하위 주소를 처음 정하는 단계일 수 있어요)' }
+if (-not $m.Success) {
+    if ($out -match 'workers\.dev subdomain') { Write-Host 'workers.dev 주소 이름을 아직 안 정했어요: https://dash.cloudflare.com 에서 Workers & Pages 를 열고 주소 이름(subdomain)을 정한 뒤 다시 실행해 주세요' }
+    throw '서버 주소를 찾지 못했어요. 위 메시지를 확인해 주세요'
+}
 $url = $m.Value
 
 Write-Host '2/3 비밀 값 넣는 중...'
