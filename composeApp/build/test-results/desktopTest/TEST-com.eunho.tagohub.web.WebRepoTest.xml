@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="WebRepoTest[desktop]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-04T12:15:09.718Z" hostname="DESKTOP-O7ISAT3" time="0.409">
+  <properties/>
+  <testcase name="arrivalsGoThroughWebPathSorted[desktop]" classname="com.eunho.tagohub.web.WebRepoTest" time="0.373"/>
+  <testcase name="searchUsesNameShardAndRanksPrefixFirst[desktop]" classname="com.eunho.tagohub.web.WebRepoTest" time="0.008"/>
+  <testcase name="otherSourcesAreUnsupportedAndErrorsReported[desktop]" classname="com.eunho.tagohub.web.WebRepoTest" time="0.006"/>
+  <testcase name="nationalFileStopsAskAliasAndNearbyCities[desktop]" classname="com.eunho.tagohub.web.WebRepoTest" time="0.016"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>

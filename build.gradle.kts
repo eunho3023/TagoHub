@@ -3,6 +3,7 @@ plugins {
     id("com.android.kotlin.multiplatform.library") version "9.4.1" apply false
     id("org.jetbrains.kotlin.multiplatform") version "2.2.10" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.10" apply false
+    id("org.jetbrains.compose") version "1.9.3" apply false
     id("com.google.gms.google-services") version "4.4.2" apply false
     id("com.google.firebase.crashlytics") version "3.0.8" apply false
 }

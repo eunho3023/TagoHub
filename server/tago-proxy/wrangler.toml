@@ -8,3 +8,9 @@ compatibility_date = "2025-10-01"
 # 정적 파일: 정류장·노선 자료 조각(public/data, deploy.ps1 이 만듦 — 저장소에는 안 올림). 파일이 있는 주소는 서버 코드를 거치지 않고 바로 나감
 [assets]
 directory = "./public"
+
+# 웹 버전(/w/, 토큰 없음)의 주소(IP)마다 요청 수 제한: 1분에 120번
+[[ratelimits]]
+name = "WEB_LIMIT"
+namespace_id = "1001"
+simple = { limit = 120, period = 60 }

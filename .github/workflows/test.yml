@@ -51,7 +51,7 @@ jobs:
         run: |
           chmod +x ./gradlew
           # shared(폰·웹·PC 공용)는 웹·PC 쪽으로도 컴파일되는지 확인 (자바·안드로이드 전용 기능이 섞이지 않게)
-          ./gradlew :app:testDebugUnitTest :shared:jvmTest :shared:compileKotlinWasmJs --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest :shared:jvmTest :shared:compileKotlinWasmJs :composeApp:desktopTest :composeApp:compileKotlinWasmJs --no-daemon --stacktrace
 
       - name: 실패한 테스트 보고서 올리기
         if: failure()

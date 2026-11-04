@@ -93,3 +93,14 @@ npm test
 - 주소: `/data/tiles/{위도*10}_{경도*10}.json`, `/data/names/{첫 글자 16진수}.json`, `/data/routes/{0~1023}.json`, `/data/cities.json`, `/data/files/{앱 자료 파일}`, `/data/manifest.json`.
 - 공개 자료라 앱 토큰 없이 받을 수 있고(CORS 허용), 1시간 저장. 조각 규칙은 앱 공용 코드 `WebData` 와 같음.
 - 무료 요금제: 파일 하나 25MB, 2만 개까지. 정적 파일 요청은 하루 10만 요청 한도에 들어가지 않음.
+
+## 웹 버전 (화면 + 토큰 없는 실시간 통로)
+
+`deploy.ps1` 이 `composeApp`(Compose Multiplatform) 웹 빌드를 `public/` 에 넣고 한글 글꼴(Noto Sans KR, OFL)을 받아 같이 올린다.
+서버 주소(`https://….workers.dev/`)를 브라우저로 열면 웹 버전이 보인다.
+
+- 웹 페이지에는 앱 토큰을 넣을 수 없으므로, 실시간은 `/w/dg/1613000/...` 로 토큰 없이 받는다.
+  허락하는 것은 버스 도착(`ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList`)·위치(`BusLcInfoInqireService/getRouteAcctoBusLcList`)뿐이고,
+  질의는 `cityCode`·`nodeId`/`routeId` 만 (값 모양 검사), 쪽 번호·개수는 서버가 정함 (`src/proxy.js` `webRequest`).
+- 앱과 같은 5초 저장을 같이 쓰고, 주소(IP)마다 1분 120번까지 (`wrangler.toml` `[[ratelimits]] WEB_LIMIT`).
+- PC 버전(데스크톱)은 같은 화면을 `./gradlew :composeApp:run` 으로 띄움 (서버 주소는 local.properties 의 `TAGO_PROXY_URL`).

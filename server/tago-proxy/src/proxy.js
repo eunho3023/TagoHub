@@ -110,3 +110,31 @@ export function hostTtl(host, path) {
   if (host === "apis-navi.kakaomobility.com") return 60;
   return ttlFor(path);
 }
+
+// ── 웹 버전 (/w/dg/<기관>/<서비스>/<기능>) ─────────────────────────────────────
+// 웹 페이지에는 앱 토큰을 넣을 수 없으므로(누구나 볼 수 있음) 토큰 없이 받되, 실시간 버스 도착·위치만,
+// 정해진 질의 이름·값 모양만 허락한다. 결과는 앱과 같은 저장(5초)을 같이 쓰고, 주소(IP)마다 분당 요청 수를 제한한다.
+export const WEB_OPS = {
+  "1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList": ["cityCode", "nodeId"],
+  "1613000/BusLcInfoInqireService/getRouteAcctoBusLcList": ["cityCode", "routeId"],
+};
+const WEB_VALUE = { cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/ };
+
+/** "/w/dg/1613000/..." + 검색 조건 → {path, search} (질의는 허락한 것만, 쪽 번호·개수는 정해 둠). 허락하지 않으면 null */
+export function webRequest(pathname, search) {
+  if (!pathname.startsWith("/w/dg/")) return null;
+  const path = pathname.slice(6);
+  const names = WEB_OPS[path];
+  if (!names) return null;
+  const given = new URLSearchParams(search);
+  const out = new URLSearchParams();
+  for (const n of names) {
+    const v = given.get(n);
+    if (v == null || !WEB_VALUE[n].test(v)) return null;
+    out.set(n, v);
+  }
+  out.set("pageNo", "1");
+  out.set("numOfRows", "100");
+  out.set("_type", "xml");
+  return { path, search: "?" + out.toString() };
+}
