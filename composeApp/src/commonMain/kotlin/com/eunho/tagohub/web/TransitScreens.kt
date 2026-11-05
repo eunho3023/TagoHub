@@ -281,7 +281,7 @@ internal fun SubwayPane(repo: TransitRepo, st: SubwaySearchState, modeChips: @Co
  * 시간표는 서버가 하루 저장해 둬서 두 번째부터는 바로.
  */
 @Composable
-internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, onBack: () -> Unit) {
+internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, seoul: SeoulRealtime? = null, onBack: () -> Unit) {
     val iso = remember { todayIso() }
     var day by remember { mutableStateOf(TransitRepo.dayCode(iso)) }
     var up by remember(station.id, day) { mutableStateOf<List<SubwayDep>?>(null) }
@@ -296,6 +296,15 @@ internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, onBac
         }.onFailure { failed = true }
     }
     LaunchedEffect(Unit) { while (true) { delay(1000); nowMs = nowMs() } }
+    // 서울(수도권) 노선이면 실시간 도착 (20초마다 새로)
+    val realtimeLine = remember(station.id) { SeoulRealtime.lineIdOf(station) }
+    var live by remember(station.id) { mutableStateOf<List<SeoulArrival>?>(null) }
+    if (seoul != null && realtimeLine != null) LaunchedEffect(station.id) {
+        while (true) {
+            live = try { seoul.arrivals(station) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { live ?: emptyList() }
+            delay(20_000)
+        }
+    }
     Header(station.name, station.line, onBack)
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -321,6 +330,7 @@ internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, onBac
     val serviceNowSec = if (nowLocal.hour < 3) nowSec + 86400 else nowSec
     @Suppress("UNUSED_EXPRESSION") nowMs
     LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+        if (seoul != null && realtimeLine != null) liveItems(live)
         for ((title, deps) in listOf("상행" to up!!, "하행" to down!!)) {
             item(key = "h$title") {
                 Text(
@@ -350,6 +360,41 @@ internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, onBac
                             color = if (left <= 180) SoonColor else MaterialTheme.colorScheme.onSurface,
                         )
                     }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
+    }
+}
+
+/** 실시간 도착 (서울 열린데이터광장): 방향마다 다음 두 대 */
+private fun androidx.compose.foundation.lazy.LazyListScope.liveItems(live: List<SeoulArrival>?) {
+    item(key = "liveHead") {
+        Text(
+            "실시간 도착", Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 16.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold,
+        )
+    }
+    when {
+        live == null -> item(key = "liveWait") { Note("실시간 도착을 불러오는 중...") }
+        live.isEmpty() -> item(key = "liveNone") { Note("지금 실시간 도착 정보가 없어요") }
+        else -> {
+            val shown = live.groupBy { it.upDown }.values.flatMap { it.take(2) }
+            items(shown, key = { "live" + it.upDown + it.order + it.lineText }) { a ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            (a.dest?.let { it + "행" } ?: a.lineText) + (if (a.express) " (급행)" else "") + (if (a.last) " · 막차" else ""),
+                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(a.upDown, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    val soon = a.text in setOf("진입", "도착", "전역 출발", "전역 진입", "전역 도착") || (a.seconds ?: Int.MAX_VALUE) <= 180
+                    Text(
+                        a.seconds?.takeIf { it >= 60 && !a.text.endsWith("전역") }?.let { "${it / 60}분" } ?: a.text,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black,
+                        color = if (soon) SoonColor else MaterialTheme.colorScheme.onSurface,
+                    )
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
