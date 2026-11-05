@@ -40,6 +40,7 @@ internal class RoadState {
     var failed by mutableStateOf(setOf<Int>())
     var reload by mutableIntStateOf(0)
     val map = MapState(36.4, 127.8, 7)
+    val signal = SignalState()
 }
 
 private val JamColor = Color(0xFFF08C00)
@@ -49,8 +50,8 @@ private val JamColor = Color(0xFFF08C00)
  * 목록을 누르면 지도가 그 자리로. 국가교통정보센터·경찰청 자료(일반 도로 소통·CCTV)는 폰 앱에서.
  */
 @Composable
-internal fun RoadPane(repo: RoadRepo, st: RoadState, tiles: TileLoader, modeChips: @Composable () -> Unit) {
-    Header("TagoHub", "고속도로 돌발·정체·주유 가격", action = "새로", onAction = {
+internal fun RoadPane(repo: RoadRepo, st: RoadState, tiles: TileLoader, modeChips: @Composable () -> Unit, signals: SignalsRepo? = null) {
+    Header("TagoHub", "고속도로 돌발·정체·주유 가격·신호등", action = "새로", onAction = {
         st.incidents = null; st.jams = null; st.gas = null; st.failed = emptySet(); st.reload++
     })
     modeChips()
@@ -63,14 +64,14 @@ internal fun RoadPane(repo: RoadRepo, st: RoadState, tiles: TileLoader, modeChip
         when (st.tab) {
             0 -> if (st.incidents == null) st.incidents = load(0) { repo.incidents() }
             1 -> if (st.jams == null) st.jams = load(1) { repo.jams() }
-            else -> if (st.gas == null) st.gas = load(2) { repo.gas() }
+            2 -> if (st.gas == null) st.gas = load(2) { repo.gas() }
         }
     }
     Row(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        for ((i, label) in listOf("돌발", "정체", "주유 가격").withIndex()) {
+        for ((i, label) in (listOf("돌발", "정체", "주유 가격") + listOfNotNull("신호등".takeIf { signals != null })).withIndex()) {
             val on = st.tab == i
             Text(
                 label, Modifier.background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent, RoundedCornerShape(8.dp))
@@ -81,6 +82,7 @@ internal fun RoadPane(repo: RoadRepo, st: RoadState, tiles: TileLoader, modeChip
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    if (st.tab == 3 && signals != null) return SignalView(signals, st.signal, tiles)
     if (st.tab == 2) return GasList(st)
 
     // 돌발·정체: 위에 지도, 아래 목록

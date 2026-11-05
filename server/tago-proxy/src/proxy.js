@@ -247,3 +247,13 @@ export function kacWebRequest(pathname, search) {
   if (!/^[A-Z]{3}$/.test(air) || !/^20\d{6}$/.test(date) || !/^([1-9]|10)$/.test(page)) return null;
   return { path, search: `&type=json&pageNo=${page}&numOfRows=100&schAirCode=${air}&schStTime=${date}0000&schEdTime=${date}2359`, ttl: 60 };
 }
+
+// ── 웹 버전 실시간 신호등 (/w/signal/seoul/<교차로 ID>, /w/signal/ulsan/map|now) ────────
+/** → { kind, id?, ttl }. 서울은 교차로 하나(3초 저장), 울산은 교차로 목록(하루)·지금 신호 전체(3초) */
+export function signalWebRequest(pathname) {
+  let m = /^\/w\/signal\/seoul\/(\d{1,10})$/.exec(pathname);
+  if (m) return { kind: "seoul", id: m[1], ttl: 3 };
+  m = /^\/w\/signal\/ulsan\/(map|now)$/.exec(pathname);
+  if (m) return { kind: "ulsan", op: m[1] === "map" ? "crsrd_map_info" : "tl_drct_info", ttl: m[1] === "map" ? 86400 : 3 };
+  return null;
+}
