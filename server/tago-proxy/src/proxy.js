@@ -125,6 +125,8 @@ export const WEB_OPS = {
   "1613000/BusRouteInfoInqireService/getRouteInfoIem": ["cityCode", "routeId"],
   // 정류장을 지나는 노선 (운행 안 할 때도 정류장 화면에 노선을 다 보이게, 하루 저장)
   "1613000/BusSttnInfoInqireService/getSttnThrghRouteList": ["cityCode", "nodeid"],
+  // 정류장 자리 주변의 TAGO 정류장 (정류장 파일에 없는 같은 자리 정류장 찾기: 익산 ISB… 등). 좌표는 정류장 좌표만 씀
+  "1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList": ["gpsLati", "gpsLong"],
   // 지하철: 역 찾기, 역 시간표 (하루 저장)
   "1613000/SubwayInfo/GetKwrdFndSubwaySttnList": ["subwayStationName"],
   "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": ["subwayStationId", "dailyTypeCode", "upDownTypeCode"],
@@ -136,7 +138,7 @@ export const WEB_OPS = {
   "1613000/SuburbsBusInfo/GetSuberbsBusTrminlList": ["terminalNm"],
 };
 const WEB_VALUE = {
-  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
+  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, gpsLati: /^3[3-8]\.\d{1,6}$/, gpsLong: /^12[4-9]\.\d{1,6}$|^13[01]\.\d{1,6}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
   subwayStationName: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/, subwayStationId: /^[A-Za-z0-9]{1,16}$/,
   dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
   depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,

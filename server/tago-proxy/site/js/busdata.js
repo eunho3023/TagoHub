@@ -270,7 +270,28 @@ export async function sameSpot(stop) {
     const best = groups.get(k);
     if (!best || meters(stop.lat, stop.lng, best.lat, best.lng) > m) groups.set(k, o);
   }
-  return [...groups.values()];
+  const out = [...groups.values()];
+  // 노선 자료가 없는 TAGO 지역 정류장(교통안전공단 TSB 등): TAGO 는 정류장 파일에 없는 같은 자리 정류장(익산 ISB… 등)으로만 노선을 줌
+  if (!stop.routes.length && tagoStop(stop) && !/^(JUB|JEB)/.test(stop.id)) {
+    for (const t of await tagoTwins(stop)) if (!out.some((o) => o.id === t.id)) out.push(t);
+  }
+  return out;
+}
+
+/** 이 정류장 자리 150m 안의 같은 이름 TAGO 정류장 (가까운 3곳). 정류장 좌표로만 물음 */
+const twinMemo = new Map();
+function tagoTwins(stop) {
+  if (!twinMemo.has(stop.id)) {
+    twinMemo.set(stop.id, (async () => {
+      const rows = xmlRows(await getText("w/dg/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList", { gpsLati: stop.lat.toFixed(6), gpsLong: stop.lng.toFixed(6) }));
+      const key = stop.name.replace(/ /g, "");
+      return rows.map((r) => ({ id: str(r.nodeid), name: r.nodenm || "", lat: num(r.gpslati), lng: num(r.gpslong), no: str(r.nodeno), city: String(r.citycode || ""), routes: [] }))
+        .filter((o) => o.id && o.id !== stop.id && /^\d+$/.test(o.city) && o.lat != null && o.lng != null && o.name.replace(/ /g, "") === key && meters(stop.lat, stop.lng, o.lat, o.lng) <= 150)
+        .sort((a, b) => meters(stop.lat, stop.lng, a.lat, a.lng) - meters(stop.lat, stop.lng, b.lat, b.lng))
+        .slice(0, 3);
+    })().catch(() => []));
+  }
+  return twinMemo.get(stop.id);
 }
 
 /** TAGO 에 물을 도시코드 후보 (교통안전공단 TS… 시군은 대응표 → 근처 시군) */

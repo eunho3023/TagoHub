@@ -188,6 +188,9 @@ test("웹 서울·경기 버스: 정해진 모양의 id 만", () => {
   assert.equal(busWebRequest("/w/bus/jeonju/routes/3061011"), null);
   const tr = webRequest("/w/dg/1613000/BusSttnInfoInqireService/getSttnThrghRouteList", "?cityCode=35010&nodeid=JJB306000038");
   assert.ok(tr && tr.search.includes("nodeid=JJB306000038"));
+  assert.ok(webRequest("/w/dg/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList", "?gpsLati=35.938251&gpsLong=126.946368"));
+  assert.equal(webRequest("/w/dg/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList", "?gpsLati=35.9382519&gpsLong=126.946368"), null);
+  assert.equal(webRequest("/w/dg/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList", "?gpsLati=1&gpsLong=126.9"), null);
 });
 
 import { icnWebRequest } from "../src/proxy.js";
