@@ -41,6 +41,13 @@ function dotEl(d) {
   return wrap;
 }
 
+/** 내 위치 점 (파란 점 + 퍼지는 테두리) */
+function meEl() {
+  const d = document.createElement("div");
+  d.className = "me-dot";
+  return d;
+}
+
 async function kakaoImpl() {
   const key = window.TAGOHUB_KAKAO_JS_KEY || "";
   if (!key) throw new Error("키 없음");
@@ -59,7 +66,7 @@ async function kakaoImpl() {
   map.addControl(new K.ZoomControl(), K.ControlPosition.RIGHT);
   K.event.addListener(map, "idle", () => idleCbs.forEach((f) => f()));
   K.event.addListener(map, "click", () => tapCb && tapCb());
-  let lineObjs = [], dotObjs = [];
+  let lineObjs = [], dotObjs = [], meObj = null, meRing = null;
   const lv = (z) => Math.min(14, Math.max(1, 20 - z));
   return {
     view(lat, lng, z) { map.setLevel(lv(z)); map.setCenter(new K.LatLng(lat, lng)); },
@@ -78,7 +85,17 @@ async function kakaoImpl() {
     },
     bounds() { const b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast(); return { s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng() }; },
     zoom() { return 20 - map.getLevel(); },
+    center() { const c = map.getCenter(); return [c.getLat(), c.getLng()]; },
     relayout() { map.relayout(); },
+    /** 내 위치 점 (null 이면 지움) + 정확도 원 */
+    me(p) {
+      if (!p) { meObj?.setMap(null); meRing?.setMap(null); meObj = meRing = null; return; }
+      const at = new K.LatLng(p[0], p[1]);
+      if (!meObj) {
+        meObj = new K.CustomOverlay({ map, position: at, content: meEl(), xAnchor: 0.5, yAnchor: 0.5, zIndex: 5 });
+        meRing = new K.Circle({ map, center: at, radius: p[2] || 0, strokeWeight: 1, strokeColor: "#2563eb", strokeOpacity: 0.4, fillColor: "#2563eb", fillOpacity: 0.12 });
+      } else { meObj.setPosition(at); meRing.setPosition(at); meRing.setRadius(p[2] || 0); }
+    },
   };
 }
 
@@ -92,7 +109,8 @@ async function leafletImpl() {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
   map.on("moveend", () => idleCbs.forEach((f) => f()));
   map.on("click", () => tapCb && tapCb());
-  const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map);
+  const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map), meLayer = L.layerGroup().addTo(map);
+  let meMark = null, meCircle = null;
   return {
     view(lat, lng, z) { map.setView([lat, lng], z); },
     fit(pts) { if (pts.length) map.fitBounds(pts, { padding: [40, 40] }); },
@@ -109,7 +127,15 @@ async function leafletImpl() {
     },
     bounds() { const b = map.getBounds(); return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; },
     zoom() { return map.getZoom(); },
+    center() { const c = map.getCenter(); return [c.lat, c.lng]; },
     relayout() { map.invalidateSize(); },
+    me(p) {
+      if (!p) { meLayer.clearLayers(); meMark = meCircle = null; return; }
+      if (!meMark) {
+        meCircle = L.circle([p[0], p[1]], { radius: p[2] || 0, weight: 1, color: "#2563eb", opacity: 0.4, fillOpacity: 0.12 }).addTo(meLayer);
+        meMark = L.marker([p[0], p[1]], { icon: L.divIcon({ html: meEl(), className: "", iconSize: [0, 0] }), zIndexOffset: 2000, interactive: false }).addTo(meLayer);
+      } else { meMark.setLatLng([p[0], p[1]]); meCircle.setLatLng([p[0], p[1]]); meCircle.setRadius(p[2] || 0); }
+    },
   };
 }
 
@@ -118,9 +144,53 @@ const ready = (async () => {
   while (!el.isConnected || el.clientWidth === 0) await new Promise((r) => setTimeout(r, 100));
   try { impl = await kakaoImpl(); } catch (e) { el.innerHTML = ""; impl = await leafletImpl(); }
   new ResizeObserver(() => impl.relayout()).observe(el);
+  el.appendChild(locBtn);
+  if (myPos) impl.me(myPos);
   if (pendingView) { const v = pendingView; pendingView = null; v(); }
   return impl;
 })();
+
+// ── 내 위치 (브라우저 GPS, 켜 두면 계속 따라 움직임) ──
+let watchId = null, myPos = null, firstFix = false;
+const locBtn = document.createElement("button");
+locBtn.className = "locbtn";
+locBtn.title = "내 위치";
+locBtn.setAttribute("aria-label", "내 위치");
+locBtn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>';
+// 지도 끌기로 넘어가지 않게
+for (const ev of ["pointerdown", "mousedown", "touchstart", "dblclick"]) locBtn.addEventListener(ev, (e) => e.stopPropagation());
+locBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (watchId == null) return startMe();
+  // 켜져 있으면: 지도가 내 위치에서 벗어나 있으면 다시 가운데로, 이미 가운데면 끄기
+  const c = impl?.center?.();
+  if (myPos && c && Math.hypot((c[0] - myPos[0]) * 111000, (c[1] - myPos[1]) * 88000) > 30) impl.view(myPos[0], myPos[1], Math.max(16, impl.zoom()));
+  else stopMe();
+});
+function startMe() {
+  if (!navigator.geolocation) { alert("이 브라우저는 위치를 알려 주지 않아요"); return; }
+  firstFix = true;
+  locBtn.classList.add("on", "wait");
+  watchId = navigator.geolocation.watchPosition(
+    (p) => {
+      myPos = [p.coords.latitude, p.coords.longitude, Math.min(p.coords.accuracy || 0, 2000)];
+      locBtn.classList.remove("wait");
+      impl?.me(myPos);
+      if (firstFix && impl) { firstFix = false; impl.view(myPos[0], myPos[1], 16); }
+    },
+    (err) => {
+      stopMe();
+      alert(err && err.code === 1 ? "위치 사용을 허락해야 내 위치를 볼 수 있어요 (주소창 왼쪽 자물쇠에서 바꿀 수 있어요)" : "위치를 받지 못했어요");
+    },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 30000 },
+  );
+}
+function stopMe() {
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null; myPos = null;
+  locBtn.classList.remove("on", "wait");
+  impl?.me(null);
+}
 
 export const MapView = {
   el,
