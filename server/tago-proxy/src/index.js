@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape } from "./shape.js";
 
@@ -41,6 +41,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/bus/")) return busWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   if (env.WEB_LIMIT) {
@@ -191,6 +192,15 @@ async function kacWeb(request, url, env, ctx) {
   const upstream = raw ? `https://apis.data.go.kr/B551178/${r.path}?serviceKey=${encodeKey(raw)}${r.search}` : null;
   return cachedJson(request, env, ctx, "https://cache.tagohub/kac/" + r.path + "?" + r.search, upstream, r.ttl,
     (b) => /"resultCode"\s*:\s*"0*0"/.test(b));
+}
+
+/** 웹 버전 서울·경기 버스 (proxy.js busWebRequest). 키는 공공데이터포털 키. 정상(서울 headerCd 0·4, 경기 resultCode 0·4)만 저장 */
+async function busWeb(request, url, env, ctx) {
+  const r = busWebRequest(url.pathname);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  const raw = env.DATA_GO_KR_KEY;
+  const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b) : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
+  return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, raw ? r.url.replace("KEY", encodeKey(raw)) : null, r.ttl, ok);
 }
 
 /** 웹 버전 실시간 신호등 (proxy.js signalWebRequest). 서울은 SEOUL_SIGNAL_KEY, 울산은 KLID_BUS_KEY(없으면 공공데이터포털 키) */

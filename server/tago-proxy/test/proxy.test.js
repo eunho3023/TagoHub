@@ -165,3 +165,17 @@ test("웹 신호등: 서울 교차로 번호, 울산 목록·지금만", () => {
   assert.equal(signalWebRequest("/w/signal/ulsan/now").op, "tl_drct_info");
   assert.equal(signalWebRequest("/w/signal/jeju/now"), null);
 });
+
+import { busWebRequest } from "../src/proxy.js";
+test("웹 서울·경기 버스: 정해진 모양의 id 만", () => {
+  assert.equal(busWebRequest("/w/bus/seoul/arrival/01002").url,
+    "http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid?arsId=01002&resultType=json&serviceKey=KEY");
+  assert.equal(busWebRequest("/w/bus/seoul/pos/100100118").cacheKey, "bus/seoul/pos/100100118");
+  assert.equal(busWebRequest("/w/bus/gg/arrival/233001450").url,
+    "https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2?stationId=233001450&format=json&serviceKey=KEY");
+  assert.equal(busWebRequest("/w/bus/gg/pos/234000315").ttl, 10);
+  assert.equal(busWebRequest("/w/bus/seoul/arrival/1002"), null);
+  assert.equal(busWebRequest("/w/bus/gg/arrival/12345"), null);
+  assert.equal(busWebRequest("/w/bus/seoul/route/100100118"), null);
+  assert.equal(busWebRequest("/w/bus/gg/pos/2340003a5"), null);
+});

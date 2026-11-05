@@ -257,3 +257,22 @@ export function signalWebRequest(pathname) {
   if (m) return { kind: "ulsan", op: m[1] === "map" ? "crsrd_map_info" : "tl_drct_info", ttl: m[1] === "map" ? 86400 : 3 };
   return null;
 }
+
+// ── 웹 버전 서울·경기 버스 (/w/bus/seoul|gg/arrival|pos/<id>) ─────────────────────
+/**
+ * TAGO 가 다루지 않는 서울(ws.bus.go.kr)·경기(GBIS v2) 버스 도착·위치. 키는 공공데이터포털 키(서버가 붙임).
+ * 서울 도착은 정류장 번호(arsId 5자리), 경기 도착은 정류소 ID(9자리), 위치는 노선 ID. → { url(키 자리 KEY), cacheKey, ttl }
+ */
+export function busWebRequest(pathname) {
+  const m = /^\/w\/bus\/(seoul|gg)\/(arrival|pos)\/(\d{1,12})$/.exec(pathname);
+  if (!m) return null;
+  const [, area, op, id] = m;
+  if (area === "seoul") {
+    if (op === "arrival" && !/^\d{5}$/.test(id)) return null;
+    const q = op === "arrival" ? `stationinfo/getStationByUid?arsId=${id}` : `buspos/getBusPosByRtid?busRouteId=${id}`;
+    return { area, url: `http://ws.bus.go.kr/api/rest/${q}&resultType=json&serviceKey=KEY`, cacheKey: `bus/seoul/${op}/${id}`, ttl: 10 };
+  }
+  if (!/^\d{9}$/.test(id)) return null;
+  const q = op === "arrival" ? `busarrivalservice/v2/getBusArrivalListv2?stationId=${id}` : `buslocationservice/v2/getBusLocationListv2?routeId=${id}`;
+  return { area, url: `https://apis.data.go.kr/6410000/${q}&format=json&serviceKey=KEY`, cacheKey: `bus/gg/${op}/${id}`, ttl: 10 };
+}

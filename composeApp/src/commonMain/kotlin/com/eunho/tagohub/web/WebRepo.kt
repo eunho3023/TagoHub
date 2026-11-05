@@ -110,9 +110,10 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         decodePolyline(poly, 5).takeIf { it.size >= 2 }
     }.getOrNull()
 
-    /** 노선의 실시간 버스 위치 (웹 통로). TAGO 가 다루지 않는 노선(서울·경기·교통안전공단)은 [Positions.Unsupported] */
+    /** 노선의 실시간 버스 위치 (웹 통로). 서울·경기는 각 시도 API, 교통안전공단 노선은 [Positions.Unsupported] */
     suspend fun positions(route: RouteFull): Positions {
-        if (route.city.isEmpty() || !route.city.all(Char::isDigit) || OTHER_SOURCES.any { route.id.startsWith(it) } || route.id.startsWith("TSB")) {
+        metroPositions(route)?.let { return it }
+        if (route.city.isEmpty() || !route.city.all(Char::isDigit) || metroId(route.id, route.city) || route.id.startsWith("TSB")) {
             return Positions.Unsupported
         }
         return try {
@@ -126,6 +127,20 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
                     vehicleNo = r.str("vehicleno"), lat = r.double("gpslati"), lng = r.double("gpslong"),
                 )
             })
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Positions.Failed(e.message ?: "알 수 없는 오류")
+        }
+    }
+
+    /** 서울·경기 노선이면 그 시도 API 로 버스 위치 (아니면 null) */
+    private suspend fun metroPositions(route: RouteFull): Positions? {
+        val path = MetroBus.seoulId(route.id)?.let { "w/bus/seoul/pos/$it" }
+            ?: MetroBus.ggId(route.id)?.takeIf { MetroBus.ggCity(route.city) }?.let { "w/bus/gg/pos/$it" }
+            ?: return null
+        return try {
+            val body = http.getText(base + path)
+            Positions.Ok(if (path.startsWith("w/bus/seoul")) MetroBus.seoulBuses(body) else MetroBus.ggBuses(body))
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Positions.Failed(e.message ?: "알 수 없는 오류")
@@ -216,17 +231,39 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
     suspend fun arrivals(stop: WebStop, nowMs: Long): Arrivals {
         return try {
             val todo = targets(stop)
-            if (todo.isEmpty()) return Arrivals.Unsupported
-            val results = coroutineScope { todo.map { (c, id) -> async { runCatching { arrivalsIn(c, id) } } }.awaitAll() }
+            val metro = metroTargets(stop)
+            if (todo.isEmpty() && metro.isEmpty()) return Arrivals.Unsupported
+            val results = coroutineScope {
+                todo.map { (c, id) -> async { runCatching { arrivalsIn(c, id) } } } +
+                    metro.map { path -> async { runCatching { metroArrivals(path) } } }
+            }.awaitAll()
             if (results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
             val list = results.flatMap { it.getOrDefault(emptyList()) }
                 .distinctBy { it.routeId + "|" + it.arrSeconds }
+                // 서울 정류장의 경기 버스는 서울시 API·경기 API 둘 다에 나옴 (노선 id 가 달라 번호·남은 분으로)
+                .distinctBy { it.routeNo + "|" + ((it.arrSeconds ?: -60) / 60) }
                 .sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
             Arrivals.Ok(list, nowMs)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Arrivals.Failed(e.message ?: "알 수 없는 오류")
         }
+    }
+
+    /** 서울·경기 API 로 물을 주소 (고른 정류장과 같은 자리 정류장). 서울은 정류장 번호, 경기는 정류소 id */
+    internal suspend fun metroTargets(stop: WebStop): List<String> {
+        val all = listOf(stop) + sameSpot(stop)
+        val out = LinkedHashSet<String>()
+        for (s in all) {
+            if (MetroBus.seoulStop(s)) out += "w/bus/seoul/arrival/" + MetroBus.ars(s.no)
+            if (MetroBus.ggStop(s)) out += "w/bus/gg/arrival/" + MetroBus.ggId(s.id)
+        }
+        return out.take(MAX_METRO)
+    }
+
+    private suspend fun metroArrivals(path: String): List<BusArrival> {
+        val body = http.getText(base + path)
+        return if (path.startsWith("w/bus/seoul")) MetroBus.seoulArrivals(body) else MetroBus.ggArrivals(body)
     }
 
     private suspend fun arrivalsIn(cityCode: String, nodeId: String): List<BusArrival> {
@@ -251,6 +288,8 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         const val MAX_CITIES = 3
         /** 한 번 새로 고칠 때 묻는 최대 수 (15초마다 → 분당 20번, 서버 제한 120번 안) */
         const val MAX_TARGETS = 5
+        /** 서울·경기 API 로 한 번에 묻는 최대 수 */
+        const val MAX_METRO = 3
         /** 같은 정류장으로 보는 거리 (앱과 같게 30m) */
         const val SAME_SPOT_M = 30.0
         /** 정류장 번호가 같으면 이만큼 떨어져 있어도 같은 정류장 (자료마다 좌표가 조금씩 다름) */
@@ -264,9 +303,10 @@ class WebRepo(base: String, private val http: HttpClient = HttpClient()) {
         }
 
         /** 폰 앱은 따로 받는 지역 (서울·경기 버스 API): TAGO 에는 실시간이 없어 웹 통로로는 못 받음 */
-        private val OTHER_SOURCES = listOf("SEB", "GGB")
+        /** 서울(SEB)·경기 GBIS(GGB 이고 경기·서울·인천 시군) 정류장·노선: TAGO 가 아니라 그 시도 API. 울산 등 다른 시의 GGB 는 TAGO */
+        fun metroId(id: String, city: String): Boolean = id.startsWith(MetroBus.SEOUL) || (id.startsWith(MetroBus.GG) && MetroBus.ggCity(city))
 
-        fun tagoStop(stop: WebStop): Boolean = stop.city.isNotEmpty() && OTHER_SOURCES.none { stop.id.startsWith(it) }
+        fun tagoStop(stop: WebStop): Boolean = stop.city.isNotEmpty() && !metroId(stop.id, stop.city)
 
         /** 같은 이름·같은 자리 정류장 묶기: 노선이 가장 많은 것(같으면 TAGO 시군 코드인 것) 하나만 */
         fun mergeSameSpot(stops: List<WebStop>): List<WebStop> {

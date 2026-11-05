@@ -109,6 +109,7 @@ npm test
 - 카카오 장소 찾기 `/w/kakao/place?q=&x=&y=` (하루) · 대중교통 길찾기 `/w/kakao/transit?sx=&sy=&ex=&ey=` (5분), `KAKAO_REST_KEY` (`kakaoWebRequest`).
 - 한국공항공사 `/w/kac/<기능>`: 혼잡도·소요시간·주차장(2분), 공항별 하루 실시간 운항 `?air=&date=&pageNo=`(1분), `KAC_API_KEY` (`kacWebRequest`).
 - 실시간 신호등 `/w/signal/seoul/<교차로 ID>` (3초, `SEOUL_SIGNAL_KEY`), `/w/signal/ulsan/map|now` (하루·3초, `KLID_BUS_KEY`) (`signalWebRequest`).
+- 서울·경기 버스 `/w/bus/seoul/arrival/<정류장 번호 5자리>`·`/w/bus/seoul/pos/<노선 ID>` (ws.bus.go.kr), `/w/bus/gg/arrival|pos/<9자리 ID>` (경기 GBIS v2), 10초, 공공데이터포털 키 (`busWebRequest`).
 - 위 JSON 통로는 모두 `src/index.js` `cachedJson` 으로: 저장해 둔 것이 있으면 바로, 없으면 주소마다 분당 제한을 지나 묻고 정상 응답만 저장.
 - 앱과 같은 5초 저장을 같이 쓰고, 주소(IP)마다 1분 120번까지 (`wrangler.toml` `[[ratelimits]] WEB_LIMIT`).
 - PC 버전(데스크톱)은 같은 화면을 `./gradlew :composeApp:run` 으로 띄움 (서버 주소는 local.properties 의 `TAGO_PROXY_URL`).
