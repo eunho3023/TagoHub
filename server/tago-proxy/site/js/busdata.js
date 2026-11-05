@@ -168,6 +168,15 @@ async function liveStopRoutes(stop, same) {
       type: str(r.routeTypeName) || GG_TYPES[int(r.routeTypeCd)] || null, city: "31",
     }))));
   }
+  // 전주: 전주시 버스정보 (JUB + 9자리, 줄 이름 <list>)
+  for (const j of new Set([stop, ...same].map((s) => (/^JUB\d{9}$/.test(s.id) ? s.id.slice(3) : null)).filter(Boolean))) {
+    jobs.push(getText("w/bus/jeonju/routes/" + j).then((x) => [...new DOMParser().parseFromString(x, "text/xml").getElementsByTagName("list")].map((el) => {
+      const r = {};
+      for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
+      const no = String(r.brtid ?? "");
+      return { id: "JUB" + (r.brtstdid || ""), no, start: str(r.brtsname), end: str(r.brtename), type: r.brtclass === "1" ? "순환" : /^\d{4}/.test(no) ? "간선" : "일반", city: "35010" };
+    })));
+  }
   for (const [city, node] of (await targets(stop)).tago) {
     jobs.push(getText("w/dg/1613000/BusSttnInfoInqireService/getSttnThrghRouteList", { cityCode: city, nodeid: currentId(node) }).then((x) => xmlRows(x).map((r) => ({
       id: String(r.routeid || ""), no: String(r.routeno ?? ""), start: str(r.startnodenm), end: str(r.endnodenm), type: str(r.routetp), city,

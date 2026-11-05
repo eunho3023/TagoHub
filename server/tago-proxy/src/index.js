@@ -209,7 +209,9 @@ async function busWeb(request, url, env, ctx) {
   const r = busWebRequest(url.pathname);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   const raw = env.DATA_GO_KR_KEY;
-  const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b) : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
+  const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b)
+    : r.area === "jeonju" ? (b) => /<list>/.test(b) && !/<code>(?!000)/.test(b)
+    : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
   return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, raw ? r.url.replace("KEY", encodeKey(raw)) : null, r.ttl, ok);
 }
 
