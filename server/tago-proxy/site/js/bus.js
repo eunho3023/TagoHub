@@ -122,7 +122,7 @@ export function stopScreen(root, p) {
       action: isWide() ? null : { label: "위치", run: () => go("map", stop.id, { lat: stop.lat, lng: stop.lng }) },
     }) + (status ? note(status) : "") + `<div class="list">${rows.map((r, i) => {
       const ends = r.sum ? [r.sum.start, r.sum.end].filter(Boolean).join(" → ") : "";
-      return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null) }))}>
+      return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
         <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends || r.type || "")}</small></span>
         <span class="right" data-r="${i}"></span></button>`;
     }).join("")}</div>`;
@@ -161,6 +161,12 @@ export function routeScreen(root, p, ctx) {
       if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: s.lat, lng: s.lng, color: here || focused ? "#D7262E" : "#fff", ring: color, r: here || focused ? 7 : 4, label: focused ? s.name : null });
     }
     for (const b of pos?.buses || []) if (b.lat != null) dots.push({ id: "b:" + b.vehicleNo, lat: b.lat, lng: b.lng, color, ring: "#fff", r: 8, label: plateTail(b.vehicleNo) });
+    // 좌표가 없는 지역(경기 등): 버스가 있는 정류장 자리에 (폰 앱과 같음)
+    for (const [i, list] of B.busAtStops(r.stops, (pos?.buses || []).filter((b) => b.lat == null))) {
+      const st = r.stops[i];
+      if (st?.lat == null) continue;
+      list.forEach((b, k) => dots.push({ id: "b:" + b.vehicleNo, lat: st.lat + k * 0.00008, lng: st.lng, color, ring: "#fff", r: 8, label: plateTail(b.vehicleNo) }));
+    }
     MapView.dots(dots, (d) => {
       const seq = d.id.startsWith("s:") ? +d.id.slice(2) : null;
       const idx = seq != null ? r.stops.findIndex((s) => s.seq === seq) : [...B.busAtStops(r.stops, pos?.buses || []).entries()].find(([, l]) => l.some((b) => "b:" + b.vehicleNo === d.id))?.[0];
@@ -199,6 +205,8 @@ export function routeScreen(root, p, ctx) {
   };
   (async () => {
     try { r = await B.route(p.id, p.city); } catch (e) { r = null; }
+    // 자료 조각에 없는 노선은 번호·종류를 정류장 화면에서 넘겨받음
+    if (r && r.no === "노선" && p.no) { r.no = p.no; if (!r.type && p.type) r.type = p.type; }
     if (!alive) return;
     if (!r) { root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요"); return; }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region, r.type].filter(Boolean).join(" · "), { back: true }) +
