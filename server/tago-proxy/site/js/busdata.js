@@ -143,10 +143,38 @@ async function ggRoute(id) {
 
 /** 정류장에 서는 노선 요약 (같은 자리 정류장 것까지) */
 export async function stopRoutes(stop) {
-  const ids = [...new Set([stop, ...(await sameSpot(stop))].flatMap((s) => s.routes))];
+  const same = await sameSpot(stop);
+  const ids = [...new Set([stop, ...same].flatMap((s) => s.routes))];
   const sums = await routeSums(ids);
-  const seen = new Set();
-  return Object.values(sums).map((s) => ({ ...s, id: currentId(s.id) })).filter((s) => !seen.has(s.id) && seen.add(s.id));
+  const seen = new Set(), seenNo = new Set();
+  const out = Object.values(sums).map((s) => ({ ...s, id: currentId(s.id) })).filter((s) => !seen.has(s.id) && seen.add(s.id));
+  out.forEach((s) => seenNo.add(s.no));
+  // 자료 조각에 요약이 없는 노선이 있으면 (경기·전주 등) 정류장을 지나는 노선을 서버로 물어 채움 (운행 안 하는 노선도 보이게)
+  if (!ids.length || ids.some((id) => !sums[id])) {
+    for (const s of await liveStopRoutes(stop, same).catch(() => [])) {
+      if (seen.has(s.id) || seenNo.has(s.no)) continue;
+      seen.add(s.id); seenNo.add(s.no); out.push(s);
+    }
+  }
+  return out;
+}
+
+/** 정류장을 지나는 노선 (경기 GBIS, TAGO). 시간표는 없고 번호·종류·방향만 */
+async function liveStopRoutes(stop, same) {
+  const jobs = [];
+  for (const g of new Set([stop, ...same].map((s) => ggId(s.id)).filter(Boolean))) {
+    jobs.push(getText("w/bus/gg/routes/" + g).then((b) => findRows(JSON.parse(b), "routeId").map((r) => ({
+      id: "GGB" + r.routeId, no: String(r.routeName ?? ""), start: null, end: str(r.routeDestName) ? str(r.routeDestName) + " 방면" : null,
+      type: str(r.routeTypeName) || GG_TYPES[int(r.routeTypeCd)] || null, city: "31",
+    }))));
+  }
+  for (const [city, node] of (await targets(stop)).tago) {
+    jobs.push(getText("w/dg/1613000/BusSttnInfoInqireService/getSttnThrghRouteList", { cityCode: city, nodeid: currentId(node) }).then((x) => xmlRows(x).map((r) => ({
+      id: String(r.routeid || ""), no: String(r.routeno ?? ""), start: str(r.startnodenm), end: str(r.endnodenm), type: str(r.routetp), city,
+    }))));
+  }
+  const res = await Promise.allSettled(jobs);
+  return res.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).filter((s) => s.id && s.no);
 }
 
 /** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */

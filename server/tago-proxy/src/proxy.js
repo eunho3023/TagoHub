@@ -32,7 +32,7 @@ export function ttlFor(path) {
   if (/prxmt|crdnt/.test(p)) return 3600;
   if (/schdul|kwrdfnd/.test(p)) return 86400;   // 지하철 역 시간표·역 찾기
   if (/strtpnt/.test(p)) return 1800;           // 기차 출발→도착 열차 (종류·요금)
-  if (/ctycode|thrghsttn|routeinfo|routeno|sttnno|trminl|grad|sttnlist|nosun|drawing/.test(p)) return 86400;
+  if (/ctycode|thrghsttn|sttnthrgh|routeinfo|routeno|sttnno|trminl|grad|sttnlist|nosun|drawing/.test(p)) return 86400;
   return 60;
 }
 
@@ -123,6 +123,8 @@ export const WEB_OPS = {
   // 노선 정류장·기본 정보 (서버 자료 조각에 없는 노선: 전주·제주·교통안전공단 등, 하루 저장)
   "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": ["cityCode", "routeId"],
   "1613000/BusRouteInfoInqireService/getRouteInfoIem": ["cityCode", "routeId"],
+  // 정류장을 지나는 노선 (운행 안 할 때도 정류장 화면에 노선을 다 보이게, 하루 저장)
+  "1613000/BusSttnInfoInqireService/getSttnThrghRouteList": ["cityCode", "nodeid"],
   // 지하철: 역 찾기, 역 시간표 (하루 저장)
   "1613000/SubwayInfo/GetKwrdFndSubwaySttnList": ["subwayStationName"],
   "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": ["subwayStationId", "dailyTypeCode", "upDownTypeCode"],
@@ -134,7 +136,7 @@ export const WEB_OPS = {
   "1613000/SuburbsBusInfo/GetSuberbsBusTrminlList": ["terminalNm"],
 };
 const WEB_VALUE = {
-  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
+  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
   subwayStationName: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/, subwayStationId: /^[A-Za-z0-9]{1,16}$/,
   dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
   depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,
@@ -142,7 +144,7 @@ const WEB_VALUE = {
 };
 /** 한 번에 받는 개수 (지하철 역 시간표는 하루치가 수백 개라 한 쪽에) */
 const WEB_ROWS = {
-  "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": "1000", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300",
+  "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": "1000", "1613000/BusSttnInfoInqireService/getSttnThrghRouteList": "300", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300",
   "1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo": "300", "1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo": "300",
 };
 
@@ -267,18 +269,19 @@ export function signalWebRequest(pathname) {
  * 서울 도착은 정류장 번호(arsId 5자리), 경기 도착은 정류소 ID(9자리), 위치는 노선 ID. → { url(키 자리 KEY), cacheKey, ttl }
  */
 export function busWebRequest(pathname) {
-  const m = /^\/w\/bus\/(seoul|gg)\/(arrival|pos|stops)\/(\d{1,12})$/.exec(pathname);
+  const m = /^\/w\/bus\/(seoul|gg)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
   if (area === "seoul") {
-    if (op === "stops" || (op === "arrival" && !/^\d{5}$/.test(id))) return null;
+    if (op === "stops" || op === "routes" || (op === "arrival" && !/^\d{5}$/.test(id))) return null;
     const q = op === "arrival" ? `stationinfo/getStationByUid?arsId=${id}` : `buspos/getBusPosByRtid?busRouteId=${id}`;
     return { area, url: `http://ws.bus.go.kr/api/rest/${q}&resultType=json&serviceKey=KEY`, cacheKey: `bus/seoul/${op}/${id}`, ttl: 10 };
   }
   if (!/^\d{9}$/.test(id)) return null;
-  // 경기 노선 정류장 목록 (좌표·순번·회차점, 하루 저장): 웹 노선 화면
-  const q = op === "arrival" ? `busarrivalservice/v2/getBusArrivalListv2?stationId=${id}` : op === "pos" ? `buslocationservice/v2/getBusLocationListv2?routeId=${id}` : `busrouteservice/v2/getBusRouteStationListv2?routeId=${id}`;
-  return { area, url: `https://apis.data.go.kr/6410000/${q}&format=json&serviceKey=KEY`, cacheKey: `bus/gg/${op}/${id}`, ttl: op === "stops" ? 86400 : 10 };
+  // 경기 노선 정류장 목록 (좌표·순번·회차점, 하루 저장): 웹 노선 화면. 정류장을 지나는 노선 (하루 저장): 웹 정류장 화면
+  const q = op === "arrival" ? `busarrivalservice/v2/getBusArrivalListv2?stationId=${id}` : op === "pos" ? `buslocationservice/v2/getBusLocationListv2?routeId=${id}`
+    : op === "routes" ? `busstationservice/v2/getBusStationViaRouteListv2?stationId=${id}` : `busrouteservice/v2/getBusRouteStationListv2?routeId=${id}`;
+  return { area, url: `https://apis.data.go.kr/6410000/${q}&format=json&serviceKey=KEY`, cacheKey: `bus/gg/${op}/${id}`, ttl: op === "stops" || op === "routes" ? 86400 : 10 };
 }
 
 // ── 웹 버전 인천공항 실시간 운항 (/w/icn/dep|arr?date=yyyyMMdd&pageNo=N) ─────────────────
