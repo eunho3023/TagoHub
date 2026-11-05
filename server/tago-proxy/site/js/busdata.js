@@ -286,7 +286,9 @@ function tagoTwins(stop) {
       const rows = xmlRows(await getText("w/dg/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList", { gpsLati: stop.lat.toFixed(6), gpsLong: stop.lng.toFixed(6) }));
       const key = stop.name.replace(/ /g, "");
       return rows.map((r) => ({ id: str(r.nodeid), name: r.nodenm || "", lat: num(r.gpslati), lng: num(r.gpslong), no: str(r.nodeno), city: String(r.citycode || ""), routes: [] }))
-        .filter((o) => o.id && o.id !== stop.id && /^\d+$/.test(o.city) && o.lat != null && o.lng != null && o.name.replace(/ /g, "") === key && meters(stop.lat, stop.lng, o.lat, o.lng) <= 150)
+        // 같은 이름은 150m 안, 이름이 달라도 30m 안이면 같은 자리 (예: 익산역 TSB ↔ 2m 옆 "익산역남부" ISB)
+        .filter((o) => o.id && o.id !== stop.id && /^\d+$/.test(o.city) && o.lat != null && o.lng != null &&
+          meters(stop.lat, stop.lng, o.lat, o.lng) <= (o.name.replace(/ /g, "") === key ? 150 : SAME_SPOT_M))
         .sort((a, b) => meters(stop.lat, stop.lng, a.lat, a.lng) - meters(stop.lat, stop.lng, b.lat, b.lng))
         .slice(0, 3);
     })().catch(() => []));
