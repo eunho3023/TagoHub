@@ -4,6 +4,9 @@ import com.eunho.tagohub.core.MiniJson
 import com.eunho.tagohub.data.WebData
 import com.eunho.tagohub.data.getText
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /** 고속도로 돌발 (사고·작업·통제 등 문자정보) */
 data class RoadIncident(
@@ -25,16 +28,15 @@ class RoadRepo(base: String, private val http: HttpClient) {
     private val base = base.trimEnd('/') + "/"
     private var vds: Map<String, Pair<Double, Double>>? = null
 
-    /** 모든 쪽 모으기 (한 쪽 99건, 최대 20쪽) */
+    private suspend fun page(path: String, n: Int) = parse(http.getText(base + "w/ex/" + path, query = listOf("pageNo" to n.toString())))
+
+    /** 모든 쪽 모으기 (한 쪽 99건, 최대 20쪽): 첫 쪽에서 전체 수를 보고 나머지 쪽은 한꺼번에 */
     private suspend fun rows(path: String): List<Map<String, String>> {
-        val out = ArrayList<Map<String, String>>()
-        for (page in 1..20) {
-            val (rows, total) = parse(http.getText(base + "w/ex/" + path, query = listOf("pageNo" to page.toString())))
-            if (rows.isEmpty()) break
-            out += rows
-            if (total == null || out.size >= total || rows.size < 99) break
-        }
-        return out
+        val (first, total) = page(path, 1)
+        if (total == null || first.size < 99 || first.size >= total) return first
+        val pages = ((total + 98) / 99).coerceAtMost(20)
+        val rest = coroutineScope { (2..pages).map { n -> async { page(path, n).first } }.awaitAll() }
+        return first + rest.flatten()
     }
 
     /** 검지기(VDS) 위치 (서버 data/files/ex_vds.json, 한 번만) */
@@ -111,7 +113,7 @@ class RoadRepo(base: String, private val http: HttpClient) {
                 )
             }.sortedBy { it.speed ?: Int.MAX_VALUE }
 
-        /** 주유소 가격 ("1,689원" 같은 글자 → 숫자), 이름순 */
+        /** 주유소 가격 ("1,689원" 같은 글자 → 숫자), 휘발유 싼 순 (가격 없는 곳은 뒤, 같으면 이름순) */
         fun gas(rows: List<Map<String, String>>): List<GasStation> = rows.mapNotNull { r ->
             val name = r["serviceAreaName"] ?: return@mapNotNull null
             fun won(v: String?) = v?.filter(Char::isDigit)?.toIntOrNull()?.takeIf { it > 0 }
@@ -119,6 +121,6 @@ class RoadRepo(base: String, private val http: HttpClient) {
                 name, r["routeName"], r["direction"], r["oilCompany"],
                 won(r["gasolinePrice"]), won(r["diselPrice"]), won(r["lpgPrice"])?.takeIf { r["lpgYn"] != "N" },
             )
-        }.distinctBy { it.name + "|" + it.dir }.sortedBy { it.name }
+        }.distinctBy { it.name + "|" + it.dir }.sortedWith(compareBy({ it.gasoline ?: Int.MAX_VALUE }, { it.name }))
     }
 }
