@@ -5,6 +5,7 @@
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape } from "./shape.js";
+import { handleReport } from "./report.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -25,11 +26,19 @@ export default {
   },
 };
 
-const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET" };
+const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type" };
 
 /** 웹 버전: 토큰 없이 실시간 버스 도착·위치만 (proxy.js webRequest), 주소(IP)마다 분당 요청 수 제한 */
 async function web(request, url, env, ctx) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: WEB_HEADERS });
+  // 앱 제보 (POST, 주소마다 분당 요청 수 제한을 같이 씀) — src/report.js
+  if (url.pathname === "/w/report") {
+    if (env.WEB_LIMIT) {
+      const { success } = await env.WEB_LIMIT.limit({ key: "report:" + (request.headers.get("CF-Connecting-IP") || "unknown") });
+      if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+    }
+    return handleReport(request, env, ctx);
+  }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
   if (env.WEB_LIMIT && url.pathname.startsWith("/w/shape/")) {
     const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });

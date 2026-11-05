@@ -185,3 +185,6 @@ small.blue { color: var(--primary); }
 .mapimg .hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); color: #fff; font-size: 13px; padding: 4px 10px; border-radius: 8px; }
 .lamp { width: 14px; height: 14px; border-radius: 50%; flex: none; }
 .row.picked { background: var(--pcont); }
+textarea { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; outline: none; resize: vertical; margin-bottom: 8px; }
+textarea:focus { border-color: var(--primary); }
+.btn[disabled] { opacity: .6; }

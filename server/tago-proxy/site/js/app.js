@@ -33,6 +33,7 @@ const SCREENS = {
   subway: subway.stationScreen,
   subwaymap: subway.subwayMap,
   airport: air.airportScreen,
+  report: more.reportScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */
 export function addScreen(name, fn) { SCREENS[name] = fn; }
