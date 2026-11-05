@@ -40,6 +40,8 @@ const SAME_SPOT_M = 30, SAME_NO_M = 500, BORROW_M = 120;
 export function sameStop(a, b) {
   const d = meters(a.lat, a.lng, b.lat, b.lng);
   if (a.no && a.no === b.no && d <= SAME_NO_M) return true;
+  // 같은 지역에서 번호가 다르면 다른 정류장 (길 건너 맞은편 정류장은 이름이 같고 20~30m 떨어져 있음)
+  if (a.city === b.city && a.no && b.no && a.no !== b.no) return false;
   return a.name === b.name && d <= SAME_SPOT_M;
 }
 /** 같은 이름·같은 자리 정류장 묶기 (노선이 가장 많은 것 하나만) */
