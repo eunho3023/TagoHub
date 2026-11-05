@@ -93,6 +93,8 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val road = remember { RoadRepo(repo.server, repo.client) }
                     val seoulLive = remember { SeoulRealtime(repo.server, repo.client) }
                     val subwayExtras = remember { SubwayExtrasRepo(repo.server, repo.client) }
+                    val directions = remember { DirectionsRepo(repo.server, repo.client) }
+                    val directionsState = remember { DirectionsState() }
                     val roadState = remember { RoadState() }
                     val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
                     when (val top = stack.last()) {
@@ -103,6 +105,7 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                             Mode.Coach -> CoachPane(transit, coachState, chips, onMap = { go(Screen.Map()) })
                             Mode.Air -> AirPane(air, airState, chips, onMap = { go(Screen.Map()) })
                             Mode.Road -> RoadPane(road, roadState, tiles, chips)
+                            Mode.Directions -> DirectionsPane(directions, directionsState, tiles, chips)
                         }
                         is Screen.Subway -> SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back)
                         // 노선도에서 역을 누르면 지하철 찾기로 돌아가 그 이름으로 찾음

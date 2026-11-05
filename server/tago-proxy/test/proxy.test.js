@@ -128,3 +128,17 @@ test("웹 서울 지하철: 역 이름만", () => {
   assert.equal(seoulWebRequest("/w/seoul/position/1호선"), null);
   assert.equal(seoulArrivalUrl("서울", " k "), "http://swopenapi.seoul.go.kr/api/subway/k/json/realtimeStationArrival/0/60/%EC%84%9C%EC%9A%B8");
 });
+
+import { kakaoWebRequest } from "../src/proxy.js";
+
+test("웹 카카오: 장소 찾기·길찾기만, 좌표는 소수 5자리", () => {
+  const a = kakaoWebRequest("/w/kakao/place", "?q=" + encodeURIComponent("대전역") + "&x=127.4345678&y=36.33&key=evil");
+  assert.equal(a.url, "https://dapi.kakao.com/v2/local/search/keyword.json?query=%EB%8C%80%EC%A0%84%EC%97%AD&size=15&x=127.43457&y=36.33000&sort=accuracy");
+  assert.equal(a.ttl, 86400);
+  assert.equal(kakaoWebRequest("/w/kakao/place", "?q="), null);
+  assert.equal(kakaoWebRequest("/w/kakao/place", "?q=" + "가".repeat(41)), null);
+  const t = kakaoWebRequest("/w/kakao/transit", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2");
+  assert.equal(t.url, "https://dapi.kakao.com/v2/routing/publictraffic?start_x=127.10000&start_y=36.10000&end_x=127.20000&end_y=36.20000");
+  assert.equal(kakaoWebRequest("/w/kakao/transit", "?sx=1e9&sy=36&ex=127&ey=36"), null);
+  assert.equal(kakaoWebRequest("/w/kakao/walk", "?sx=1&sy=1&ex=1&ey=1"), null);
+});
