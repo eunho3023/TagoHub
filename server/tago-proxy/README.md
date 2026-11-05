@@ -96,8 +96,9 @@ npm test
 
 ## 웹 버전 (화면 + 토큰 없는 실시간 통로)
 
-`deploy.ps1` 이 `composeApp`(Compose Multiplatform) 웹 빌드를 `public/` 에 넣고, 한글 글꼴(Noto Sans KR, OFL)에서 필요한 글자만 남긴 작은 파일(`pipeline/build_web_font.py`, 약 2MB)을 같이 올린다.
-서버 주소(`https://….workers.dev/`)를 브라우저로 열면 웹 버전이 보인다.
+웹 버전 화면은 HTML·자바스크립트(`site/`, 빌드 없이 브라우저가 바로 실행, 시스템 글꼴)이고 `deploy.ps1` 이 그대로 `public/` 에 복사한다.
+서버 주소(`https://….workers.dev/`)를 브라우저로 열면 바로 뜬다. 넓은 화면은 왼쪽 목록 + 오른쪽 지도, 좁은 화면은 앱처럼 아래 탭.
+로컬 시험: `py -m http.server 8091 --directory server/tago-proxy/site` 후 `http://localhost:8091/?server=https://….workers.dev/` (예전 Compose 웹 `composeApp` 은 PC 버전용으로만 남음).
 
 - 웹 페이지에는 앱 토큰을 넣을 수 없으므로, 실시간은 `/w/dg/1613000/...` 로 토큰 없이 받는다.
   허락하는 것은 버스 도착(`ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList`)·위치(`BusLcInfoInqireService/getRouteAcctoBusLcList`)뿐이고,
@@ -124,7 +125,7 @@ D1 `shapes` 표에 저장하고 모두에게 나눠 준다 (`src/shape.js`, 폰 
 
 ## 카카오 지도 (웹 버전)
 
-웹 버전은 폰 앱과 같은 카카오 지도를 쓴다 (`composeApp/src/wasmJsMain/resources/kakaomap.js`). `deploy.ps1` 이 `local.properties` 의 `KAKAO_JS_KEY`
+웹 버전은 폰 앱과 같은 카카오 지도를 쓴다 (`site/js/map.js`). `deploy.ps1` 이 `local.properties` 의 `KAKAO_JS_KEY`
 (카카오 JavaScript 키, 웹 페이지에 들어가도 되는 키)를 `public/config.js` 로 넣는다. 카카오 개발자 사이트 → 내 애플리케이션 → 앱 설정 →
 플랫폼 키 → JavaScript 키 → **JavaScript SDK 도메인**에 서버 주소(`https://….workers.dev`)를 등록해야 지도가 보인다 (로컬 시험은 `http://localhost:8090` 도).
 키가 없거나 도메인이 안 맞으면 OpenStreetMap 지도로 보인다. PC 버전은 늘 OpenStreetMap.

@@ -3,18 +3,14 @@
   Access-Control-Allow-Origin: *
   Cache-Control: public, max-age=3600
 
-# 웹 버전 화면: 글꼴·wasm 은 이름이 바뀌지 않거나(글꼴) 빌드마다 새 이름(wasm)이라 오래 저장, 페이지는 늘 새로
-/fonts/*
-  Cache-Control: public, max-age=31536000, immutable
-/*.wasm
-  Cache-Control: public, max-age=31536000, immutable
+# 웹 버전 화면 (HTML·자바스크립트, site/): 이름이 바뀌지 않는 파일이라 늘 새로 확인 (바뀌지 않았으면 304 로 빨리)
 /
   Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
-/tagohub.js
+/app.css
+  Cache-Control: no-cache
+/js/*
   Cache-Control: no-cache
 /config.js
-  Cache-Control: no-cache
-/kakaomap.js
   Cache-Control: no-cache
