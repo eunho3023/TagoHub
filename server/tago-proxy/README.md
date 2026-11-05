@@ -105,6 +105,11 @@ npm test
   지하철 역 찾기·역 시간표, 기차·고속·시외버스 출발→도착 조회도 같은 허락 목록(`WEB_OPS`)에 있음.
 - 고속도로(한국도로공사)는 `/w/ex/<기능>?pageNo=N`: 돌발 문자정보·정체 구간(2분 저장)·주유 가격(6시간 저장)만,
   키(`EX_API_KEY`)는 서버가 붙임 (`src/proxy.js` `exWebRequest`).
+- 서울 지하철 실시간 도착 `/w/seoul/arrival/<역 이름>` (10초, `SEOUL_SUBWAY_KEY`, `seoulWebRequest`).
+- 카카오 장소 찾기 `/w/kakao/place?q=&x=&y=` (하루) · 대중교통 길찾기 `/w/kakao/transit?sx=&sy=&ex=&ey=` (5분), `KAKAO_REST_KEY` (`kakaoWebRequest`).
+- 한국공항공사 `/w/kac/<기능>`: 혼잡도·소요시간·주차장(2분), 공항별 하루 실시간 운항 `?air=&date=&pageNo=`(1분), `KAC_API_KEY` (`kacWebRequest`).
+- 실시간 신호등 `/w/signal/seoul/<교차로 ID>` (3초, `SEOUL_SIGNAL_KEY`), `/w/signal/ulsan/map|now` (하루·3초, `KLID_BUS_KEY`) (`signalWebRequest`).
+- 위 JSON 통로는 모두 `src/index.js` `cachedJson` 으로: 저장해 둔 것이 있으면 바로, 없으면 주소마다 분당 제한을 지나 묻고 정상 응답만 저장.
 - 앱과 같은 5초 저장을 같이 쓰고, 주소(IP)마다 1분 120번까지 (`wrangler.toml` `[[ratelimits]] WEB_LIMIT`).
 - PC 버전(데스크톱)은 같은 화면을 `./gradlew :composeApp:run` 으로 띄움 (서버 주소는 local.properties 의 `TAGO_PROXY_URL`).
 
