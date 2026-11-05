@@ -36,7 +36,7 @@ const parseStops = (rows) => (Array.isArray(rows) ? rows.map(stopOf).filter(Bool
 
 async function tile(name) { try { return parseStops(await cached(`data/tiles/${name}.json`)); } catch (e) { return []; } }
 
-const SAME_SPOT_M = 30, SAME_NO_M = 500;
+const SAME_SPOT_M = 30, SAME_NO_M = 500, BORROW_M = 120;
 export function sameStop(a, b) {
   const d = meters(a.lat, a.lng, b.lat, b.lng);
   if (a.no && a.no === b.no && d <= SAME_NO_M) return true;
@@ -255,9 +255,16 @@ export async function sameSpot(stop) {
   const d = 0.005;
   const near = (await Promise.all(tileNames(stop.lat - d, stop.lng - d, stop.lat + d, stop.lng + d).map(tile))).flat();
   const groups = new Map();
+  // 경기 밖에 있는 경기 버스 정류장(인천·서울·청주 등의 GGB): 그 지역 시내버스 정류장이 조금 떨어져 따로 있어 가까운 것 하나씩 함께 봄
+  const borrowed = stop.id.startsWith("GGB") && !stop.city.startsWith("31");
   for (const o of near) {
     if (o.id === stop.id) continue;
     const m = meters(stop.lat, stop.lng, o.lat, o.lng);
+    if (borrowed && !o.id.startsWith("GGB") && o.routes.length && m <= BORROW_M) {
+      const k = "near|" + o.id.slice(0, 3), best = groups.get(k);
+      if (!best || meters(stop.lat, stop.lng, best.lat, best.lng) > m) groups.set(k, o);
+      continue;
+    }
     if (!((stop.no && o.no === stop.no && m <= SAME_NO_M) || (o.city !== stop.city && m <= SAME_SPOT_M))) continue;
     const k = o.city + "|" + (o.no || o.id);
     const best = groups.get(k);
