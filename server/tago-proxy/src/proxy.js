@@ -201,3 +201,31 @@ export function seoulWebRequest(pathname) {
 export function seoulArrivalUrl(name, key) {
   return `http://swopenapi.seoul.go.kr/api/subway/${encodeURIComponent(key.trim())}/json/realtimeStationArrival/0/60/${encodeURIComponent(name)}`;
 }
+
+// ── 웹 버전 카카오 (장소 찾기·대중교통 길찾기) ─────────────────────────────────
+const COORD = /^-?\d{1,3}(\.\d{1,7})?$/;
+const round5 = (v) => Number(v).toFixed(5);
+
+/**
+ * "/w/kakao/place?q=&x=&y=" → 장소 찾기, "/w/kakao/transit?sx=&sy=&ex=&ey=" → 대중교통 길찾기.
+ * 좌표는 소수 5자리로 맞춰(약 1m) 같은 요청끼리 저장을 같이 씀. 허락하지 않으면 null → { url, cacheKey, ttl }
+ */
+export function kakaoWebRequest(pathname, search) {
+  const p = new URLSearchParams(search);
+  if (pathname === "/w/kakao/place") {
+    const q = (p.get("q") || "").trim();
+    if (!q || q.length > 40 || /[<>{}\\]/.test(q)) return null;
+    const x = p.get("x"), y = p.get("y");
+    const near = x && y && COORD.test(x) && COORD.test(y) ? `&x=${round5(x)}&y=${round5(y)}&sort=accuracy` : "";
+    const qs = `query=${encodeURIComponent(q)}&size=15${near}`;
+    return { url: "https://dapi.kakao.com/v2/local/search/keyword.json?" + qs, cacheKey: "place?" + qs, ttl: 86400 };
+  }
+  if (pathname === "/w/kakao/transit") {
+    const v = ["sx", "sy", "ex", "ey"].map((k) => p.get(k));
+    if (v.some((s) => !s || !COORD.test(s))) return null;
+    const [sx, sy, ex, ey] = v.map(round5);
+    const qs = `start_x=${sx}&start_y=${sy}&end_x=${ex}&end_y=${ey}`;
+    return { url: "https://dapi.kakao.com/v2/routing/publictraffic?" + qs, cacheKey: "transit?" + qs, ttl: 300 };
+  }
+  return null;
+}

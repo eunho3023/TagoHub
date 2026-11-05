@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape } from "./shape.js";
 
@@ -38,6 +38,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   if (env.WEB_LIMIT) {
@@ -123,7 +124,7 @@ const MOBILE_UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Ch
  * 웹 버전 JSON 중계 공통: 저장해 둔 것이 있으면 바로, 없으면 주소마다 분당 제한을 지나 [upstream] 에 묻고
  * [ok] 를 통과한 응답만 [ttl] 초 저장. 키가 든 주소는 응답·오류에 내보내지 않음
  */
-async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok) {
+async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraHeaders = {}) {
   const cache = caches.default;
   const key = new Request(cacheUrl);
   const hit = await cache.match(key);
@@ -141,7 +142,7 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok) {
   const headers = { "Content-Type": "application/json; charset=utf-8", "X-Cache": "MISS", ...WEB_HEADERS };
   let res, body;
   try {
-    res = await fetch(upstream, { headers: { "User-Agent": MOBILE_UA, Accept: "application/json" } });
+    res = await fetch(upstream, { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } });
     body = await res.text();
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
@@ -169,4 +170,13 @@ async function seoulWeb(request, url, env, ctx) {
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   return cachedJson(request, env, ctx, "https://cache.tagohub/seoul/arrival/" + encodeURIComponent(r.name),
     env.SEOUL_SUBWAY_KEY ? seoulArrivalUrl(r.name, env.SEOUL_SUBWAY_KEY) : null, r.ttl, (b) => /"code"\s*:\s*"INFO-(000|200)"/.test(b));
+}
+
+/** 웹 버전 카카오 장소 찾기·대중교통 길찾기 (proxy.js kakaoWebRequest). REST 키는 Authorization 헤더로 */
+async function kakaoWeb(request, url, env, ctx) {
+  const r = kakaoWebRequest(url.pathname, url.search);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  const key = (env.KAKAO_REST_KEY || "").trim();
+  return cachedJson(request, env, ctx, "https://cache.tagohub/kakao/" + r.cacheKey, key ? r.url : null, r.ttl,
+    (b) => /"(documents|routes|status)"\s*:/.test(b), { Authorization: "KakaoAK " + key });
 }
