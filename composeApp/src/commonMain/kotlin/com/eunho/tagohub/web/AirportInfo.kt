@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -149,6 +150,17 @@ class AirportInfoRepo(base: String, private val http: HttpClient) {
 
         const val ICN = "ICN"
 
+        /** 보여 줄 운항: 출발/도착 하나, 공동운항 빼고, 예정 시각 순 */
+        fun shown(flights: List<FlightStatusW>, departure: Boolean) =
+            flights.filter { it.departure == departure && !it.codeshare }.distinctBy { it.flight + it.scheduled }.sortedBy { it.scheduled ?: "99" }
+
+        /** [fromMin](하루 분) 이후 첫 운항의 자리 (없으면 끝, 음수면 처음) */
+        fun firstFromNow(list: List<FlightStatusW>, fromMin: Int): Int {
+            if (fromMin <= 0) return 0
+            val i = list.indexOfFirst { f -> f.scheduled?.split(":")?.let { (it[0].toIntOrNull() ?: 0) * 60 + (it.getOrNull(1)?.toIntOrNull() ?: 0) }?.let { it >= fromMin } ?: false }
+            return if (i < 0) (list.size - 1).coerceAtLeast(0) else i
+        }
+
         private fun icnTerminal(t: String?) = when (t) { "P01" -> "T1"; "P02" -> "탑승동"; "P03" -> "T2"; else -> null }
 
         /** 인천공항 운항 (getFltDeparturesDeOdp·getFltArrivalsDeOdp). 공동운항(codeshare Slave)은 [FlightStatusW.codeshare] */
@@ -222,7 +234,16 @@ internal fun AirportPane(repo: AirportInfoRepo, code: String, name: String, onBa
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+    // 출발·도착은 지금 시각(30분 전부터) 쪽을 먼저 보이게
+    val listState = rememberLazyListState()
+    LaunchedEffect(tab, flights) {
+        val fs = flights ?: return@LaunchedEffect
+        if (tab != 1 && tab != 2) return@LaunchedEffect
+        val now = seoulNow()
+        val idx = AirportInfoRepo.firstFromNow(AirportInfoRepo.shown(fs, tab == 1), now.hour * 60 + now.minute - 30)
+        listState.scrollToItem(idx)
+    }
+    LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface), state = listState) {
         when (tab) {
             0 -> liveSection(live)
             1, 2 -> flightSection(flights, departure = tab == 1)
@@ -266,7 +287,7 @@ private fun LazyListScope.liveSection(live: AirportLiveW?) {
 
 private fun LazyListScope.flightSection(flights: List<FlightStatusW>?, departure: Boolean) {
     if (flights == null) { item(key = "w") { Note("실시간 운항을 불러오는 중...") }; return }
-    val list = flights.filter { it.departure == departure && !it.codeshare }.distinctBy { it.flight + it.scheduled }.sortedBy { it.scheduled ?: "99" }
+    val list = AirportInfoRepo.shown(flights, departure)
     if (list.isEmpty()) { item(key = "none") { Note("오늘 실시간 운항 정보가 없어요") }; return }
     items(list, key = { it.flight + "|" + it.scheduled }) { f ->
         val changed = f.estimated != null && f.estimated != f.scheduled
