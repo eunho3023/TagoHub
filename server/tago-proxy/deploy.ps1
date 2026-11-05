@@ -120,6 +120,23 @@ foreach ($name in @('TAGO_SERVICE_KEY', 'KLID_BUS_KEY', 'KAC_API_KEY', 'KRIC_SUB
     }
 }
 
+# 웹 버전 앱 제보 → 폰 앱과 같은 Firebase(Firestore reports). app/google-services.json 에서 (값은 화면에 쓰지 않음)
+$gs = Join-Path $PSScriptRoot '..\..\app\google-services.json'
+if (Test-Path $gs) {
+    $g = Get-Content $gs -Raw -Encoding UTF8 | ConvertFrom-Json
+    $client = @($g.client) | Select-Object -First 1
+    $fbKey = (@($client.api_key) | Select-Object -First 1).current_key
+    $fbCert = (@($client.oauth_client) | Where-Object { $_.android_info } | Select-Object -First 1).android_info.certificate_hash
+    if ($fbKey) {
+        $fbKey | & npx --yes wrangler@4.45.0 secret put FIREBASE_API_KEY | Out-Null
+        $g.project_info.project_id | & npx --yes wrangler@4.45.0 secret put FIREBASE_PROJECT_ID | Out-Null
+        if ($fbCert) { $fbCert | & npx --yes wrangler@4.45.0 secret put FIREBASE_ANDROID_CERT | Out-Null }
+        Write-Host '  Firebase 제보 설정 넣음'
+    }
+} else {
+    Write-Host '  app/google-services.json 없음 → 웹 제보는 깃허브로'
+}
+
 Write-Host '3/3 local.properties 에 서버 주소 적는 중...'
 $keep = Get-Content $props -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*TAGO_PROXY_(URL|TOKEN)\s*=' }
 $keep + "TAGO_PROXY_URL=$url" + "TAGO_PROXY_TOKEN=$appToken" | Set-Content $props -Encoding UTF8
