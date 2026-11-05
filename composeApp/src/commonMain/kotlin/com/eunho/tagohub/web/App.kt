@@ -111,12 +111,15 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                             Mode.Road -> RoadPane(road, roadState, tiles, chips, signals)
                             Mode.Directions -> DirectionsPane(directions, directionsState, tiles, chips)
                         }
-                        is Screen.Subway -> SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back)
+                        is Screen.Subway -> { LaunchedEffect(top.station.id) { Recent.addStation(top.station) }; SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back) }
                         // 노선도에서 역을 누르면 지하철 찾기로 돌아가 그 이름으로 찾음
                         is Screen.Airport -> AirportPane(airportInfo, top.code, top.name, onBack = ::back)
                         Screen.SubwayMap -> SubwayMapPane(subwayExtras, onBack = ::back) { name -> subwayState.query = name; back() }
                         is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
-                        is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
+                        is Screen.Stop -> {
+                            LaunchedEffect(top.stop.id) { Recent.addStop(top.stop) }
+                            StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
+                        }
                         is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }
                     }
                 }
@@ -202,6 +205,22 @@ private fun SearchPane(repo: WebRepo, st: SearchState, modeChips: @Composable ()
     }
     message?.let {
         Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+    }
+    // 검색어가 없으면 최근 본 정류장
+    if (query.isBlank() && Recent.stops.isNotEmpty()) {
+        RecentHead("최근 본 정류장") { Recent.clearStops() }
+        LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+            items(Recent.stops, key = { "r" + it.id }) { s ->
+                Row(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(start = 6.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    StopMark(Modifier.clickable { onLocate(s) }.padding(10.dp))
+                    Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                        Text(s.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        s.no?.let { Text("정류장 번호 $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
     }
     if (result.isNotEmpty()) {
         LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp).background(MaterialTheme.colorScheme.surface)) {

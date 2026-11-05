@@ -64,6 +64,12 @@ internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {
                 style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
             )
         }
+        // 화면 밝기 (자동 → 어둡게 → 밝게)
+        Text(
+            ThemePref.label, Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
+                .clickable { ThemePref.next() }.padding(horizontal = 16.dp, vertical = 7.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
 
@@ -273,6 +279,19 @@ internal fun SubwayPane(
         )
     }
     st.message?.let { Note(it) }
+    // 검색어가 없으면 최근 본 역
+    if (st.query.isBlank() && Recent.stations.isNotEmpty()) {
+        RecentHead("최근 본 역") { Recent.clearStations() }
+        LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+            items(Recent.stations, key = { "r" + it.id }) { s ->
+                Row(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(s.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(s.line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
+    }
     if (st.result.isNotEmpty()) {
         LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp).background(MaterialTheme.colorScheme.surface)) {
             items(st.result, key = { it.id }) { s ->
@@ -427,5 +446,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.liveItems(live: List<
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
+    }
+}
+
+/** "최근 본 …" 제목 줄과 지우기 */
+@Composable
+internal fun RecentHead(title: String, onClear: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("지우기", Modifier.clickable { onClear() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
     }
 }

@@ -91,7 +91,8 @@ fun busRouteColor(type: String?): Color {
 /** 폰 앱 TagoTheme 과 같은 색·글자 크기·모서리 (기기 설정의 밝게/어둡게를 따름) */
 @Composable
 fun WebTheme(font: FontFamily?, content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    val system = isSystemInDarkTheme()
+    val dark = when (ThemePref.mode) { "dark" -> true; "light" -> false; else -> system }
     CompositionLocalProvider(LocalDark provides dark) {
         MaterialTheme(colorScheme = if (dark) Dark else Light, shapes = AppShapes, typography = appTypography(font), content = content)
     }
