@@ -618,7 +618,7 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
 /**
  * 버스 위치.
  * 1) TAGO 버스위치 = 실시간 GPS (전주 포함). 정류장 순번도 전주시 API 와 같다.
- * 2) TAGO 가 안 되면 전주시 API (정류장 단위, GPS 없음)
+ * 2) TAGO 가 안 되면 전주시 API (정류장 단위, GPS 없음) — [jeonjuWithGps]
  */
 internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
     fetchBusData(repo, d)
@@ -662,14 +662,18 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
         return
     }
     if (Jeonju.isJeonju(d.routeId)) {
-        // 버스 목록·정류장 순번·저상 여부: 전주시 API (GPS 없음 → 지도에는 안 그리고 패널 목록에만)
-        val j = Graph.jeonju.positions(d.routeId)
-        if (j is TagoResult.Success) {
-            val buses = JeonjuMappers.buses(j.data) { null }
-            d.buses.value = mergeWithGrace(d, guard(d, buses))
-            updateGps(d)
-            d.updated.value = LocalTime.now()
+        // 전주시 API 는 정류장 순번·저상 여부만 (GPS 없음). TAGO 버스위치는 전주도 GPS 를 줘서 둘 다 받아
+        // GPS 가 있으면 TAGO 목록으로 지도에 버스를 그리고(웹과 같음), 저상 여부는 전주시 API 에서 번호판 끝 4자리로 채움
+        val (j, t) = coroutineScope {
+            val ja = async { Graph.jeonju.positions(d.routeId) }
+            val ta = async { repo.busLocations(d.cityCode, d.routeId) }
+            ja.await() to ta.await()
         }
+        val jb = (j as? TagoResult.Success)?.data?.let { JeonjuMappers.buses(it) { null } }
+        val buses = jeonjuWithGps((t as? TagoResult.Success)?.data, jb) ?: return
+        d.buses.value = mergeWithGrace(d, guard(d, buses))
+        updateGps(d)
+        d.updated.value = LocalTime.now()
         return
     }
     if (SeoulBus.isSeoul(d.routeId)) {
@@ -704,6 +708,18 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
         updateGps(d)
         d.updated.value = LocalTime.now()
     }
+}
+
+/**
+ * 전주 버스: TAGO 위치(GPS 있음)가 있으면 그것을, 없으면 전주시 API 목록(GPS 없음)을.
+ * TAGO 목록에는 저상 여부가 없어서 전주시 API 의 같은 차량(번호판 끝 4자리)에서 가져옴. 둘 다 없으면 null.
+ */
+internal fun jeonjuWithGps(tago: List<BusLocation>?, jeonju: List<BusLocation>?): List<BusLocation>? {
+    fun tail(v: String?) = v?.filter(Char::isDigit)?.takeLast(4)?.takeIf { it.length == 4 }
+    val gps = tago?.filter { it.lat != null && it.lng != null }
+    if (gps.isNullOrEmpty()) return jeonju ?: tago
+    val low = jeonju.orEmpty().mapNotNull { b -> tail(b.vehicleNo)?.let { it to b.lowFloor } }.toMap()
+    return gps.map { b -> if (b.lowFloor == null) low[tail(b.vehicleNo)]?.let { b.copy(lowFloor = it) } ?: b else b }
 }
 
 private fun updateGps(d: BusDest.Route) {
