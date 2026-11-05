@@ -269,9 +269,14 @@ export function signalWebRequest(pathname) {
  * 서울 도착은 정류장 번호(arsId 5자리), 경기 도착은 정류소 ID(9자리), 위치는 노선 ID. → { url(키 자리 KEY), cacheKey, ttl }
  */
 export function busWebRequest(pathname) {
-  const m = /^\/w\/bus\/(seoul|gg)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
+  const m = /^\/w\/bus\/(seoul|gg|jeonju)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
+  // 전주 정류장을 지나는 노선 (전주시 버스정보, 하루 저장). TAGO 는 전주 정류장 경유 노선을 주지 않음
+  if (area === "jeonju") {
+    if (op !== "routes" || !/^\d{9}$/.test(id)) return null;
+    return { area, url: `https://apis.data.go.kr/4641000/busstop/general_busstop_common?stopStandardid=${id}&stopStdid=${id}&serviceKey=KEY`, cacheKey: `bus/jeonju/routes/${id}`, ttl: 86400 };
+  }
   if (area === "seoul") {
     if (op === "stops" || op === "routes" || (op === "arrival" && !/^\d{5}$/.test(id))) return null;
     const q = op === "arrival" ? `stationinfo/getStationByUid?arsId=${id}` : `buspos/getBusPosByRtid?busRouteId=${id}`;
