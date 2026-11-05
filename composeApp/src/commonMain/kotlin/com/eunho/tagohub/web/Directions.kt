@@ -196,18 +196,45 @@ internal fun DirectionsPane(repo: DirectionsRepo, st: DirectionsState, tiles: Ti
             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
         )
         if (st.places.isEmpty()) Note(if (searching) "찾는 중..." else if (st.query.trim().length < 2) "두 글자 이상 입력해 주세요" else "찾는 장소가 없어요")
+        fun use(p: WebPlace) {
+            if (editing == "from") st.from = p else st.to = p
+            st.editing = if (editing == "from" && st.to == null) "to" else null
+            st.query = ""; st.places = emptyList()
+        }
+        // 검색어가 없으면 집·회사 (장소 찾기 결과 줄의 "집"·"회사"로 정함)
+        if (st.query.isBlank()) {
+            RecentHead("자주 가는 곳", null)
+            for ((label, p) in listOf("집" to HomeWork.home, "회사" to HomeWork.work)) {
+                Row(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).clickable(enabled = p != null) { p?.let(::use) }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(label, Modifier.padding(end = 12.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        p?.name ?: "장소를 찾아 결과 줄의 $label 단추로 정해요", Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = if (p != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
         LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
             items(st.places, key = { "${it.name}|${it.lat}|${it.lng}" }) { p ->
                 Column(
-                    Modifier.fillMaxWidth().clickable {
-                        if (editing == "from") st.from = p else st.to = p
-                        st.editing = if (editing == "from" && st.to == null) "to" else null
-                        st.query = ""; st.places = emptyList()
-                    }.padding(horizontal = 16.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().clickable { use(p) }.padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(p.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         p.category?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        // 이 장소를 집·회사로 저장
+                        for ((label, save) in listOf<Pair<String, (WebPlace) -> Unit>>("집" to HomeWork::saveHome, "회사" to HomeWork::saveWork)) {
+                            Text(
+                                label, Modifier.padding(start = 8.dp).clickable { save(p) }.padding(horizontal = 4.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                     p.address?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }

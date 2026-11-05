@@ -276,3 +276,17 @@ export function busWebRequest(pathname) {
   const q = op === "arrival" ? `busarrivalservice/v2/getBusArrivalListv2?stationId=${id}` : `buslocationservice/v2/getBusLocationListv2?routeId=${id}`;
   return { area, url: `https://apis.data.go.kr/6410000/${q}&format=json&serviceKey=KEY`, cacheKey: `bus/gg/${op}/${id}`, ttl: 10 };
 }
+
+// ── 웹 버전 인천공항 실시간 운항 (/w/icn/dep|arr?date=yyyyMMdd&pageNo=N) ─────────────────
+/** 인천국제공항공사 운항 현황 (여객, 하루 전체, 1000건씩 5쪽까지). 키는 공공데이터포털 키 → { url(키 자리 KEY), cacheKey, ttl } */
+export function icnWebRequest(pathname, search) {
+  const m = /^\/w\/icn\/(dep|arr)$/.exec(pathname);
+  if (!m) return null;
+  const p = new URLSearchParams(search);
+  const date = p.get("date") || "";
+  const page = p.get("pageNo") || "1";
+  if (!/^20\d{6}$/.test(date) || !/^[1-5]$/.test(page)) return null;
+  const op = m[1] === "dep" ? "getFltDeparturesDeOdp" : "getFltArrivalsDeOdp";
+  const qs = `type=json&numOfRows=1000&pageNo=${page}&searchdtCode=S&searchDate=${date}&searchFrom=0000&searchTo=2400&passengerOrCargo=P`;
+  return { url: `https://apis.data.go.kr/B551177/statusOfAllFltDeOdp/${op}?serviceKey=KEY&${qs}`, cacheKey: `icn/${m[1]}?${qs}`, ttl: 60 };
+}

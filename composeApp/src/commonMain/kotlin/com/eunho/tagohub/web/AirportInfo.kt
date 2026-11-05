@@ -31,6 +31,7 @@ import com.eunho.tagohub.data.getText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /** 공항 기본 정보 (서버 data/files/airport_info.json, 앱과 같은 파일) */
@@ -83,6 +84,7 @@ class AirportInfoRepo(base: String, private val http: HttpClient) {
 
     /** [code] 공항의 [ymd] 하루 운항 (출발·도착, 최대 10쪽) */
     suspend fun status(code: String, ymd: String): List<FlightStatusW> {
+        if (code == ICN) return icn(ymd)
         if (code !in LOT_AIRPORT && code != "KPO") return emptyList()
         val out = ArrayList<FlightStatusW>()
         for (page in 1..10) {
@@ -92,6 +94,22 @@ class AirportInfoRepo(base: String, private val http: HttpClient) {
             if (got.size < 100 || out.size >= totalCount(body)) break
         }
         return out
+    }
+
+    /** 인천공항 [ymd] 하루 여객 출발·도착 (인천국제공항공사, 서버 /w/icn/, 쪽마다 1000건) */
+    private suspend fun icn(ymd: String): List<FlightStatusW> = coroutineScope {
+        listOf(true, false).map { dep ->
+            async {
+                val out = ArrayList<FlightStatusW>()
+                for (page in 1..5) {
+                    val body = http.getText(base + "w/icn/" + (if (dep) "dep" else "arr"), query = listOf("date" to ymd, "pageNo" to page.toString()))
+                    val got = parseIcn(body, dep)
+                    out += got
+                    if (rows(body).size < 1000 || out.size >= totalCount(body)) break
+                }
+                out
+            }
+        }.awaitAll().flatten()
     }
 
     private suspend fun <T> safe(block: suspend () -> T): T? = try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
@@ -126,6 +144,21 @@ class AirportInfoRepo(base: String, private val http: HttpClient) {
                 flight = m.s("airFln") ?: return@mapNotNull null, airline = m.s("airlineKorean").orEmpty(),
                 scheduled = hhmm(m.s("std")), estimated = hhmm(m.s("etd")), remark = m.s("rmkKor"),
                 departure = m.s("io") == "O", other = m.s("city").orEmpty(), gate = m.s("gate"), codeshare = m.s("cdsrYn") == "Y",
+            )
+        }
+
+        const val ICN = "ICN"
+
+        private fun icnTerminal(t: String?) = when (t) { "P01" -> "T1"; "P02" -> "탑승동"; "P03" -> "T2"; else -> null }
+
+        /** 인천공항 운항 (getFltDeparturesDeOdp·getFltArrivalsDeOdp). 공동운항(codeshare Slave)은 [FlightStatusW.codeshare] */
+        fun parseIcn(body: String, departure: Boolean): List<FlightStatusW> = rows(body).mapNotNull { m ->
+            FlightStatusW(
+                flight = m.s("flightId") ?: return@mapNotNull null, airline = m.s("airline").orEmpty(),
+                scheduled = hhmm(m.s("scheduleDatetime")), estimated = hhmm(m.s("estimatedDatetime")), remark = m.s("remark"),
+                departure = departure, other = m.s("airport").orEmpty(),
+                gate = listOfNotNull(icnTerminal(m.s("terminalId")), m.s("gateNumber")?.takeIf { it != "-" }).joinToString(" ").ifEmpty { null },
+                codeshare = m.s("codeshare").equals("Slave", ignoreCase = true),
             )
         }
 
@@ -168,7 +201,8 @@ internal fun AirportPane(repo: AirportInfoRepo, code: String, name: String, onBa
     var info by remember(code) { mutableStateOf<AirportStatic?>(null) }
     var live by remember(code) { mutableStateOf<AirportLiveW?>(null) }
     var flights by remember(code) { mutableStateOf<List<FlightStatusW>?>(null) }
-    var tab by remember(code) { mutableStateOf(0) }
+    // 인천공항은 실시간 혼잡도·기본 정보가 없어 출발부터
+    var tab by remember(code) { mutableStateOf(if (code == AirportInfoRepo.ICN) 1 else 0) }
     val today = seoulDate()
     val ymd = "${today.year}${today.monthNumber.toString().padStart(2, '0')}${today.dayOfMonth.toString().padStart(2, '0')}"
     LaunchedEffect(code) { info = runCatching { repo.static(code) }.getOrNull() }
@@ -177,6 +211,7 @@ internal fun AirportPane(repo: AirportInfoRepo, code: String, name: String, onBa
     Header(info?.name ?: name, info?.address, onBack)
     Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for ((i, label) in listOf("실시간", "출발", "도착", "공항 정보").withIndex()) {
+            if (code == AirportInfoRepo.ICN && (i == 0 || i == 3)) continue
             val on = tab == i
             Text(
                 label, Modifier.background(if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
@@ -232,7 +267,7 @@ private fun LazyListScope.liveSection(live: AirportLiveW?) {
 private fun LazyListScope.flightSection(flights: List<FlightStatusW>?, departure: Boolean) {
     if (flights == null) { item(key = "w") { Note("실시간 운항을 불러오는 중...") }; return }
     val list = flights.filter { it.departure == departure && !it.codeshare }.distinctBy { it.flight + it.scheduled }.sortedBy { it.scheduled ?: "99" }
-    if (list.isEmpty()) { item(key = "none") { Note("오늘 실시간 운항 정보가 없어요 (한국공항공사 공항만 있어요)") }; return }
+    if (list.isEmpty()) { item(key = "none") { Note("오늘 실시간 운항 정보가 없어요") }; return }
     items(list, key = { it.flight + "|" + it.scheduled }) { f ->
         val changed = f.estimated != null && f.estimated != f.scheduled
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -179,3 +179,13 @@ test("웹 서울·경기 버스: 정해진 모양의 id 만", () => {
   assert.equal(busWebRequest("/w/bus/seoul/route/100100118"), null);
   assert.equal(busWebRequest("/w/bus/gg/pos/2340003a5"), null);
 });
+
+import { icnWebRequest } from "../src/proxy.js";
+test("웹 인천공항 운항: 날짜·쪽만", () => {
+  const r = icnWebRequest("/w/icn/dep", "?date=20261105&pageNo=2");
+  assert.equal(r.url, "https://apis.data.go.kr/B551177/statusOfAllFltDeOdp/getFltDeparturesDeOdp?serviceKey=KEY&type=json&numOfRows=1000&pageNo=2&searchdtCode=S&searchDate=20261105&searchFrom=0000&searchTo=2400&passengerOrCargo=P");
+  assert.ok(icnWebRequest("/w/icn/arr", "?date=20261105").url.includes("getFltArrivalsDeOdp"));
+  assert.equal(icnWebRequest("/w/icn/dep", "?date=2026-11-05"), null);
+  assert.equal(icnWebRequest("/w/icn/dep", "?date=20261105&pageNo=9"), null);
+  assert.equal(icnWebRequest("/w/icn/cargo", "?date=20261105"), null);
+});
