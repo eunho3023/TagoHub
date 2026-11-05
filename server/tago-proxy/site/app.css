@@ -188,3 +188,12 @@ small.blue { color: var(--primary); }
 textarea { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; outline: none; resize: vertical; margin-bottom: 8px; }
 textarea:focus { border-color: var(--primary); }
 .btn[disabled] { opacity: .6; }
+
+/* 내 위치 */
+.locbtn { position: absolute; right: 10px; top: 10px; z-index: 600; width: 44px; height: 44px; border-radius: 12px; background: var(--surface); color: var(--muted);
+  box-shadow: 0 2px 8px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center; }
+.locbtn.on { color: var(--primary); }
+.locbtn.wait svg { animation: s 1s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+.me-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(37,99,235,.5); transform: translate(-50%, -50%); position: absolute; animation: mepulse 2s infinite; }
+@keyframes mepulse { 0% { box-shadow: 0 0 0 0 rgba(37,99,235,.45); } 70% { box-shadow: 0 0 0 14px rgba(37,99,235,0); } 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); } }
