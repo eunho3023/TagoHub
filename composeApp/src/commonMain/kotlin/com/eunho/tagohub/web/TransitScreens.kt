@@ -114,7 +114,8 @@ internal fun TrainPane(repo: TransitRepo, st: TrainState, modeChips: @Composable
         trips = null; failed = false
         val legs = runCatching { repo.trainLegs(st.dep, st.arr, iso) }.getOrElse { failed = true; emptyList() }
         trips = legs
-        // 종류·요금 (국토교통부): 역 id 를 알면
+        // 종류·요금 (국토교통부): 역 id 를 알면 (역 목록이 아직 안 왔으면 기다림)
+        val stations = runCatching { repo.trainStations() }.getOrDefault(stations)
         val d = stations.firstOrNull { TrainTable.norm(it.name) == TrainTable.norm(st.dep) }
         val a = stations.firstOrNull { TrainTable.norm(it.name) == TrainTable.norm(st.arr) }
         if (d != null && a != null && legs.isNotEmpty()) {
