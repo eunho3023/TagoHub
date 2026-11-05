@@ -153,3 +153,13 @@ test("웹 한국공항공사: 정해 둔 기능과 운항정보 질의만", () =
   assert.equal(kacWebRequest("/w/kac/flight-aircraft-status/info", "?air=GMP&date=20261105&pageNo=11"), null);
   assert.equal(kacWebRequest("/w/kac/parking-valet-congestion/gmp-dom", ""), null);
 });
+
+import { signalWebRequest } from "../src/proxy.js";
+
+test("웹 신호등: 서울 교차로 번호, 울산 목록·지금만", () => {
+  assert.deepEqual(signalWebRequest("/w/signal/seoul/1234"), { kind: "seoul", id: "1234", ttl: 3 });
+  assert.equal(signalWebRequest("/w/signal/seoul/12a"), null);
+  assert.deepEqual(signalWebRequest("/w/signal/ulsan/map"), { kind: "ulsan", op: "crsrd_map_info", ttl: 86400 });
+  assert.equal(signalWebRequest("/w/signal/ulsan/now").op, "tl_drct_info");
+  assert.equal(signalWebRequest("/w/signal/jeju/now"), null);
+});

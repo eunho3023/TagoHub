@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape } from "./shape.js";
 
@@ -40,6 +40,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   if (env.WEB_LIMIT) {
@@ -148,7 +149,7 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
   }
-  const json = body.trimStart().startsWith("{");
+  const json = /^[[{]/.test(body.trimStart());
   if (!res.ok || !json || !ok(body)) {
     return new Response(json ? body : "{\"code\":\"ERROR\",\"message\":\"upstream " + res.status + "\"}", { status: 502, headers });
   }
@@ -190,4 +191,18 @@ async function kacWeb(request, url, env, ctx) {
   const upstream = raw ? `https://apis.data.go.kr/B551178/${r.path}?serviceKey=${encodeKey(raw)}${r.search}` : null;
   return cachedJson(request, env, ctx, "https://cache.tagohub/kac/" + r.path + "?" + r.search, upstream, r.ttl,
     (b) => /"resultCode"\s*:\s*"0*0"/.test(b));
+}
+
+/** 웹 버전 실시간 신호등 (proxy.js signalWebRequest). 서울은 SEOUL_SIGNAL_KEY, 울산은 KLID_BUS_KEY(없으면 공공데이터포털 키) */
+async function signalWeb(request, url, env, ctx) {
+  const r = signalWebRequest(url.pathname);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  if (r.kind === "seoul") {
+    const key = (env.SEOUL_SIGNAL_KEY || "").trim();
+    const upstream = key ? `https://t-data.seoul.go.kr/apig/apiman-gateway/tapi/v2xSignalPhaseTimingFusionCurrentInfo/1.0?apikey=${encodeURIComponent(key)}&itstId=${r.id}&type=json&pageNo=1&numOfRows=5` : null;
+    return cachedJson(request, env, ctx, "https://cache.tagohub/signal/seoul/" + r.id, upstream, r.ttl, (b) => /itstId/.test(b));
+  }
+  const raw = env.KLID_BUS_KEY || env.DATA_GO_KR_KEY;
+  const upstream = raw ? `https://apis.data.go.kr/B551982/rti/${r.op}?serviceKey=${encodeKey(raw)}&type=json&pageNo=1&numOfRows=1000&stdgCd=3100000000` : null;
+  return cachedJson(request, env, ctx, "https://cache.tagohub/signal/ulsan/" + r.op, upstream, r.ttl, (b) => /crsrdId/.test(b));
 }
