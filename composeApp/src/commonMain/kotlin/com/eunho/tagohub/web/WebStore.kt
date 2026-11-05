@@ -58,6 +58,15 @@ object Recent {
         storeSet("recentStations", stations.joinToString("\n", transform = ::encodeStation))
     }
 
+    /** 최근 길찾기 목적지 (10개) */
+    var places by mutableStateOf(load("recentPlaces").mapNotNull(HomeWork::placeOf))
+        private set
+
+    fun addPlace(p: WebPlace) {
+        places = (listOf(p) + places.filterNot { it.name == p.name && it.lat == p.lat && it.lng == p.lng }).take(MAX)
+        storeSet("recentPlaces", places.joinToString("\n", transform = HomeWork::encode))
+    }
+
     fun clearStops() { stops = emptyList(); storeSet("recentStops", "") }
     fun clearStations() { stations = emptyList(); storeSet("recentStations", "") }
 }

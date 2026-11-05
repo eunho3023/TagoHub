@@ -43,6 +43,7 @@ import com.eunho.tagohub.data.ArrivalText
 import com.eunho.tagohub.data.BusArrival
 import com.eunho.tagohub.data.PassedBus
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlinx.datetime.isoDayNumber
@@ -88,7 +89,9 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val map = remember { MapState(36.3504, 127.3845, 16) }
                     val tiles = remember { TileLoader(http ?: io.ktor.client.HttpClient()) }
                     val transit = remember { TransitRepo(repo.server, repo.client) }
-                    var mode by remember { mutableStateOf(Mode.Bus) }
+                    var mode by remember { mutableStateOf(Mode.Home) }
+                    val homeState = remember { HomeState() }
+                    val homeScope = androidx.compose.runtime.rememberCoroutineScope()
                     val trainState = remember { TrainState() }
                     val subwayState = remember { SubwaySearchState() }
                     val coachState = remember { CoachState() }
@@ -108,6 +111,23 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     AlightBanner()
                     when (val top = stack.last()) {
                         Screen.Search -> when (mode) {
+                            Mode.Home -> HomePane(
+                                repo, directions, homeState, chips, notices?.firstOrNull(), onMap = { go(Screen.Map()) }, onNotices = { go(Screen.Notices) },
+                                onGo = { to ->
+                                    // 길찾기로: 도착은 고른 곳, 출발은 내 위치 (못 받으면 출발을 고르게)
+                                    directionsState.to = to
+                                    directionsState.from = null
+                                    directionsState.editing = "from"
+                                    directionsState.query = ""
+                                    mode = Mode.Directions
+                                    if (locationSupported) homeScope.launch {
+                                        currentLocation()?.let { (la, lo) ->
+                                            if (directionsState.from == null) { directionsState.from = WebPlace(MY_PLACE, null, la, lo, null); directionsState.editing = null }
+                                        }
+                                    }
+                                },
+                                onStop = { go(Screen.Stop(it)) }, onStation = { mode = Mode.Subway; go(Screen.Subway(it)) },
+                            )
                             Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }, notice = notices?.firstOrNull(), onNotices = { go(Screen.Notices) }) { go(Screen.Stop(it)) }
                             Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { go(Screen.Map()) }, onRouteMap = { go(Screen.SubwayMap) }) { go(Screen.Subway(it)) }
                             Mode.Train -> TrainPane(transit, trainState, chips, onMap = { go(Screen.Map()) })

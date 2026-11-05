@@ -46,7 +46,7 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 /** 버스·지하철·기차 고르기 (찾기 화면 위) */
-internal enum class Mode(val label: String) { Bus("버스"), Directions("길찾기"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공"), Road("도로") }
+internal enum class Mode(val label: String) { Home("홈"), Bus("버스"), Directions("길찾기"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공"), Road("도로") }
 
 @Composable
 internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {

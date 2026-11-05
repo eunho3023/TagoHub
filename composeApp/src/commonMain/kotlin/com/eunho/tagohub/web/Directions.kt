@@ -165,6 +165,7 @@ internal fun DirectionsPane(repo: DirectionsRepo, st: DirectionsState, tiles: Ti
             val (status, routes) = repo.transit(from, to)
             st.status = status
             st.routes = routes
+            if (routes.isNotEmpty() && to.name != MY_PLACE) Recent.addPlace(to)
         } catch (e: CancellationException) { throw e } catch (e: Exception) { st.status = "ERROR"; st.routes = emptyList() }
     }
     Surface(color = MaterialTheme.colorScheme.surface) {
@@ -325,3 +326,6 @@ private fun RouteDetail(r: TransitRoute, from: WebPlace, to: WebPlace, st: Direc
         item(key = "src") { Note("카카오 대중교통 길찾기 결과예요") }
     }
 }
+
+/** 길찾기 출발 "내 위치" (브라우저 위치) */
+internal const val MY_PLACE = "내 위치"
