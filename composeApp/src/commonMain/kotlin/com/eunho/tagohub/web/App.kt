@@ -1,6 +1,9 @@
 package com.eunho.tagohub.web
 
 import androidx.compose.foundation.background
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,75 +82,112 @@ internal sealed interface Screen {
 fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient? = null) {
     WebTheme(font) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                Column(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
-                    val stack = remember { androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Search) }
-                    fun go(s: Screen) { stack += s }
-                    fun back() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
-                    // 검색어·결과·지도 위치는 다른 화면에 다녀와도 그대로
-                    val search = remember { SearchState() }
-                    val map = remember { MapState(36.3504, 127.3845, 16) }
-                    val tiles = remember { TileLoader(http ?: io.ktor.client.HttpClient()) }
-                    val transit = remember { TransitRepo(repo.server, repo.client) }
-                    var mode by remember { mutableStateOf(Mode.Home) }
-                    val homeState = remember { HomeState() }
-                    val homeScope = androidx.compose.runtime.rememberCoroutineScope()
-                    val trainState = remember { TrainState() }
-                    val subwayState = remember { SubwaySearchState() }
-                    val coachState = remember { CoachState() }
-                    val air = remember { AirRepo(repo.server, repo.client) }
-                    val airState = remember { AirState() }
-                    val road = remember { RoadRepo(repo.server, repo.client) }
-                    val seoulLive = remember { SeoulRealtime(repo.server, repo.client) }
-                    val subwayExtras = remember { SubwayExtrasRepo(repo.server, repo.client) }
-                    val directions = remember { DirectionsRepo(repo.server, repo.client) }
-                    val directionsState = remember { DirectionsState() }
-                    val airportInfo = remember { AirportInfoRepo(repo.server, repo.client) }
-                    val signals = remember { SignalsRepo(repo.server, repo.client) }
-                    val roadState = remember { RoadState() }
-                    var notices by remember { mutableStateOf<List<NoticeW>?>(null) }
-                    LaunchedEffect(Unit) { notices = runCatching { NoticesW.load(http ?: repo.client) }.getOrDefault(emptyList()) }
-                    val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
-                    AlightBanner()
-                    when (val top = stack.last()) {
-                        Screen.Search -> when (mode) {
-                            Mode.Home -> HomePane(
-                                repo, directions, homeState, chips, notices?.firstOrNull(), onMap = { go(Screen.Map()) }, onNotices = { go(Screen.Notices) },
-                                onGo = { to ->
-                                    // 길찾기로: 도착은 고른 곳, 출발은 내 위치 (못 받으면 출발을 고르게)
-                                    directionsState.to = to
-                                    directionsState.from = null
-                                    directionsState.editing = "from"
-                                    directionsState.query = ""
-                                    mode = Mode.Directions
-                                    if (locationSupported) homeScope.launch {
-                                        currentLocation()?.let { (la, lo) ->
-                                            if (directionsState.from == null) { directionsState.from = WebPlace(MY_PLACE, null, la, lo, null); directionsState.editing = null }
-                                        }
+            val stack = remember { androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Search) }
+            fun go(s: Screen) { stack += s }
+            fun back() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+            // 검색어·결과·지도 위치는 다른 화면에 다녀와도 그대로
+            val search = remember { SearchState() }
+            val map = remember { MapState(36.3504, 127.3845, 16) }
+            val tiles = remember { TileLoader(http ?: io.ktor.client.HttpClient()) }
+            val transit = remember { TransitRepo(repo.server, repo.client) }
+            // 아래 탭과 대중교통 안의 수단 (버스·지하철·기차·고속시외·항공·도로)
+            var tab by remember { mutableStateOf(AppTab.Home) }
+            var mode by remember { mutableStateOf(Mode.Bus) }
+            val homeState = remember { HomeState() }
+            val homeScope = androidx.compose.runtime.rememberCoroutineScope()
+            val trainState = remember { TrainState() }
+            val subwayState = remember { SubwaySearchState() }
+            val coachState = remember { CoachState() }
+            val air = remember { AirRepo(repo.server, repo.client) }
+            val airState = remember { AirState() }
+            val road = remember { RoadRepo(repo.server, repo.client) }
+            val seoulLive = remember { SeoulRealtime(repo.server, repo.client) }
+            val subwayExtras = remember { SubwayExtrasRepo(repo.server, repo.client) }
+            val directions = remember { DirectionsRepo(repo.server, repo.client) }
+            val directionsState = remember { DirectionsState() }
+            val airportInfo = remember { AirportInfoRepo(repo.server, repo.client) }
+            val signals = remember { SignalsRepo(repo.server, repo.client) }
+            val roadState = remember { RoadState() }
+            var notices by remember { mutableStateOf<List<NoticeW>?>(null) }
+            LaunchedEffect(Unit) { notices = runCatching { NoticesW.load(http ?: repo.client) }.getOrDefault(emptyList()) }
+            fun pickTab(t: AppTab) { tab = t; stack.clear(); stack += Screen.Search }
+            val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
+            val none: @Composable () -> Unit = {}
+
+            /** 지금 화면 (아래 탭의 첫 화면 위에 쌓인 화면들) */
+            val screen: @Composable () -> Unit = {
+                when (val top = stack.last()) {
+                    Screen.Search -> when (tab) {
+                        AppTab.Home -> HomePane(
+                            repo, directions, homeState, none, notices?.firstOrNull(), onMap = { pickTab(AppTab.Map) }, onNotices = { go(Screen.Notices) },
+                            onGo = { to ->
+                                // 길찾기로: 도착은 고른 곳, 출발은 내 위치 (못 받으면 출발을 고르게)
+                                directionsState.to = to
+                                directionsState.from = null
+                                directionsState.editing = "from"
+                                directionsState.query = ""
+                                pickTab(AppTab.Navi)
+                                if (locationSupported) homeScope.launch {
+                                    currentLocation()?.let { (la, lo) ->
+                                        if (directionsState.from == null) { directionsState.from = WebPlace(MY_PLACE, null, la, lo, null); directionsState.editing = null }
                                     }
-                                },
-                                onStop = { go(Screen.Stop(it)) }, onStation = { mode = Mode.Subway; go(Screen.Subway(it)) },
-                            )
-                            Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }, notice = notices?.firstOrNull(), onNotices = { go(Screen.Notices) }) { go(Screen.Stop(it)) }
-                            Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { go(Screen.Map()) }, onRouteMap = { go(Screen.SubwayMap) }) { go(Screen.Subway(it)) }
-                            Mode.Train -> TrainPane(transit, trainState, chips, onMap = { go(Screen.Map()) })
-                            Mode.Coach -> CoachPane(transit, coachState, chips, onMap = { go(Screen.Map()) })
-                            Mode.Air -> AirPane(air, airState, chips, onMap = { go(Screen.Map()) }, info = airportInfo) { c, n -> go(Screen.Airport(c, n)) }
+                                }
+                            },
+                            onStop = { go(Screen.Stop(it)) }, onStation = { go(Screen.Subway(it)) }, onNavi = { pickTab(AppTab.Navi) },
+                        )
+                        AppTab.Transit -> when (mode) {
+                            Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { pickTab(AppTab.Map) }, onRouteMap = { go(Screen.SubwayMap) }) { go(Screen.Subway(it)) }
+                            Mode.Train -> TrainPane(transit, trainState, chips, onMap = { pickTab(AppTab.Map) })
+                            Mode.Coach -> CoachPane(transit, coachState, chips, onMap = { pickTab(AppTab.Map) })
+                            Mode.Air -> AirPane(air, airState, chips, onMap = { pickTab(AppTab.Map) }, info = airportInfo) { c, n -> go(Screen.Airport(c, n)) }
                             Mode.Road -> RoadPane(road, roadState, tiles, chips, signals)
-                            Mode.Directions -> DirectionsPane(directions, directionsState, tiles, chips)
+                            else -> SearchPane(repo, search, chips, onMap = { pickTab(AppTab.Map) }, onLocate = { go(Screen.Map(it)) }, notice = null, onNotices = { go(Screen.Notices) }) { go(Screen.Stop(it)) }
                         }
-                        is Screen.Subway -> { LaunchedEffect(top.station.id) { Recent.addStation(top.station) }; SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back) }
-                        // 노선도에서 역을 누르면 지하철 찾기로 돌아가 그 이름으로 찾음
-                        Screen.Notices -> NoticesPane(notices, onBack = ::back)
-                        is Screen.Airport -> AirportPane(airportInfo, top.code, top.name, onBack = ::back)
-                        Screen.SubwayMap -> SubwayMapPane(subwayExtras, onBack = ::back) { name -> subwayState.query = name; back() }
-                        is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
-                        is Screen.Stop -> {
-                            LaunchedEffect(top.stop.id) { Recent.addStop(top.stop) }
-                            StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
-                        }
-                        is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }
+                        AppTab.Map -> MapPane(repo, map, tiles, null, onBack = null) { go(Screen.Stop(it)) }
+                        AppTab.Navi -> DirectionsPane(directions, directionsState, tiles, none)
+                        AppTab.Settings -> SettingsPane(onNotices = { go(Screen.Notices) })
                     }
+                    is Screen.Subway -> { LaunchedEffect(top.station.id) { Recent.addStation(top.station) }; SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back) }
+                    Screen.Notices -> NoticesPane(notices, onBack = ::back)
+                    is Screen.Airport -> AirportPane(airportInfo, top.code, top.name, onBack = ::back)
+                    // 노선도에서 역을 누르면 지하철 찾기로 돌아가 그 이름으로 찾음
+                    Screen.SubwayMap -> SubwayMapPane(subwayExtras, onBack = ::back) { name -> subwayState.query = name; back() }
+                    is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
+                    is Screen.Stop -> {
+                        LaunchedEffect(top.stop.id) { Recent.addStop(top.stop) }
+                        StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
+                    }
+                    is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }
+                }
+            }
+
+            /** 앱 화면 한 칸: 하차 알림 띠 + 화면 + 아래 탭 */
+            val panel: @Composable (Modifier) -> Unit = { modifier ->
+                Column(modifier) {
+                    AlightBanner()
+                    Column(Modifier.fillMaxWidth().weight(1f)) { screen() }
+                    BottomNav(tab, ::pickTab)
+                }
+            }
+
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                if (maxWidth >= WIDE_MIN) {
+                    // 넓은 화면: 왼쪽 앱 화면, 오른쪽 지도 (화면이 지도를 맡기면 그 지도, 아니면 정류장 지도)
+                    val portal = remember { MapPortal() }
+                    Row(Modifier.fillMaxSize()) {
+                        CompositionLocalProvider(LocalMapPortal provides portal) {
+                            panel(Modifier.width(PANEL_WIDTH).fillMaxHeight().background(MaterialTheme.colorScheme.background))
+                        }
+                        Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            val own = portal.content
+                            if (own != null) own(Modifier.fillMaxSize())
+                            else StopsMap(repo, map, tiles, (stack.last() as? Screen.Stop)?.stop, Modifier.fillMaxSize()) { go(Screen.Stop(it)) }
+                        }
+                    }
+                } else {
+                    // 좁은 화면(폰): 앱처럼 한 화면
+                    panel(Modifier.fillMaxSize())
                 }
             }
         }
@@ -245,7 +285,7 @@ private fun SearchPane(
     message?.let {
         Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
-    if (query.isBlank()) NoticeLine(notice, onNotices)
+    if (query.isBlank() && notice != null) NoticeLine(notice, onNotices)
     // 검색어가 없으면 즐겨찾기·최근 본 정류장
     if (query.isBlank() && (Favorites.stops.isNotEmpty() || Recent.stops.isNotEmpty())) {
         LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {

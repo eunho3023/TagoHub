@@ -13,6 +13,11 @@ object ThemePref {
     var mode by mutableStateOf(storeGet("theme")?.takeIf { it in setOf("auto", "light", "dark") } ?: "auto")
         private set
 
+    fun set(m: String) {
+        mode = m
+        storeSet("theme", mode)
+    }
+
     fun next() {
         mode = when (mode) { "auto" -> "dark"; "dark" -> "light"; else -> "auto" }
         storeSet("theme", mode)
