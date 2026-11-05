@@ -68,6 +68,8 @@ internal sealed interface Screen {
     data class Subway(val station: SubwayStationW) : Screen
     /** 서울 지하철 노선도 그림 */
     data object SubwayMap : Screen
+    /** 공항 정보 (코드, 이름) */
+    data class Airport(val code: String, val name: String) : Screen
 }
 
 @Composable
@@ -95,6 +97,7 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val subwayExtras = remember { SubwayExtrasRepo(repo.server, repo.client) }
                     val directions = remember { DirectionsRepo(repo.server, repo.client) }
                     val directionsState = remember { DirectionsState() }
+                    val airportInfo = remember { AirportInfoRepo(repo.server, repo.client) }
                     val roadState = remember { RoadState() }
                     val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
                     when (val top = stack.last()) {
@@ -103,12 +106,13 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                             Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { go(Screen.Map()) }, onRouteMap = { go(Screen.SubwayMap) }) { go(Screen.Subway(it)) }
                             Mode.Train -> TrainPane(transit, trainState, chips, onMap = { go(Screen.Map()) })
                             Mode.Coach -> CoachPane(transit, coachState, chips, onMap = { go(Screen.Map()) })
-                            Mode.Air -> AirPane(air, airState, chips, onMap = { go(Screen.Map()) })
+                            Mode.Air -> AirPane(air, airState, chips, onMap = { go(Screen.Map()) }, info = airportInfo) { c, n -> go(Screen.Airport(c, n)) }
                             Mode.Road -> RoadPane(road, roadState, tiles, chips)
                             Mode.Directions -> DirectionsPane(directions, directionsState, tiles, chips)
                         }
                         is Screen.Subway -> SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back)
                         // 노선도에서 역을 누르면 지하철 찾기로 돌아가 그 이름으로 찾음
+                        is Screen.Airport -> AirportPane(airportInfo, top.code, top.name, onBack = ::back)
                         Screen.SubwayMap -> SubwayMapPane(subwayExtras, onBack = ::back) { name -> subwayState.query = name; back() }
                         is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
                         is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }

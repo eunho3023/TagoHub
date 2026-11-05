@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape } from "./shape.js";
 
@@ -39,6 +39,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   if (env.WEB_LIMIT) {
@@ -179,4 +180,14 @@ async function kakaoWeb(request, url, env, ctx) {
   const key = (env.KAKAO_REST_KEY || "").trim();
   return cachedJson(request, env, ctx, "https://cache.tagohub/kakao/" + r.cacheKey, key ? r.url : null, r.ttl,
     (b) => /"(documents|routes|status)"\s*:/.test(b), { Authorization: "KakaoAK " + key });
+}
+
+/** 웹 버전 한국공항공사 (proxy.js kacWebRequest). 키는 KAC_API_KEY (없으면 공공데이터포털 키) */
+async function kacWeb(request, url, env, ctx) {
+  const r = kacWebRequest(url.pathname, url.search);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  const raw = env.KAC_API_KEY || env.DATA_GO_KR_KEY;
+  const upstream = raw ? `https://apis.data.go.kr/B551178/${r.path}?serviceKey=${encodeKey(raw)}${r.search}` : null;
+  return cachedJson(request, env, ctx, "https://cache.tagohub/kac/" + r.path + "?" + r.search, upstream, r.ttl,
+    (b) => /"resultCode"\s*:\s*"0*0"/.test(b));
 }
