@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape } from "./shape.js";
 
@@ -36,6 +36,7 @@ async function web(request, url, env, ctx) {
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
   if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   if (env.WEB_LIMIT) {
@@ -113,4 +114,34 @@ async function relay(request, url, env, ctx) {
     return stored;
   }
   return new Response(body, { status: upstream.status, headers: out });
+}
+
+/** 웹 버전 한국도로공사: 허락한 기능만, 서버 키로 묻고 잠시 저장 (proxy.js exWebRequest) */
+async function exWeb(request, url, env, ctx) {
+  const r = exWebRequest(url.pathname, url.search);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  const cache = caches.default;
+  const key = new Request("https://cache.tagohub/ex/" + r.path + "?pageNo=" + r.page);
+  const hit = await cache.match(key);
+  if (hit) {
+    const out = new Response(hit.body, hit);
+    out.headers.set("X-Cache", "HIT");
+    for (const [k, v] of Object.entries(WEB_HEADERS)) out.headers.set(k, v);
+    return out;
+  }
+  if (env.WEB_LIMIT) {
+    const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+  }
+  if (!env.EX_API_KEY) return new Response("server key missing", { status: 500, headers: WEB_HEADERS });
+  const upstream = await fetch(exUrl(r.path, r.page, env.EX_API_KEY), {
+    headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36", Accept: "application/json" },
+  });
+  const body = await upstream.text();
+  const ok = upstream.ok && body.trimStart().startsWith("{") && /"code"\s*:\s*"SUCCESS"/i.test(body);
+  const headers = { "Content-Type": "application/json; charset=utf-8", "X-Cache": "MISS", ...WEB_HEADERS };
+  if (!ok) return new Response(body.trimStart().startsWith("{") ? body : "{\"code\":\"ERROR\",\"message\":\"upstream " + upstream.status + "\"}", { status: 502, headers });
+  const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": "public, max-age=" + r.ttl } });
+  ctx.waitUntil(cache.put(key, stored.clone()));
+  return stored;
 }
