@@ -139,6 +139,8 @@ test("웹 카카오: 장소 찾기·길찾기만, 좌표는 소수 5자리", () 
   assert.equal(kakaoWebRequest("/w/kakao/place", "?q=" + "가".repeat(41)), null);
   const t = kakaoWebRequest("/w/kakao/transit", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2");
   assert.equal(t.url, "https://dapi.kakao.com/v2/routing/publictraffic?start_x=127.10000&start_y=36.10000&end_x=127.20000&end_y=36.20000");
+  assert.equal(kakaoWebRequest("/w/kakao/transit", "?sx=126.97068121721812&sy=37.5546788388674&ex=127.0276&ey=37.4979").url,
+    "https://dapi.kakao.com/v2/routing/publictraffic?start_x=126.97068&start_y=37.55468&end_x=127.02760&end_y=37.49790");
   assert.equal(kakaoWebRequest("/w/kakao/transit", "?sx=1e9&sy=36&ex=127&ey=36"), null);
   assert.equal(kakaoWebRequest("/w/kakao/walk", "?sx=1&sy=1&ex=1&ey=1"), null);
 });

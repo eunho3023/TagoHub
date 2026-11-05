@@ -203,7 +203,7 @@ export function seoulArrivalUrl(name, key) {
 }
 
 // ── 웹 버전 카카오 (장소 찾기·대중교통 길찾기) ─────────────────────────────────
-const COORD = /^-?\d{1,3}(\.\d{1,7})?$/;
+const COORD = /^-?\d{1,3}(\.\d{1,17})?$/; // 웹 화면은 Double 그대로(소수 14자리 안팎) 보냄, 묻기 전에 5자리로 자름
 const round5 = (v) => Number(v).toFixed(5);
 
 /**
