@@ -63,7 +63,10 @@ internal class AirState {
  * 항공(국내선): 출발·도착 공항을 고르면 그날 운항편이 바로 (서버에 올린 운항 시간표). 파일 기간이 지난 날은 "예상".
  */
 @Composable
-internal fun AirPane(repo: AirRepo, st: AirState, modeChips: @Composable () -> Unit, onMap: () -> Unit) {
+internal fun AirPane(
+    repo: AirRepo, st: AirState, modeChips: @Composable () -> Unit, onMap: () -> Unit,
+    info: AirportInfoRepo? = null, onAirport: (String, String) -> Unit = { _, _ -> },
+) {
     Header("TagoHub", "국내선 항공 시간표", action = "지도", onAction = onMap)
     modeChips()
     var data by remember { mutableStateOf<Triple<List<AirTable.Row>, Map<String, String>, Map<String, String>>?>(null) }
@@ -117,6 +120,25 @@ internal fun AirPane(repo: AirRepo, st: AirState, modeChips: @Composable () -> U
         }
         return
     }
+    // 공항 정보 (실시간 혼잡도·운항·기본 정보)
+    if (info != null) {
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            for (c in listOf(st.dep, st.arr)) {
+                Text(
+                    name(c) + " 정보", Modifier.clickable { onAirport(c, name(c)) }.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+    // 오늘이면 한국공항공사 실시간 운항(상태·변경 시각·탑승구)을 편명으로 붙임
+    var live by remember(st.dep, st.arr, st.tomorrow) { mutableStateOf<Map<String, FlightStatusW>>(emptyMap()) }
+    if (info != null && !st.tomorrow) LaunchedEffect(st.dep, st.arr) {
+        val ymd = "${date.year}${date.monthNumber.toString().padStart(2, '0')}${date.dayOfMonth.toString().padStart(2, '0')}"
+        live = runCatching { info.status(st.dep, ymd) }.getOrDefault(emptyList())
+            .filter { it.departure && it.other.isNotEmpty() }.associateBy { AirportInfoRepo.norm(it.flight) }
+    }
     val r = remember(rows, st.dep, st.arr, date) { AirTable.flights(rows, st.dep, st.arr, date) }
     if (r.flights.isEmpty()) { Note("${name(st.dep)} → ${name(st.arr)} 그날 운항편이 없어요"); return }
     val now = if (st.tomorrow) -1 else nowMinute()
@@ -140,6 +162,11 @@ internal fun AirPane(repo: AirRepo, st: AirState, modeChips: @Composable () -> U
                 Column(horizontalAlignment = Alignment.End) {
                     Text(airlines[f.airline] ?: f.airline, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = main)
                     Text(f.flight, style = MaterialTheme.typography.bodySmall, color = sub)
+                    live[AirportInfoRepo.norm(f.flight)]?.let { s ->
+                        val t = listOfNotNull(s.remark, s.estimated?.takeIf { it != s.scheduled }?.let { "변경 $it" }, s.gate?.let { "탑승구 $it" }).joinToString(" · ")
+                        if (t.isNotEmpty()) Text(t, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+                            color = if (t.contains("지연") || t.contains("결항") || t.contains("변경")) SoonColor else MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

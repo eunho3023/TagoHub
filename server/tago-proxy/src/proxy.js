@@ -229,3 +229,21 @@ export function kakaoWebRequest(pathname, search) {
   }
   return null;
 }
+
+// ── 웹 버전 한국공항공사 (/w/kac/<기능>) ─────────────────────────────────────────
+// 공항 혼잡도·소요시간·주차장(전국 한 번에, 2분 저장)과 공항별 하루 실시간 운항(1분 저장)만
+const KAC_FIXED = {
+  "airport-congestion/v1": "20", "airport-congestion/v2": "20", "airport-process-time/v1": "20", "parking-congestion/info": "100",
+};
+
+/** "/w/kac/flight-aircraft-status/info?air=GMP&date=20261105&pageNo=2" → { path, search, ttl }. 허락하지 않으면 null */
+export function kacWebRequest(pathname, search) {
+  if (!pathname.startsWith("/w/kac/")) return null;
+  const path = pathname.slice(7);
+  if (KAC_FIXED[path]) return { path, search: `&type=json&pageNo=1&numOfRows=${KAC_FIXED[path]}`, ttl: 120 };
+  if (path !== "flight-aircraft-status/info") return null;
+  const p = new URLSearchParams(search);
+  const air = p.get("air") || "", date = p.get("date") || "", page = p.get("pageNo") || "1";
+  if (!/^[A-Z]{3}$/.test(air) || !/^20\d{6}$/.test(date) || !/^([1-9]|10)$/.test(page)) return null;
+  return { path, search: `&type=json&pageNo=${page}&numOfRows=100&schAirCode=${air}&schStTime=${date}0000&schEdTime=${date}2359`, ttl: 60 };
+}

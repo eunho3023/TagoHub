@@ -142,3 +142,14 @@ test("웹 카카오: 장소 찾기·길찾기만, 좌표는 소수 5자리", () 
   assert.equal(kakaoWebRequest("/w/kakao/transit", "?sx=1e9&sy=36&ex=127&ey=36"), null);
   assert.equal(kakaoWebRequest("/w/kakao/walk", "?sx=1&sy=1&ex=1&ey=1"), null);
 });
+
+import { kacWebRequest } from "../src/proxy.js";
+
+test("웹 한국공항공사: 정해 둔 기능과 운항정보 질의만", () => {
+  assert.deepEqual(kacWebRequest("/w/kac/airport-congestion/v1", "?serviceKey=evil"), { path: "airport-congestion/v1", search: "&type=json&pageNo=1&numOfRows=20", ttl: 120 });
+  assert.equal(kacWebRequest("/w/kac/flight-aircraft-status/info", "?air=GMP&date=20261105").search,
+    "&type=json&pageNo=1&numOfRows=100&schAirCode=GMP&schStTime=202611050000&schEdTime=202611052359");
+  assert.equal(kacWebRequest("/w/kac/flight-aircraft-status/info", "?air=gmp&date=20261105"), null);
+  assert.equal(kacWebRequest("/w/kac/flight-aircraft-status/info", "?air=GMP&date=20261105&pageNo=11"), null);
+  assert.equal(kacWebRequest("/w/kac/parking-valet-congestion/gmp-dom", ""), null);
+});
