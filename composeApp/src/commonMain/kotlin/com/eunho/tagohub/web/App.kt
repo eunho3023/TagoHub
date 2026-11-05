@@ -89,6 +89,7 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val air = remember { AirRepo(repo.server, repo.client) }
                     val airState = remember { AirState() }
                     val road = remember { RoadRepo(repo.server, repo.client) }
+                    val seoulLive = remember { SeoulRealtime(repo.server, repo.client) }
                     val roadState = remember { RoadState() }
                     val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
                     when (val top = stack.last()) {
@@ -100,7 +101,7 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                             Mode.Air -> AirPane(air, airState, chips, onMap = { go(Screen.Map()) })
                             Mode.Road -> RoadPane(road, roadState, tiles, chips)
                         }
-                        is Screen.Subway -> SubwayStationPane(transit, top.station, onBack = ::back)
+                        is Screen.Subway -> SubwayStationPane(transit, top.station, seoulLive, onBack = ::back)
                         is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
                         is Screen.Stop -> StopPane(repo, top.stop, onBack = ::back, onLocate = { go(Screen.Map(top.stop)) }) { go(Screen.Route(it, top.stop.id)) }
                         is Screen.Route -> RoutePane(repo, top.routeId, top.fromStopId, tiles, onBack = ::back) { go(Screen.Stop(it)) }

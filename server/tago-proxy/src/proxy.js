@@ -185,3 +185,19 @@ export function exWebRequest(pathname, search) {
 export function exUrl(path, page, key) {
   return `https://data.ex.co.kr/openapi/${path}?key=${encodeURIComponent(key.trim())}&type=json&numOfRows=99&pageNo=${page}`;
 }
+
+// ── 웹 버전 서울 실시간 지하철 (/w/seoul/arrival/<역 이름>) ──────────────────────
+/** "/w/seoul/arrival/서울" → { name, ttl }. 역 이름 모양이 아니면 null */
+export function seoulWebRequest(pathname) {
+  const m = /^\/w\/seoul\/arrival\/([^/]+)$/.exec(pathname);
+  if (!m) return null;
+  let name;
+  try { name = decodeURIComponent(m[1]); } catch { return null; }
+  if (!/^[가-힣A-Za-z0-9()·.]{1,20}$/.test(name)) return null;
+  return { name, ttl: 10 };
+}
+
+/** 서울 열린데이터광장 역 도착 (JSON, 앞 60건). 키는 주소 안에 들어감 */
+export function seoulArrivalUrl(name, key) {
+  return `http://swopenapi.seoul.go.kr/api/subway/${encodeURIComponent(key.trim())}/json/realtimeStationArrival/0/60/${encodeURIComponent(name)}`;
+}

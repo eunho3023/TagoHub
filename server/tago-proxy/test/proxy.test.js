@@ -118,3 +118,13 @@ test("웹 한국도로공사: 허락한 기능과 쪽 번호만", () => {
   const u = exUrl("burstInfo/realTimeSms", "2", " k+/ ");
   assert.equal(u, "https://data.ex.co.kr/openapi/burstInfo/realTimeSms?key=k%2B%2F&type=json&numOfRows=99&pageNo=2");
 });
+
+import { seoulWebRequest, seoulArrivalUrl } from "../src/proxy.js";
+
+test("웹 서울 지하철: 역 이름만", () => {
+  assert.deepEqual(seoulWebRequest("/w/seoul/arrival/" + encodeURIComponent("총신대입구(이수)")), { name: "총신대입구(이수)", ttl: 10 });
+  assert.equal(seoulWebRequest("/w/seoul/arrival/" + encodeURIComponent("a/b")), null);
+  assert.equal(seoulWebRequest("/w/seoul/arrival/%E0%A4%A"), null);
+  assert.equal(seoulWebRequest("/w/seoul/position/1호선"), null);
+  assert.equal(seoulArrivalUrl("서울", " k "), "http://swopenapi.seoul.go.kr/api/subway/k/json/realtimeStationArrival/0/60/%EC%84%9C%EC%9A%B8");
+});
