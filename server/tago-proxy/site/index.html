@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TagoHub</title>
+  <meta name="description" content="버스·지하철·기차·고속시외·항공·도로 실시간 정보">
+  <meta name="theme-color" content="#0f2747">
+  <link rel="stylesheet" href="app.css">
+  <!-- 카카오 지도 키 (서버 배포 때 만들어 넣음; 없으면 OpenStreetMap 지도) -->
+  <script src="../config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="left">
+      <div id="alight" hidden></div>
+      <main id="panel"><div id="splash"><b>TagoHub</b><span>불러오는 중...</span></div></main>
+      <nav id="nav"></nav>
+    </div>
+    <div id="side"></div>
+  </div>
+</body>
+</html>
