@@ -92,7 +92,7 @@ internal fun RoadPane(repo: RoadRepo, st: RoadState, tiles: TileLoader, modeChip
         st.jams.orEmpty().mapNotNull { j -> if (j.lat != null && j.lng != null) Triple(j.id, j.lat, j.lng) else null }
     }
     val color = if (st.tab == 0) SoonColor else JamColor
-    MapHost(
+    AppMap(
         st.map, tiles, Modifier.fillMaxWidth().height(240.dp),
         dots = points.sortedBy { it.first == st.picked }.map { (id, la, lo) ->
             MapDot(id, la, lo, color, if (id == st.picked) 9f else 6f)

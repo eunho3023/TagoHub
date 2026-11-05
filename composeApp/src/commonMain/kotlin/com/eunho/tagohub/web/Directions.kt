@@ -285,7 +285,7 @@ private fun RouteDetail(r: TransitRoute, from: WebPlace, to: WebPlace, st: Direc
         "← 다른 경로", Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).clickable { st.picked = null }.padding(horizontal = 16.dp, vertical = 8.dp),
         color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
     )
-    MapHost(
+    AppMap(
         st.map, tiles, Modifier.fillMaxWidth().height(260.dp),
         lines = r.steps.filter { it.points.size >= 2 }.map { MapLine(it.points, stepColor(it.type), if (it.type == "WALKING") 3f else 6f) },
         dots = listOf(MapDot("from", from.lat, from.lng, BusLine, 7f, label = "출발"), MapDot("to", to.lat, to.lng, SoonColor, 7f, label = "도착")),

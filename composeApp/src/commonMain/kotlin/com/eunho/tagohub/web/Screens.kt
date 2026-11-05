@@ -121,7 +121,7 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
         }
     }
     val list = rememberLazyListState()
-    MapHost(
+    AppMap(
         map, tiles, Modifier.fillMaxWidth().fillMaxHeight(0.42f),
         lines = listOf(MapLine(road ?: pts, color)), dots = dots,
         onDot = { d ->
@@ -215,7 +215,21 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
  * 지도 화면: 끌어서 옮기고 확대하면([STOPS_ZOOM] 이상) 보이는 곳의 정류장이 나옴. 정류장을 누르면 아래 카드 → 도착 정보.
  */
 @Composable
-internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, focus: WebStop?, onBack: () -> Unit, onStop: (WebStop) -> Unit) {
+internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, focus: WebStop?, onBack: (() -> Unit)?, onStop: (WebStop) -> Unit) {
+    if (isWide()) {
+        // 넓은 화면: 지도는 이미 오른쪽 칸에 (정류장 지도). 고른 정류장 자리로만 옮김
+        LaunchedEffect(focus) { focus?.let { map.moveTo(it.lat, it.lng, 17) } }
+        Header("지도", "오른쪽 지도에서 정류장을 누르세요", onBack)
+        Note(if (map.zoom < STOPS_ZOOM) "지도를 확대하면 정류장이 보여요" else "정류장을 누르면 아래에 카드가 나오고, 카드를 누르면 도착 정보가 보여요")
+        return
+    }
+    Header("지도", if (map.zoom < STOPS_ZOOM) "확대하면 정류장이 보여요" else "정류장이 보여요", onBack)
+    StopsMap(repo, map, tiles, focus, Modifier.fillMaxSize(), onStop)
+}
+
+/** 정류장 지도: 끌어서 옮기고 확대하면 보이는 곳의 정류장, 누르면 아래 카드 → 도착 정보 (지도 탭·넓은 화면 오른쪽 칸) */
+@Composable
+internal fun StopsMap(repo: WebRepo, map: MapState, tiles: TileLoader, focus: WebStop?, modifier: Modifier, onStop: (WebStop) -> Unit) {
     var stops by remember { mutableStateOf<List<WebStop>>(emptyList()) }
     var picked by remember { mutableStateOf(focus) }
     // 정류장 모양을 눌러 왔으면 그 정류장 자리로
@@ -230,9 +244,8 @@ internal fun MapPane(repo: WebRepo, map: MapState, tiles: TileLoader, focus: Web
         stops = runCatching { repo.stopsIn(b[0], b[1], b[2], b[3]) }.getOrDefault(stops)
     }
     LaunchedEffect(picked) { city = picked?.let { repo.cityName(it.city) } }
-    Header("지도", if (map.zoom < STOPS_ZOOM) "확대하면 정류장이 보여요" else "정류장 ${stops.size}곳", onBack)
     // 카드는 지도 아래에 (웹 카카오 지도는 위에 겹쳐 그릴 수 없음)
-    Column(Modifier.fillMaxSize()) {
+    Column(modifier) {
         val primary = MaterialTheme.colorScheme.primary
         MapHost(
             map, tiles, Modifier.fillMaxWidth().weight(1f),

@@ -173,7 +173,7 @@ internal fun SignalView(repo: SignalsRepo, st: SignalState, tiles: TileLoader) {
     val b = st.map.bounds()
     val shown = if (all == null || st.map.zoom < SIGNAL_ZOOM) emptyList()
         else all.filter { it.lat in b[0]..b[2] && it.lng in b[1]..b[3] }.take(400)
-    MapHost(
+    AppMap(
         st.map, tiles, Modifier.fillMaxWidth().height(300.dp),
         dots = (shown.filter { it.id != st.picked?.id } + listOfNotNull(st.picked)).map { s ->
             MapDot(s.id, s.lat, s.lng, if (s.id == st.picked?.id) SoonColor else MaterialTheme.colorScheme.primary, if (s.id == st.picked?.id) 8f else 5f)

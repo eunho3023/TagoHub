@@ -48,13 +48,16 @@ import kotlin.time.ExperimentalTime
 /** 버스·지하철·기차 고르기 (찾기 화면 위) */
 internal enum class Mode(val label: String) { Home("홈"), Bus("버스"), Directions("길찾기"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공"), Road("도로") }
 
+/** 대중교통 탭 안의 수단 (홈·길찾기는 아래 탭) */
+internal val TRANSIT_MODES = listOf(Mode.Bus, Mode.Subway, Mode.Train, Mode.Coach, Mode.Air, Mode.Road)
+
 @Composable
 internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        for (m in Mode.entries) {
+        for (m in TRANSIT_MODES) {
             val on = m == current
             Text(
                 m.label,
@@ -64,12 +67,6 @@ internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {
                 style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
             )
         }
-        // 화면 밝기 (자동 → 어둡게 → 밝게)
-        Text(
-            ThemePref.label, Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
-                .clickable { ThemePref.next() }.padding(horizontal = 16.dp, vertical = 7.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge,
-        )
     }
 }
 
