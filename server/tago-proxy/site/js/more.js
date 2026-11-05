@@ -35,7 +35,10 @@ export function settings(root) {
       sectionHead("정보") +
       `<div class="list"><button class="row" ${act(() => go("notices"))}><b class="grow">공지사항</b></button>
        <button class="row" ${act(() => go("report"))}><span class="grow"><b>앱 제보</b><small>불편한 점이나 틀린 정보를 알려 주세요</small></span></button></div>` +
-      note("웹 버전 · 폰 앱과 같은 공공 자료를 씁니다. 즐겨찾기·집·회사·최근 기록은 이 기기(브라우저)에만 저장돼요.");
+      sectionHead("약관 및 정책") +
+      `<div class="list">${[["legal/terms.html", "이용약관"], ["legal/privacy.html", "개인정보 처리방침"], ["legal/sources.html", "정보 제공처", "교통 자료·지도를 제공하는 기관"], ["legal/licenses.html", "오픈소스 라이선스"]]
+        .map(([h, t, s]) => `<a class="row" href="${h}"><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span></a>`).join("")}</div>` +
+      note("웹 버전 · 폰 앱과 같은 공공 자료를 씁니다. 즐겨찾기·집·회사·최근 기록은 이 기기(브라우저)에만 저장돼요. 교통 정보는 제공처 사정으로 늦거나 실제와 다를 수 있어요.");
   };
   draw();
 }

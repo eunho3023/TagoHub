@@ -9,6 +9,7 @@ import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -108,7 +109,22 @@ fun TabScaffold(
     }
 }
 
-/** 설정: 화면 모드, 길안내(안내 음성·크기·알릴 항목), 계정, 정보(공지사항·앱 제보·최근 오류) */
+/** 설정 → 약관 및 정책 (제목, 서버 site/legal/ 의 파일) */
+internal val LEGAL_PAGES = listOf(
+    "이용약관" to "terms.html",
+    "개인정보 처리방침" to "privacy.html",
+    "정보 제공처" to "sources.html",
+    "오픈소스 라이선스" to "licenses.html",
+)
+
+/** 약관 문서 주소: 앱이 쓰는 서버(TAGO_PROXY_URL), 없으면 공개 서버 */
+internal fun legalUrl(page: String): String {
+    val base = com.eunho.tagohub.BuildConfig.TAGO_PROXY_URL.trim().trimEnd('/').takeIf { it.startsWith("https://") }
+        ?: "https://tagohub-proxy.eunho3023.workers.dev"
+    return "$base/legal/$page"
+}
+
+/** 설정: 화면 모드, 길안내(안내 음성·크기·알릴 항목), 계정, 정보(공지사항·앱 제보·최근 오류), 약관 및 정책 */
 @Composable
 fun MorePage(
     onOpen: (ModeJump.Kind) -> Unit,
@@ -156,6 +172,15 @@ fun MorePage(
                     if (crash != null) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         MoreRow("최근 오류") { showCrash = true }
+                    }
+                }
+                // 약관 및 정책: 웹 버전과 같은 문서(서버 /legal/)를 브라우저로 엶 — 플레이스토어의 개인정보 처리방침 주소와도 같음
+                SettingsLabel("약관 및 정책", Icons.Outlined.Policy)
+                val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                SettingsCard {
+                    LEGAL_PAGES.forEachIndexed { i, (title, page) ->
+                        if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        MoreRow(title) { runCatching { uri.openUri(legalUrl(page)) } }
                     }
                 }
                 if (showCrash) crash?.let { text ->
