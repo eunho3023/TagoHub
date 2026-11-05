@@ -7,6 +7,8 @@ import { HomeWork, Recent } from "./store.js";
 import { currentLocation } from "./alight.js";
 
 export const MY_PLACE = "내 위치";
+/** 길찾기·장소 검색은 좌표를 카카오로 보내야 해서 웹에서는 잠시 막아 둠 (위치를 기기 밖으로 보내지 않음) */
+export const KAKAO_ROUTING = false;
 /** 길찾기 상태 (다른 화면에 다녀와도 남음) */
 export const dir = { from: null, to: null, editing: "from", q: "", routes: null, status: null, picked: null };
 
@@ -45,6 +47,7 @@ const label = (s) => (s.type === "BUS" ? "버스 " + (s.vehicles[0] || s.guidanc
 
 /** 홈·집/회사에서: 도착은 고른 곳, 출발은 내 위치 (못 받으면 출발을 고르게) */
 export function startDirections(to) {
+  if (!KAKAO_ROUTING) { go("navi"); return; }
   Object.assign(dir, { to, from: null, editing: "from", q: "", routes: null, picked: null });
   go("navi");
   currentLocation().then((here) => {
@@ -53,6 +56,11 @@ export function startDirections(to) {
 }
 
 export function directionsScreen(root, p, ctx) {
+  if (!KAKAO_ROUTING) {
+    root.innerHTML = header("길찾기", "대중교통 길찾기") + note("준비 중이에요") +
+      note("길찾기와 장소 검색은 출발·도착 좌표를 카카오로 보내야 해서 웹에서는 잠시 쉬고 있어요. 정류장 찾기, 내 주변 정류장, 내 위치는 이 기기 안에서만 처리돼요.");
+    return null;
+  }
   let alive = true, seq = 0;
   const box = (k, title, place) => `<button class="pbox ${dir.editing === k ? "on" : ""}" ${act(() => { dir.editing = k; dir.q = ""; draw(); })}><small>${title}</small><b>${esc(place?.name || "장소 찾기")}</b></button>`;
   const use = (pl) => {

@@ -5,7 +5,7 @@ import { go, isWide } from "./nav.js";
 import { Favorites, Recent, HomeWork } from "./store.js";
 import * as B from "./busdata.js";
 import { remember } from "./bus.js";
-import { searchPlaces, startDirections } from "./places.js";
+import { startDirections } from "./places.js";
 import { latestNotice } from "./more.js";
 import { currentLocation } from "./alight.js";
 
@@ -16,7 +16,7 @@ export function render(root) {
   root.innerHTML = `<div class="homecard">
       <div class="brand">${logo()}<div class="grow"><b>TagoHub</b><small>한 번에 연결되는 교통 정보</small></div>
         ${isWide() ? "" : `<button class="outline" ${act(() => go("map"))}>지도</button>`}</div>
-      <label class="bigsearch">${icon("pin", 20)}<input id="q" type="search" placeholder="어디로 가시나요?" value="${esc(st.q)}" autocomplete="off"></label>
+      <label class="bigsearch">${icon("pin", 20)}<input id="q" type="search" placeholder="정류장 이름으로 찾기" value="${esc(st.q)}" autocomplete="off"></label>
     </div><div id="body"></div>`;
   const body = root.querySelector("#body");
   let seq = 0;
@@ -27,10 +27,11 @@ export function render(root) {
       const my = ++seq;
       if (st.q.trim().length < 2) { body.innerHTML = note("두 글자 이상 입력해 주세요"); return; }
       body.innerHTML = note("찾는 중...");
-      const r = await searchPlaces(st.q).catch(() => []);
+      // 정류장 이름 찾기는 기기 안에서 (이름 목록 파일만 받음, 검색어·위치는 보내지 않음)
+      const r = (await B.searchStops(st.q, 30).catch(() => null)) || [];
       if (my !== seq || !alive) return;
-      body.innerHTML = r.length ? `<div class="list">${r.map((p) => `<button class="row" ${act(() => { st.q = ""; startDirections(p); })}>
-        ${icon("pin", 20)}<span class="grow"><b>${esc(p.name)}</b><small>${esc(p.address || "")}</small></span></button>`).join("")}</div>` : note("찾는 장소가 없어요");
+      body.innerHTML = r.length ? `<div class="list">${r.map((s) => { remember(s); return `<button class="row" ${act(() => { st.q = ""; go("stop", s.id, { lat: s.lat, lng: s.lng }); })}>
+        ${icon("bus", 20)}<span class="grow"><b>${esc(s.name)}</b><small>${s.no ? "정류장 번호 " + esc(s.no) : ""}</small></span></button>`; }).join("")}</div>` : note("찾는 정류장이 없어요");
       return;
     }
     const favStops = Favorites.stops.items.slice(0, 4), favSt = Favorites.stations.items, rec = Recent.places.items;
