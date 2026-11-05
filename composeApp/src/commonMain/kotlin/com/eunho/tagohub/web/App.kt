@@ -141,7 +141,11 @@ internal fun StopMark(modifier: Modifier = Modifier) {
 
 /** 앱 화면 위쪽의 남색 머리띠 (제목·부제목, 왼쪽에 뒤로 가기) */
 @Composable
-internal fun Header(title: String, sub: String? = null, onBack: (() -> Unit)? = null, action: String? = null, onAction: () -> Unit = {}) {
+internal fun Header(
+    title: String, sub: String? = null, onBack: (() -> Unit)? = null, action: String? = null, onAction: () -> Unit = {},
+    /** 즐겨찾기 별 (null 이면 안 보임) */
+    star: Boolean? = null, onStar: () -> Unit = {},
+) {
     Row(
         Modifier.fillMaxWidth().background(headerColor()).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -155,6 +159,12 @@ internal fun Header(title: String, sub: String? = null, onBack: (() -> Unit)? = 
         Column(Modifier.weight(1f)) {
             Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub != null) Text(sub, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+        }
+        if (star != null) {
+            Text(
+                if (star) "★" else "☆", Modifier.clickable(onClick = onStar).padding(horizontal = 10.dp),
+                color = if (star) Color(0xFFFFC83D) else Color.White, fontSize = 22.sp,
+            )
         }
         if (action != null) {
             Text(
@@ -206,11 +216,13 @@ private fun SearchPane(repo: WebRepo, st: SearchState, modeChips: @Composable ()
     message?.let {
         Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
-    // 검색어가 없으면 최근 본 정류장
-    if (query.isBlank() && Recent.stops.isNotEmpty()) {
-        RecentHead("최근 본 정류장") { Recent.clearStops() }
+    // 검색어가 없으면 즐겨찾기·최근 본 정류장
+    if (query.isBlank() && (Favorites.stops.isNotEmpty() || Recent.stops.isNotEmpty())) {
         LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-            items(Recent.stops, key = { "r" + it.id }) { s ->
+          for ((head, list) in listOf("즐겨찾기" to Favorites.stops, "최근 본 정류장" to Recent.stops)) {
+            if (list.isEmpty()) continue
+            item(key = "h$head") { RecentHead(head, if (head == "즐겨찾기") null else ({ Recent.clearStops() })) }
+            items(list, key = { head + it.id }) { s ->
                 Row(Modifier.fillMaxWidth().clickable { onPick(s) }.padding(start = 6.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     StopMark(Modifier.clickable { onLocate(s) }.padding(10.dp))
                     Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
@@ -220,6 +232,7 @@ private fun SearchPane(repo: WebRepo, st: SearchState, modeChips: @Composable ()
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
+          }
         }
     }
     if (result.isNotEmpty()) {
@@ -302,7 +315,8 @@ internal fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit, onLocate
             now = nowMs()
         }
     }
-    Header(stop.name, listOfNotNull(city, stop.no?.let { "정류장 번호 $it" }).joinToString("  ·  ").ifEmpty { null }, onBack, action = "위치", onAction = onLocate)
+    Header(stop.name, listOfNotNull(city, stop.no?.let { "정류장 번호 $it" }).joinToString("  ·  ").ifEmpty { null }, onBack, action = "위치", onAction = onLocate,
+        star = Favorites.has(stop), onStar = { Favorites.toggle(stop) })
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     val s = state
     val live = (s as? Arrivals.Ok)
