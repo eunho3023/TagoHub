@@ -129,6 +129,11 @@ internal fun AirPane(
                     color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
                 )
             }
+            // 국제선: 인천공항 하루 출발·도착 (인천국제공항공사)
+            Text(
+                "인천공항 운항", Modifier.clickable { onAirport(AirportInfoRepo.ICN, "인천국제공항") }.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }

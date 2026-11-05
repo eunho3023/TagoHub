@@ -70,6 +70,8 @@ internal sealed interface Screen {
     data object SubwayMap : Screen
     /** 공항 정보 (코드, 이름) */
     data class Airport(val code: String, val name: String) : Screen
+    /** 공지사항·제보 */
+    data object Notices : Screen
 }
 
 @Composable
@@ -100,11 +102,13 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val airportInfo = remember { AirportInfoRepo(repo.server, repo.client) }
                     val signals = remember { SignalsRepo(repo.server, repo.client) }
                     val roadState = remember { RoadState() }
+                    var notices by remember { mutableStateOf<List<NoticeW>?>(null) }
+                    LaunchedEffect(Unit) { notices = runCatching { NoticesW.load(http ?: repo.client) }.getOrDefault(emptyList()) }
                     val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
                     AlightBanner()
                     when (val top = stack.last()) {
                         Screen.Search -> when (mode) {
-                            Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }) { go(Screen.Stop(it)) }
+                            Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }, notice = notices?.firstOrNull(), onNotices = { go(Screen.Notices) }) { go(Screen.Stop(it)) }
                             Mode.Subway -> SubwayPane(transit, subwayState, chips, onMap = { go(Screen.Map()) }, onRouteMap = { go(Screen.SubwayMap) }) { go(Screen.Subway(it)) }
                             Mode.Train -> TrainPane(transit, trainState, chips, onMap = { go(Screen.Map()) })
                             Mode.Coach -> CoachPane(transit, coachState, chips, onMap = { go(Screen.Map()) })
@@ -114,6 +118,7 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                         }
                         is Screen.Subway -> { LaunchedEffect(top.station.id) { Recent.addStation(top.station) }; SubwayStationPane(transit, top.station, seoulLive, subwayExtras, onBack = ::back) }
                         // 노선도에서 역을 누르면 지하철 찾기로 돌아가 그 이름으로 찾음
+                        Screen.Notices -> NoticesPane(notices, onBack = ::back)
                         is Screen.Airport -> AirportPane(airportInfo, top.code, top.name, onBack = ::back)
                         Screen.SubwayMap -> SubwayMapPane(subwayExtras, onBack = ::back) { name -> subwayState.query = name; back() }
                         is Screen.Map -> MapPane(repo, map, tiles, top.focus, onBack = ::back) { go(Screen.Stop(it)) }
@@ -187,7 +192,10 @@ private class SearchState {
 }
 
 @Composable
-private fun SearchPane(repo: WebRepo, st: SearchState, modeChips: @Composable () -> Unit, onMap: () -> Unit, onLocate: (WebStop) -> Unit, onPick: (WebStop) -> Unit) {
+private fun SearchPane(
+    repo: WebRepo, st: SearchState, modeChips: @Composable () -> Unit, onMap: () -> Unit, onLocate: (WebStop) -> Unit,
+    notice: NoticeW?, onNotices: () -> Unit, onPick: (WebStop) -> Unit,
+) {
     var query by st::query
     var result by st::result
     var message by st::message
@@ -217,6 +225,7 @@ private fun SearchPane(repo: WebRepo, st: SearchState, modeChips: @Composable ()
     message?.let {
         Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
+    if (query.isBlank()) NoticeLine(notice, onNotices)
     // 검색어가 없으면 즐겨찾기·최근 본 정류장
     if (query.isBlank() && (Favorites.stops.isNotEmpty() || Recent.stops.isNotEmpty())) {
         LazyColumn(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {

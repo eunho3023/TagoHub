@@ -19,3 +19,20 @@ class RecentTest {
         assertEquals(s, Recent.stationOf(Recent.encodeStation(s)))
     }
 }
+
+class HomeWorkNoticesTest {
+    @Test fun homeRoundTrip() {
+        val p = WebPlace("우리\t집", "대전 서구", 36.35, 127.38, "아파트")
+        val back = HomeWork.placeOf(HomeWork.encode(p))!!
+        assertEquals("우리 집", back.name)
+        assertEquals("대전 서구", back.address)
+        assertEquals(127.38, back.lng)
+        assertNull(HomeWork.placeOf("x\ty"))
+    }
+
+    @Test fun noticesNewestFirst() {
+        val l = NoticesW.parse("""[{"date":"2026-10-15","title":"처음","body":"a"},{"date":"2026-11-01","title":"새것"},{"date":"2026-11-02"}]""")
+        assertEquals(listOf("새것", "처음"), l.map { it.title })
+        assertEquals("https://github.com/eunho3023/TagoHub/issues/new?title=%5B%EC%9B%B9%20%EC%A0%9C%EB%B3%B4%5D%20", NoticesW.reportUrl())
+    }
+}

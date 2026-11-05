@@ -85,3 +85,22 @@ object Favorites {
         storeSet("favStations", stations.joinToString("\n", transform = Recent::encodeStation))
     }
 }
+
+/** 자주 가는 곳: 집·회사 (길찾기에서 한 번에 고름, 이 기기에만) */
+object HomeWork {
+    var home by mutableStateOf(storeGet("home")?.let(::placeOf))
+        private set
+    var work by mutableStateOf(storeGet("work")?.let(::placeOf))
+        private set
+
+    fun encode(p: WebPlace) = listOf(p.name, p.lat.toString(), p.lng.toString(), p.address.orEmpty()).joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') }
+
+    fun placeOf(line: String): WebPlace? {
+        val f = line.split('\t')
+        if (f.size < 3) return null
+        return WebPlace(f[0], f.getOrNull(3)?.ifEmpty { null }, f[1].toDoubleOrNull() ?: return null, f[2].toDoubleOrNull() ?: return null, null)
+    }
+
+    fun saveHome(p: WebPlace) { home = p; storeSet("home", encode(p)) }
+    fun saveWork(p: WebPlace) { work = p; storeSet("work", encode(p)) }
+}

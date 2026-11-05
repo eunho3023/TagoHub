@@ -19,6 +19,17 @@ class AirportInfoTest {
         assertEquals(1, AirportInfoRepo.rows("""{"response":{"body":{"items":{"item":{"airFln":"7C101"}}}}}""").size)
     }
 
+    @Test fun parsesIncheon() {
+        val body = """{"response":{"header":{"resultCode":"00"},"body":{"totalCount":2,"items":[
+            {"flightId":"KE081","airline":"대한항공","airport":"뉴욕","airportCode":"JFK","scheduleDatetime":"202611051000","estimatedDatetime":"202611051020","gateNumber":"250","terminalId":"P03","remark":"출발","codeshare":"Master"},
+            {"flightId":"DL7861","airline":"델타항공","airport":"뉴욕","scheduleDatetime":"202611051000","terminalId":"P03","codeshare":"Slave"}]}}}"""
+        val r = AirportInfoRepo.parseIcn(body, departure = true)
+        assertEquals("10:20", r[0].estimated)
+        assertEquals("T2 250", r[0].gate)
+        assertEquals("뉴욕", r[0].other)
+        assertEquals(true, r[1].codeshare)
+    }
+
     @Test fun parsesStatic() {
         val s = AirportInfoRepo.parseStatic(
             """{"airports":{"김포":{"code":"GMP","name":"김포국제공항","phone":"1661-2626","transport":[{"type":"시내버스","routes":"종로"}],
