@@ -2,6 +2,8 @@ package com.eunho.tagohub.web
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,11 +46,14 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 /** 버스·지하철·기차 고르기 (찾기 화면 위) */
-internal enum class Mode(val label: String) { Bus("버스"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공") }
+internal enum class Mode(val label: String) { Bus("버스"), Subway("지하철"), Train("기차"), Coach("고속·시외"), Air("항공"), Road("도로") }
 
 @Composable
 internal fun ModeChips(current: Mode, onPick: (Mode) -> Unit) {
-    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         for (m in Mode.entries) {
             val on = m == current
             Text(

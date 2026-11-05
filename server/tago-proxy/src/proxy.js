@@ -161,3 +161,27 @@ export function webRequest(pathname, search) {
   out.set("_type", "xml");
   return { path, search: "?" + out.toString() };
 }
+
+// ── 웹 버전 한국도로공사 (/w/ex/<기능>?pageNo=N) ─────────────────────────────────
+// 고속도로 돌발 문자정보·정체 구간·주유 가격만. 키(EX_API_KEY)는 서버가 붙이고, 쪽 번호만 받음. 값은 저장 시간(초)
+export const WEB_EX = {
+  "burstInfo/realTimeSms": 120,
+  "odtraffic/trafficAmountByCongest": 120,
+  "business/curStateStation": 21600,
+};
+
+/** "/w/ex/burstInfo/realTimeSms" + "?pageNo=2" → { path, page, ttl }. 허락하지 않으면 null */
+export function exWebRequest(pathname, search) {
+  if (!pathname.startsWith("/w/ex/")) return null;
+  const path = pathname.slice(6);
+  const ttl = WEB_EX[path];
+  if (!ttl) return null;
+  const p = new URLSearchParams(search).get("pageNo") || "1";
+  if (!/^([1-9]|1\d|20)$/.test(p)) return null;
+  return { path, page: p, ttl };
+}
+
+/** 한국도로공사 요청 주소 (한 쪽 99건이 최대) */
+export function exUrl(path, page, key) {
+  return `https://data.ex.co.kr/openapi/${path}?key=${encodeURIComponent(key.trim())}&type=json&numOfRows=99&pageNo=${page}`;
+}

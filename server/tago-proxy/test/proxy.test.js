@@ -105,3 +105,16 @@ test("웹 버전: 고속·시외버스 (터미널 id 모양 검사)", () => {
   assert.equal(ttlFor("1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo"), 1800);
   assert.equal(ttlFor("1613000/SuburbsBusInfo/GetSuberbsBusTrminlList"), 86400);
 });
+
+import { exWebRequest, exUrl } from "../src/proxy.js";
+
+test("웹 한국도로공사: 허락한 기능과 쪽 번호만", () => {
+  assert.deepEqual(exWebRequest("/w/ex/burstInfo/realTimeSms", ""), { path: "burstInfo/realTimeSms", page: "1", ttl: 120 });
+  assert.equal(exWebRequest("/w/ex/business/curStateStation", "?pageNo=3&key=evil").page, "3");
+  assert.equal(exWebRequest("/w/ex/business/curStateStation", "?pageNo=21"), null);
+  assert.equal(exWebRequest("/w/ex/business/curStateStation", "?pageNo=0"), null);
+  assert.equal(exWebRequest("/w/ex/restinfo/restBrandList", ""), null);
+  assert.equal(exWebRequest("/w/ex/../burstInfo/realTimeSms", ""), null);
+  const u = exUrl("burstInfo/realTimeSms", "2", " k+/ ");
+  assert.equal(u, "https://data.ex.co.kr/openapi/burstInfo/realTimeSms?key=k%2B%2F&type=json&numOfRows=99&pageNo=2");
+});

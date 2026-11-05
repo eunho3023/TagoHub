@@ -102,6 +102,9 @@ npm test
 - 웹 페이지에는 앱 토큰을 넣을 수 없으므로, 실시간은 `/w/dg/1613000/...` 로 토큰 없이 받는다.
   허락하는 것은 버스 도착(`ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList`)·위치(`BusLcInfoInqireService/getRouteAcctoBusLcList`)뿐이고,
   질의는 `cityCode`·`nodeId`/`routeId` 만 (값 모양 검사), 쪽 번호·개수는 서버가 정함 (`src/proxy.js` `webRequest`).
+  지하철 역 찾기·역 시간표, 기차·고속·시외버스 출발→도착 조회도 같은 허락 목록(`WEB_OPS`)에 있음.
+- 고속도로(한국도로공사)는 `/w/ex/<기능>?pageNo=N`: 돌발 문자정보·정체 구간(2분 저장)·주유 가격(6시간 저장)만,
+  키(`EX_API_KEY`)는 서버가 붙임 (`src/proxy.js` `exWebRequest`).
 - 앱과 같은 5초 저장을 같이 쓰고, 주소(IP)마다 1분 120번까지 (`wrangler.toml` `[[ratelimits]] WEB_LIMIT`).
 - PC 버전(데스크톱)은 같은 화면을 `./gradlew :composeApp:run` 으로 띄움 (서버 주소는 local.properties 의 `TAGO_PROXY_URL`).
 
