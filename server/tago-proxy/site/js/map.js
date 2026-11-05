@@ -1,6 +1,7 @@
 // 지도 하나 (화면 전체에서 같은 지도를 옮겨 씀). 카카오 지도(폰 앱과 같음), 키·도메인이 안 맞으면 OpenStreetMap(Leaflet).
 // 확대 단계는 웹 지도 기준 z (카카오 레벨 = 20 - z).
 // dots: [{id, lat, lng, color, ring, r, label}], lines: [{pts:[[위도,경도]...], color, width}]
+import { follow } from "./geo.js";
 
 const el = document.createElement("div");
 el.className = "map";
@@ -168,25 +169,20 @@ locBtn.addEventListener("click", (e) => {
   else stopMe();
 });
 function startMe() {
-  if (!navigator.geolocation) { alert("이 브라우저는 위치를 알려 주지 않아요"); return; }
   firstFix = true;
   locBtn.classList.add("on", "wait");
-  watchId = navigator.geolocation.watchPosition(
+  watchId = follow(
     (p) => {
-      myPos = [p.coords.latitude, p.coords.longitude, Math.min(p.coords.accuracy || 0, 2000)];
+      myPos = [p[0], p[1], Math.min(p[2], 2000)];
       locBtn.classList.remove("wait");
       impl?.me(myPos);
       if (firstFix && impl) { firstFix = false; impl.view(myPos[0], myPos[1], 16); }
     },
-    (err) => {
-      stopMe();
-      alert(err && err.code === 1 ? "위치 사용을 허락해야 내 위치를 볼 수 있어요 (주소창 왼쪽 자물쇠에서 바꿀 수 있어요)" : "위치를 받지 못했어요");
-    },
-    { enableHighAccuracy: true, maximumAge: 3000, timeout: 30000 },
+    (msg) => { stopMe(); alert(msg); },
   );
 }
 function stopMe() {
-  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  if (watchId != null) watchId();
   watchId = null; myPos = null;
   locBtn.classList.remove("on", "wait");
   impl?.me(null);

@@ -2,6 +2,7 @@
 // (폰 앱 AlightTracker 와 같은 규칙). 탭을 켜 둔 동안만 동작.
 import { meters, distText, esc } from "./core.js";
 import { act } from "./ui.js";
+import { locate, geoMessage } from "./geo.js";
 
 const HEADS = 800, SOON = 350, NOW = 90, MAX_ACC = 80, PASSED_EXTRA = 250;
 const STAGES = ["watching", "heads", "soon", "now", "passed"];
@@ -64,7 +65,7 @@ export const Alight = {
         if (u.finished && watch != null) { navigator.geolocation.clearWatch(watch); watch = null; }
         drawBanner();
       },
-      (e) => { if (tracker === t) { msg = e && e.code === 1 ? "위치 사용을 허락해야 하차 알림을 쓸 수 있어요" : "위치를 받지 못했어요"; drawBanner(); } },
+      (e) => { if (tracker === t) geoMessage(e).then((m) => { if (tracker === t) { msg = m; drawBanner(); } }); },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
     );
   },
@@ -77,9 +78,6 @@ export const Alight = {
 };
 
 /** 지금 위치 한 번 (못 받으면 null) */
-export function currentLocation(timeout = 15000) {
-  return new Promise((res) => {
-    if (!navigator.geolocation) return res(null);
-    navigator.geolocation.getCurrentPosition((p) => res([p.coords.latitude, p.coords.longitude]), () => res(null), { enableHighAccuracy: true, timeout, maximumAge: 30000 });
-  });
+export function currentLocation() {
+  return locate().then((p) => [p[0], p[1]], () => null);
 }

@@ -7,7 +7,7 @@ import * as B from "./busdata.js";
 import { remember } from "./bus.js";
 import { startDirections } from "./places.js";
 import { latestNotice } from "./more.js";
-import { currentLocation } from "./alight.js";
+import { locate } from "./geo.js";
 
 const st = { q: "", near: null, nearNote: null, first: new Map() };
 
@@ -66,8 +66,8 @@ export function render(root) {
 
   async function findNear() {
     st.nearNote = "위치를 받는 중..."; draw();
-    const here = await currentLocation();
-    if (!here) { st.nearNote = "위치를 받지 못했어요 (위치 사용을 허락해 주세요)"; draw(); return; }
+    let here;
+    try { here = await locate(); } catch (e) { st.nearNote = e.message; draw(); return; }
     const [la, lo] = here;
     const got = (await B.stopsIn(la - 0.004, lo - 0.005, la + 0.004, lo + 0.005).catch(() => [])).sort((a, b) => meters(la, lo, a.lat, a.lng) - meters(la, lo, b.lat, b.lng)).slice(0, 6);
     st.near = got; st.nearNote = got.length ? null : "근처 400m 안에 정류장이 없어요";
