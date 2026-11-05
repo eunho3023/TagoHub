@@ -722,6 +722,15 @@ internal fun jeonjuWithGps(tago: List<BusLocation>?, jeonju: List<BusLocation>?)
     return gps.map { b -> if (b.lowFloor == null) low[tail(b.vehicleNo)]?.let { b.copy(lowFloor = it) } ?: b else b }
 }
 
+/** 좌표 없는 버스의 자리: 정류장 ID 가 같은 정류장(순번이 가장 가까운 것), 없으면 같은 순번 정류장의 좌표 */
+internal fun stopPosition(b: BusLocation, stops: List<RouteStop>): LatLng? {
+    val byNode = b.nodeId?.let { n -> stops.filter { it.nodeId == n } }.orEmpty()
+    val s = byNode.minByOrNull { kotlin.math.abs(it.ord - (b.ord ?: it.ord)) } ?: b.ord?.let { o -> stops.firstOrNull { it.ord == o } } ?: return null
+    val lat = s.lat ?: return null
+    val lng = s.lng ?: return null
+    return LatLng(lat, lng)
+}
+
 private fun updateGps(d: BusDest.Route) {
     val now = System.currentTimeMillis()
     val stops = d.stops.value.valueOrNull().orEmpty()
@@ -730,10 +739,10 @@ private fun updateGps(d: BusDest.Route) {
     val seen = HashSet<String>()
     d.buses.value.forEach { b ->
         val id = b.vehicleNo ?: return@forEach
-        val lat = b.lat ?: return@forEach
-        val lng = b.lng ?: return@forEach
+        // 좌표가 없는 지역(경기 GBIS·전주시 API 등)은 버스가 있는 정류장 자리로 — 지도는 정류장 순번으로 시간에 따라 움직이는 추정으로 그림
+        val p = if (b.lat != null && b.lng != null) LatLng(b.lat!!, b.lng!!) else stopPosition(b, stops) ?: return@forEach
         seen += id
-        d.gps[id] = GpsTracker.next(d.gps[id], LatLng(lat, lng), b.ord, geom, now)
+        d.gps[id] = GpsTracker.next(d.gps[id], p, b.ord, geom, now)
     }
     d.gps.keys.retainAll(seen)
 }

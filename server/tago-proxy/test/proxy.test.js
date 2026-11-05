@@ -197,3 +197,10 @@ test("웹 통로: 노선 정류장 목록 (자료 조각에 없는 노선)", () 
   assert.ok(webRequest("/w/dg/1613000/BusRouteInfoInqireService/getRouteInfoIem", "?cityCode=35010&routeId=JUB305001089"));
   assert.equal(webRequest("/w/dg/1613000/BusRouteInfoInqireService/getRouteNoList", "?cityCode=35010&routeNo=1"), null);
 });
+
+test("웹 경기 노선 정류장 목록 (하루 저장), 서울은 없음", () => {
+  const r = busWebRequest("/w/bus/gg/stops/234000315");
+  assert.ok(r.url.includes("busrouteservice/v2/getBusRouteStationListv2?routeId=234000315"));
+  assert.equal(r.ttl, 86400);
+  assert.equal(busWebRequest("/w/bus/seoul/stops/100100118"), null);
+});

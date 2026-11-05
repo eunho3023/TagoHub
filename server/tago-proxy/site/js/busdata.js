@@ -105,7 +105,7 @@ export async function routeSums(ids) {
 export async function route(id, city) {
   const legacy = legacyId(id);
   const m = (await cached(`data/routes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
-  if (!m || m.no == null) return city && /^\d+$/.test(city) ? tagoRoute(id, city) : null;
+  if (!m || m.no == null) return ggId(id) ? ggRoute(id) : city && /^\d+$/.test(city) ? tagoRoute(id, city) : null;
   const info = Array.isArray(m.info) ? m.info : null;
   const sum = info ? { id: legacy, no: String(m.no), start: str(m.start), end: str(m.end), type: str(m.rtype), first: str(info[0]), last: str(info[1]), interval: int(info[2]), intervalSat: int(info[3]), intervalSun: int(info[4]) } : null;
   const stops = (m.stops || []).map((a) => ({ seq: int(a[0]) || 0, id: str(a[1]), name: String(a[2] ?? ""), lat: num(a[3]), lng: num(a[4]), upDown: str(a[5]) })).sort((a, b) => a.seq - b.seq);
@@ -127,6 +127,18 @@ async function tagoRoute(id, city) {
   const sum = { id, no, start: str(info.startnodenm), end: str(info.endnodenm), type: str(info.routetp), first: clockOf(info.startvehicletime), last: clockOf(info.endvehicletime),
     interval: int(info.intervaltime), intervalSat: int(info.intervalsattime), intervalSun: int(info.intervalsuntime) };
   return { id: currentId(id), no, start: sum.start, end: sum.end, city, region: null, type: sum.type, sum, stops };
+}
+
+/** 경기 노선 (경기 GBIS 정류장 목록, 서버 하루 저장): 좌표·순번, 회차점까지 상행 */
+async function ggRoute(id) {
+  const rows = findRows(JSON.parse(await getText("w/bus/gg/stops/" + ggId(id))), "stationId")
+    .map((r) => ({ seq: int(r.stationSeq) || 0, id: r.stationId != null ? "GGB" + r.stationId : null, name: String(r.stationName ?? ""), lat: num(r.y), lng: num(r.x), turn: String(r.turnYn || "").toUpperCase() === "Y", no: str(r.mobileNo) }))
+    .sort((a, b) => a.seq - b.seq);
+  if (!rows.length) return null;
+  const t = rows.findIndex((r) => r.turn);
+  const stops = rows.map((r, i) => ({ ...r, upDown: t < 0 ? null : i <= t ? "0" : "1" }));
+  const start = stops[0].name, end = t >= 0 ? stops[t].name : stops[stops.length - 1].name;
+  return { id, no: "노선", start, end, city: "31", region: "경기", type: null, sum: null, stops };
 }
 
 /** 정류장에 서는 노선 요약 (같은 자리 정류장 것까지) */

@@ -178,6 +178,20 @@ export function tagoStops(xml) {
     .filter((x) => Number.isFinite(x[0]) && Number.isFinite(x[1]) && Number.isFinite(x[2])).sort((a, b) => a[0] - b[0]).map((x) => [x[1], x[2]]);
 }
 
+/** 경기 노선 (GBIS 정류장 목록, 좌표 x 경도·y 위도) */
+async function ggRouteStops(env, routeId, fetcher) {
+  const m = /^GGB(\d{9})$/.exec(routeId);
+  if (!m || !env.DATA_GO_KR_KEY) return null;
+  try {
+    const r = await fetcher(`https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteStationListv2?routeId=${m[1]}&format=json&serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const list = j?.response?.msgBody?.busRouteStationList;
+    const rows = (Array.isArray(list) ? list : list ? [list] : []).map((s) => [+s.stationSeq, +s.y, +s.x]).filter((x) => x.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
+    return rows.length >= 2 ? rows.map((x) => [x[1], x[2]]) : null;
+  } catch (_) { return null; }
+}
+
 /** 서버 노선 조각에 없는 노선(전주·제주·교통안전공단 등): TAGO 노선 정류장 목록으로 (도시코드가 있어야 함) */
 async function tagoRouteStops(env, routeId, city, fetcher) {
   if (!/^\d{1,6}$/.test(city || "") || !env.DATA_GO_KR_KEY) return null;
@@ -198,7 +212,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const hit = await cache.match(key);
   if (hit) return hit;
 
-  const stops = (await routeStops(env, id)) || (await tagoRouteStops(env, id, url.searchParams.get("city"), fetcher));
+  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, url.searchParams.get("city"), fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops);
   let poly = null;

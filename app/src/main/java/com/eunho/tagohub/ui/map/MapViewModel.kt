@@ -2618,9 +2618,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 지도의 버스 = GPS 를 주는 API 의 버스만 (제주 BIS, TAGO).
-     * GPS 가 없는 API(전주시·경기 GBIS: 정류장 순번만)의 버스는 지도에 그리지 않는다 — 위치를 지어내지 않음.
-     * 그런 버스는 노선 패널 정류장 목록에 "몇 번째 정류장"으로만 보인다.
+     * 지도의 버스: GPS 를 주는 API(제주 BIS, TAGO, 서울)는 그 좌표, GPS 가 없는 API(경기 GBIS·전주시: 정류장 순번만)는
+     * 버스가 있는 정류장 자리에서 시작해 정류장 순번으로 시간에 따라 움직이는 추정으로 그린다 ([stopPosition], 웹과 같음).
      * GPS 버스는 노선 선 위로 붙인 위치를, 직전 위치 → 새 위치로 노선을 따라 이동 (그대로면 멈춤, 뒤로는 안 감).
      */
     private fun pushBuses() {

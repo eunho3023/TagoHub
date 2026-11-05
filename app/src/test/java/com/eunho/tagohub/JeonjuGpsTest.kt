@@ -24,3 +24,19 @@ class JeonjuGpsTest {
         assertNull(jeonjuWithGps(null, null))
     }
 }
+
+class StopPositionTest {
+    private val stops = listOf(
+        com.eunho.tagohub.data.RouteStop("A", "가", null, 1, null, 37.0, 127.0),
+        com.eunho.tagohub.data.RouteStop("B", "나", null, 2, null, 37.1, 127.1),
+        com.eunho.tagohub.data.RouteStop("A", "가", null, 9, null, 37.0, 127.0),
+    )
+
+    @Test fun byStopIdThenOrder() {
+        val b = BusLocation("B", null, 5, "경기70아1234", null, null)
+        assertEquals(com.eunho.tagohub.data.LatLng(37.1, 127.1), com.eunho.tagohub.ui.bus.stopPosition(b, stops))
+        val byOrd = BusLocation("Z", null, 2, "x", null, null)
+        assertEquals(37.1, com.eunho.tagohub.ui.bus.stopPosition(byOrd, stops)!!.lat, 0.0)
+        assertNull(com.eunho.tagohub.ui.bus.stopPosition(BusLocation("Z", null, 7, "x", null, null), stops))
+    }
+}

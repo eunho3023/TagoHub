@@ -86,3 +86,15 @@ test("노선 조각에 없는 노선은 도시코드로 TAGO 정류장을 받아
   // 도시코드가 없으면 만들지 않음
   assert.equal((await handleShape(null, new URL("https://x/w/shape/JUB305001090"), env, ctx, fetcher)).status, 404);
 });
+
+test("경기 노선은 GBIS 정류장 목록으로 모양을 만듦", async () => {
+  globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+  const env = { DATA_GO_KR_KEY: "k", ASSETS: { fetch: async () => ({ ok: true, json: async () => ({}) }) } };
+  const fetcher = async (u) => {
+    if (u.includes("6410000")) return { ok: true, json: async () => ({ response: { msgBody: { busRouteStationList: [
+      { stationSeq: 2, x: 127.0, y: 37.01 }, { stationSeq: 1, x: 127.0, y: 37.0 }] } } }) };
+    return { ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode([[37.0, 127.0], [37.005, 127.001], [37.01, 127.0]], 6) }] }) };
+  };
+  const r = await handleShape(null, new URL("https://x/w/shape/GGB234000315"), env, { waitUntil: () => {} }, fetcher);
+  assert.equal(r.status, 200);
+});
