@@ -100,15 +100,33 @@ export async function routeSums(ids) {
   return out;
 }
 
-/** 노선 전체 (정류장 순서·좌표·시간표). 파일의 예전 id 로 찾고 지금 id 로 돌려줌 */
-export async function route(id) {
+/** 노선 전체 (정류장 순서·좌표·시간표). 파일의 예전 id 로 찾고 지금 id 로 돌려줌.
+ * 파일에 없는 노선(전주·제주·교통안전공단 등)은 [city](TAGO 도시코드)로 TAGO 노선 정류장 목록을 물음 */
+export async function route(id, city) {
   const legacy = legacyId(id);
-  const m = (await cached(`data/routes/${bucket(legacy)}.json`))[legacy];
-  if (!m || m.no == null) return null;
+  const m = (await cached(`data/routes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
+  if (!m || m.no == null) return city && /^\d+$/.test(city) ? tagoRoute(id, city) : null;
   const info = Array.isArray(m.info) ? m.info : null;
   const sum = info ? { id: legacy, no: String(m.no), start: str(m.start), end: str(m.end), type: str(m.rtype), first: str(info[0]), last: str(info[1]), interval: int(info[2]), intervalSat: int(info[3]), intervalSun: int(info[4]) } : null;
   const stops = (m.stops || []).map((a) => ({ seq: int(a[0]) || 0, id: str(a[1]), name: String(a[2] ?? ""), lat: num(a[3]), lng: num(a[4]), upDown: str(a[5]) })).sort((a, b) => a.seq - b.seq);
   return { id: currentId(legacy), no: String(m.no), start: str(m.start), end: str(m.end), city: String(m.city ?? ""), region: str(m.region), type: str(m.rtype), sum, stops };
+}
+
+/** TAGO 노선 정류장 목록·기본 정보로 노선 만들기 (서버 웹 통로, 하루 저장) */
+async function tagoRoute(id, city) {
+  const q = { cityCode: city, routeId: currentId(id) };
+  const [stopsXml, info] = await Promise.all([
+    getText("w/dg/1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList", q),
+    getText("w/dg/1613000/BusRouteInfoInqireService/getRouteInfoIem", q).then(xmlRows).then((r) => r[0] || {}).catch(() => ({})),
+  ]);
+  const stops = xmlRows(stopsXml).map((r) => ({ seq: int(r.nodeord) || 0, id: str(r.nodeid), name: r.nodenm || "", lat: num(r.gpslati), lng: num(r.gpslong), upDown: str(r.updowncd), no: str(r.nodeno) }))
+    .sort((a, b) => a.seq - b.seq);
+  if (!stops.length) return null;
+  const clockOf = (t) => (t && /^\d{3,4}$/.test(t) ? t.padStart(4, "0").replace(/(\d\d)(\d\d)/, "$1:$2") : null);
+  const no = info.routeno ? String(info.routeno) : "노선";
+  const sum = { id, no, start: str(info.startnodenm), end: str(info.endnodenm), type: str(info.routetp), first: clockOf(info.startvehicletime), last: clockOf(info.endvehicletime),
+    interval: int(info.intervaltime), intervalSat: int(info.intervalsattime), intervalSun: int(info.intervalsuntime) };
+  return { id: currentId(id), no, start: sum.start, end: sum.end, city, region: null, type: sum.type, sum, stops };
 }
 
 /** 정류장에 서는 노선 요약 (같은 자리 정류장 것까지) */
@@ -229,7 +247,7 @@ async function targets(stop) {
 
 async function tagoArrivals(city, node) {
   const rows = xmlRows(await getText("w/dg/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList", { cityCode: city, nodeId: currentId(node) }));
-  return rows.map((r) => ({ routeId: r.routeid || "", routeNo: r.routeno || "", routeType: str(r.routetp), vehicleType: str(r.vehicletp), prevStops: int(r.arrprevstationcnt), arrSeconds: int(r.arrtime) }));
+  return rows.map((r) => ({ routeId: r.routeid || "", routeNo: r.routeno || "", routeType: str(r.routetp), vehicleType: str(r.vehicletp), prevStops: int(r.arrprevstationcnt), arrSeconds: int(r.arrtime), city }));
 }
 
 /** 정류장 실시간 도착: {state: "ok"|"unsupported"|"failed", list, at} */

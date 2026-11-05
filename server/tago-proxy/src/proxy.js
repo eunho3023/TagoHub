@@ -120,6 +120,9 @@ export function hostTtl(host, path) {
 export const WEB_OPS = {
   "1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList": ["cityCode", "nodeId"],
   "1613000/BusLcInfoInqireService/getRouteAcctoBusLcList": ["cityCode", "routeId"],
+  // 노선 정류장·기본 정보 (서버 자료 조각에 없는 노선: 전주·제주·교통안전공단 등, 하루 저장)
+  "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": ["cityCode", "routeId"],
+  "1613000/BusRouteInfoInqireService/getRouteInfoIem": ["cityCode", "routeId"],
   // 지하철: 역 찾기, 역 시간표 (하루 저장)
   "1613000/SubwayInfo/GetKwrdFndSubwaySttnList": ["subwayStationName"],
   "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": ["subwayStationId", "dailyTypeCode", "upDownTypeCode"],
@@ -139,7 +142,7 @@ const WEB_VALUE = {
 };
 /** 한 번에 받는 개수 (지하철 역 시간표는 하루치가 수백 개라 한 쪽에) */
 const WEB_ROWS = {
-  "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300",
+  "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": "1000", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300",
   "1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo": "300", "1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo": "300",
 };
 
