@@ -61,3 +61,27 @@ object Recent {
     fun clearStops() { stops = emptyList(); storeSet("recentStops", "") }
     fun clearStations() { stations = emptyList(); storeSet("recentStations", "") }
 }
+
+/** 즐겨찾기 버스 정류장·지하철역 (이 기기에만, 넣은 순서대로) */
+object Favorites {
+    private const val MAX = 30
+    var stops by mutableStateOf(load("favStops").mapNotNull(Recent::stopOf))
+        private set
+    var stations by mutableStateOf(load("favStations").mapNotNull(Recent::stationOf))
+        private set
+
+    private fun load(key: String) = storeGet(key).orEmpty().split('\n').filter { it.isNotBlank() }
+
+    fun has(s: WebStop) = stops.any { it.id == s.id }
+    fun has(s: SubwayStationW) = stations.any { it.id == s.id }
+
+    fun toggle(s: WebStop) {
+        stops = if (has(s)) stops.filterNot { it.id == s.id } else (stops + s.copy(routes = emptyList())).takeLast(MAX)
+        storeSet("favStops", stops.joinToString("\n", transform = Recent::encodeStop))
+    }
+
+    fun toggle(s: SubwayStationW) {
+        stations = if (has(s)) stations.filterNot { it.id == s.id } else (stations + s).takeLast(MAX)
+        storeSet("favStations", stations.joinToString("\n", transform = Recent::encodeStation))
+    }
+}
