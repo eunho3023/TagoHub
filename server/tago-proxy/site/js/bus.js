@@ -97,7 +97,11 @@ export function stopScreen(root, p) {
   const tickTimes = () => {
     if (!alive) return;
     const el = elapsedNow(), day = isoDay();
-    rows.forEach((r, i) => { const sp = root.querySelector(`[data-r="${i}"]`); if (sp) sp.innerHTML = rightOf(r, el, day); });
+    rows.forEach((r, i) => {
+      const sp = root.querySelector(`[data-r="${i}"]`);
+      const html = rightOf(r, el, day);
+      if (sp && sp.dataset.h !== html) { sp.innerHTML = html; sp.dataset.h = html; }
+    });
   };
   const draw = () => {
     if (!alive || !stop) return;
