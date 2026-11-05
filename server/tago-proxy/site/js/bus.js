@@ -61,7 +61,7 @@ function mergeRows(sums, arrivals) {
   const rows = sums.map((s) => ({ id: s.id, no: s.no, type: s.type, sum: s, arr: (byId.get(s.id) || arrivals.filter((a) => !a.routeId && a.routeNo === s.no)) }));
   const knownIds = new Set(sums.map((s) => s.id));
   for (const [k, l] of byId) if (!knownIds.has(k) && !rows.some((r) => r.arr.some((a) => a.routeId === k))) rows.push({ id: k, no: l[0].routeNo, type: l[0].routeType, sum: null, arr: l });
-  rows.forEach((r) => { r.city = r.arr.find((a) => a.city)?.city || null; });
+  rows.forEach((r) => { r.city = r.arr.find((a) => a.city)?.city || r.sum?.city || null; });
   rows.forEach((r) => r.arr.sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9)));
   return rows.sort((x, y) => (x.arr.length ? 0 : 1) - (y.arr.length ? 0 : 1) || (x.arr[0]?.arrSeconds ?? 1e9) - (y.arr[0]?.arrSeconds ?? 1e9) || naturalCompare(x.no, y.no));
 }
