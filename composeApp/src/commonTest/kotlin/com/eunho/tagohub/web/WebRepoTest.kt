@@ -66,12 +66,16 @@ class WebRepoTest {
         assertEquals(listOf("35010" to "JJB306000038", "35010" to "TSB306000038"), r.targets(stop))
     }
 
-    @Test fun otherSourcesAreUnsupportedAndErrorsReported() = runTest {
+    @Test fun seoulStopsAskSeoulApiAndErrorsReported() = runTest {
         val stops = WebRepo.parseStops(names)
-        val r = repo(emptyMap())
-        assertEquals(Arrivals.Unsupported, r.arrivals(stops[2], 0L))
-        assertTrue(seen.none { "/w/" in it })   // 실시간은 묻지 않음 (같은 자리 정류장 찾기로 칸 자료만 받음)
+        val seoul = """{"msgHeader":{"headerCd":"0"},"msgBody":{"itemList":[{"busRouteId":"100100118","busRouteAbrv":"472","routeType":"3","arrmsg1":"5분후[3번째 전]","arrmsg2":"운행종료"}]}}"""
+        val r = repo(mapOf("w/bus/seoul/arrival/05123" to seoul))
+        val a = r.arrivals(stops[2], 0L) as Arrivals.Ok
+        assertEquals(listOf("472"), a.list.map { it.routeNo })
+        assertEquals(listOf("https://p.example.workers.dev/w/bus/seoul/arrival/05123"), seen.filter { "/w/" in it })   // TAGO 는 묻지 않음
         assertTrue(r.arrivals(stops[1], 0L) is Arrivals.Failed)
+        // 번호 없는 서울 정류장은 물을 곳이 없음
+        assertEquals(Arrivals.Unsupported, r.arrivals(stops[2].copy(no = null), 0L))
     }
 }
 

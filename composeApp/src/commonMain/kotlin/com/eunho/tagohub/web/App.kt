@@ -314,7 +314,7 @@ internal fun StopPane(repo: WebRepo, stop: WebStop, onBack: () -> Unit, onLocate
     when {
         sums == null && s == null -> Note("불러오는 중...")
         s == null -> Note("실시간 도착을 받는 중...")
-        s == Arrivals.Unsupported -> Note("이 지역(서울·경기)의 실시간 도착은 웹·PC 버전에서 아직 볼 수 없어요. 폰 앱에서 볼 수 있어요.")
+        s == Arrivals.Unsupported -> Note("이 정류장의 실시간 도착은 웹·PC 버전에서 볼 수 없어요. 폰 앱에서 볼 수 있어요.")
         s is Arrivals.Failed -> Note("실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.")
         rows.isEmpty() -> Note("이 정류장에 서는 버스 정보가 없어요")
         arrivals.isEmpty() -> Note("지금 도착 예정인 버스가 없어요")
