@@ -194,6 +194,18 @@ internal fun RoutePane(repo: WebRepo, routeId: String, fromStopId: String?, tile
                         color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     )
                 }
+                // 하차 알림: 이 정류장에 다가가면 소리·진동으로 알려 줌 (웹 버전, 위치를 받을 수 있을 때)
+                val la = s.lat
+                val lo = s.lng
+                if (locationSupported && la != null && lo != null) {
+                    val on = AlightAlert.isTarget(s.name, la, lo)
+                    Text(
+                        if (on) "알림 끄기" else "내릴 곳",
+                        Modifier.padding(start = 8.dp).clickable { if (on) AlightAlert.stop() else AlightAlert.start(s.name, la, lo) }
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        color = if (on) SoonColor else MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
+                    )
+                }
             }
         }
     }

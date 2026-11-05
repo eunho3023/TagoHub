@@ -101,6 +101,7 @@ fun App(repo: WebRepo, font: FontFamily? = null, http: io.ktor.client.HttpClient
                     val signals = remember { SignalsRepo(repo.server, repo.client) }
                     val roadState = remember { RoadState() }
                     val chips: @Composable () -> Unit = { ModeChips(mode) { mode = it } }
+                    AlightBanner()
                     when (val top = stack.last()) {
                         Screen.Search -> when (mode) {
                             Mode.Bus -> SearchPane(repo, search, chips, onMap = { go(Screen.Map()) }, onLocate = { go(Screen.Map(it)) }) { go(Screen.Stop(it)) }
