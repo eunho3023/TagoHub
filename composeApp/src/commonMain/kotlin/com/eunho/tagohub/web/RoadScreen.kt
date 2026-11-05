@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 
 internal class RoadState {
     var tab by mutableStateOf(0)
@@ -54,10 +55,15 @@ internal fun RoadPane(repo: RoadRepo, st: RoadState, tiles: TileLoader, modeChip
     })
     modeChips()
     LaunchedEffect(st.tab, st.reload) {
+        // 새로 고침·탭 바꿈으로 취소된 것은 실패로 치지 않음 (CancellationException 은 다시 던짐)
+        suspend fun <T> load(tab: Int, block: suspend () -> List<T>): List<T> {
+            st.failed -= tab
+            return try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { st.failed += tab; emptyList() }
+        }
         when (st.tab) {
-            0 -> if (st.incidents == null) st.incidents = runCatching { repo.incidents() }.getOrElse { st.failed += 0; emptyList() }
-            1 -> if (st.jams == null) st.jams = runCatching { repo.jams() }.getOrElse { st.failed += 1; emptyList() }
-            else -> if (st.gas == null) st.gas = runCatching { repo.gas() }.getOrElse { st.failed += 2; emptyList() }
+            0 -> if (st.incidents == null) st.incidents = load(0) { repo.incidents() }
+            1 -> if (st.jams == null) st.jams = load(1) { repo.jams() }
+            else -> if (st.gas == null) st.gas = load(2) { repo.gas() }
         }
     }
     Row(
