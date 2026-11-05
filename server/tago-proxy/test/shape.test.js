@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bucket, build, chunks, decode, encode, handleShape, removeDetours, signature } from "../src/shape.js";
+import { bucket, build, chunks, decode, encode, handleShape, removeDetours, signature, tagoStops } from "../src/shape.js";
 
 test("노선 묶음 번호는 앱·자료 만들기와 같음", () => {
   assert.equal(bucket("BSB5200111000"), 992);
@@ -65,4 +65,24 @@ test("만든 모양은 저장하고 다음엔 저장한 것을 줌", async () =>
   assert.equal(r2.status, 200);
   assert.equal(calls, 1);
   assert.equal((await handleShape(null, new URL("https://x/w/shape/bad%20id"), env, ctx, osrm)).status, 404);
+});
+
+test("노선 조각에 없는 노선은 도시코드로 TAGO 정류장을 받아 모양을 만듦", async () => {
+  globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+  const xml = "<response><body><items><item><nodeord>2</nodeord><gpslati>36.01</gpslati><gpslong>127.0</gpslong></item>" +
+    "<item><nodeord>1</nodeord><gpslati>36.0</gpslati><gpslong>127.0</gpslong></item></items></body></response>";
+  assert.deepEqual(tagoStops(xml), [[36.0, 127.0], [36.01, 127.0]]);
+  const env = { DATA_GO_KR_KEY: "k", ASSETS: { fetch: async () => ({ ok: true, json: async () => ({}) }) } };
+  const ctx = { waitUntil: () => {} };
+  const asked = [];
+  const fetcher = async (u) => {
+    asked.push(u);
+    if (u.includes("apis.data.go.kr")) return { ok: true, text: async () => xml };
+    return { ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode([[36.0, 127.0], [36.005, 127.001], [36.01, 127.0]], 6) }] }) };
+  };
+  const r = await handleShape(null, new URL("https://x/w/shape/JUB305001089?city=35010"), env, ctx, fetcher);
+  assert.equal(r.status, 200);
+  assert.ok(asked[0].includes("cityCode=35010&routeId=JUB305001089"));
+  // 도시코드가 없으면 만들지 않음
+  assert.equal((await handleShape(null, new URL("https://x/w/shape/JUB305001090"), env, ctx, fetcher)).status, 404);
 });

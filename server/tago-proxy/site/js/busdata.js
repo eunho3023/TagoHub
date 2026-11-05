@@ -137,10 +137,10 @@ export async function stopRoutes(stop) {
   return Object.values(sums).map((s) => ({ ...s, id: currentId(s.id) })).filter((s) => !seen.has(s.id) && seen.add(s.id));
 }
 
-/** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null */
-export async function shape(routeId) {
+/** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */
+export async function shape(routeId, city) {
   try {
-    const poly = (await getJson("w/shape/" + legacyId(routeId))).poly;
+    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city } : null)).poly;
     const pts = decodePolyline(String(poly), 5);
     return pts.length >= 2 ? pts : null;
   } catch (e) { return null; }

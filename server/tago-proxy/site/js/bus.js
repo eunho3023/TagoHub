@@ -205,7 +205,7 @@ export function routeScreen(root, p, ctx) {
       `<div class="map-slot"></div><div id="status" class="status"></div><div id="stops" class="list"></div>`;
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
-    B.shape(r.id).then((s) => { road = s; drawMap(); });
+    B.shape(r.id, r.city).then((s) => { road = s; drawMap(); });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
     const tick = async () => { pos = await B.positions(r); if (alive) { drawList(); drawMap(); } };
