@@ -241,7 +241,10 @@ internal class SubwaySearchState {
 
 /** 지하철: 역 이름으로 찾기 (국토교통부) → 고르면 역 시간표 */
 @Composable
-internal fun SubwayPane(repo: TransitRepo, st: SubwaySearchState, modeChips: @Composable () -> Unit, onMap: () -> Unit, onPick: (SubwayStationW) -> Unit) {
+internal fun SubwayPane(
+    repo: TransitRepo, st: SubwaySearchState, modeChips: @Composable () -> Unit, onMap: () -> Unit,
+    onRouteMap: (() -> Unit)? = null, onPick: (SubwayStationW) -> Unit,
+) {
     Header("TagoHub", "지하철 시간표", action = "지도", onAction = onMap)
     modeChips()
     LaunchedEffect(st.query) {
@@ -260,6 +263,13 @@ internal fun SubwayPane(repo: TransitRepo, st: SubwaySearchState, modeChips: @Co
             st.query, { st.query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             placeholder = { Text("지하철역 이름") }, singleLine = true, shape = MaterialTheme.shapes.medium,
             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
+        )
+    }
+    if (onRouteMap != null) {
+        Text(
+            "서울 지하철 노선도 보기", Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).clickable { onRouteMap() }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
         )
     }
     st.message?.let { Note(it) }
@@ -281,7 +291,7 @@ internal fun SubwayPane(repo: TransitRepo, st: SubwaySearchState, modeChips: @Co
  * 시간표는 서버가 하루 저장해 둬서 두 번째부터는 바로.
  */
 @Composable
-internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, seoul: SeoulRealtime? = null, onBack: () -> Unit) {
+internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, seoul: SeoulRealtime? = null, extras: SubwayExtrasRepo? = null, onBack: () -> Unit) {
     val iso = remember { todayIso() }
     var day by remember { mutableStateOf(TransitRepo.dayCode(iso)) }
     var up by remember(station.id, day) { mutableStateOf<List<SubwayDep>?>(null) }
@@ -306,6 +316,24 @@ internal fun SubwayStationPane(repo: TransitRepo, station: SubwayStationW, seoul
         }
     }
     Header(station.name, station.line, onBack)
+    // 시간표 · 혼잡도 · 시설
+    var tab by remember(station.id) { mutableStateOf(0) }
+    if (extras != null) {
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((i, label) in listOf("시간표", "혼잡도", "시설").withIndex()) {
+                val on = tab == i
+                Text(
+                    label, Modifier.background(if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
+                        .clickable { tab = i }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (tab == 1) return CongestionView(extras, station)
+        if (tab == 2) return FacilityView(extras, station)
+    }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             for ((code, label) in listOf("01" to "평일", "02" to "토요일", "03" to "일·공휴일")) {
