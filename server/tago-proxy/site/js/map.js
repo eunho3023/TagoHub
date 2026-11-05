@@ -27,7 +27,17 @@ function dotEl(d) {
     t.style.cssText = `left:${d.r + 6}px;background:${d.color}`;
     wrap.appendChild(t);
   }
-  wrap.onclick = (e) => { e.stopPropagation(); if (dotCb) dotCb(d); };
+  // 카카오 지도는 마우스 누름을 지도 끌기로 가져가서, 점을 누른 것은 직접 받음 (끌다가 놓은 것은 무시)
+  let down = null;
+  wrap.addEventListener("pointerdown", (e) => { down = [e.clientX, e.clientY]; e.stopPropagation(); });
+  wrap.addEventListener("pointerup", (e) => {
+    if (!down) return;
+    const moved = Math.abs(e.clientX - down[0]) + Math.abs(e.clientY - down[1]);
+    down = null;
+    e.stopPropagation();
+    if (moved < 8 && dotCb) dotCb(d);
+  });
+  wrap.addEventListener("click", (e) => e.stopPropagation());
   return wrap;
 }
 
@@ -64,7 +74,7 @@ async function kakaoImpl() {
     },
     dots(ds) {
       dotObjs.forEach((o) => o.setMap(null));
-      dotObjs = ds.map((d) => new K.CustomOverlay({ map, position: new K.LatLng(d.lat, d.lng), content: dotEl(d), xAnchor: 0.5, yAnchor: 0.5, zIndex: d.label ? 3 : 2 }));
+      dotObjs = ds.map((d) => new K.CustomOverlay({ map, position: new K.LatLng(d.lat, d.lng), content: dotEl(d), xAnchor: 0.5, yAnchor: 0.5, zIndex: d.label ? 3 : 2, clickable: true }));
     },
     bounds() { const b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast(); return { s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng() }; },
     zoom() { return 20 - map.getLevel(); },
