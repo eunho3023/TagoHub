@@ -28,6 +28,10 @@ class AirportInfoTest {
         assertEquals("T2 250", r[0].gate)
         assertEquals("뉴욕", r[0].other)
         assertEquals(true, r[1].codeshare)
+        val shown = AirportInfoRepo.shown(r, departure = true)
+        assertEquals(listOf("KE081"), shown.map { it.flight })
+        assertEquals(0, AirportInfoRepo.firstFromNow(shown, 9 * 60))
+        assertEquals(0, AirportInfoRepo.firstFromNow(shown, 23 * 60))   // 지난 것뿐이면 마지막
     }
 
     @Test fun parsesStatic() {
