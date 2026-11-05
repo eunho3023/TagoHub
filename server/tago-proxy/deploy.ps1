@@ -120,6 +120,12 @@ if (Test-Path (Join-Path $dist 'index.html')) {
     Write-Host '  웹 버전을 만들지 못해 건너뜀 (서버는 그대로 올림)'
 }
 
+# HTML 웹 버전 (바로 열리는 가벼운 화면, site/): 다 만들 때까지 /lite/ 에서
+$lite = Join-Path $pub 'lite'
+if (Test-Path $lite) { Remove-Item $lite -Recurse -Force }
+Copy-Item (Join-Path $PSScriptRoot 'site') $lite -Recurse -Force
+Write-Host '  HTML 웹 버전 넣음 (/lite/)'
+
 Write-Host '1/3 서버 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
 Write-Host $out
