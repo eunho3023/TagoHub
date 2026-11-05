@@ -61,6 +61,7 @@ function mergeRows(sums, arrivals) {
   const rows = sums.map((s) => ({ id: s.id, no: s.no, type: s.type, sum: s, arr: (byId.get(s.id) || arrivals.filter((a) => !a.routeId && a.routeNo === s.no)) }));
   const knownIds = new Set(sums.map((s) => s.id));
   for (const [k, l] of byId) if (!knownIds.has(k) && !rows.some((r) => r.arr.some((a) => a.routeId === k))) rows.push({ id: k, no: l[0].routeNo, type: l[0].routeType, sum: null, arr: l });
+  rows.forEach((r) => { r.city = r.arr.find((a) => a.city)?.city || null; });
   rows.forEach((r) => r.arr.sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9)));
   return rows.sort((x, y) => (x.arr.length ? 0 : 1) - (y.arr.length ? 0 : 1) || (x.arr[0]?.arrSeconds ?? 1e9) - (y.arr[0]?.arrSeconds ?? 1e9) || naturalCompare(x.no, y.no));
 }
@@ -117,7 +118,7 @@ export function stopScreen(root, p) {
       action: isWide() ? null : { label: "위치", run: () => go("map", stop.id, { lat: stop.lat, lng: stop.lng }) },
     }) + (status ? note(status) : "") + `<div class="list">${rows.map((r, i) => {
       const ends = r.sum ? [r.sum.start, r.sum.end].filter(Boolean).join(" → ") : "";
-      return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id }))}>
+      return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null) }))}>
         <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends || r.type || "")}</small></span>
         <span class="right" data-r="${i}"></span></button>`;
     }).join("")}</div>`;
@@ -181,14 +182,19 @@ export function routeScreen(root, p, ctx) {
       return turn + `<div class="rstop" data-i="${i}">
         <button class="dotbtn" ${act(() => { if (st.lat != null) { focusSeq = st.seq; MapView.view(st.lat, st.lng, 17); drawMap(); } })}>
           <span class="rdot ${buses.length ? "bus" : ""}" style="--c:${color}"></span></button>
-        <button class="grow rname ${here ? "here" : ""}" ${act(async () => { if (st.id && st.lat != null) { const s2 = await B.stopAt(st.id, st.lat, st.lng); if (s2) { remember(s2); go("stop", s2.id, stopParams(s2)); } } })}>${esc(st.name)}</button>
+        <button class="grow rname ${here ? "here" : ""}" ${act(async () => {
+          if (!st.id || st.lat == null) return;
+          // 자료 조각에서 찾고, 없으면 노선 자료로 정류장을 만들어 엶 (전주 등)
+          const s2 = (await B.stopAt(st.id, st.lat, st.lng).catch(() => null)) || { id: st.id, name: st.name, lat: st.lat, lng: st.lng, no: st.no || null, city: r.city, routes: [] };
+          remember(s2); go("stop", s2.id, stopParams(s2));
+        })}>${esc(st.name)}</button>
         ${buses.length ? `<span class="plate" style="background:${color}">${esc(buses.map((b) => plateTail(b.vehicleNo) || "버스").join(" "))}</span>` : ""}
         ${Alight.supported && st.lat != null ? `<button class="mini ${alightOn ? "on" : ""}" ${act(() => { alightOn ? Alight.stop() : Alight.start(st.name, st.lat, st.lng); drawList(); })}>${alightOn ? "알림 끄기" : "내릴 곳"}</button>` : ""}
       </div>`;
     }).join("");
   };
   (async () => {
-    try { r = await B.route(p.id); } catch (e) { r = null; }
+    try { r = await B.route(p.id, p.city); } catch (e) { r = null; }
     if (!alive) return;
     if (!r) { root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요"); return; }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region, r.type].filter(Boolean).join(" · "), { back: true }) +

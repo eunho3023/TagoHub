@@ -189,3 +189,11 @@ test("웹 인천공항 운항: 날짜·쪽만", () => {
   assert.equal(icnWebRequest("/w/icn/dep", "?date=20261105&pageNo=9"), null);
   assert.equal(icnWebRequest("/w/icn/cargo", "?date=20261105"), null);
 });
+
+test("웹 통로: 노선 정류장 목록 (자료 조각에 없는 노선)", () => {
+  const r = webRequest("/w/dg/1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList", "?cityCode=35010&routeId=JUB305001089");
+  assert.equal(r.path, "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList");
+  assert.ok(r.search.includes("numOfRows=1000"));
+  assert.ok(webRequest("/w/dg/1613000/BusRouteInfoInqireService/getRouteInfoIem", "?cityCode=35010&routeId=JUB305001089"));
+  assert.equal(webRequest("/w/dg/1613000/BusRouteInfoInqireService/getRouteNoList", "?cityCode=35010&routeNo=1"), null);
+});
