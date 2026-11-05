@@ -137,7 +137,7 @@ const MOBILE_UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Ch
  * 웹 버전 JSON 중계 공통: 저장해 둔 것이 있으면 바로, 없으면 주소마다 분당 제한을 지나 [upstream] 에 묻고
  * [ok] 를 통과한 응답만 [ttl] 초 저장. 키가 든 주소는 응답·오류에 내보내지 않음
  */
-async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraHeaders = {}) {
+async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraHeaders = {}, allowXml = false) {
   const cache = caches.default;
   const key = new Request(cacheUrl);
   const hit = await cache.match(key);
@@ -160,7 +160,8 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
   }
-  const json = /^[[{]/.test(body.trimStart());
+  // allowXml: XML 로만 답하는 기관(전주시 버스)은 XML 도 그대로 저장·전달
+  const json = /^[[{]/.test(body.trimStart()) || (allowXml && body.trimStart().startsWith("<"));
   if (!res.ok || !json || !ok(body)) {
     return new Response(json ? body : "{\"code\":\"ERROR\",\"message\":\"upstream " + res.status + "\"}", { status: 502, headers });
   }
@@ -210,9 +211,10 @@ async function busWeb(request, url, env, ctx) {
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   const raw = env.DATA_GO_KR_KEY;
   const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b)
-    : r.area === "jeonju" ? (b) => /<list>/.test(b) && !/<code>(?!000)/.test(b)
+    : r.area === "jeonju" ? (b) => /<code[^>]*>000</.test(b)
     : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
-  return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, raw ? r.url.replace("KEY", encodeKey(raw)) : null, r.ttl, ok);
+  return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, raw ? r.url.replace("KEY", encodeKey(raw)) : null, r.ttl, ok,
+    r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju");
 }
 
 /** 웹 버전 인천공항 운항 (proxy.js icnWebRequest). 정상(resultCode 00)만 1분 저장 */
