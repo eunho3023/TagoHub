@@ -2,6 +2,8 @@
 // 폰 앱 RoadShapeClient·Shapes(OSRM 구간 요청, 정류장 사이 블록을 한 바퀴 도는 구간은 직선)와 같은 방법.
 // GET /w/shape/<노선 id> → {"poly": "<인코딩 폴리라인, 정밀도 5>"} (못 만들면 404)
 
+import { encodeKey } from "./proxy.js";
+
 export const OSRM = "https://router.project-osrm.org/route/v1/driving/";
 export const CHUNK = 25;
 export const MAX_STOPS = 400;
@@ -169,6 +171,25 @@ async function routeStops(env, routeId) {
   return route.stops.filter((s) => s[3] != null && s[4] != null).map((s) => [s[3], s[4]]);
 }
 
+/** TAGO 노선 정류장 목록(XML) → 정류장 좌표 (순번 차례) */
+export function tagoStops(xml) {
+  const tag = (it, t) => { const m = new RegExp(`<${t}>([^<]*)</${t}>`).exec(it); return m ? m[1].trim() : null; };
+  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => [parseInt(tag(m[1], "nodeord"), 10), parseFloat(tag(m[1], "gpslati")), parseFloat(tag(m[1], "gpslong"))])
+    .filter((x) => Number.isFinite(x[0]) && Number.isFinite(x[1]) && Number.isFinite(x[2])).sort((a, b) => a[0] - b[0]).map((x) => [x[1], x[2]]);
+}
+
+/** 서버 노선 조각에 없는 노선(전주·제주·교통안전공단 등): TAGO 노선 정류장 목록으로 (도시코드가 있어야 함) */
+async function tagoRouteStops(env, routeId, city, fetcher) {
+  if (!/^\d{1,6}$/.test(city || "") || !env.DATA_GO_KR_KEY) return null;
+  const q = `serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}&cityCode=${city}&routeId=${encodeURIComponent(routeId)}&numOfRows=1000&pageNo=1&_type=xml`;
+  try {
+    const r = await fetcher(`https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList?${q}`);
+    if (!r.ok) return null;
+    const stops = tagoStops(await r.text());
+    return stops.length >= 2 ? stops : null;
+  } catch (_) { return null; }
+}
+
 export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const id = decodeURIComponent(url.pathname.slice("/w/shape/".length));
   if (!/^[A-Za-z0-9_]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
@@ -177,7 +198,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const hit = await cache.match(key);
   if (hit) return hit;
 
-  const stops = await routeStops(env, id);
+  const stops = (await routeStops(env, id)) || (await tagoRouteStops(env, id, url.searchParams.get("city"), fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops);
   let poly = null;
