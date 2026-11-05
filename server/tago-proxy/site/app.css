@@ -158,3 +158,30 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .tbl { width: 100%; border-collapse: collapse; background: var(--surface); }
 .tbl td, .tbl th { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; }
 .tbl th { color: var(--muted); font-weight: 500; font-size: 13px; background: var(--sv); }
+
+/* 시간표·칸 고르기 */
+.searchtop { background: var(--surface); padding-bottom: 6px; border-bottom: 1px solid var(--line); flex: none; }
+.toolrow { display: flex; align-items: center; gap: 8px; padding: 6px 16px; background: var(--surface); justify-content: space-between; }
+.segs { display: flex; gap: 6px; padding: 6px 16px; background: var(--surface); }
+.toolrow .segs { padding: 0; }
+.segs button { padding: 5px 12px; border-radius: 8px; color: var(--muted); font-size: 14px; }
+.segs button.on { background: var(--pcont); color: var(--primary); font-weight: 700; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.trip { font-size: 20px; font-weight: 800; }
+.sm { font-size: 15px; font-weight: 600; }
+.red { color: var(--soon) !important; }
+small.blue { color: var(--primary); }
+.row.gone { opacity: .55; }
+.clock { width: 64px; flex: none; font-size: 17px; }
+.eta-m { font-size: 17px; font-weight: 900; }
+.eta-m.soon { color: var(--soon); }
+.shead.live { background: var(--pcont); color: var(--primary); font-weight: 700; }
+.flexrow { display: flex; align-items: center; gap: 8px; }
+.cbars { display: flex; align-items: flex-end; gap: 1px; height: 56px; margin-top: 8px; }
+.cbars i { flex: 1; display: block; }
+.cticks { display: flex; justify-content: space-between; }
+.mapimg { flex: 1; position: relative; overflow: hidden; background: #fff; touch-action: none; cursor: grab; min-height: 300px; }
+.mapimg img { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; }
+.mapimg .hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); color: #fff; font-size: 13px; padding: 4px 10px; border-radius: 8px; }
+.lamp { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.row.picked { background: var(--pcont); }

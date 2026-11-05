@@ -8,6 +8,9 @@ import * as home from "./home.js";
 import * as bus from "./bus.js";
 import * as more from "./more.js";
 import { Alight } from "./alight.js";
+import * as subway from "./subway.js";
+import * as air from "./air.js";
+import "./modes.js";
 
 const TABS = [
   { id: "", label: "홈", icon: "home" },
@@ -27,6 +30,9 @@ const SCREENS = {
   notices: more.notices,
   stop: bus.stopScreen,
   route: bus.routeScreen,
+  subway: subway.stationScreen,
+  subwaymap: subway.subwayMap,
+  airport: air.airportScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */
 export function addScreen(name, fn) { SCREENS[name] = fn; }

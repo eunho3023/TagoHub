@@ -78,53 +78,19 @@ if ($py) {
     Write-Host '  파이썬이 없어서 자료 조각은 건너뜀 (웹·PC 버전의 정류장 찾기만 빠짐)'
 }
 
-Write-Host '준비: 웹 버전(화면) 만드는 중...'
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+Write-Host '준비: 웹 버전(화면) 넣는 중...'
+# 웹 버전은 HTML·자바스크립트 (site/, 빌드 없이 그대로): 처음 열 때 바로 뜨게 (예전 Compose 웹은 엔진·글꼴 약 5MB 를 받아야 했음)
 $pub = Join-Path $PSScriptRoot 'public'
-if (-not $env:JAVA_HOME) {
-    $jbr = 'C:\Program Files\Android\Android Studio\jbr'
-    if (Test-Path $jbr) { $env:JAVA_HOME = $jbr }
-}
-& (Join-Path $root 'gradlew.bat') -p $root -q ':composeApp:wasmJsBrowserDistribution'
-$dist = Join-Path $root 'composeApp\build\dist\wasmJs\productionExecutable'
-if (Test-Path (Join-Path $dist 'index.html')) {
-    # 예전 빌드 파일 지우고 새로 (자료 조각 data, 글꼴 fonts, _headers 는 그대로)
-    Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
-    if (Test-Path (Join-Path $pub 'composeResources')) { Remove-Item (Join-Path $pub 'composeResources') -Recurse -Force }
-    Get-ChildItem $dist | Where-Object { $_.Name -notlike '*.map' } | Copy-Item -Destination $pub -Recurse -Force
-    # 한글 글꼴 (웹 화면은 브라우저 글꼴을 못 씀): 원본 10MB 에서 필요한 글자만 남긴 작은 파일 (pipeline/build_web_font.py)
-    $font = Join-Path $pub 'fonts\NotoSansKR-sub.ttf'
-    $oldFont = Join-Path $pub 'fonts\NotoSansKR.ttf'
-    if (Test-Path $oldFont) { Remove-Item $oldFont -Force }
-    if ($py) {
-        & $py -c "import fontTools" 2>$null
-        if ($LASTEXITCODE -ne 0) { & $py -m pip install --user -q fonttools }
-        & $py (Join-Path $root 'pipeline\build_web_font.py') --data (Join-Path $pub 'data') --out $font
-    }
-    if (-not (Test-Path $font)) { Write-Host '  한글 글꼴을 만들지 못했어요 (웹 화면의 한글이 네모로 보일 수 있음)' }
-    else {
-        # 글꼴은 브라우저가 1년 저장하므로, 내용이 바뀌면 주소(?v=)도 바뀌게 해서 새 글꼴을 받게 함
-        $ver = (Get-FileHash $font -Algorithm MD5).Hash.Substring(0, 10).ToLower()
-        $page = Join-Path $pub 'index.html'
-        $html = [IO.File]::ReadAllText($page, [Text.Encoding]::UTF8)
-        $html = $html.Replace('fonts/NotoSansKR-sub.ttf"', "fonts/NotoSansKR-sub.ttf?v=$ver`"")
-        [IO.File]::WriteAllText($page, $html, (New-Object Text.UTF8Encoding $false))
-    }
-    # 카카오 지도 JavaScript 키 (local.properties 의 KAKAO_JS_KEY). 웹 페이지에 들어가는 키라 공개돼도 되는 종류이고, 카카오에 등록한 도메인에서만 동작
-    # 키가 없으면 빈 값 → 웹 버전은 OpenStreetMap 지도
-    $jsKey = (Prop 'KAKAO_JS_KEY') -replace '[^A-Za-z0-9]', ''
-    [IO.File]::WriteAllText((Join-Path $pub 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
-    if ($jsKey) { Write-Host '  카카오 지도 키 넣음 (카카오 개발자 사이트에서 이 서버 주소를 JavaScript SDK 도메인으로 등록해야 지도가 보임)' } else { Write-Host '  카카오 지도 키 없음 → OpenStreetMap 지도' }
-    Write-Host '  웹 버전 준비됨 (서버 주소로 열면 보임)'
-} else {
-    Write-Host '  웹 버전을 만들지 못해 건너뜀 (서버는 그대로 올림)'
-}
-
-# HTML 웹 버전 (바로 열리는 가벼운 화면, site/): 다 만들 때까지 /lite/ 에서
-$lite = Join-Path $pub 'lite'
-if (Test-Path $lite) { Remove-Item $lite -Recurse -Force }
-Copy-Item (Join-Path $PSScriptRoot 'site') $lite -Recurse -Force
-Write-Host '  HTML 웹 버전 넣음 (/lite/)'
+# 예전 Compose 웹 파일과 지난번 화면 파일은 지움 (자료 조각 data, _headers 는 그대로)
+Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
+foreach ($d in @('composeResources', 'fonts', 'lite', 'js')) { $x = Join-Path $pub $d; if (Test-Path $x) { Remove-Item $x -Recurse -Force } }
+Get-ChildItem (Join-Path $PSScriptRoot 'site') | Copy-Item -Destination $pub -Recurse -Force
+# 카카오 지도 JavaScript 키 (local.properties 의 KAKAO_JS_KEY). 웹 페이지에 들어가는 키라 공개돼도 되는 종류이고, 카카오에 등록한 도메인에서만 동작
+# 키가 없으면 빈 값 → 웹 버전은 OpenStreetMap 지도
+$jsKey = (Prop 'KAKAO_JS_KEY') -replace '[^A-Za-z0-9]', ''
+[IO.File]::WriteAllText((Join-Path $pub 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
+if ($jsKey) { Write-Host '  카카오 지도 키 넣음 (카카오 개발자 사이트에서 이 서버 주소를 JavaScript SDK 도메인으로 등록해야 지도가 보임)' } else { Write-Host '  카카오 지도 키 없음 → OpenStreetMap 지도' }
+Write-Host '  웹 버전 준비됨 (서버 주소로 열면 보임)'
 
 Write-Host '1/3 서버 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
