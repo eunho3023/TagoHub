@@ -8,6 +8,18 @@ el.className = "map";
 let impl = null;           // { view, fit, lines, dots, bounds, zoom, relayout }
 let idleCbs = [], tapCb = null, dotCb = null;
 let pendingView = null;
+// 지난번 내 위치 (이 기기 브라우저에만 저장): 지도를 처음부터 그 자리로 열어 바로 보이게
+const LAST_KEY = "tagohub.lastPos";
+const START = (() => {
+  try { const v = JSON.parse(localStorage.getItem(LAST_KEY)); if (Array.isArray(v) && Number.isFinite(v[0]) && Number.isFinite(v[1])) return v; } catch (e) { /* 없음 */ }
+  return [36.3504, 127.3845];
+})();
+let savedAt = 0;
+function saveLast(p) {
+  if (Date.now() - savedAt < 30000) return;
+  savedAt = Date.now();
+  try { localStorage.setItem(LAST_KEY, JSON.stringify([+p[0].toFixed(5), +p[1].toFixed(5)])); } catch (e) { /* 못 씀 */ }
+}
 
 function loadScript(src) {
   return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
@@ -57,7 +69,7 @@ async function kakaoImpl() {
     new Promise((_, rej) => setTimeout(() => rej(new Error("시간 초과")), 10000)),
   ]);
   const K = kakao.maps;
-  const map = new K.Map(el, { center: new K.LatLng(36.3504, 127.3845), level: 4 });
+  const map = new K.Map(el, { center: new K.LatLng(START[0], START[1]), level: 4 });
   // 도메인이 등록되지 않으면 지도 그림이 안 나옴: 타일이 하나라도 그려지는지 잠깐 봄
   await new Promise((res, rej) => {
     let ok = false;
@@ -106,7 +118,7 @@ async function leafletImpl() {
   document.head.appendChild(css);
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   const L = window.L;
-  const map = L.map(el, { zoomControl: true }).setView([36.3504, 127.3845], 16);
+  const map = L.map(el, { zoomControl: true }).setView([START[0], START[1]], 16);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
   map.on("moveend", () => idleCbs.forEach((f) => f()));
   map.on("click", () => tapCb && tapCb());
@@ -168,16 +180,20 @@ locBtn.addEventListener("click", (e) => {
   if (myPos && c && Math.hypot((c[0] - myPos[0]) * 111000, (c[1] - myPos[1]) * 88000) > 30) impl.view(myPos[0], myPos[1], Math.max(16, impl.zoom()));
   else stopMe();
 });
+function showMe(p) {
+  myPos = [p[0], p[1], Math.min(p[2], 2000)];
+  locBtn.classList.remove("wait");
+  if (impl) impl.me(myPos); else ready.then((m) => myPos && m.me(myPos));
+  if (firstFix) { firstFix = false; MapView.view(myPos[0], myPos[1], 16); }
+  saveLast(myPos);
+}
 /** 내 위치 켜기. center: 처음 받은 위치로 지도를 옮김, quiet: 못 받아도 알림창 없이 끔 (앱을 열 때 저절로 켤 때) */
 function startMe(center = true, quiet = false) {
   firstFix = center;
   locBtn.classList.add("on", "wait");
   watchId = follow(
     (p) => {
-      myPos = [p[0], p[1], Math.min(p[2], 2000)];
-      locBtn.classList.remove("wait");
-      impl?.me(myPos);
-      if (firstFix && impl) { firstFix = false; impl.view(myPos[0], myPos[1], 16); }
+      showMe(p);
     },
     (msg) => { stopMe(); if (!quiet) alert(msg); },
   );
@@ -197,6 +213,11 @@ export const MapView = {
     if (watchId != null || !("geolocation" in navigator)) return;
     try { if ((await navigator.permissions.query({ name: "geolocation" })).state === "denied") return; } catch (e) { /* 모르면 물어봄 */ }
     startMe(center, true);
+    // 휴대폰이 이미 알고 있는 위치(10분 안)를 바로 받아 먼저 보여 줌. 정확한 GPS 는 따라가기로 이어서
+    navigator.geolocation.getCurrentPosition(
+      (p) => { if (watchId != null && !myPos) showMe([p.coords.latitude, p.coords.longitude, p.coords.accuracy || 0]); },
+      () => {}, { enableHighAccuracy: false, maximumAge: 600000, timeout: 4000 },
+    );
   },
   /** 지도를 이 칸 안으로 옮김 */
   mount(container) { if (el.parentElement !== container) { container.appendChild(el); impl?.relayout(); } },
