@@ -227,6 +227,16 @@ export function kakaoWebRequest(pathname, search) {
     const qs = `query=${encodeURIComponent(q)}&size=15${near}`;
     return { url: "https://dapi.kakao.com/v2/local/search/keyword.json?" + qs, cacheKey: "place?" + qs, ttl: 86400 };
   }
+  // 지도 한 칸(0.005도, 약 500m) 안의 카카오 버스정류장 자리: 웹 지도 정류장 버튼을 카카오 지도 아이콘 위에 올리려고.
+  // 칸 번호만 받음 (사람 위치가 아니라 지도 칸). 하루 저장
+  if (pathname === "/w/kakao/busstops") {
+    const cx = p.get("cx"), cy = p.get("cy"), page = p.get("page") || "1";
+    if (!/^\d{5}$/.test(cx || "") || !/^\d{4}$/.test(cy || "") || !/^[1-3]$/.test(page)) return null;
+    const w = (+cx * 0.005).toFixed(3), s = (+cy * 0.005).toFixed(3), e = ((+cx + 1) * 0.005).toFixed(3), n = ((+cy + 1) * 0.005).toFixed(3);
+    if (+w < 124 || +w > 132 || +s < 33 || +s > 39) return null;
+    const qs = `query=${encodeURIComponent("버스정류장")}&rect=${w},${s},${e},${n}&size=15&page=${page}`;
+    return { url: "https://dapi.kakao.com/v2/local/search/keyword.json?" + qs, cacheKey: "busstops?" + qs, ttl: 86400 };
+  }
   if (pathname === "/w/kakao/transit") {
     const v = ["sx", "sy", "ex", "ey"].map((k) => p.get(k));
     if (v.some((s) => !s || !COORD.test(s))) return null;
