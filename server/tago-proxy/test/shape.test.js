@@ -191,3 +191,27 @@ test("지역 공식 노선 모양: 서울·경기·전주", async () => {
   assert.equal(await officialShape(env, "BSB5200111000", fetcher), null);
   assert.ok(asked.some((u) => u.includes("routeId=234000015")) && asked.some((u) => u.includes("busRouteId=100100118")));
 });
+
+test("긴 노선: 카카오 경로를 여러 번에 나눠 이어 만듦", async () => {
+  const { kakaoStep, longForKakao } = await import("../src/shape.js");
+  const stops = Array.from({ length: 131 }, (_, i) => [36.0 + i * 0.001, 127.0]);   // 구간 26개 (> 22)
+  assert.ok(longForKakao(stops));
+  const work = new Map();
+  const db = { prepare: (sql) => ({ bind: (...a) => ({
+    first: async () => work.get(a[0]) || null,
+    run: async () => { if (sql.startsWith("INSERT")) work.set(a[0], { sig: a[1], next: a[2], poly: a[3], got: a[4], straight: a[5] }); else work.delete(a[0]); },
+  }) }) };
+  const step = (no, pts) => ({ properties: { type: "BUS", vehicles: [{ name: no }] }, path: { points: pts.map(([la, lo]) => [String(lo), String(la)]) } });
+  const fetcher = async (u) => {
+    const q = new URL(u).searchParams;
+    const s0 = [+q.get("start_y"), +q.get("start_x")], e0 = [+q.get("end_y"), +q.get("end_x")];
+    return { ok: true, json: async () => ({ routes: [{ steps: [step("101", [s0, e0])] }] }) };
+  };
+  const r1 = await kakaoStep(db, "R9", "sig", stops, "101", "k", fetcher);
+  assert.deepEqual([r1.done, r1.next, r1.of], [false, 20, 26]);
+  assert.equal(work.get("R9").next, 20);
+  const r2 = await kakaoStep(db, "R9", "sig", stops, "101", "k", fetcher);
+  assert.equal(r2.done, true);
+  assert.ok(r2.shape && Math.abs(r2.shape[r2.shape.length - 1][0] - 36.13) < 1e-5);
+  assert.ok(!work.has("R9"));
+});

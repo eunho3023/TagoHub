@@ -247,6 +247,42 @@ async function kakaoPiece(part, routeNo, key, fetcher) {
     return length(p) <= length(part) * 2.2 + 300 ? p : null;
   } catch (_) { return null; }
 }
+/** 구간 하나: 카카오 경로, 못 받으면 OSRM, 그것도 못 받으면 직선 */
+async function kakaoPart(part, routeNo, key, fetcher) {
+  const k = await kakaoPiece(part, routeNo, key, fetcher);
+  if (k) return { piece: k, kakao: true };
+  const o = await osrmPath(part, fetcher);
+  const piece = o && length(o) <= length(part) * 3 + 300 ? removeDetours(o, part) : part;
+  return { piece, straight: piece === part };
+}
+/** 정류장이 많아 한 번에 카카오 경로를 다 못 받는 노선 (예약 작업이 여러 번에 나눠 만듦) */
+export const longForKakao = (stops) => chunks(stops, KAKAO_CHUNK).length > KAKAO_MAX_PARTS;
+const KAKAO_STEP_PARTS = 20;
+/**
+ * 긴 노선의 카카오 경로를 이어 만들기 (예약 작업 한 번에 구간 20개씩). 진행은 D1 shape_work 에 둠.
+ * {done:false} 이면 다음 분에 이어서, {done:true, shape} 이면 다 만듦 (카카오를 절반 넘게 못 받았으면 shape null)
+ */
+export async function kakaoStep(db, id, sig, stops, routeNo, key, fetcher) {
+  const parts = chunks(stops, KAKAO_CHUNK);
+  const w = await db.prepare("SELECT sig, next, poly, got, straight FROM shape_work WHERE route_id = ?").bind(id).first();
+  let next = 0, pts = [], got = 0, straight = 0;
+  if (w && w.sig === sig) { next = w.next; pts = w.poly ? decode(w.poly, 6) : []; got = w.got; straight = w.straight; }
+  const end = Math.min(parts.length, next + KAKAO_STEP_PARTS);
+  for (; next < end; next++) {
+    const r = await kakaoPart(parts[next], routeNo, key, fetcher);
+    if (r.kakao) got++;
+    if (r.straight) straight++;
+    pts.push(...(pts.length ? r.piece.slice(1) : r.piece));
+  }
+  if (next < parts.length) {
+    await db.prepare("INSERT OR REPLACE INTO shape_work (route_id, sig, next, poly, got, straight) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(id, sig, next, encode(pts, 6), got, straight).run();
+    return { done: false, next, of: parts.length };
+  }
+  await db.prepare("DELETE FROM shape_work WHERE route_id = ?").bind(id).run();
+  return { done: true, shape: got * 2 >= parts.length ? pts : null, straight };
+}
+
 /** 카카오 경로로 만든 모양. 카카오가 못 준 구간은 그 구간만 OSRM. 절반 넘게 못 받으면 null (OSRM 방식으로) */
 export async function buildKakao(stops, routeNo, key, fetcher, st = {}) {
   const parts = chunks(stops, KAKAO_CHUNK);
@@ -255,14 +291,10 @@ export async function buildKakao(stops, routeNo, key, fetcher, st = {}) {
   const out = [];
   let got = 0, straight = 0;
   for (const part of parts) {
-    let piece = await kakaoPiece(part, routeNo, key, fetcher);
-    if (piece) got++;
-    else {
-      const o = await osrmPath(part, fetcher);
-      piece = o && length(o) <= length(part) * 3 + 300 ? removeDetours(o, part) : part;
-      if (piece === part) straight++;
-    }
-    out.push(...(out.length ? piece.slice(1) : piece));
+    const r = await kakaoPart(part, routeNo, key, fetcher);
+    if (r.kakao) got++;
+    if (r.straight) straight++;
+    out.push(...(out.length ? r.piece.slice(1) : r.piece));
   }
   st.straight = straight;
   return got * 2 >= parts.length ? out : null;
@@ -392,23 +424,30 @@ async function makeShape(id, stops, routeNo, env, fetcher) {
   const st = {};
   const kakaoKey = (env.KAKAO_REST_KEY || "").trim();
   let shape = null;
+  let kakao = false;
   if (routeNo && kakaoKey) {
     const k = await buildKakao(stops, routeNo, kakaoKey, limited, st);
-    if (k && fitsStops(k, stops)) shape = k;
+    if (k && fitsStops(k, stops)) { shape = k; kakao = true; }
   }
   if (!shape) shape = await build(stops, limited, st);
-  return { shape, partial: (st.straight || 0) > 0 };
+  // 긴 노선이라 카카오를 못 쓰고 OSRM 으로 만들었으면 "임시" (예약 작업이 나중에 카카오로 다시 만듦)
+  const interim = !kakao && !!(routeNo && kakaoKey) && longForKakao(stops);
+  return { shape, partial: (st.straight || 0) > 0, interim };
 }
 
 async function ensureQueue(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS shape_queue (route_id TEXT PRIMARY KEY, city TEXT, no TEXT, prio INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL) WITHOUT ROWID").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS shape_meta (k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS shape_work (route_id TEXT PRIMARY KEY, sig TEXT NOT NULL, next INTEGER NOT NULL, poly TEXT, got INTEGER NOT NULL, straight INTEGER NOT NULL) WITHOUT ROWID").run();
 }
 
-/** 저장된 모양 (지금 방식 v6 로 다 만든 것만) */
+/** 저장된 모양 (지금 방식으로 만든 것만). interim: 긴 노선을 카카오 대신 OSRM 으로 임시로 만든 것 (sig 끝 ":o") */
 async function storedShape(db, id, sig) {
   const row = await db.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
-  return row && row.sig === sig ? row.poly : null;
+  if (!row) return null;
+  if (row.sig === sig) return { poly: row.poly, interim: false };
+  if (row.sig === sig + ":o") return { poly: row.poly, interim: true };
+  return null;
 }
 
 export async function handleShape(request, url, env, ctx, fetcher = fetch) {
@@ -430,7 +469,12 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   let poly = null, partial = false;
   if (env.DB) {
     await ensureTable(env.DB);
-    poly = await storedShape(env.DB, id, sig);
+    const got = await storedShape(env.DB, id, sig);
+    if (got) {
+      poly = got.poly;
+      // 임시 모양이면 예약 작업이 카카오로 다시 만들게 줄에 (이미 있으면 그대로)
+      if (got.interim) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
+    }
   }
   if (!poly) {
     // 서버가 미리 만들어 둔 것이 없음: 지금 한 번 만들어 보여 주고, 직선이 섞였으면 예약 작업 줄 맨 앞에 넣어 나중에 제대로 만듦
@@ -444,7 +488,8 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
     if (env.DB) {
       if (!partial) {
         ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)")
-          .bind(id, sig, poly, Math.floor(Date.now() / 1000)).run());
+          .bind(id, made.interim ? sig + ":o" : sig, poly, Math.floor(Date.now() / 1000)).run());
+        if (made.interim) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
       } else ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
     }
   }
@@ -482,7 +527,8 @@ export async function shapeCron(env, fetcher = fetch) {
     }
     for (const [rid, rt] of Object.entries(routes)) {
       const has = saved.has(rid) ? { sig: saved.get(rid) } : null;
-      if (!has || !String(has.sig).startsWith("v7:")) await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
+      // 아직 없거나, 예전 방식이거나, 긴 노선을 임시(OSRM)로 만든 것
+      if (!has || !String(has.sig).startsWith("v7:") || String(has.sig).endsWith(":o")) await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
     }
     await env.DB.prepare("INSERT OR REPLACE INTO shape_meta (k, v) VALUES ('bucket', ?)").bind(String(cur + 1)).run();
     return { bucket: cur };
@@ -496,14 +542,31 @@ export async function shapeCron(env, fetcher = fetch) {
   const routeNo = cleanNo(job.no) || (await dataRouteNo(env, id));
   const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
   const sig = signature(stops) + (useKakao ? ":k" : "");
-  if (await storedShape(env.DB, id, sig)) {
+  const have = await storedShape(env.DB, id, sig);
+  if (have && !have.interim) {
     await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
     return { id, already: true };
+  }
+  const save = async (poly, s) => env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)").bind(id, s, poly, Math.floor(Date.now() / 1000)).run();
+  const dequeue = async () => env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
+  // 긴 노선: 공식 모양이 맞으면 그것, 아니면 카카오 경로를 여러 분에 나눠 이어 만듦
+  if (useKakao && longForKakao(stops)) {
+    let used = 0;
+    const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
+    if (!have) {
+      const official = await officialShape(env, id, limited);
+      if (official && fitsStops(official, stops, 120, 0.8)) { await save(encode(official, 5), sig); await dequeue(); return { id, saved: true, official: true }; }
+    }
+    const step = await kakaoStep(env.DB, id, sig, stops, routeNo, (env.KAKAO_REST_KEY || "").trim(), limited);
+    if (!step.done) return { id, step: step.next, of: step.of };
+    if (step.shape && fitsStops(step.shape, stops)) { await save(encode(step.shape, 5), sig); await dequeue(); return { id, saved: true, kakao: true }; }
+    // 카카오로 못 만듦: 임시 모양이 있으면 그대로 두고, 없으면 아래에서 OSRM 으로
+    if (have) { await dequeue(); return { id, kept: true }; }
   }
   const made = await makeShape(id, stops, routeNo, env, fetcher);
   // 다 만들었거나 여러 번 해도 직선이 남으면(그 구간은 길이 없음) 저장하고 줄에서 뺌
   if (made.shape && (!made.partial || job.tries + 1 >= MAX_TRIES)) {
-    await env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)").bind(id, sig, encode(made.shape, 5), Math.floor(Date.now() / 1000)).run();
+    await save(encode(made.shape, 5), sig);
     await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
     return { id, saved: true, partial: made.partial };
   }
