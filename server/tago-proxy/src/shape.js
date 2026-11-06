@@ -124,8 +124,59 @@ export function osrmUrl(points) {
     "?overview=full&geometries=polyline6&continue_straight=true";
 }
 
-/** 정류장 좌표들 → 길 따라 모양. 구간 요청이 실패하거나 너무 돌아가면 그 구간은 직선. 하나도 못 받으면 null */
+/** 점 p 에서 선까지 가장 가까운 거리(m) */
+export function distToPath(p, path) {
+  let best = Infinity;
+  const kx = 111000 * Math.cos((p[0] * Math.PI) / 180), ky = 111000;
+  for (let i = 0; i < path.length - 1; i++) {
+    const ax = (path[i][1] - p[1]) * kx, ay = (path[i][0] - p[0]) * ky, bx = (path[i + 1][1] - p[1]) * kx, by = (path[i + 1][0] - p[0]) * ky;
+    const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
+}
+
+/** 길이 크게 돌아 들어가게 만드는 정류장 (좌표가 큰길 옆 골목·단지 쪽에 찍힌 것): 앞뒤 정류장 사이 길이 직선의 1.4배 + 150m 넘게 김 */
+export function detourStops(path, stops) {
+  if (stops.length < 3 || path.length < 2) return [];
+  const idx = stopIndices(path, stops);
+  const out = [];
+  for (let k = 1; k < stops.length - 1; k++) {
+    const a = idx[k - 1], b = idx[k + 1];
+    if (b <= a) continue;
+    const through = length(path.slice(a, b + 1)), straight = meters(stops[k - 1], stops[k + 1]);
+    if (through > straight * 1.4 + 150) out.push(k);
+  }
+  return out;
+}
+
+const NEAR_MAIN_M = 60;
+/**
+ * 정류장 좌표들 → 길 따라 모양. 정류장 좌표가 큰길 옆 골목·단지 쪽에 찍혀 길이 그쪽으로 돌아 들어가면,
+ * 그 정류장을 빼고 다시 받아 큰길로 (뺀 정류장이 새 길에서 60m 넘게 멀면 실제로 들어가는 길이라 다시 넣음)
+ */
 export async function build(stops, fetcher) {
+  // 돌아 들어가는지는 다듬기(removeDetours) 전의 길로 봄 (다듬으면 골목 길이 직선으로 바뀌어 안 보임)
+  const done = (path, used) => removeDetours(path, used);
+  const first = await buildRaw(stops, fetcher);
+  if (!first) return null;
+  const sus = detourStops(first, stops);
+  if (!sus.length) return done(first, stops);
+  const drop = new Set(sus);
+  const used2 = stops.filter((_, i) => !drop.has(i));
+  const second = await buildRaw(used2, fetcher);
+  if (!second) return done(first, stops);
+  const back = sus.filter((k) => distToPath(stops[k], second) > NEAR_MAIN_M);
+  if (!back.length) return done(second, used2);
+  if (back.length === sus.length) return done(first, stops);
+  const keep = new Set(back);
+  const used3 = stops.filter((_, i) => !drop.has(i) || keep.has(i));
+  const third = await buildRaw(used3, fetcher);
+  return third ? done(third, used3) : done(first, stops);
+}
+
+/** 구간마다 OSRM 길을 이음 (다듬기 전). 구간 실패·너무 긴 구간은 직선, 하나도 못 받으면 null */
+async function buildRaw(stops, fetcher) {
   const out = [];
   let anyRoad = false;
   for (const part of chunks(stops)) {
@@ -137,7 +188,7 @@ export async function build(stops, fetcher) {
         const g = j.code === "Ok" && j.routes && j.routes[0] && j.routes[0].geometry;
         if (g) {
           const shape = decode(g, 6);
-          if (shape.length >= 2 && length(shape) <= length(part) * 3 + 300) piece = removeDetours(shape, part);
+          if (shape.length >= 2 && length(shape) <= length(part) * 3 + 300) piece = shape;
         }
       }
     } catch (_) { /* 이 구간은 직선 */ }
@@ -151,7 +202,8 @@ export async function build(stops, fetcher) {
 /** 정류장 목록이 바뀌면 다시 만들게 하는 표시 */
 export function signature(stops) {
   const f = stops[0], l = stops[stops.length - 1];
-  return `${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
+  // v2: 골목으로 돌아 들어가는 정류장을 빼고 다시 만드는 방식 (예전 v1 모양은 다시 만듦)
+  return `v2:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
 }
 
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -209,7 +261,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   const cache = caches.default;
-  const key = new Request(`https://cache.tagohub/shape/${id}`);
+  const key = new Request(`https://cache.tagohub/shape/v2/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
