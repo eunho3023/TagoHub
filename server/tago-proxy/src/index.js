@@ -5,6 +5,7 @@
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
+import { recordGps } from "./gps.js";
 import { handleReport } from "./report.js";
 
 export default {
@@ -91,6 +92,11 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     const ttl = ttlFor(path);
     const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": `public, max-age=${ttl}` } });
     ctx.waitUntil(cache.put(key, stored.clone()));
+    // 노선별 버스 위치(GPS)는 노선 모양 자료로 모음 (src/gps.js, 차량 번호·시각은 저장하지 않음)
+    if (env.DB && /getRouteAcctoBusLcList/.test(path)) {
+      const q = new URLSearchParams(search);
+      ctx.waitUntil(recordGps(env.DB, q.get("routeId"), q.get("cityCode"), body).catch(() => 0));
+    }
     const out = new Response(stored.body, stored);
     for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);
     return out;
