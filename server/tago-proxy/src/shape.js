@@ -206,7 +206,8 @@ async function tagoRouteStops(env, routeId, city, fetcher) {
 
 export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const id = decodeURIComponent(url.pathname.slice("/w/shape/".length));
-  if (!/^[A-Za-z0-9_]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
+  // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   const cache = caches.default;
   const key = new Request(`https://cache.tagohub/shape/${id}`);
   const hit = await cache.match(key);

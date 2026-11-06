@@ -138,7 +138,7 @@ export const WEB_OPS = {
   "1613000/SuburbsBusInfo/GetSuberbsBusTrminlList": ["terminalNm"],
 };
 const WEB_VALUE = {
-  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, gpsLati: /^3[3-8]\.\d{1,6}$/, gpsLong: /^12[4-9]\.\d{1,6}$|^13[01]\.\d{1,6}$/, routeId: /^[A-Za-z0-9_]{1,24}$/,
+  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, gpsLati: /^3[3-8]\.\d{1,6}$/, gpsLong: /^12[4-9]\.\d{1,6}$|^13[01]\.\d{1,6}$/, routeId: /^[A-Za-z0-9_-]{1,24}$/,
   subwayStationName: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/, subwayStationId: /^[A-Za-z0-9]{1,16}$/,
   dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
   depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,
