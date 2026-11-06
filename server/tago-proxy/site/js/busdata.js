@@ -346,8 +346,7 @@ export async function arrivals(stop) {
       .filter((a) => { const k = a.routeId + "|" + a.arrSeconds; return !seen1.has(k) && seen1.add(k); })
       .filter((a) => { const k = a.routeNo + "|" + Math.floor((a.arrSeconds ?? -60) / 60); return !seen2.has(k) && seen2.add(k); })
       .sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
-    const fixed = await fixByPosition(stop, list).catch(() => list);
-    return { state: "ok", list: fixed, at: Date.now() };
+    return { state: "ok", list, at: Date.now() };
   } catch (e) {
     return { state: "failed", list: [], at: Date.now(), why: String(e.message || e) };
   }
@@ -381,6 +380,8 @@ export function closer(stop, busOrds, claimed, sec) {
   if (s != null && k === 1) s = Math.min(s, 60);
   return [k, s];
 }
+/** 받은 도착 목록을 버스 위치로 고친 목록 (못 고치면 같은 목록). 화면은 먼저 받은 목록을 보여 주고 이것이 오면 바꿈 */
+export function refineArrivals(stop, list) { return fixByPosition(stop, list).catch(() => list); }
 async function fixByPosition(stop, list) {
   const firsts = new Map();
   for (const a of list) {
