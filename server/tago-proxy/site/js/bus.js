@@ -231,7 +231,8 @@ function pointAt(road, cum, ch) {
   const len = cum[i + 1] - cum[i], t = len ? Math.max(0, Math.min(1, (ch - cum[i]) / len)) : 0;
   return [road[i][0] + t * (road[i + 1][0] - road[i][0]), road[i][1] + t * (road[i + 1][1] - road[i][1])];
 }
-const SNAP_M = 80;
+// 정류장 점을 노선 선 위로 옮기는 최대 거리 (좌표가 골목 쪽으로 잘못 찍힌 정류장도 큰길 선 위로, 서버 shape.js OFF_COORD_M 과 같게)
+const SNAP_M = 250;
 /** 정류장을 노선 순서대로 도로 선 위로 (뒤로 돌아가지 않게, 가장 가까운 곳과 15m 안이면 먼저 나오는 쪽). 멀면 원래 자리 */
 export function snapStops(stops, road) { return snapStopsFull(stops, road).map((x) => x && x.pt); }
 /** [{pt, seg, t}] (선 위로 못 옮긴 정류장은 seg 없음) */

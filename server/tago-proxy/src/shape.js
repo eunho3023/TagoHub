@@ -150,7 +150,9 @@ export function detourStops(path, stops) {
   return out;
 }
 
-const NEAR_MAIN_M = 60;
+const NEAR_MAIN_M = 60, OFF_COORD_M = 250;
+/** 버스가 실제로 안으로 들어가는 정류장 이름 (○○내, ○○ 안, 구내) */
+export const insideName = (n) => /(^|[s.·])?(내|안|구내)$/.test(String(n || "").trim()) || /구내|단지내|병원내|시장내|역내|터미널내/.test(String(n || ""));
 /**
  * 정류장 좌표들 → 길 따라 모양. 정류장 좌표가 큰길 옆 골목·단지 쪽에 찍혀 길이 그쪽으로 돌아 들어가면,
  * 그 정류장을 빼고 다시 받아 큰길로 (뺀 정류장이 새 길에서 60m 넘게 멀면 실제로 들어가는 길이라 다시 넣음)
@@ -166,7 +168,11 @@ export async function build(stops, fetcher) {
   const drop = new Set();
   for (const k of sus) {
     const pair = await osrmPath([stops[k - 1], stops[k + 1]], fetcher);
-    if (pair && distToPath(stops[k], pair) <= NEAR_MAIN_M) drop.add(k);
+    if (!pair) continue;
+    // 60m 안이면 큰길 위 정류장. 250m 안이고 이름이 '○○내'처럼 안으로 들어가는 곳이 아니면 정류장 좌표가 골목 쪽으로 잘못 찍힌 것으로 봄
+    // (전주 조촌초교.제일아파트: 좌표는 기린대로에서 181m 안쪽이지만 버스는 기린대로로만 다님)
+    const d = distToPath(stops[k], pair);
+    if (d <= NEAR_MAIN_M || (d <= OFF_COORD_M && !insideName(stops[k][2]))) drop.add(k);
   }
   if (!drop.size) return done(first, stops);
   const used = stops.filter((_, i) => !drop.has(i));
@@ -214,8 +220,8 @@ async function buildRaw(stops, fetcher) {
 /** 정류장 목록이 바뀌면 다시 만들게 하는 표시 */
 export function signature(stops) {
   const f = stops[0], l = stops[stops.length - 1];
-  // v3: 골목으로 돌아 들어가는 정류장을 하나씩 확인해 빼고 다시 만드는 방식 (예전 모양은 다시 만듦)
-  return `v3:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
+  // v4: 골목 쪽으로 잘못 찍힌 정류장(250m 안, ○○내 아님)도 빼고 큰길로 (예전 모양은 다시 만듦)
+  return `v4:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
 }
 
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -232,14 +238,14 @@ async function routeStops(env, routeId) {
   if (!r.ok) return null;
   const route = (await r.json())[routeId];
   if (!route) return null;
-  return route.stops.filter((s) => s[3] != null && s[4] != null).map((s) => [s[3], s[4]]);
+  return route.stops.filter((s) => s[3] != null && s[4] != null).map((s) => (s[2] ? [s[3], s[4], s[2]] : [s[3], s[4]]));
 }
 
 /** TAGO 노선 정류장 목록(XML) → 정류장 좌표 (순번 차례) */
 export function tagoStops(xml) {
   const tag = (it, t) => { const m = new RegExp(`<${t}>([^<]*)</${t}>`).exec(it); return m ? m[1].trim() : null; };
-  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => [parseInt(tag(m[1], "nodeord"), 10), parseFloat(tag(m[1], "gpslati")), parseFloat(tag(m[1], "gpslong"))])
-    .filter((x) => Number.isFinite(x[0]) && Number.isFinite(x[1]) && Number.isFinite(x[2])).sort((a, b) => a[0] - b[0]).map((x) => [x[1], x[2]]);
+  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => [parseInt(tag(m[1], "nodeord"), 10), parseFloat(tag(m[1], "gpslati")), parseFloat(tag(m[1], "gpslong")), tag(m[1], "nodenm")])
+    .filter((x) => Number.isFinite(x[0]) && Number.isFinite(x[1]) && Number.isFinite(x[2])).sort((a, b) => a[0] - b[0]).map((x) => (x[3] ? [x[1], x[2], x[3]] : [x[1], x[2]]));
 }
 
 /** 경기 노선 (GBIS 정류장 목록, 좌표 x 경도·y 위도) */
@@ -251,8 +257,8 @@ async function ggRouteStops(env, routeId, fetcher) {
     if (!r.ok) return null;
     const j = await r.json();
     const list = j?.response?.msgBody?.busRouteStationList;
-    const rows = (Array.isArray(list) ? list : list ? [list] : []).map((s) => [+s.stationSeq, +s.y, +s.x]).filter((x) => x.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
-    return rows.length >= 2 ? rows.map((x) => [x[1], x[2]]) : null;
+    const rows = (Array.isArray(list) ? list : list ? [list] : []).map((s) => [+s.stationSeq, +s.y, +s.x, s.stationName ? String(s.stationName) : null]).filter((x) => x.slice(0, 3).every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
+    return rows.length >= 2 ? rows.map((x) => (x[3] ? [x[1], x[2], x[3]] : [x[1], x[2]])) : null;
   } catch (_) { return null; }
 }
 
@@ -273,7 +279,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   const cache = caches.default;
-  const key = new Request(`https://cache.tagohub/shape/v3/${id}`);
+  const key = new Request(`https://cache.tagohub/shape/v4/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
