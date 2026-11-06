@@ -202,7 +202,8 @@ export async function shape(routeId, city, stops) {
     if (pts.length >= 2 && (!stops || fitsStops(pts, stops))) return pts;
   } catch (e) { /* 서버에서 */ }
   try {
-    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city } : null)).poly;
+    // v=2: 골목으로 돌아 들어가지 않게 다시 만든 모양 (브라우저에 저장된 예전 모양을 쓰지 않게)
+    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city, v: 2 } : { v: 2 })).poly;
     const pts = decodePolyline(String(poly), 5);
     return pts.length >= 2 ? pts : null;
   } catch (e) { return null; }
