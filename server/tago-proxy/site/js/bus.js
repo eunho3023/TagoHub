@@ -82,7 +82,7 @@ export function stopScreen(root, p) {
   const rightOf = (r, elapsed, day) => {
     const f = r.arr.find((a) => !B.passed(a, elapsed));
     if (!f) {
-      const s = r.sum;
+      const s = r.sum && (r.sum.first || r.sum.last || r.sum.interval) ? r.sum : infos.get(r.id) || r.sum;
       const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, day) > 0 && "배차 " + B.intervalOn(s, day) + "분"].filter(Boolean).join(" · ") : "";
       return `<span class="muted">${live && live.state === "ok" ? "도착 정보 없음" : ""}</span>${plan ? `<small>${esc(plan)}</small>` : ""}`;
     }
@@ -105,15 +105,26 @@ export function stopScreen(root, p) {
   };
   // 노선 줄 아래 글: 기점 → 종점 (자료에 없으면 노선을 받아 채움, 경기는 "○○ 방면")
   const ends = new Map();
+  const infos = new Map(), asked = new Set();
   const endsOf = (r) => {
-    const s = r.sum && [r.sum.start, r.sum.end].filter(Boolean).join(" → ");
-    if (s) return s;
-    if (ends.has(r.id)) return ends.get(r.id) || "";
+    // 기점 → 종점이나 첫차·막차·배차가 없는 노선(자료 파일에 없는 노선)은 노선 정보를 한 번 받아 채움
+    const hasPlan = r.sum && (r.sum.first || r.sum.last || r.sum.interval);
+    const own = r.sum && [r.sum.start, r.sum.end].filter(Boolean).join(" → ");
+    if (r.id && (!own || !hasPlan) && !asked.has(r.id)) {
+      asked.add(r.id);
+      B.route(r.id, r.city || (/^\d+$/.test(stop.city) ? stop.city : null))
+        .then((x) => {
+          if (!x || !alive) return;
+          if (x.sum) infos.set(r.id, x.sum);
+          const t = [x.start, x.end].filter(Boolean).join(" → ");
+          if (t) ends.set(r.id, t);
+          draw();
+        }).catch(() => {});
+    }
+    if (own) return own;
+    if (ends.get(r.id)) return ends.get(r.id);
     const towards = r.arr.find((a) => a.towards)?.towards;
-    ends.set(r.id, towards ? towards + " 방면" : "");
-    if (!towards && r.id) B.route(r.id, r.city || (/^d+$/.test(stop.city) ? stop.city : null))
-      .then((x) => { const t = x && [x.start, x.end].filter(Boolean).join(" → "); if (t) { ends.set(r.id, t); draw(); } }).catch(() => {});
-    return ends.get(r.id);
+    return towards ? towards + " 방면" : "";
   };
   let refresh = null;
   const draw = () => {
@@ -148,8 +159,16 @@ export function stopScreen(root, p) {
     B.cityName(stop.city).then((c) => { city = c; draw(); });
     B.stopRoutes(stop).then((s) => { sums = s; draw(); }).catch(() => { sums = []; draw(); });
     const tick = async () => {
-      const got = await B.arrivals(stop);
+      let got = await B.arrivals(stop);
       if (!alive) return;
+      // 직전엔 도착이 있었는데 갑자기 하나도 없으면(공공데이터가 잠깐 빈 응답을 줄 때) 3초 뒤 한 번 더 물음
+      if (got.state === "ok" && !got.list.length && live?.list?.length) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if (!alive) return;
+        const again = await B.arrivals(stop);
+        if (!alive) return;
+        if (again.state === "ok" && again.list.length) got = again;
+      }
       // 처음: 받은 도착 정보를 바로 보여 주고, 버스 위치로 고친 것이 오면 바꿈 (위치 확인에 1~3초 걸림)
       // 새로고침: 고친 것을 1.5초까지 기다렸다가 보여 줌 (지나간 버스가 잠깐 다시 보이는 깜빡임 없게)
       const refine = got.state === "ok" && got.list.length ? B.refineArrivals(stop, got.list) : null;
@@ -225,7 +244,7 @@ export function routeScreen(root, p, ctx) {
       const xy = at(i);
       if (!xy) return;
       const here = p.from && s.id && B.legacyId(s.id) === B.legacyId(p.from), focused = focusSeq === s.seq;
-      if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: xy[0], lng: xy[1], color: here || focused ? "#D7262E" : "#fff", ring: color, r: here || focused ? 7 : 4, label: focused ? s.name : null });
+      if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: xy[0], lng: xy[1], color: here || focused ? "#D7262E" : color, ring: "#fff", r: here || focused ? 7 : 5, label: focused ? s.name : null });
     });
     for (const b of pos?.buses || []) {
       if (b.lat == null) continue;

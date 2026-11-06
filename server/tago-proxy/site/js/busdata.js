@@ -335,14 +335,31 @@ async function tagoArrivals(city, node) {
 }
 
 /** 정류장 실시간 도착: {state: "ok"|"unsupported"|"failed", list, at} */
+/** 전주시 버스정보 정류장 도착 (줄 이름 <list>, RTime 초, RStop 남은 정류장) */
+async function jeonjuArrivals(id) {
+  const x = await getText("w/bus/jeonju/arrival/" + id.slice(3));
+  return [...new DOMParser().parseFromString(x, "text/xml").getElementsByTagName("list")].map((el) => {
+    const r = {};
+    for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
+    const no = String(r.brtid ?? "");
+    return { routeId: "JUB" + (r.brtstdid || ""), routeNo: no, routeType: r.brtclass === "1" ? "순환" : /^\d{4}/.test(no) ? "간선" : "일반",
+      vehicleType: r.buslow === "1" ? "저상버스" : null, prevStops: int(r.rstop), arrSeconds: int(r.rtime), city: "35010",
+      towards: str((r.brtvianame || "").split("->")[1]) };
+  }).filter((a) => a.routeNo && a.arrSeconds != null);
+}
+
 export async function arrivals(stop) {
   try {
     const t = await targets(stop);
-    if (!t.tago.length && !t.metro.length) return { state: "unsupported", list: [], at: Date.now() };
-    const res = await Promise.allSettled([
-      ...t.tago.map(([c, id]) => tagoArrivals(c, id)),
+    // 전주 정류장: 전주시 버스정보 도착 (앱과 같은 자료). 받으면 그 정류장의 TAGO 도착은 쓰지 않음
+    const jeonju = [...new Set([stop, ...(await sameSpot(stop))].map((s) => (/^JUB\d{9}$/.test(s.id) ? s.id : null)).filter(Boolean))];
+    if (!t.tago.length && !t.metro.length && !jeonju.length) return { state: "unsupported", list: [], at: Date.now() };
+    const ju = await Promise.allSettled(jeonju.map((id) => jeonjuArrivals(id)));
+    const jeonjuOk = new Set(jeonju.filter((_, i) => ju[i].status === "fulfilled"));
+    const res = [...ju, ...(await Promise.allSettled([
+      ...t.tago.filter(([, id]) => !jeonjuOk.has(id)).map(([c, id]) => tagoArrivals(c, id)),
       ...t.metro.map(async (p) => { const b = await getText(p); return p.includes("/seoul/") ? seoulArrivals(b) : ggArrivals(b); }),
-    ]);
+    ]))];
     if (res.every((r) => r.status === "rejected")) throw res[0].reason;
     const seen1 = new Set(), seen2 = new Set();
     const list = res.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
