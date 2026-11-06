@@ -148,14 +148,16 @@ export async function stopRoutes(stop) {
   const same = await sameSpot(stop);
   const ids = [...new Set([stop, ...same].flatMap((s) => s.routes))];
   const sums = await routeSums(ids);
-  const seen = new Set(), seenNo = new Set();
+  const seen = new Set();
   const out = Object.values(sums).map((s) => ({ ...s, id: currentId(s.id) })).filter((s) => !seen.has(s.id) && seen.add(s.id));
-  out.forEach((s) => seenNo.add(s.no));
+  // 같은 번호라도 본선·지선·분선처럼 기점·종점이 다르면 다른 노선 → 번호가 아니라 노선 ID(없으면 번호+기점+종점)로 구분
+  const sig = (s) => [s.no, (s.start || "").replace(/ /g, ""), (s.end || "").replace(/ /g, "")].join("|");
+  const seenSig = new Set(out.map(sig));
   // 자료 조각에 요약이 없는 노선이 있으면 (경기·전주 등) 정류장을 지나는 노선을 서버로 물어 채움 (운행 안 하는 노선도 보이게)
   if (!ids.length || ids.some((id) => !sums[id])) {
     for (const s of await liveStopRoutes(stop, same).catch(() => [])) {
-      if (seen.has(s.id) || seenNo.has(s.no)) continue;
-      seen.add(s.id); seenNo.add(s.no); out.push(s);
+      if (seen.has(s.id) || seenSig.has(sig(s))) continue;
+      seen.add(s.id); seenSig.add(sig(s)); out.push(s);
     }
   }
   return out;
@@ -344,7 +346,8 @@ export async function arrivals(stop) {
     const seen1 = new Set(), seen2 = new Set();
     const list = res.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
       .filter((a) => { const k = a.routeId + "|" + a.arrSeconds; return !seen1.has(k) && seen1.add(k); })
-      .filter((a) => { const k = a.routeNo + "|" + Math.floor((a.arrSeconds ?? -60) / 60); return !seen2.has(k) && seen2.add(k); })
+      // 같은 버스가 두 곳(시군)에서 다른 노선 ID 로 올 때만 하나로: 번호·분·남은 정류장이 다 같을 때 (본선·지선이 같은 분에 와도 남겨 둠)
+      .filter((a) => { const k = a.routeNo + "|" + Math.floor((a.arrSeconds ?? -60) / 60) + "|" + (a.prevStops ?? ""); return !seen2.has(k) && seen2.add(k); })
       .sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
     return { state: "ok", list, at: Date.now() };
   } catch (e) {
