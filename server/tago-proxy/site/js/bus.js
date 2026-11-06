@@ -68,7 +68,7 @@ function mergeRows(sums, arrivals) {
 
 export function stopScreen(root, p) {
   let stop = known.get(p.id);
-  let alive = true, live = null, sums = null, city = null;
+  let alive = true, live = null, sums = null, city = null, toward = null;
   const timers = [];
   const ensure = async () => {
     if (!stop && p.lat) stop = await B.stopAt(p.id, +p.lat, +p.lng);
@@ -139,7 +139,7 @@ export function stopScreen(root, p) {
     else if (live.state === "failed") status = "실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.";
     else if (!rows.length) status = "이 정류장에 서는 버스 정보가 없어요";
     else if (!arr.length) status = "지금 도착 예정인 버스가 없어요";
-    const sub = [city, stop.no ? "정류장 번호 " + stop.no : null].filter(Boolean).join(" · ");
+    const sub = [city, stop.no ? "정류장 번호 " + stop.no : null, toward ? toward + " 방면" : null].filter(Boolean).join(" · ");
     root.innerHTML = header(stop.name, sub || null, {
       back: true,
       star: { on: Favorites.hasStop(stop), toggle: () => { Favorites.toggleStop(stop); draw(); } },
@@ -157,7 +157,11 @@ export function stopScreen(root, p) {
     if (!(await ensure())) return;
     draw();
     B.cityName(stop.city).then((c) => { city = c; draw(); });
-    B.stopRoutes(stop).then((s) => { sums = s; draw(); }).catch(() => { sums = []; draw(); });
+    B.stopRoutes(stop).then((s) => {
+      sums = s; draw();
+      // 어느 방면인지: 지나는 노선의 다음 정류장
+      B.towardOf(stop, s).then((t) => { if (t && alive) { toward = t; draw(); } }).catch(() => {});
+    }).catch(() => { sums = []; draw(); });
     const tick = async () => {
       let got = await B.arrivals(stop);
       if (!alive) return;

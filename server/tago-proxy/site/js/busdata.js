@@ -401,6 +401,21 @@ export function closer(stop, busOrds, claimed, sec) {
   if (s != null && k === 1) s = Math.min(s, 60);
   return [k, s];
 }
+/** 정류장 방면: 이 정류장을 지나는 노선에서 바로 다음 정류장 이름 (노선 몇 개를 보고 가장 많이 나온 것). 모르면 null */
+export async function towardOf(stop, routes) {
+  const ids = new Set([stop, ...(await sameSpot(stop))].map((s) => s.id));
+  const names = new Map();
+  for (const rt of routes.slice(0, 4)) {
+    try {
+      const r = await remembered("route|" + rt.id, 600000, () => route(rt.id, rt.city || (/^\d+$/.test(stop.city) ? stop.city : null)));
+      const i = r ? r.stops.findIndex((s) => ids.has(s.id)) : -1;
+      const next = i >= 0 ? r.stops.slice(i + 1).find((s) => s.name && s.name !== stop.name) : null;
+      if (next) names.set(next.name, (names.get(next.name) || 0) + 1);
+    } catch (e) { /* 다음 노선 */ }
+  }
+  return [...names.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+}
+
 /** 받은 도착 목록을 버스 위치로 고친 목록 (못 고치면 같은 목록). 화면은 먼저 받은 목록을 보여 주고 이것이 오면 바꿈 */
 export function refineArrivals(stop, list) { return fixByPosition(stop, list).catch(() => list); }
 async function fixByPosition(stop, list) {

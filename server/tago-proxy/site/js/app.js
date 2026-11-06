@@ -3,7 +3,7 @@ import { MapView } from "./map.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
 import { applyTheme } from "./store.js";
-import { stopsIn, cityName } from "./busdata.js";
+import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
 import * as home from "./home.js";
 import * as bus from "./bus.js";
 import * as more from "./more.js";
@@ -95,6 +95,7 @@ function startSide(focus) {
   sideCleanup = stopsMap(side, focus && focus.lat ? { id: parse().id, lat: +focus.lat, lng: +focus.lng } : null);
 }
 
+const towardMemo = new Map();
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
 export function stopsMap(host, focus) {
   let stops = [], picked = focus;
@@ -112,7 +113,12 @@ export function stopsMap(host, focus) {
     if (picked && picked.name) {
       card.style.display = "flex";
       card.innerHTML = `<div><b>${esc(picked.name)}</b><small>${picked.no ? "정류장 번호 " + esc(picked.no) : ""}</small></div><button class="btn" ${act(() => go("stop", picked.id, { lat: picked.lat, lng: picked.lng }))}>도착 정보</button>`;
-      cityName(picked.city).then((c) => { const sm = card.querySelector("small"); if (sm && c) sm.textContent = [c, picked.no ? "정류장 번호 " + picked.no : null].filter(Boolean).join(" · "); });
+      // 시군 이름과 방면(지나는 노선의 다음 정류장)을 받는 대로 채움
+      const p0 = picked, info = { c: null, t: null };
+      const fill = () => { const sm = card.querySelector("small"); if (sm && picked === p0) sm.textContent = [info.c, p0.no ? "정류장 번호 " + p0.no : null, info.t ? info.t + " 방면" : null].filter(Boolean).join(" · "); };
+      cityName(p0.city).then((c) => { info.c = c; fill(); });
+      if (!towardMemo.has(p0.id)) towardMemo.set(p0.id, stopRoutes(p0).then((rs) => towardOf(p0, rs)).catch(() => null));
+      towardMemo.get(p0.id).then((t) => { info.t = t; fill(); });
     } else card.style.display = "none";
   };
   const load = () => {
