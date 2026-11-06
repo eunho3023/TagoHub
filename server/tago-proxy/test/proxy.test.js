@@ -184,7 +184,9 @@ test("웹 서울·경기 버스: 정해진 모양의 id 만", () => {
   assert.equal(busWebRequest("/w/bus/seoul/routes/01002"), null);
   const jr = busWebRequest("/w/bus/jeonju/routes/306101123");
   assert.ok(jr.url.startsWith("https://apis.data.go.kr/4641000/busstop/general_busstop_common?stopStandardid=306101123&stopStdid=306101123"));
-  assert.equal(busWebRequest("/w/bus/jeonju/arrival/306101123"), null);
+  const ja = busWebRequest("/w/bus/jeonju/arrival/306101123");
+  assert.ok(ja.url.includes("realtime/bus_location_busstop_infomation_common?stopStdid=306101123") && ja.ttl === 5);
+  assert.equal(busWebRequest("/w/bus/jeonju/pos/306101123"), null);
   assert.equal(busWebRequest("/w/bus/jeonju/routes/3061011"), null);
   const tr = webRequest("/w/dg/1613000/BusSttnInfoInqireService/getSttnThrghRouteList", "?cityCode=35010&nodeid=JJB306000038");
   assert.ok(tr && tr.search.includes("nodeid=JJB306000038"));

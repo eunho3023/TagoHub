@@ -276,7 +276,10 @@ export function busWebRequest(pathname) {
   const [, area, op, id] = m;
   // 전주 정류장을 지나는 노선 (전주시 버스정보, 하루 저장). TAGO 는 전주 정류장 경유 노선을 주지 않음
   if (area === "jeonju") {
-    if (op !== "routes" || !/^\d{9}$/.test(id)) return null;
+    if (!/^\d{9}$/.test(id)) return null;
+    // 정류장 도착 예정 (전주시 버스정보, 앱과 같은 자료, 5초 저장)
+    if (op === "arrival") return { area, url: `https://apis.data.go.kr/4641000/realtime/bus_location_busstop_infomation_common?stopStdid=${id}&serviceKey=KEY`, cacheKey: `bus/jeonju/arrival/${id}`, ttl: 5 };
+    if (op !== "routes") return null;
     return { area, url: `https://apis.data.go.kr/4641000/busstop/general_busstop_common?stopStandardid=${id}&stopStdid=${id}&serviceKey=KEY`, cacheKey: `bus/jeonju/routes/${id}`, ttl: 86400 };
   }
   if (area === "seoul") {
