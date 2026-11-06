@@ -375,7 +375,7 @@ export function routeScreen(root, p, ctx) {
     root.querySelector("#rrefresh")?.addEventListener("click", () => tick());
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
-    B.shape(r.id, r.city, r.stops).then((s) => { road = s; drawMap(); });
+    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no).then((s) => { road = s; drawMap(); });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
     async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }

@@ -192,7 +192,7 @@ async function liveStopRoutes(stop, same) {
 }
 
 /** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */
-export async function shape(routeId, city, stops) {
+export async function shape(routeId, city, stops, no) {
   // 앱과 같은 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력)가 있으면 그것 (자료 조각 shapes/).
   // 단 정류장과 잘 맞을 때만 (90% 가 선에서 30m 안): 경기 자료는 노선 일부만 덮은 것도 있어서
   try {
@@ -202,8 +202,8 @@ export async function shape(routeId, city, stops) {
     if (pts.length >= 2 && (!stops || fitsStops(pts, stops))) return pts;
   } catch (e) { /* 서버에서 */ }
   try {
-    // v=4: 골목으로 돌아 들어가지 않게 다시 만든 모양 (브라우저에 저장된 예전 모양을 쓰지 않게)
-    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city, v: 4 } : { v: 4 })).poly;
+    // v=5: 노선 번호를 주면 서버가 카카오 경로(앱과 같은 방법)로. 골목으로 돌아 들어가지 않게 다시 만든 모양 (브라우저에 저장된 예전 모양을 쓰지 않게)
+    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city, v: 5, no: no || undefined } : { v: 5, no: no || undefined })).poly;
     const pts = decodePolyline(String(poly), 5);
     return pts.length >= 2 ? pts : null;
   } catch (e) { return null; }

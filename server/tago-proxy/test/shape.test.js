@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bucket, build, chunks, decode, encode, handleShape, removeDetours, signature, tagoStops } from "../src/shape.js";
+import { bucket, build, buildKakao, chunks, decode, encode, fitsStops, handleShape, kakaoRidePath, removeDetours, signature, tagoStops } from "../src/shape.js";
 
 test("노선 묶음 번호는 앱·자료 만들기와 같음", () => {
   assert.equal(bucket("BSB5200111000"), 992);
@@ -36,7 +36,7 @@ test("구간 실패는 직선, 전부 실패면 null", async () => {
   const shape = await build(stops, ok);
   assert.ok(shape.length >= 4);
   assert.equal(await build(stops, async () => ({ ok: false })), null);
-  assert.equal(signature(stops), "v4:3:36.0000,127.0000:36.0200,127.0000");
+  assert.equal(signature(stops), "v5:3:36.0000,127.0000:36.0200,127.0000");
 });
 
 test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면 그 정류장을 빼고 큰길로", async () => {
@@ -56,6 +56,24 @@ test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면
   assert.ok(inside.some((p) => p[1] > 127.001), "'○○내' 정류장은 실제로 들어가는 길이라 그대로");
   const fixed = await build([a, wrong, c], fetcherFor(wrong));
   assert.ok(fixed.every((p) => Math.abs(p[1] - 127.0) < 1e-6), "250m 안 보통 정류장은 큰길로");
+});
+
+test("카카오 경로: 이 노선 번호 버스 구간만, 시작·끝이 정류장 가까이", async () => {
+  const a = [36.0, 127.0], b = [36.01, 127.0];
+  const step = (no, pts) => ({ properties: { type: "BUS", vehicles: [{ name: no }] }, path: { points: pts.map(([la, lo]) => [String(lo), String(la)]) } });
+  const body = { routes: [{ steps: [{ properties: { type: "WALKING" } }, step("101", [a, [36.005, 127.001], b]), step("104번", [a, [36.005, 127.0005], b])] }] };
+  assert.deepEqual(kakaoRidePath(body, "104", a, b), [a, [36.005, 127.0005], b]);
+  assert.equal(kakaoRidePath(body, "999", a, b), null);
+  assert.equal(kakaoRidePath(body, "104", a, [36.05, 127.0]), null);
+  // 정류장 6개씩 카카오로 이어 붙임
+  const stops = Array.from({ length: 11 }, (_, i) => [36.0 + i * 0.001, 127.0]);
+  const fetcher = async (u) => {
+    const q = new URL(u).searchParams;
+    const s0 = [+q.get("start_y"), +q.get("start_x")], e0 = [+q.get("end_y"), +q.get("end_x")];
+    return { ok: true, json: async () => ({ routes: [{ steps: [step("104", [s0, [(s0[0] + e0[0]) / 2, 127.0], e0])] }] }) };
+  };
+  const shape = await buildKakao(stops, "104", "k", fetcher);
+  assert.ok(shape && fitsStops(shape, stops));
 });
 
 test("만든 모양은 저장하고 다음엔 저장한 것을 줌", async () => {
