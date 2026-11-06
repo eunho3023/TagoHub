@@ -63,6 +63,49 @@ export async function searchStops(query, limit = 60) {
     .slice(0, limit);
 }
 
+// ── 카카오 지도 버스정류장 아이콘 자리 (지도 정류장 버튼을 그 위에) ──
+const KCELL = 0.005;
+const kakaoCells = new Map();
+function kakaoCell(cx, cy) {
+  const k = cx + "_" + cy;
+  if (!kakaoCells.has(k)) {
+    kakaoCells.set(k, (async () => {
+      const out = [];
+      for (let page = 1; page <= 3; page++) {
+        const body = await getJson("w/kakao/busstops", { cx, cy, page });
+        for (const d of body.documents || []) {
+          if (!/버스정류장/.test(d.category_name || "")) continue;
+          const lat = parseFloat(d.y), lng = parseFloat(d.x);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) out.push({ name: d.place_name || "", lat, lng });
+        }
+        if (body.meta?.is_end !== false) break;
+      }
+      return out;
+    })().catch(() => { kakaoCells.delete(k); return []; }));
+  }
+  return kakaoCells.get(k);
+}
+const plain = (n) => String(n || "").replace(/\(.*?\)|버스정류장|정류장|[\s.·,\-]/g, "");
+/** 정류장마다 카카오 아이콘 자리 [위도, 경도] (못 찾으면 원래 자리). 같은 아이콘을 두 정류장이 쓰지 않게 가까운 짝부터 */
+export async function kakaoSpots(stops, b) {
+  const x0 = Math.floor(b.w / KCELL), x1 = Math.floor(b.e / KCELL), y0 = Math.floor(b.s / KCELL), y1 = Math.floor(b.n / KCELL);
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 16) return null;
+  const cells = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) cells.push(kakaoCell(String(x).padStart(5, "0"), String(y).padStart(4, "0")));
+  const spots = (await Promise.all(cells)).flat();
+  const pairs = [];
+  stops.forEach((s, i) => spots.forEach((k, j) => {
+    const d = meters(s.lat, s.lng, k.lat, k.lng);
+    const a = plain(s.name), c = plain(k.name);
+    const named = a && c && (a === c || a.includes(c) || c.includes(a));
+    if (d <= (named ? 60 : 20)) pairs.push([named ? d : d + 1000, i, j]);
+  }));
+  pairs.sort((p, q) => p[0] - q[0]);
+  const at = new Map(), used = new Set();
+  for (const [, i, j] of pairs) if (!at.has(i) && !used.has(j)) { at.set(i, [spots[j].lat, spots[j].lng]); used.add(j); }
+  return stops.map((s, i) => at.get(i) || [s.lat, s.lng]);
+}
+
 /** 이 범위 안의 정류장 (지도) */
 export async function stopsIn(s, w, n, e, limit = 400) {
   const names = tileNames(s, w, n, e);

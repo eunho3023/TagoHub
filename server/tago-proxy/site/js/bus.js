@@ -103,6 +103,19 @@ export function stopScreen(root, p) {
       if (sp && sp.dataset.h !== html) { sp.innerHTML = html; sp.dataset.h = html; }
     });
   };
+  // 노선 줄 아래 글: 기점 → 종점 (자료에 없으면 노선을 받아 채움, 경기는 "○○ 방면")
+  const ends = new Map();
+  const endsOf = (r) => {
+    const s = r.sum && [r.sum.start, r.sum.end].filter(Boolean).join(" → ");
+    if (s) return s;
+    if (ends.has(r.id)) return ends.get(r.id) || "";
+    const towards = r.arr.find((a) => a.towards)?.towards;
+    ends.set(r.id, towards ? towards + " 방면" : "");
+    if (!towards && r.id) B.route(r.id, r.city || (/^d+$/.test(stop.city) ? stop.city : null))
+      .then((x) => { const t = x && [x.start, x.end].filter(Boolean).join(" → "); if (t) { ends.set(r.id, t); draw(); } }).catch(() => {});
+    return ends.get(r.id);
+  };
+  let refresh = null;
   const draw = () => {
     if (!alive || !stop) return;
     const elapsed = elapsedNow();
@@ -120,10 +133,10 @@ export function stopScreen(root, p) {
       back: true,
       star: { on: Favorites.hasStop(stop), toggle: () => { Favorites.toggleStop(stop); draw(); } },
       action: isWide() ? null : { label: "위치", run: () => go("map", stop.id, { lat: stop.lat, lng: stop.lng }) },
-    }) + (status ? note(status) : "") + `<div class="list">${rows.map((r, i) => {
-      const ends = r.sum ? [r.sum.start, r.sum.end].filter(Boolean).join(" → ") : "";
+    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><div class="list">${rows.map((r, i) => {
+      const ends = endsOf(r);
       return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
-        <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends || r.type || "")}</small></span>
+        <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
         <span class="right" data-r="${i}"></span></button>`;
     }).join("")}</div>`;
     tickTimes();
@@ -150,6 +163,7 @@ export function stopScreen(root, p) {
       const fixed = await refine;
       if (alive && live === got && fixed !== got.list) { live = { ...got, list: fixed }; draw(); }
     };
+    refresh = () => { tick(); B.stopRoutes(stop).then((s) => { sums = s; draw(); }).catch(() => {}); };
     tick();
     timers.push(setInterval(tick, REFRESH_MS), setInterval(tickTimes, 1000));
   })();
@@ -266,14 +280,15 @@ export function routeScreen(root, p, ctx) {
     if (r && r.no === "노선" && p.no) { r.no = p.no; if (!r.type && p.type) r.type = p.type; }
     if (!alive) return;
     if (!r) { root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요"); return; }
-    root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region, r.type].filter(Boolean).join(" · "), { back: true }) +
-      `<div class="map-slot"></div><div id="status" class="status"></div><div id="stops" class="list"></div>`;
+    root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
+      `<div class="map-slot"></div><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button><div id="stops" class="list"></div>`;
+    root.querySelector("#rrefresh")?.addEventListener("click", () => tick());
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
     B.shape(r.id, r.city).then((s) => { road = s; drawMap(); });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
-    const tick = async () => { pos = await B.positions(r); if (alive) { drawList(); drawMap(); } };
+    async function tick() { pos = await B.positions(r); if (alive) { drawList(); drawMap(); } }
     tick();
     const t = setInterval(tick, REFRESH_MS);
     timers.push(() => clearInterval(t));
