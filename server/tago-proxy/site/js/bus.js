@@ -134,7 +134,22 @@ export function stopScreen(root, p) {
     draw();
     B.cityName(stop.city).then((c) => { city = c; draw(); });
     B.stopRoutes(stop).then((s) => { sums = s; draw(); }).catch(() => { sums = []; draw(); });
-    const tick = async () => { live = await B.arrivals(stop); draw(); };
+    const tick = async () => {
+      const got = await B.arrivals(stop);
+      if (!alive) return;
+      // 처음: 받은 도착 정보를 바로 보여 주고, 버스 위치로 고친 것이 오면 바꿈 (위치 확인에 1~3초 걸림)
+      // 새로고침: 고친 것을 1.5초까지 기다렸다가 보여 줌 (지나간 버스가 잠깐 다시 보이는 깜빡임 없게)
+      const refine = got.state === "ok" && got.list.length ? B.refineArrivals(stop, got.list) : null;
+      if (refine && live) {
+        const fixed = await Promise.race([refine, new Promise((r) => setTimeout(() => r(null), 1500))]);
+        if (!alive) return;
+        if (fixed) { live = { ...got, list: fixed }; draw(); return; }
+      }
+      live = got; draw();
+      if (!refine) return;
+      const fixed = await refine;
+      if (alive && live === got && fixed !== got.list) { live = { ...got, list: fixed }; draw(); }
+    };
     tick();
     timers.push(setInterval(tick, REFRESH_MS), setInterval(tickTimes, 1000));
   })();
