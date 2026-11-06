@@ -36,7 +36,7 @@ test("구간 실패는 직선, 전부 실패면 null", async () => {
   const shape = await build(stops, ok);
   assert.ok(shape.length >= 4);
   assert.equal(await build(stops, async () => ({ ok: false })), null);
-  assert.equal(signature(stops), "v5:3:36.0000,127.0000:36.0200,127.0000");
+  assert.equal(signature(stops), "v6:3:36.0000,127.0000:36.0200,127.0000");
 });
 
 test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면 그 정류장을 빼고 큰길로", async () => {

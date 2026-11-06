@@ -157,10 +157,10 @@ export const insideName = (n) => /(^|[s.·])?(내|안|구내)$/.test(String(n ||
  * 정류장 좌표들 → 길 따라 모양. 정류장 좌표가 큰길 옆 골목·단지 쪽에 찍혀 길이 그쪽으로 돌아 들어가면,
  * 그 정류장을 빼고 다시 받아 큰길로 (뺀 정류장이 새 길에서 60m 넘게 멀면 실제로 들어가는 길이라 다시 넣음)
  */
-export async function build(stops, fetcher) {
+export async function build(stops, fetcher, st = {}) {
   // 돌아 들어가는지는 다듬기(removeDetours) 전의 길로 봄 (다듬으면 골목 길이 직선으로 바뀌어 안 보임)
   const done = (path, used) => removeDetours(path, used);
-  const first = await buildRaw(stops, fetcher);
+  const first = await buildRaw(stops, fetcher, st);
   if (!first) return null;
   const sus = detourStops(first, stops).slice(0, MAX_CHECKS);
   if (!sus.length) return done(first, stops);
@@ -176,7 +176,7 @@ export async function build(stops, fetcher) {
   }
   if (!drop.size) return done(first, stops);
   const used = stops.filter((_, i) => !drop.has(i));
-  const second = await buildRaw(used, fetcher);
+  const second = await buildRaw(used, fetcher, st);
   return second ? done(second, used) : done(first, stops);
 }
 const MAX_CHECKS = 12;
@@ -194,9 +194,9 @@ async function osrmPath(points, fetcher) {
 }
 
 /** 구간마다 OSRM 길을 이음 (다듬기 전). 구간 실패·너무 긴 구간은 직선, 하나도 못 받으면 null */
-async function buildRaw(stops, fetcher) {
+async function buildRaw(stops, fetcher, st = {}) {
   const out = [];
-  let anyRoad = false;
+  let anyRoad = false, straight = 0;
   for (const part of chunks(stops)) {
     let piece = null;
     try {
@@ -211,16 +211,18 @@ async function buildRaw(stops, fetcher) {
       }
     } catch (_) { /* 이 구간은 직선 */ }
     if (piece) anyRoad = true;
+    if (!piece) straight++;
     const seg = piece || part;
     out.push(...(out.length ? seg.slice(1) : seg));
   }
+  st.straight = straight; // 마지막으로 만든 길 기준
   return anyRoad ? out : null;
 }
 
 // ── 카카오 경로 (앱 RoadShapeClient 와 같은 방법) ──
 // 정류장 6개씩 카카오 대중교통 길찾기를 받아, 이 노선 번호 버스를 타는 구간의 경로를 씀 (카카오 지도의 실제 버스 길).
 // 카카오에 보내는 것은 정류장 좌표(공개 자료)뿐. 구간 시작·끝이 정류장 200m 안, 사이 정류장 80m 곁을 지나고, 너무 돌지 않아야 채택
-export const KAKAO_CHUNK = 6, KAKAO_MAX_PARTS = 22;
+export const KAKAO_CHUNK = 6, KAKAO_MAX_PARTS = 22, SUBREQ_BUDGET = 45;
 const sameNo = (a, b) => { const n = (s) => String(s || "").replace(/\s/g, "").replace(/번$/, ""); return n(a) !== "" && n(a) === n(b); };
 export function kakaoRidePath(body, routeNo, a, b) {
   for (const r of body?.routes || []) {
@@ -246,21 +248,23 @@ async function kakaoPiece(part, routeNo, key, fetcher) {
   } catch (_) { return null; }
 }
 /** 카카오 경로로 만든 모양. 카카오가 못 준 구간은 그 구간만 OSRM. 절반 넘게 못 받으면 null (OSRM 방식으로) */
-export async function buildKakao(stops, routeNo, key, fetcher) {
+export async function buildKakao(stops, routeNo, key, fetcher, st = {}) {
   const parts = chunks(stops, KAKAO_CHUNK);
   // Workers 무료 요금제는 요청 하나에 바깥 요청 50번까지: 구간이 많으면(정류장 약 110개 넘음) 카카오는 쓰지 않음
   if (parts.length > KAKAO_MAX_PARTS) return null;
   const out = [];
-  let got = 0;
+  let got = 0, straight = 0;
   for (const part of parts) {
     let piece = await kakaoPiece(part, routeNo, key, fetcher);
     if (piece) got++;
     else {
       const o = await osrmPath(part, fetcher);
       piece = o && length(o) <= length(part) * 3 + 300 ? removeDetours(o, part) : part;
+      if (piece === part) straight++;
     }
     out.push(...(out.length ? piece.slice(1) : piece));
   }
+  st.straight = straight;
   return got * 2 >= parts.length ? out : null;
 }
 
@@ -273,8 +277,8 @@ export function fitsStops(path, stops, maxM = 100, ratio = 0.85) {
 /** 정류장 목록이 바뀌면 다시 만들게 하는 표시 */
 export function signature(stops) {
   const f = stops[0], l = stops[stops.length - 1];
-  // v5: 노선 번호가 있으면 카카오 경로 먼저 (예전 모양은 다시 만듦)
-  return `v5:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
+  // v6: 직선 섞인 모양은 저장하지 않음 (v5 때 저장된 직선 섞인 모양을 다시 만듦)
+  return `v6:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
 }
 
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -337,34 +341,40 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const routeNo = /^[0-9A-Za-z가-힣()-]{1,20}$/.test(no) ? no : null;
   const kakaoKey = (env.KAKAO_REST_KEY || "").trim();
   const useKakao = !!(routeNo && kakaoKey);
-  const key = new Request(`https://cache.tagohub/shape/v5${useKakao ? "k" : ""}/${id}`);
+  const key = new Request(`https://cache.tagohub/shape/v6${useKakao ? "k" : ""}/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
   const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, url.searchParams.get("city"), fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops) + (useKakao ? ":k" : "");
-  let poly = null;
+  let poly = null, partial = false;
   if (env.DB) {
     await ensureTable(env.DB);
     const row = await env.DB.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
     if (row && row.sig === sig) poly = row.poly;
   }
   if (!poly) {
+    // Workers 무료 요금제는 요청 하나에 바깥 요청 50번까지: 그 전에 멈추고(못 받은 구간은 직선) 나중에 다시 만듦
+    let used = 0;
+    const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
+    const st = {};
     let shape = null;
     if (useKakao) {
-      const k = await buildKakao(stops, routeNo, kakaoKey, fetcher);
+      const k = await buildKakao(stops, routeNo, kakaoKey, limited, st);
       if (k && fitsStops(k, stops)) shape = k;
     }
-    if (!shape) shape = await build(stops, fetcher);
+    if (!shape) shape = await build(stops, limited, st);
     if (!shape) return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
     poly = encode(shape, 5);
-    if (env.DB) {
+    // 정류장끼리 직선으로 채운 구간이 있으면(카카오·OSRM 응답을 못 받음) 저장하지 않고 10분만 → 다시 만듦
+    partial = (st.straight || 0) > 0;
+    if (env.DB && !partial) {
       ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)")
         .bind(id, sig, poly, Math.floor(Date.now() / 1000)).run());
     }
   }
-  const res = new Response(JSON.stringify({ poly }), { headers: { ...HEAD, "Cache-Control": "public, max-age=86400" } });
+  const res = new Response(JSON.stringify({ poly }), { headers: { ...HEAD, "Cache-Control": "public, max-age=" + (partial ? 600 : 86400) } });
   ctx.waitUntil(cache.put(key, res.clone()));
   return res;
 }
