@@ -3,7 +3,7 @@ import { MapView } from "./map.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
 import { applyTheme } from "./store.js";
-import { stopsIn, cityName, kakaoSpots } from "./busdata.js";
+import { stopsIn, cityName } from "./busdata.js";
 import * as home from "./home.js";
 import * as bus from "./bus.js";
 import * as more from "./more.js";
@@ -97,7 +97,7 @@ function startSide(focus) {
 
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
 export function stopsMap(host, focus) {
-  let stops = [], picked = focus, spots = new Map();
+  let stops = [], picked = focus;
   let timer = null, alive = true;
   const card = document.createElement("div");
   card.className = "side-card";
@@ -106,7 +106,7 @@ export function stopsMap(host, focus) {
     const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
     MapView.dots(
       [...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
-        .map((s) => ({ id: s.id, lat: (spots.get(s.id) || [s.lat])[0], lng: (spots.get(s.id) || [0, s.lng])[1], color: picked && s.id === picked.id ? "#D7262E" : primary, ring: "#fff", r: picked && s.id === picked.id ? 8 : 5 })),
+        .map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, color: picked && s.id === picked.id ? "#D7262E" : primary, ring: "#fff", r: picked && s.id === picked.id ? 8 : 5 })),
       (d) => { picked = stops.find((s) => s.id === d.id) || picked; draw(); },
     );
     if (picked && picked.name) {
@@ -123,14 +123,6 @@ export function stopsMap(host, focus) {
       stops = MapView.zoom() < 15 ? [] : await stopsIn(b.s, b.w, b.n, b.e).catch(() => stops);
       if (focus && !picked?.name) picked = stops.find((s) => s.id === focus.id) || picked;
       if (alive) draw();
-      // 카카오 지도의 버스정류장 아이콘 자리로 옮겨 그 위에 버튼을 (가까이 확대했을 때만)
-      if (stops.length && MapView.zoom() >= 16) {
-        const shown = stops;
-        const at = await kakaoSpots(shown, b).catch(() => null);
-        if (!alive || !at || shown !== stops) return;
-        spots = new Map(shown.map((s, i) => [s.id, at[i]]));
-        draw();
-      }
     }, 300);
   };
   const off = MapView.onIdle(load);
