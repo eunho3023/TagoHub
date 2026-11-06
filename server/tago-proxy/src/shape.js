@@ -3,6 +3,7 @@
 // GET /w/shape/<노선 id> → {"poly": "<인코딩 폴리라인, 정밀도 5>"} (못 만들면 404)
 
 import { encodeKey } from "./proxy.js";
+import { gpsShape, gpsPoints, markGps, nextGpsRoute } from "./gps.js";
 
 export const OSRM = "https://router.project-osrm.org/route/v1/driving/";
 export const CHUNK = 25;
@@ -445,7 +446,7 @@ async function ensureQueue(db) {
 async function storedShape(db, id, sig) {
   const row = await db.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
   if (!row) return null;
-  if (row.sig === sig) return { poly: row.poly, interim: false };
+  if (row.sig === sig || row.sig === sig + ":g") return { poly: row.poly, interim: false };
   if (row.sig === sig + ":o") return { poly: row.poly, interim: true };
   return null;
 }
@@ -504,13 +505,42 @@ async function enqueue(db, id, city, no, prio, ensure = true) {
     .bind(id, /^\d{1,6}$/.test(city || "") ? city : null, no || null, prio, Math.floor(Date.now() / 1000)).run();
 }
 
+/** 버스 GPS 로 노선 모양 만들기 (공식 모양이 없는 지역). 정류장 85% 가 60m 안을 지나야 저장 (sig 끝 ":g") */
+async function gpsCron(env, fetcher) {
+  const job = await nextGpsRoute(env.DB);
+  if (!job) return null;
+  const id = job.route_id;
+  const stops = (await routeStops(env, id)) || (await tagoRouteStops(env, id, job.city, fetcher));
+  if (!stops || stops.length < 2 || stops.length > MAX_STOPS) { await markGps(env.DB, id, job.cells, false); return { id, gps: "no stops" }; }
+  const sig = signature(stops);
+  const row = await env.DB.prepare("SELECT poly FROM shapes WHERE route_id = ?").bind(id).first();
+  const base = row?.poly ? decode(row.poly, 5) : stops.map((s) => [s[0], s[1]]);
+  let used = 0;
+  const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
+  const res = await gpsShape(await gpsPoints(env.DB, id), base, limited);
+  if (res.shape && fitsStops(res.shape, stops, 60, 0.85)) {
+    const routeNo = await dataRouteNo(env, id);
+    const k = routeNo && (env.KAKAO_REST_KEY || "").trim() ? ":k" : "";
+    await env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)").bind(id, sig + k + ":g", encode(res.shape, 5), Math.floor(Date.now() / 1000)).run();
+    await markGps(env.DB, id, job.cells, true);
+    return { id, gps: "saved" };
+  }
+  await markGps(env.DB, id, job.cells, false);
+  return { id, gps: res.why || "not fit" };
+}
+
 // ── 예약 작업: 노선 모양을 미리 만들어 저장 (1분마다 노선 하나) ──
 // 사람들이 연 노선(직선이 섞였던 것)이 먼저, 그다음 자료 조각의 모든 노선을 묶음 차례로 줄에 넣음
 const MAX_TRIES = 5;
-export async function shapeCron(env, fetcher = fetch) {
+export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (!env.DB) return null;
   await ensureTable(env.DB);
   await ensureQueue(env.DB);
+  // 5분에 한 번: 실제 버스 GPS 가 충분히 쌓인 노선 하나를 그 길로 다시 만듦
+  if (Math.floor(now / 60000) % 5 === 0) {
+    const g = await gpsCron(env, fetcher).catch(() => null);
+    if (g) return g;
+  }
   let job = await env.DB.prepare("SELECT route_id, city, no, tries FROM shape_queue ORDER BY prio DESC, tries ASC, at ASC LIMIT 1").first();
   if (!job) {
     // 줄이 비면 자료 조각 노선 묶음 하나(약 9개)를 줄에 넣음 (아직 지금 방식으로 저장 안 된 것만)
