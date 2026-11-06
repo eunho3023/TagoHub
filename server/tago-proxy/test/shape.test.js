@@ -36,7 +36,7 @@ test("구간 실패는 직선, 전부 실패면 null", async () => {
   const shape = await build(stops, ok);
   assert.ok(shape.length >= 4);
   assert.equal(await build(stops, async () => ({ ok: false })), null);
-  assert.equal(signature(stops), "v6:3:36.0000,127.0000:36.0200,127.0000");
+  assert.equal(signature(stops), "v7:3:36.0000,127.0000:36.0200,127.0000");
 });
 
 test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면 그 정류장을 빼고 큰길로", async () => {
@@ -171,6 +171,23 @@ test("예약 작업: 노선 묶음을 줄에 넣고, 1분마다 하나씩 만들
   assert.ok(queue.has("R1"));
   const r2 = await shapeCron(env, osrm);           // R1 을 만들어 저장
   assert.equal(r2.saved, true);
-  assert.ok(shapes.get("R1").sig.startsWith("v6:"));
+  assert.ok(shapes.get("R1").sig.startsWith("v7:"));
   assert.ok(!queue.has("R1"));
+});
+
+test("지역 공식 노선 모양: 서울·경기·전주", async () => {
+  const { officialShape, jeonjuDrawing } = await import("../src/shape.js");
+  assert.deepEqual(jeonjuDrawing('<RFC30><code>000</code><list class="object"><vtxx>127.1</vtxx><vtxy>35.8</vtxy></list><list><vtxx>127.2</vtxx><vtxy>35.9</vtxy></list></RFC30>'), [[35.8, 127.1], [35.9, 127.2]]);
+  const env = { DATA_GO_KR_KEY: "k" };
+  const asked = [];
+  const fetcher = async (u) => {
+    asked.push(u);
+    if (u.includes("getBusRouteLineListv2")) return { ok: true, json: async () => ({ response: { msgBody: { busRouteLineList: [{ lineSeq: 2, x: 127.2, y: 37.2 }, { lineSeq: 1, x: 127.1, y: 37.1 }] } } }) };
+    if (u.includes("getRoutePath")) return { ok: true, json: async () => ({ msgBody: { itemList: [{ no: "1", gpsX: "126.9", gpsY: "37.5" }, { no: "2", gpsX: "126.91", gpsY: "37.51" }] } }) };
+    return { ok: false };
+  };
+  assert.deepEqual(await officialShape(env, "GGB234000015", fetcher), [[37.1, 127.1], [37.2, 127.2]]);
+  assert.deepEqual(await officialShape(env, "SEB100100118", fetcher), [[37.5, 126.9], [37.51, 126.91]]);
+  assert.equal(await officialShape(env, "BSB5200111000", fetcher), null);
+  assert.ok(asked.some((u) => u.includes("routeId=234000015")) && asked.some((u) => u.includes("busRouteId=100100118")));
 });
