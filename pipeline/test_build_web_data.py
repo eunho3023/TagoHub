@@ -10,6 +10,11 @@ def test_bucket_and_tile_match_app():
     assert bw.tile(35.8235, 127.1478) == "358_1271"
 
 
+def test_encode_polyline():
+    # 구글 예시 값
+    assert bw.encode_polyline([(38.5, -120.2), (40.7, -120.95), (43.252, -126.453)]) == "_p~iF~ps|U_ulLnnqC_mqNvxq`@"
+
+
 def test_build_small_db():
     with tempfile.TemporaryDirectory() as d:
         d = pathlib.Path(d)
@@ -26,14 +31,19 @@ def test_build_small_db():
         INSERT INTO route_stops VALUES('R1',1,'S1','',NULL,NULL,'0'),('R1',2,'S2','',NULL,NULL,'0'),('R1',3,NULL,'새 정류장',35.83,127.15,'1');
         CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER);
         INSERT INTO route_info VALUES('R1','06:00','23:00',15,20,25);
+        CREATE TABLE gbis_shapes(id TEXT PRIMARY KEY, poly TEXT); INSERT INTO gbis_shapes VALUES('GGB200000006','_p~iF~ps|U_ulLnnqC');
         """)
         db.commit(); db.close()
         assets = d / "assets"; assets.mkdir()
         (assets / "train_timetable.tsv").write_text("a\tb", encoding="utf-8")
         (assets / "bus_stops.db").write_bytes(b"x")
+        (assets / "bus_route_shapes.tsv").write_text("100100118\t37.5,127.0\t10,-20,5,5\n", encoding="utf-8")
         out = d / "out"
         m = bw.build(d / "s.db", out, assets)
-        assert m["tiles"] == 1 and m["dbVersion"] == "202611040000" and m["files"] == 1
+        assert m["tiles"] == 1 and m["dbVersion"] == "202611040000" and m["files"] == 2
+        # 노선 실제 경로: 경기는 그대로, 서울 TSV 는 polyline 으로
+        assert json.loads((out / f"shapes/{bw.bucket('GGB200000006')}.json").read_text(encoding="utf-8"))["GGB200000006"] == "_p~iF~ps|U_ulLnnqC"
+        assert json.loads((out / f"shapes/{bw.bucket('SEB100100118')}.json").read_text(encoding="utf-8"))["SEB100100118"] == bw.encode_polyline([(37.5, 127.0), (37.5001, 126.9998), (37.50015, 126.99985)])
         t = json.loads((out / "tiles/358_1271.json").read_text(encoding="utf-8"))
         assert ["S1", "홍산로전북도교육청.동암고", 35.8235, 127.1478, "30490", "35010", ["R1"]] in t
         # 낱말마다: "홍산로전북도교육청" 과 "동암고" 둘 다로 찾음
@@ -54,6 +64,6 @@ def test_build_small_db():
 
 
 if __name__ == "__main__":
-    for t in (test_bucket_and_tile_match_app, test_build_small_db):
+    for t in (test_bucket_and_tile_match_app, test_encode_polyline, test_build_small_db):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

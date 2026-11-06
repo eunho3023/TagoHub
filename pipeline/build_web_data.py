@@ -8,6 +8,7 @@
   routes/{0~1023}.json          : 노선 묶음 {노선 id: {no, start, end, city, region, rtype, realtime, info, stops}}
                                   묶음 번호 = FNV-1a 32비트(노선 id, UTF-8) % 1024 (앱 공용 코드 WebData.bucket 과 같게)
   cities.json                   : names {시군 코드: 이름}, alias {TS… 시군: TAGO 도시코드}
+  shapes/{0~1023}.json          : 노선 실제 경로 {노선 id: polyline(정밀도 5)} (경기 GBIS 경로이력, 서울 TBIS 경유노드 — 앱과 같은 자료)
   routes_by_no.json             : {시군 코드: {노선 번호: [노선 id...]}}
   files/*                       : 앱 assets 의 다른 자료 파일 (열차 시간표, 지하철역 등) 그대로
   manifest.json                 : 만든 때, DB 버전, 파일 수
@@ -87,6 +88,46 @@ def fetch_release_db(tmp: pathlib.Path):
         return None
 
 
+def encode_polyline(pts, precision: int = 5) -> str:
+    """[(위도, 경도)...] → Google polyline 문자열"""
+    f = 10 ** precision
+    out, pla, pln = [], 0, 0
+    for la, ln in pts:
+        ila, iln = round(la * f), round(ln * f)
+        for d in (ila - pla, iln - pln):
+            v = ~(d << 1) if d < 0 else d << 1
+            while v >= 0x20:
+                out.append(chr((0x20 | (v & 0x1F)) + 63))
+                v >>= 5
+            out.append(chr(v + 63))
+        pla, pln = ila, iln
+    return "".join(out)
+
+
+def seoul_shapes(path: pathlib.Path) -> dict:
+    """서울 노선 모양 TSV (노선ID \\t 첫 점 \\t 1e-5도 변화량들, 앱 RouteShapes.parse 와 같음) → {SEB+노선ID: [(위도, 경도)...]}"""
+    out = {}
+    if not path.exists():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        c = line.split("\t")
+        if len(c) < 3:
+            continue
+        try:
+            la, ln = (round(float(x) * 1e5) for x in c[1].split(","))
+            d = [int(x) for x in c[2].split(",") if x.strip()]
+        except ValueError:
+            continue
+        pts = [(la / 1e5, ln / 1e5)]
+        for i in range(0, len(d) - 1, 2):
+            la += d[i]
+            ln += d[i + 1]
+            pts.append((la / 1e5, ln / 1e5))
+        if len(pts) >= 2:
+            out["SEB" + c[0]] = pts
+    return out
+
+
 def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSETS) -> dict:
     if out.exists():
         shutil.rmtree(out)
@@ -132,6 +173,17 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
         dump(out / "routes" / f"{b}.json", g)
         # 정류장을 누르자마자 보여 줄 노선 요약 (정류장 목록 없이 작게): [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]
         dump(out / "routesum" / f"{b}.json", {rid: [r["no"], r["start"], r["end"], r["rtype"], *(r["info"] or [None] * 5)] for rid, r in g.items()})
+    # 노선 실제 경로 (앱과 같은 자료): 경기 GBIS 경로이력(gbis_shapes) + 서울 TBIS 경유노드(assets/bus_route_shapes.tsv)
+    # shapes/{0~1023}.json : {노선 id: polyline(정밀도 5)}. 웹 노선 지도가 OSRM 추정 대신 이것을 먼저 씀
+    shapes = defaultdict(dict)
+    if "gbis_shapes" in tables:
+        for rid, poly in db.execute("SELECT id, poly FROM gbis_shapes"):
+            if poly:
+                shapes[bucket(rid)][rid] = poly
+    for rid, pts in seoul_shapes(assets / "bus_route_shapes.tsv").items():
+        shapes[bucket(rid)][rid] = encode_polyline(pts)
+    for b, g in shapes.items():
+        dump(out / "shapes" / f"{b}.json", g)
     cities = {c: n for c, n in db.execute("SELECT code, name FROM cities")}
     # 교통안전공단 정류장(TS… 시군) → TAGO 도시코드 대응표 (앱 StopDb.tagoCity 와 같음)
     alias = {c: t for c, t in db.execute("SELECT code, tago FROM city_alias")} if "city_alias" in tables else {}
