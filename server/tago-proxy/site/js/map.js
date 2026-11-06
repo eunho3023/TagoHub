@@ -32,6 +32,11 @@ function dotEl(d) {
   const dot = document.createElement("div");
   dot.className = "mdot";
   dot.style.cssText = `width:${size}px;height:${size}px;background:${d.color};border-color:${d.ring || "#fff"}`;
+  // 진행 방향 화살표 (d.dir: 북쪽 0도, 시계 방향)
+  if (d.dir != null && Number.isFinite(d.dir)) {
+    dot.style.display = "flex"; dot.style.alignItems = "center"; dot.style.justifyContent = "center";
+    dot.innerHTML = `<svg width="${size - 4}" height="${size - 4}" viewBox="0 0 10 10" style="transform:rotate(${Math.round(d.dir)}deg)"><path d="M2 7 L5 2.5 L8 7" fill="none" stroke="${d.arrow || "#fff"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
   wrap.appendChild(dot);
   if (d.label) {
     const t = document.createElement("div");

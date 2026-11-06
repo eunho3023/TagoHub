@@ -197,3 +197,7 @@ textarea:focus { border-color: var(--primary); }
 @keyframes s { to { transform: rotate(360deg); } }
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(37,99,235,.5); transform: translate(-50%, -50%); position: absolute; animation: mepulse 2s infinite; }
 @keyframes mepulse { 0% { box-shadow: 0 0 0 0 rgba(37,99,235,.45); } 70% { box-shadow: 0 0 0 14px rgba(37,99,235,0); } 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); } }
+
+/* 정류장 시간표: 시간대 줄 안의 시각·노선 */
+.ttimes { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; }
+.tt { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }

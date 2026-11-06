@@ -445,6 +445,42 @@ export function routeInfo(id, city) {
   });
 }
 
+// ── 정류장 시간표 (지난 운행 기록: 앱·웹이 본 버스가 이 정류장에 도착한 시각, 최근 6주) ──
+/** 이 정류장(같은 자리 정류장 포함)의 기록 {노선 id: [분(1970년부터)...]} */
+export async function stopLog(stop) {
+  const ids = [stop, ...(await sameSpot(stop))].map((s) => s.id).slice(0, 4);
+  return (await getJson("w/log/stop?" + ids.map((i) => "node=" + encodeURIComponent(i)).join("&"))).routes || {};
+}
+const KST_MIN = 9 * 60, CLUSTER_MIN = 5, SAME_PASS_MIN = 3;
+/** 1970년부터 날 수 → 요일 (월 1 … 일 7). 1970-01-01 은 목요일 */
+export const isoDayOf = (day) => ((day + 3) % 7) + 1;
+/**
+ * 기록 분 목록 → 이 요일(isoDay)의 시간표 (앱 ArrivalStats.table 과 같은 계산):
+ * 같은 날 3분 안의 기록은 한 번, 시각별로 묶되 묶음 첫 시각에서 5분 넘게 벌어지거나 같은 날이 두 번 나오면 다음 운행.
+ * {days: 기록이 있는 날 수, slots: [{expected 가운데, earliest, latest, days}]} (시각은 하루 중 분)
+ */
+export function timetable(minutes, isoDay) {
+  const rows = [];
+  for (const m of minutes) {
+    const local = m + KST_MIN, day = Math.floor(local / 1440);
+    if (isoDayOf(day) === isoDay) rows.push([day, ((local % 1440) + 1440) % 1440]);
+  }
+  rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const uniq = [];
+  for (const r of rows) { const l = uniq[uniq.length - 1]; if (!l || l[0] !== r[0] || r[1] - l[1] > SAME_PASS_MIN) uniq.push(r); }
+  uniq.sort((a, b) => a[1] - b[1]);
+  const groups = [];
+  for (const r of uniq) {
+    const g = groups[groups.length - 1];
+    if (g && r[1] - g[0][1] <= CLUSTER_MIN && !g.some((x) => x[0] === r[0])) g.push(r); else groups.push([r]);
+  }
+  const slots = groups.map((g) => {
+    const m = g.map((x) => x[1]).sort((a, b) => a - b);
+    return { expected: m[m.length >> 1], earliest: m[0], latest: m[m.length - 1], days: new Set(g.map((x) => x[0])).size };
+  });
+  return { days: new Set(uniq.map((x) => x[0])).size, slots };
+}
+
 /** 정류장 방면: 이 정류장을 지나는 노선에서 바로 다음 정류장 이름 (노선 몇 개를 보고 가장 많이 나온 것). 모르면 null */
 export async function towardOf(stop, routes) {
   const ids = new Set([stop, ...(await sameSpot(stop))].map((s) => s.id));
