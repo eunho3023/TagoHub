@@ -100,7 +100,7 @@ export async function handleWebLog(url, env) {
  * 지금 정류장에 지금 도착한 것으로 기록 (앱 ArrivalStats.hits 와 같은 생각, 한 번에 6정류장 넘게 건너뛴 것은 버림).
  * 차량 번호는 비교에만 쓰고 서버 임시 저장소에 5분만 둠 (기록에는 노선·정류장·분만).
  */
-export async function hitsFromBusLc(db, cache, routeId, xml, nowMs = Date.now()) {
+export async function hitsFromBusLc(db, cache, routeId, xml, nowMs = Date.now(), ordToNode = null) {
   if (!db || !ID.test(routeId || "")) return 0;
   const tag = (it, t) => { const m = new RegExp(`<${t}>([^<]*)</${t}>`).exec(it); return m ? m[1].trim() : null; };
   const cur = {};
@@ -113,17 +113,24 @@ export async function hitsFromBusLc(db, cache, routeId, xml, nowMs = Date.now())
   const prev = prevRes ? await prevRes.json().catch(() => null) : null;
   await cache.put(key, new Response(JSON.stringify({ at: nowMs, cur }), { headers: { "Cache-Control": "max-age=300" } }));
   if (!prev || nowMs - prev.at > 4 * 60000 || nowMs <= prev.at) return 0;
-  const minute = Math.floor(nowMs / 60000);
-  const out = [];
+  const out = new Map();
   for (const [v, [ord, node]] of Object.entries(cur)) {
     const p = prev.cur?.[v];
     if (!p) continue;
     const step = ord - p[0];
-    if (step >= 1 && step <= 6) out.push(node);
+    if (step < 1 || step > 6) continue;
+    // 지금 정류장은 지금 도착. 노선 정류장 순서를 알면(순번이 맞을 때만) 사이 정류장도 두 응답 사이 시각을 나눠 매김
+    const known = ordToNode && ordToNode.get(ord) === node;
+    for (let k = known ? 1 : step; k <= step; k++) {
+      const n = k === step ? node : ordToNode.get(p[0] + k);
+      if (!n || !ID.test(n)) continue;
+      const at = prev.at + ((nowMs - prev.at) * k) / step;
+      out.set(n + "|" + Math.floor(at / 60000), [n, Math.floor(at / 60000)]);
+    }
   }
-  if (!out.length) return 0;
+  if (!out.size) return 0;
   await ensureTable(db);
   const stmt = db.prepare("INSERT OR IGNORE INTO hits (route_id, node_id, minute) VALUES (?, ?, ?)");
-  await db.batch([...new Set(out)].map((n) => stmt.bind(routeId, n, minute)));
-  return out.length;
+  await db.batch([...out.values()].map(([n, m]) => stmt.bind(routeId, n, m)));
+  return out.size;
 }

@@ -6,12 +6,15 @@ import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPat
 import { handleLog, handleWebLog, hitsFromBusLc } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps } from "./gps.js";
+import { noteInterest, pollCron } from "./poll.js";
 import { handleReport } from "./report.js";
 
 export default {
   // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
   async scheduled(event, env, ctx) {
     ctx.waitUntil(shapeCron(env).catch(() => null));
+    // 관심 노선 버스 위치를 스스로 물어 통과 기록 모으기 (정류장 시간표, src/poll.js)
+    ctx.waitUntil(pollCron(env).catch(() => null));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -100,6 +103,8 @@ async function dataGo(path, search, accept, env, ctx, extra) {
       ctx.waitUntil(recordGps(env.DB, q.get("routeId"), q.get("cityCode"), body).catch(() => 0));
       // 정류장을 옮겨 간 버스 → 지난 운행 기록 (정류장 시간표)
       ctx.waitUntil(hitsFromBusLc(env.DB, caches.default, q.get("routeId"), body).catch(() => 0));
+      // 이 노선을 보는 사람이 있음 → 예약 작업이 스스로 모을 노선 후보
+      ctx.waitUntil(noteInterest(env.DB, q.get("routeId"), q.get("cityCode")).catch(() => null));
     }
     const out = new Response(stored.body, stored);
     for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);
