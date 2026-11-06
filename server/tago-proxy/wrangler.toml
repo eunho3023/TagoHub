@@ -16,3 +16,7 @@ binding = "ASSETS"
 name = "WEB_LIMIT"
 namespace_id = "1001"
 simple = { limit = 300, period = 60 }
+
+# 예약 작업: 1분마다 노선 도로 모양 하나를 미리 만들어 D1 에 저장 (사람들이 연 노선 먼저, 그다음 모든 노선 차례로)
+[triggers]
+crons = ["* * * * *"]

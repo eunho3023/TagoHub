@@ -135,3 +135,42 @@ test("경기 노선은 GBIS 정류장 목록으로 모양을 만듦", async () =
   const r = await handleShape(null, new URL("https://x/w/shape/GGB234000315"), env, { waitUntil: () => {} }, fetcher);
   assert.equal(r.status, 200);
 });
+
+test("예약 작업: 노선 묶음을 줄에 넣고, 1분마다 하나씩 만들어 저장", async () => {
+  const { shapeCron } = await import("../src/shape.js");
+  const shapes = new Map(), queue = new Map(), meta = new Map();
+  const db = {
+    prepare: (sql) => {
+      const exec = (a) => ({
+        first: async () => {
+          if (sql.startsWith("SELECT sig, poly FROM shapes")) return shapes.get(a[0]) || null;
+          if (sql.startsWith("SELECT v FROM shape_meta")) return meta.has("bucket") ? { v: meta.get("bucket") } : null;
+          if (sql.startsWith("SELECT route_id, city, no, tries FROM shape_queue")) {
+            const all = [...queue.values()].sort((x, y) => y.prio - x.prio || x.tries - y.tries);
+            return all[0] || null;
+          }
+          return null;
+        },
+        all: async () => ({ results: a.filter((id) => shapes.has(id)).map((id) => ({ route_id: id, sig: shapes.get(id).sig })) }),
+        run: async () => {
+          if (sql.startsWith("INSERT INTO shape_queue")) { const [id, city, no, prio] = a; if (!queue.has(id)) queue.set(id, { route_id: id, city, no, prio, tries: 0 }); }
+          else if (sql.startsWith("INSERT OR REPLACE INTO shape_meta")) meta.set("bucket", a[0]);
+          else if (sql.startsWith("INSERT OR REPLACE INTO shapes")) shapes.set(a[0], { sig: a[1], poly: a[2] });
+          else if (sql.startsWith("DELETE FROM shape_queue")) queue.delete(a[0]);
+          else if (sql.startsWith("UPDATE shape_queue")) queue.get(a[1]).tries++;
+        },
+      });
+      return { bind: (...a) => exec(a), run: async () => {}, first: async () => exec([]).first() };
+    },
+  };
+  const route = { no: "104", city: "35010", stops: [[1, "A", "가", 36.0, 127.0, "0"], [2, "B", "나", 36.01, 127.0, "0"]] };
+  const env = { DB: db, ASSETS: { fetch: async (req) => ({ ok: true, json: async () => (req.url.endsWith(`/routes/${bucket("R1")}.json`) || req.url.endsWith("/routes/0.json") ? { R1: route } : {}) }) } };
+  const osrm = async () => ({ ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode([[36.0, 127.0], [36.01, 127.0]], 6) }] }) });
+  const r1 = await shapeCron(env, osrm);           // 줄이 비어 있어 묶음 0 을 줄에 넣음
+  assert.equal(r1.bucket, 0);
+  assert.ok(queue.has("R1"));
+  const r2 = await shapeCron(env, osrm);           // R1 을 만들어 저장
+  assert.equal(r2.saved, true);
+  assert.ok(shapes.get("R1").sig.startsWith("v6:"));
+  assert.ok(!queue.has("R1"));
+});
