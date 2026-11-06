@@ -36,13 +36,14 @@ test("구간 실패는 직선, 전부 실패면 null", async () => {
   const shape = await build(stops, ok);
   assert.ok(shape.length >= 4);
   assert.equal(await build(stops, async () => ({ ok: false })), null);
-  assert.equal(signature(stops), "v3:3:36.0000,127.0000:36.0200,127.0000");
+  assert.equal(signature(stops), "v4:3:36.0000,127.0000:36.0200,127.0000");
 });
 
 test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면 그 정류장을 빼고 큰길로", async () => {
   const a = [36.0, 127.0], c = [36.001, 127.0];
   const side = [36.0005, 127.00055];   // 큰길(경도 127.0)에서 동쪽 약 50m
-  const deep = [36.0005, 127.0015];    // 동쪽 약 135m (실제로 단지 안으로 들어가는 정류장)
+  const deep = [36.0005, 127.0015, "전북대학병원내"];    // 동쪽 약 135m, 이름이 '○○내' (실제로 안으로 들어가는 정류장)
+  const wrong = [36.0005, 127.0015, "조촌초교.제일아파트"]; // 같은 자리지만 보통 이름 → 좌표가 골목 쪽으로 잘못 찍힌 것
   const detour = (p) => [a, [p[0], p[1] + 0.0015], p, c];   // 골목으로 돌아 들어가는 길
   const fetcherFor = (b) => async (u) => {
     const via = u.includes(b[1].toFixed(6));
@@ -52,7 +53,9 @@ test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면
   const main = await build([a, side, c], fetcherFor(side));
   assert.ok(main.every((p) => Math.abs(p[1] - 127.0) < 1e-6), "큰길로만");
   const inside = await build([a, deep, c], fetcherFor(deep));
-  assert.ok(inside.some((p) => p[1] > 127.001), "멀리 떨어진 정류장은 실제로 들어가는 길이라 그대로");
+  assert.ok(inside.some((p) => p[1] > 127.001), "'○○내' 정류장은 실제로 들어가는 길이라 그대로");
+  const fixed = await build([a, wrong, c], fetcherFor(wrong));
+  assert.ok(fixed.every((p) => Math.abs(p[1] - 127.0) < 1e-6), "250m 안 보통 정류장은 큰길로");
 });
 
 test("만든 모양은 저장하고 다음엔 저장한 것을 줌", async () => {
