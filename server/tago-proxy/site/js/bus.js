@@ -7,7 +7,7 @@ import { Favorites, Recent } from "./store.js";
 import * as B from "./busdata.js";
 import { Alight } from "./alight.js";
 
-const REFRESH_MS = 15000;
+const REFRESH_MS = 15000, BUS_POS_MS = 10000;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
 /** 화면 사이에 정류장 정보를 넘김 (주소에는 id·좌표만) */
 const known = new Map();
@@ -201,24 +201,51 @@ function project(p, a, b) {
   const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
   const t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
   const x = ax + t * dx, y = ay + t * dy;
-  return { d: Math.hypot(x, y), pt: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])] };
+  return { d: Math.hypot(x, y), t, pt: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])] };
+}
+/** 도로 선의 처음부터 각 꼭짓점까지 거리(m) */
+function roadCum(road) {
+  const cum = [0];
+  for (let i = 0; i < road.length - 1; i++) {
+    const kx = 111320 * Math.cos((road[i][0] * Math.PI) / 180);
+    cum.push(cum[i] + Math.hypot((road[i + 1][1] - road[i][1]) * kx, (road[i + 1][0] - road[i][0]) * 110540));
+  }
+  return cum;
+}
+/** 점을 도로 선의 [from, to] 구간 안에 내린 자리: {d, ch(처음부터 거리)} */
+function chainOf(road, cum, p, from, to) {
+  let best = null;
+  for (let i = Math.max(0, from); i <= Math.min(to, road.length - 2); i++) {
+    const h = project(p, road[i], road[i + 1]);
+    if (!best || h.d < best.d) best = { d: h.d, ch: cum[i] + h.t * (cum[i + 1] - cum[i]) };
+  }
+  return best;
+}
+/** 처음부터 ch 미터 간 자리 */
+function pointAt(road, cum, ch) {
+  let i = 0;
+  while (i < cum.length - 2 && cum[i + 1] < ch) i++;
+  const len = cum[i + 1] - cum[i], t = len ? Math.max(0, Math.min(1, (ch - cum[i]) / len)) : 0;
+  return [road[i][0] + t * (road[i + 1][0] - road[i][0]), road[i][1] + t * (road[i + 1][1] - road[i][1])];
 }
 const SNAP_M = 80;
 /** 정류장을 노선 순서대로 도로 선 위로 (뒤로 돌아가지 않게, 가장 가까운 곳과 15m 안이면 먼저 나오는 쪽). 멀면 원래 자리 */
-export function snapStops(stops, road) {
-  if (!road || road.length < 2) return stops.map((s) => (s.lat == null ? null : [s.lat, s.lng]));
+export function snapStops(stops, road) { return snapStopsFull(stops, road).map((x) => x && x.pt); }
+/** [{pt, seg, t}] (선 위로 못 옮긴 정류장은 seg 없음) */
+function snapStopsFull(stops, road) {
+  if (!road || road.length < 2) return stops.map((s) => (s.lat == null ? null : { pt: [s.lat, s.lng] }));
   let cur = 0;
   return stops.map((s) => {
     if (s.lat == null) return null;
     const p = [s.lat, s.lng];
     const hits = [];
     for (let i = cur; i < road.length - 1; i++) hits.push([i, project(p, road[i], road[i + 1])]);
-    if (!hits.length) return p;
+    if (!hits.length) return { pt: p };
     const best = Math.min(...hits.map(([, h]) => h.d));
-    if (best > SNAP_M) return p;
+    if (best > SNAP_M) return { pt: p };
     const [i, h] = hits.find(([, h2]) => h2.d <= best + 15);
     cur = i;
-    return h.pt;
+    return { pt: h.pt, seg: i, t: h.t };
   });
 }
 /** 버스 GPS 를 도로 선 위로 (가까우면) */
@@ -231,19 +258,55 @@ function snapPoint(p, road) {
 const plateTail =(no) => (no || "").replace(/\D/g, "").slice(-4) || null;
 
 export function routeScreen(root, p, ctx) {
-  let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null;
+  let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null, linesOf = null;
   const timers = [];
+  // 버스마다 도로 위 자리(처음부터 m)·그 자리를 받은 시각·속도(m/초): 다음 위치가 올 때까지 도로를 따라 앞으로 움직여 보임
+  // (공공데이터 GPS 는 몇십 초 늦게 바뀌어서, 가만히 두면 실제 버스보다 늦어 보임)
+  const track = new Map();
+  const MAX_AHEAD_S = 45, MAX_SPEED = 16.7;
+  const stopCh = (i) => { const x = snapped?.full[i]; return x && x.seg != null ? snapped.cum[x.seg] + x.t * (snapped.cum[x.seg + 1] - snapped.cum[x.seg]) : null; };
+  const stopIdx = (b) => { let i = b.nodeId ? r.stops.findIndex((s) => s.id === b.nodeId) : -1; if (i < 0 && b.ord != null) i = r.stops.findIndex((s) => s.seq === b.ord); return i; };
+  /** 새 버스 위치를 받으면: 지금 정류장~다음 정류장 사이 도로 위로 내리고 속도를 셈 */
+  const learn = () => {
+    if (!snapped || !pos) return;
+    const now = Date.now(), seen = new Set();
+    for (const b of pos.buses || []) {
+      if (b.lat == null || !b.vehicleNo) continue;
+      seen.add(b.vehicleNo);
+      const i = stopIdx(b);
+      const from = i >= 0 ? snapped.full[i]?.seg ?? 0 : 0, to = i >= 0 ? snapped.full[i + 1]?.seg ?? road.length - 2 : road.length - 2;
+      let h = chainOf(road, snapped.cum, [b.lat, b.lng], from, to);
+      if (!h || h.d > 150) h = i >= 0 && stopCh(i) != null ? { ch: stopCh(i) } : null;
+      if (!h) { track.delete(b.vehicleNo); continue; }
+      const lim = i >= 0 ? stopCh(i + 1) : null;
+      const prev = track.get(b.vehicleNo);
+      if (prev && Math.abs(h.ch - prev.ch) < 3) { prev.lim = lim ?? prev.lim; continue; } // 위치가 그대로면(자료가 아직 안 바뀜) 계속 앞으로
+      let v = 0;
+      if (prev && h.ch > prev.ch) v = Math.min(MAX_SPEED, (h.ch - prev.ch) / Math.max(1, (now - prev.at) / 1000));
+      if (prev && prev.v && v) v = (v + prev.v) / 2;
+      track.set(b.vehicleNo, { ch: h.ch, at: now, v, lim });
+    }
+    for (const k of [...track.keys()]) if (!seen.has(k)) track.delete(k);
+  };
+  /** 지금 보일 자리 */
+  const busXY = (b) => {
+    const t = track.get(b.vehicleNo);
+    if (!t || !snapped) return snapPoint([b.lat, b.lng], road);
+    let ch = t.ch + t.v * Math.min(MAX_AHEAD_S, (Date.now() - t.at) / 1000);
+    if (t.lim != null && t.lim > t.ch) ch = Math.min(ch, t.lim - 3);
+    return pointAt(road, snapped.cum, Math.max(t.ch, ch));
+  };
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
   const drawMap = () => {
     if (!r) return;
     const color = busColor(r.type);
     const pts = r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]);
-    MapView.lines([{ pts: road || pts, color, width: 5 }]);
+    if (linesOf !== (road || pts)) { linesOf = road || pts; MapView.lines([{ pts: linesOf, color, width: 5 }]); }
     const z = MapView.zoom();
     const dots = [];
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
-    if (road && snapped?.road !== road) snapped = { road, at: snapStops(r.stops, road) };
-    const at = (i) => (road && snapped ? snapped.at[i] : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
+    if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; track.clear(); learn(); }
+    const at = (i) => (road && snapped ? snapped.full[i]?.pt : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
     r.stops.forEach((s, i) => {
       const xy = at(i);
       if (!xy) return;
@@ -252,7 +315,7 @@ export function routeScreen(root, p, ctx) {
     });
     for (const b of pos?.buses || []) {
       if (b.lat == null) continue;
-      const xy = snapPoint([b.lat, b.lng], road);
+      const xy = busXY(b);
       dots.push({ id: "b:" + b.vehicleNo, lat: xy[0], lng: xy[1], color, ring: "#fff", r: 8, label: plateTail(b.vehicleNo) });
     }
     // 좌표가 없는 지역(경기 등): 버스가 있는 정류장 자리에 (폰 앱과 같음)
@@ -284,7 +347,7 @@ export function routeScreen(root, p, ctx) {
       const buses = at.get(i) || [];
       const alightOn = st.lat != null && Alight.isTarget(st.name, st.lat, st.lng);
       return turn + `<div class="rstop" data-i="${i}">
-        <button class="dotbtn" ${act(() => { if (st.lat != null) { const xy = snapped?.at[i] || [st.lat, st.lng]; focusSeq = st.seq; MapView.view(xy[0], xy[1], 17); drawMap(); } })}>
+        <button class="dotbtn" ${act(() => { if (st.lat != null) { const xy = snapped?.full[i]?.pt || [st.lat, st.lng]; focusSeq = st.seq; MapView.view(xy[0], xy[1], 17); drawMap(); } })}>
           <span class="rdot ${buses.length ? "bus" : ""}" style="--c:${color}"></span></button>
         <button class="grow rname ${here ? "here" : ""}" ${act(async () => {
           if (!st.id || st.lat == null) return;
@@ -311,10 +374,12 @@ export function routeScreen(root, p, ctx) {
     B.shape(r.id, r.city).then((s) => { road = s; drawMap(); });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
-    async function tick() { pos = await B.positions(r); if (alive) { drawList(); drawMap(); } }
+    async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }
     tick();
-    const t = setInterval(tick, REFRESH_MS);
-    timers.push(() => clearInterval(t));
+    // 버스 위치는 10초마다 받고, 그 사이에는 2초마다 도로를 따라 앞으로 움직여 그림
+    const t = setInterval(tick, BUS_POS_MS);
+    const anim = setInterval(() => { if (alive && [...track.values()].some((x) => x.v > 0)) drawMap(); }, 2000);
+    timers.push(() => clearInterval(t), () => clearInterval(anim));
   })();
   return () => { alive = false; timers.forEach((f) => f()); };
 }
