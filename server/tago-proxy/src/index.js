@@ -4,10 +4,14 @@
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
 import { handleLog } from "./log.js";
-import { handleShape } from "./shape.js";
+import { handleShape, shapeCron } from "./shape.js";
 import { handleReport } from "./report.js";
 
 export default {
+  // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(shapeCron(env).catch(() => null));
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response("ok");

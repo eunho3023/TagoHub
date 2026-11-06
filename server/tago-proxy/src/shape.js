@@ -331,50 +331,140 @@ async function tagoRouteStops(env, routeId, city, fetcher) {
   } catch (_) { return null; }
 }
 
+/** 노선 번호 확인 (카카오 경로용) */
+const cleanNo = (no) => { const n = String(no || "").trim(); return /^[0-9A-Za-z가-힣()-]{1,20}$/.test(n) ? n : null; };
+
+/** 자료 조각 노선의 번호 */
+async function dataRouteNo(env, routeId) {
+  try {
+    const r = await env.ASSETS.fetch(new Request(`https://assets.local/data/routes/${bucket(routeId)}.json`));
+    return r.ok ? cleanNo((await r.json())[routeId]?.no) : null;
+  } catch (_) { return null; }
+}
+
+/** 노선 모양 만들기 (카카오 먼저, 안 되면 OSRM). 바깥 요청은 45번까지. {shape, partial(직선 섞임)} */
+async function makeShape(stops, routeNo, env, fetcher) {
+  let used = 0;
+  const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
+  const st = {};
+  const kakaoKey = (env.KAKAO_REST_KEY || "").trim();
+  let shape = null;
+  if (routeNo && kakaoKey) {
+    const k = await buildKakao(stops, routeNo, kakaoKey, limited, st);
+    if (k && fitsStops(k, stops)) shape = k;
+  }
+  if (!shape) shape = await build(stops, limited, st);
+  return { shape, partial: (st.straight || 0) > 0 };
+}
+
+async function ensureQueue(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS shape_queue (route_id TEXT PRIMARY KEY, city TEXT, no TEXT, prio INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL) WITHOUT ROWID").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS shape_meta (k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID").run();
+}
+
+/** 저장된 모양 (지금 방식 v6 로 다 만든 것만) */
+async function storedShape(db, id, sig) {
+  const row = await db.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
+  return row && row.sig === sig ? row.poly : null;
+}
+
 export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const id = decodeURIComponent(url.pathname.slice("/w/shape/".length));
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   const cache = caches.default;
-  // 노선 번호가 있으면 카카오 경로(앱과 같은 방법)를 먼저 씀
-  const no = (url.searchParams.get("no") || "").trim();
-  const routeNo = /^[0-9A-Za-z가-힣()-]{1,20}$/.test(no) ? no : null;
-  const kakaoKey = (env.KAKAO_REST_KEY || "").trim();
-  const useKakao = !!(routeNo && kakaoKey);
+  const city = url.searchParams.get("city");
+  // 노선 번호가 있으면 카카오 경로(앱과 같은 방법)를 먼저 씀 (자료 조각 노선은 조각의 번호)
+  const routeNo = cleanNo(url.searchParams.get("no")) || (await dataRouteNo(env, id));
+  const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
   const key = new Request(`https://cache.tagohub/shape/v6${useKakao ? "k" : ""}/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
-  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, url.searchParams.get("city"), fetcher));
+  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops) + (useKakao ? ":k" : "");
   let poly = null, partial = false;
   if (env.DB) {
     await ensureTable(env.DB);
-    const row = await env.DB.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
-    if (row && row.sig === sig) poly = row.poly;
+    poly = await storedShape(env.DB, id, sig);
   }
   if (!poly) {
-    // Workers 무료 요금제는 요청 하나에 바깥 요청 50번까지: 그 전에 멈추고(못 받은 구간은 직선) 나중에 다시 만듦
-    let used = 0;
-    const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
-    const st = {};
-    let shape = null;
-    if (useKakao) {
-      const k = await buildKakao(stops, routeNo, kakaoKey, limited, st);
-      if (k && fitsStops(k, stops)) shape = k;
+    // 서버가 미리 만들어 둔 것이 없음: 지금 한 번 만들어 보여 주고, 직선이 섞였으면 예약 작업 줄 맨 앞에 넣어 나중에 제대로 만듦
+    const made = await makeShape(stops, routeNo, env, fetcher);
+    if (!made.shape) {
+      if (env.DB) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
+      return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
     }
-    if (!shape) shape = await build(stops, limited, st);
-    if (!shape) return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
-    poly = encode(shape, 5);
-    // 정류장끼리 직선으로 채운 구간이 있으면(카카오·OSRM 응답을 못 받음) 저장하지 않고 10분만 → 다시 만듦
-    partial = (st.straight || 0) > 0;
-    if (env.DB && !partial) {
-      ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)")
-        .bind(id, sig, poly, Math.floor(Date.now() / 1000)).run());
+    poly = encode(made.shape, 5);
+    partial = made.partial;
+    if (env.DB) {
+      if (!partial) {
+        ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)")
+          .bind(id, sig, poly, Math.floor(Date.now() / 1000)).run());
+      } else ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
     }
   }
   const res = new Response(JSON.stringify({ poly }), { headers: { ...HEAD, "Cache-Control": "public, max-age=" + (partial ? 600 : 86400) } });
   ctx.waitUntil(cache.put(key, res.clone()));
   return res;
+}
+
+async function enqueue(db, id, city, no, prio, ensure = true) {
+  if (ensure) await ensureQueue(db);
+  await db.prepare("INSERT INTO shape_queue (route_id, city, no, prio, tries, at) VALUES (?, ?, ?, ?, 0, ?) ON CONFLICT(route_id) DO UPDATE SET prio = MAX(prio, excluded.prio), city = COALESCE(excluded.city, city), no = COALESCE(excluded.no, no)")
+    .bind(id, /^\d{1,6}$/.test(city || "") ? city : null, no || null, prio, Math.floor(Date.now() / 1000)).run();
+}
+
+// ── 예약 작업: 노선 모양을 미리 만들어 저장 (1분마다 노선 하나) ──
+// 사람들이 연 노선(직선이 섞였던 것)이 먼저, 그다음 자료 조각의 모든 노선을 묶음 차례로 줄에 넣음
+const MAX_TRIES = 5;
+export async function shapeCron(env, fetcher = fetch) {
+  if (!env.DB) return null;
+  await ensureTable(env.DB);
+  await ensureQueue(env.DB);
+  let job = await env.DB.prepare("SELECT route_id, city, no, tries FROM shape_queue ORDER BY prio DESC, tries ASC, at ASC LIMIT 1").first();
+  if (!job) {
+    // 줄이 비면 자료 조각 노선 묶음 하나(약 9개)를 줄에 넣음 (아직 지금 방식으로 저장 안 된 것만)
+    const cur = +((await env.DB.prepare("SELECT v FROM shape_meta WHERE k = 'bucket'").first())?.v || 0);
+    if (cur >= 1024) return { done: true };
+    const r = await env.ASSETS.fetch(new Request(`https://assets.local/data/routes/${cur}.json`));
+    const routes = r.ok ? await r.json() : {};
+    // D1 질의 수를 아끼려고 이 묶음의 저장된 모양을 한 번에 봄
+    const ids = Object.keys(routes);
+    const saved = new Map();
+    if (ids.length) {
+      const rows = await env.DB.prepare(`SELECT route_id, sig FROM shapes WHERE route_id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+      for (const x of rows.results || []) saved.set(x.route_id, x.sig);
+    }
+    for (const [rid, rt] of Object.entries(routes)) {
+      const has = saved.has(rid) ? { sig: saved.get(rid) } : null;
+      if (!has || !String(has.sig).startsWith("v6:")) await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
+    }
+    await env.DB.prepare("INSERT OR REPLACE INTO shape_meta (k, v) VALUES ('bucket', ?)").bind(String(cur + 1)).run();
+    return { bucket: cur };
+  }
+  const id = job.route_id;
+  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, job.city, fetcher));
+  if (!stops || stops.length < 2 || stops.length > MAX_STOPS) {
+    await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
+    return { id, skipped: true };
+  }
+  const routeNo = cleanNo(job.no) || (await dataRouteNo(env, id));
+  const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
+  const sig = signature(stops) + (useKakao ? ":k" : "");
+  if (await storedShape(env.DB, id, sig)) {
+    await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
+    return { id, already: true };
+  }
+  const made = await makeShape(stops, routeNo, env, fetcher);
+  // 다 만들었거나 여러 번 해도 직선이 남으면(그 구간은 길이 없음) 저장하고 줄에서 뺌
+  if (made.shape && (!made.partial || job.tries + 1 >= MAX_TRIES)) {
+    await env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)").bind(id, sig, encode(made.shape, 5), Math.floor(Date.now() / 1000)).run();
+    await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
+    return { id, saved: true, partial: made.partial };
+  }
+  if (job.tries + 1 >= MAX_TRIES) await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
+  else await env.DB.prepare("UPDATE shape_queue SET tries = tries + 1, at = ? WHERE route_id = ?").bind(Math.floor(Date.now() / 1000), id).run();
+  return { id, retry: true };
 }
