@@ -1,5 +1,5 @@
 // 버스 화면: 정류장 찾기, 정류장(실시간 도착), 노선(지도·버스 위치·정류장 목록), 지도 탭.
-import { esc, busColor, naturalCompare, isoDay, meters } from "./core.js";
+import { esc, busColor, naturalCompare, isoDay, meters, seoulNow } from "./core.js";
 import { act, header, note, sectionHead, bindInput, icon } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -44,9 +44,15 @@ export function busSearch(root, chipsHtml) {
     if (!r) { out.innerHTML = note("정류장 목록을 받지 못했어요"); return; }
     if (!r.length) { out.innerHTML = note("찾는 정류장이 없어요"); return; }
     out.innerHTML = `<div class="list">${r.map((s) => stopLine(s, "")).join("")}</div>`;
-    // 시군 이름은 나중에 채움
+    // 시군 이름과 방면(지나는 노선의 다음 정류장)은 나중에 채움
     const rows = out.querySelectorAll(".row small");
-    r.forEach((s, i) => B.cityName(s.city).then((c) => { if (rows[i]) rows[i].textContent = [c, s.no ? "정류장 번호 " + s.no : null].filter(Boolean).join(" · "); }));
+    const info = r.map(() => ({ c: null, t: null }));
+    const fill = (i) => { if (rows[i] && my === seq) rows[i].textContent = [info[i].c, r[i].no ? "정류장 번호 " + r[i].no : null, info[i].t ? info[i].t + " 방면" : null].filter(Boolean).join(" · "); };
+    r.forEach((s, i) => B.cityName(s.city).then((c) => { info[i].c = c; fill(i); }));
+    r.slice(0, 15).forEach((s, i) => {
+      if (!s.routes.length) return;
+      B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => { info[i].t = t; fill(i); }).catch(() => {});
+    });
   };
   const inp = bindInput(root, "#q", (v) => { search.q = v; draw(); });
   if (!isWide()) inp?.focus({ preventScroll: true });
@@ -145,7 +151,7 @@ export function stopScreen(root, p) {
       back: true,
       star: { on: Favorites.hasStop(stop), toggle: () => { Favorites.toggleStop(stop); draw(); } },
       action: isWide() ? null : { label: "위치", run: () => go("map", stop.id, { lat: stop.lat, lng: stop.lng }) },
-    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><div class="list">${rows.map((r, i) => {
+    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><button class="link pad" ${act(() => go("stoptable", stop.id, stopParams(stop)))}>🕘 정류장 시간표</button><div class="list">${rows.map((r, i) => {
       const ends = endsOf(r);
       return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
         <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
@@ -196,6 +202,63 @@ export function stopScreen(root, p) {
   return () => { alive = false; timers.forEach(clearInterval); };
 }
 
+// ── 정류장 시간표: 지난 운행 기록(최근 6주)으로 요일별 "몇 시에 몇 번 버스가 오는지" ──
+const DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
+const hhmm = (m) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+export function stopTable(root, p) {
+  let alive = true, day = isoDay(), log = null, sums = null, failed = false, stop = known.get(p.id);
+  const draw = () => {
+    if (!alive) return;
+    const head = header(stop ? stop.name : "정류장", "정류장 시간표 · 지난 운행 기록", { back: true }) +
+      `<div class="seg">${DAY_NAMES.map((n, i) => `<button class="${day === i + 1 ? "on" : ""}" ${act(() => { day = i + 1; draw(); })}>${n}</button>`).join("")}</div>`;
+    if (failed) { root.innerHTML = head + note("기록을 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
+    if (!log || !sums) { root.innerHTML = head + note("불러오는 중..."); return; }
+    const noOf = new Map(sums.map((s) => [s.id, s]));
+    // 노선마다 이 요일 시간표 → 여러 날(2일 넘게) 같은 무렵에 기록된 운행만
+    const rows = [];
+    let recDays = 0;
+    for (const [rid, mins] of Object.entries(log)) {
+      const s = noOf.get(rid);
+      if (!s) continue;
+      const t = B.timetable(mins, day);
+      recDays = Math.max(recDays, t.days);
+      for (const sl of t.slots) if (sl.days >= 2) rows.push({ m: sl.expected, early: sl.earliest, late: sl.latest, days: sl.days, of: t.days, s });
+    }
+    rows.sort((a, b) => a.m - b.m || naturalCompare(a.s.no, b.s.no));
+    const today = day === isoDay(), sn = seoulNow(), nowMin = sn.h * 60 + sn.mi;
+    let html = head + note(`최근 6주 동안 버스가 이 정류장을 지난 시각을 모아, 여러 날 같은 무렵에 온 운행만 보여 줘요 (${DAY_NAMES[day - 1]}요일 기록 ${recDays}일). 실제와 몇 분 다를 수 있어요.`);
+    if (!rows.length) {
+      // 기록이 모자라면 노선별 첫차·막차·배차 (자료 파일)
+      html += note("아직 이 요일 기록이 모자라요. 버스가 지난 기록이 여러 날 쌓이면 시간표가 생겨요.");
+      html += sectionHead("노선별 첫차·막차·배차") + `<div class="list">${sums.map((s) => {
+        const plan = [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, day) > 0 && "배차 " + B.intervalOn(s, day) + "분"].filter(Boolean).join(" · ");
+        return `<div class="row"><span class="badge" style="background:${busColor(s.type)}">${esc(s.no)}</span><span class="grow"><small>${esc(plan || "정보 없음")}</small></span></div>`;
+      }).join("")}</div>`;
+      root.innerHTML = html;
+      return;
+    }
+    // 시간대별로 묶어 보여 줌, 오늘이면 지금부터 오는 것을 먼저 표시
+    const byHour = new Map();
+    for (const r of rows) { const h = Math.floor(r.m / 60) % 24; if (!byHour.has(h)) byHour.set(h, []); byHour.get(h).push(r); }
+    html += `<div class="list">${[...byHour.entries()].map(([h, list]) => `<div class="row col"><b>${String(h).padStart(2, "0")}시</b><span class="ttimes">${list.map((r) => {
+      return `<span class="tt ${today && r.m < nowMin ? "muted" : ""}" title="${esc(`${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`)}"><b>${hhmm(r.m)}</b> <span class="badge" style="background:${busColor(r.s.type)}">${esc(r.s.no)}</span></span>`;
+    }).join(" ")}</span></div>`).join("")}</div>`;
+    root.innerHTML = html;
+    if (today) root.querySelector(`.tt:not(.muted)`)?.scrollIntoView({ block: "center" });
+  };
+  (async () => {
+    draw();
+    if (!stop && p.lat) stop = await B.stopAt(p.id, +p.lat, +p.lng).catch(() => null);
+    if (!stop) { if (alive) root.innerHTML = header("정류장 시간표", null, { back: true }) + note("정류장을 찾지 못했어요"); return; }
+    draw();
+    const [l, s] = await Promise.all([B.stopLog(stop).catch(() => null), B.stopRoutes(stop).catch(() => [])]);
+    if (l == null) failed = true;
+    log = l || {}; sums = s;
+    draw();
+  })();
+  return () => { alive = false; };
+}
+
 // ── 노선 화면 ──
 /** 점 p 를 선분 a-b 에 내린 자리와 거리(m). 좁은 범위라 평면으로 계산 */
 function project(p, a, b) {
@@ -232,7 +295,13 @@ function pointAt(road, cum, ch) {
   return [road[i][0] + t * (road[i + 1][0] - road[i][0]), road[i][1] + t * (road[i + 1][1] - road[i][1])];
 }
 // 정류장 점을 노선 선 위로 옮기는 최대 거리 (좌표가 골목 쪽으로 잘못 찍힌 정류장도 큰길 선 위로, 서버 shape.js OFF_COORD_M 과 같게)
-const SNAP_M = 250;
+const SNAP_M = 250, STOP_SNAP_M = 1000;
+/** 도로 선 seg 번째 조각의 진행 방향 (북쪽 0도, 시계 방향) */
+function bearingAt(road, seg) {
+  const a = road[Math.max(0, Math.min(seg, road.length - 2))], b = road[Math.max(1, Math.min(seg + 1, road.length - 1))];
+  const y = (b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180), x = b[0] - a[0];
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
 /** 정류장을 노선 순서대로 도로 선 위로 (뒤로 돌아가지 않게, 가장 가까운 곳과 15m 안이면 먼저 나오는 쪽). 멀면 원래 자리 */
 export function snapStops(stops, road) { return snapStopsFull(stops, road).map((x) => x && x.pt); }
 /** [{pt, seg, t}] (선 위로 못 옮긴 정류장은 seg 없음) */
@@ -246,7 +315,8 @@ function snapStopsFull(stops, road) {
     for (let i = cur; i < road.length - 1; i++) hits.push([i, project(p, road[i], road[i + 1])]);
     if (!hits.length) return { pt: p };
     const best = Math.min(...hits.map(([, h]) => h.d));
-    if (best > SNAP_M) return { pt: p };
+    // 정류장 점은 항상 노선 선 위로 (1km 넘게 떨어진 것만 자료가 틀린 것으로 보고 원래 자리)
+    if (best > STOP_SNAP_M) return { pt: p };
     const [i, h] = hits.find(([, h2]) => h2.d <= best + 15);
     cur = i;
     return { pt: h.pt, seg: i, t: h.t };
@@ -325,7 +395,11 @@ export function routeScreen(root, p, ctx) {
       const xy = at(i);
       if (!xy) return;
       const here = p.from && s.id && B.legacyId(s.id) === B.legacyId(p.from), focused = focusSeq === s.seq;
-      if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: xy[0], lng: xy[1], color: here || focused ? "#D7262E" : color, ring: "#fff", r: here || focused ? 7 : 5, label: focused ? s.name : null });
+      // 정류장 점 안에 진행 방향 화살표 (도로 선을 받았으면 그 자리 도로 방향, 아니면 다음 정류장 쪽)
+      const sn = snapped?.full[i];
+      const nx = r.stops.slice(i + 1).find((q) => q.lat != null);
+      const dir = road && sn && sn.seg != null ? bearingAt(road, sn.seg) : nx ? bearingAt([[s.lat, s.lng], [nx.lat, nx.lng]], 0) : null;
+      if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: xy[0], lng: xy[1], color: here || focused ? "#D7262E" : color, ring: "#fff", r: here || focused ? 8 : 7, dir, label: focused ? s.name : null });
     });
     for (const b of pos?.buses || []) {
       if (b.lat == null) continue;

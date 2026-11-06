@@ -32,6 +32,14 @@ export function render(root) {
       if (my !== seq || !alive) return;
       body.innerHTML = r.length ? `<div class="list">${r.map((s) => { remember(s); return `<button class="row" ${act(() => { st.q = ""; go("stop", s.id, { lat: s.lat, lng: s.lng }); })}>
         ${icon("bus", 20)}<span class="grow"><b>${esc(s.name)}</b><small>${s.no ? "정류장 번호 " + esc(s.no) : ""}</small></span></button>`; }).join("")}</div>` : note("찾는 정류장이 없어요");
+      // 어느 방면인지 (지나는 노선의 다음 정류장, 위 15개)
+      const smalls = body.querySelectorAll(".row small");
+      r.slice(0, 15).forEach((s, i) => {
+        if (!s.routes.length) return;
+        B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => {
+          if (t && smalls[i] && my === seq) smalls[i].textContent = [s.no ? "정류장 번호 " + s.no : null, t + " 방면"].filter(Boolean).join(" · ");
+        }).catch(() => {});
+      });
       return;
     }
     const favStops = Favorites.stops.items.slice(0, 4), favSt = Favorites.stations.items, rec = Recent.places.items;

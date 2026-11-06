@@ -3,7 +3,7 @@
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
-import { handleLog } from "./log.js";
+import { handleLog, handleWebLog, hitsFromBusLc } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps } from "./gps.js";
 import { handleReport } from "./report.js";
@@ -45,11 +45,13 @@ async function web(request, url, env, ctx) {
     return handleReport(request, env, ctx);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
-  if (env.WEB_LIMIT && url.pathname.startsWith("/w/shape/")) {
+  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/"))) {
     const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
   if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
+  // 정류장 지난 운행 기록 (정류장 시간표, src/log.js)
+  if (url.pathname === "/w/log/stop") return handleWebLog(url, env);
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
@@ -96,6 +98,8 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     if (env.DB && /getRouteAcctoBusLcList/.test(path)) {
       const q = new URLSearchParams(search);
       ctx.waitUntil(recordGps(env.DB, q.get("routeId"), q.get("cityCode"), body).catch(() => 0));
+      // 정류장을 옮겨 간 버스 → 지난 운행 기록 (정류장 시간표)
+      ctx.waitUntil(hitsFromBusLc(env.DB, caches.default, q.get("routeId"), body).catch(() => 0));
     }
     const out = new Response(stored.body, stored);
     for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);

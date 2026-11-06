@@ -76,3 +76,54 @@ export async function handleLog(request, url, env, ctx) {
 
   return json({ error: "not found" }, 404);
 }
+
+// ── 웹 버전 (토큰 없음) ──
+const WEB_HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
+
+/** GET /w/log/stop?node=A&node=B (같은 자리 정류장 4개까지) → {routes: {노선 id: [분...]}} 최근 6주. 5분 저장 */
+export async function handleWebLog(url, env) {
+  if (!env.DB) return new Response(JSON.stringify({ routes: {} }), { headers: WEB_HEAD });
+  const nodes = [...new Set(url.searchParams.getAll("node"))].filter((n) => ID.test(n)).slice(0, 4);
+  if (!nodes.length) return new Response(JSON.stringify({ error: "bad id" }), { status: 400, headers: WEB_HEAD });
+  await ensureTable(env.DB);
+  const oldest = Math.floor(Date.now() / 60000) - KEEP_DAYS * 1440;
+  const rows = await env.DB.prepare(
+    `SELECT route_id, minute FROM hits WHERE node_id IN (${nodes.map(() => "?").join(",")}) AND minute >= ? ORDER BY minute LIMIT 20000`,
+  ).bind(...nodes, oldest).all();
+  const routes = {};
+  for (const r of rows.results || []) (routes[r.route_id] ||= []).push(r.minute);
+  return new Response(JSON.stringify({ routes }), { headers: { ...WEB_HEAD, "Cache-Control": "public, max-age=300" } });
+}
+
+/**
+ * 노선별 버스 위치 응답(TAGO)을 받을 때마다: 바로 앞 응답(5분 안)과 비교해 정류장을 옮겨 간 버스는
+ * 지금 정류장에 지금 도착한 것으로 기록 (앱 ArrivalStats.hits 와 같은 생각, 한 번에 6정류장 넘게 건너뛴 것은 버림).
+ * 차량 번호는 비교에만 쓰고 서버 임시 저장소에 5분만 둠 (기록에는 노선·정류장·분만).
+ */
+export async function hitsFromBusLc(db, cache, routeId, xml, nowMs = Date.now()) {
+  if (!db || !ID.test(routeId || "")) return 0;
+  const tag = (it, t) => { const m = new RegExp(`<${t}>([^<]*)</${t}>`).exec(it); return m ? m[1].trim() : null; };
+  const cur = {};
+  for (const m of String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+    const v = tag(m[1], "vehicleno"), ord = parseInt(tag(m[1], "nodeord"), 10), node = tag(m[1], "nodeid");
+    if (v && Number.isFinite(ord) && node && ID.test(node)) cur[v] = [ord, node];
+  }
+  const key = new Request(`https://cache.tagohub/prevpos/${routeId}`);
+  const prevRes = await cache.match(key);
+  const prev = prevRes ? await prevRes.json().catch(() => null) : null;
+  await cache.put(key, new Response(JSON.stringify({ at: nowMs, cur }), { headers: { "Cache-Control": "max-age=300" } }));
+  if (!prev || nowMs - prev.at > 4 * 60000 || nowMs <= prev.at) return 0;
+  const minute = Math.floor(nowMs / 60000);
+  const out = [];
+  for (const [v, [ord, node]] of Object.entries(cur)) {
+    const p = prev.cur?.[v];
+    if (!p) continue;
+    const step = ord - p[0];
+    if (step >= 1 && step <= 6) out.push(node);
+  }
+  if (!out.length) return 0;
+  await ensureTable(db);
+  const stmt = db.prepare("INSERT OR IGNORE INTO hits (route_id, node_id, minute) VALUES (?, ?, ?)");
+  await db.batch([...new Set(out)].map((n) => stmt.bind(routeId, n, minute)));
+  return out.length;
+}

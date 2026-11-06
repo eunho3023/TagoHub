@@ -29,6 +29,7 @@ const SCREENS = {
   settings: more.settings,
   notices: more.notices,
   stop: bus.stopScreen,
+  stoptable: bus.stopTable,
   route: bus.routeScreen,
   subway: subway.stationScreen,
   subwaymap: subway.subwayMap,
