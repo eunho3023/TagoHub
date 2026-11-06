@@ -192,19 +192,37 @@ async function liveStopRoutes(stop, same) {
 }
 
 /** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */
-export async function shape(routeId, city) {
-  // 앱과 같은 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력)가 있으면 그것 (자료 조각 shapes/)
+export async function shape(routeId, city, stops) {
+  // 앱과 같은 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력)가 있으면 그것 (자료 조각 shapes/).
+  // 단 정류장과 잘 맞을 때만 (90% 가 선에서 30m 안): 경기 자료는 노선 일부만 덮은 것도 있어서
   try {
     const legacy = legacyId(routeId);
     const poly = (await cached(`data/shapes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
     const pts = poly ? decodePolyline(String(poly), 5) : [];
-    if (pts.length >= 2) return pts;
+    if (pts.length >= 2 && (!stops || fitsStops(pts, stops))) return pts;
   } catch (e) { /* 서버에서 */ }
   try {
     const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city } : null)).poly;
     const pts = decodePolyline(String(poly), 5);
     return pts.length >= 2 ? pts : null;
   } catch (e) { return null; }
+}
+/** 정류장의 90% 이상이 선에서 maxM 안이면 true */
+export function fitsStops(line, stops, maxM = 30, ratio = 0.9) {
+  const pts = stops.filter((s) => s.lat != null && s.lng != null);
+  if (!pts.length) return true;
+  let ok = 0;
+  for (const s of pts) {
+    const kx = 111320 * Math.cos((s.lat * Math.PI) / 180), ky = 110540;
+    let best = Infinity;
+    for (let i = 0; i < line.length - 1 && best > maxM; i++) {
+      const ax = (line[i][1] - s.lng) * kx, ay = (line[i][0] - s.lat) * ky, bx = (line[i + 1][1] - s.lng) * kx, by = (line[i + 1][0] - s.lat) * ky;
+      const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0;
+      best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+    }
+    if (best <= maxM) ok++;
+  }
+  return ok / pts.length >= ratio;
 }
 export function decodePolyline(s, precision) {
   const f = 10 ** precision, out = [];
