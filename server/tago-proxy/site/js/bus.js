@@ -267,7 +267,7 @@ export function routeScreen(root, p, ctx) {
   // 버스마다 도로 위 자리(처음부터 m)·그 자리를 받은 시각·속도(m/초): 다음 위치가 올 때까지 도로를 따라 앞으로 움직여 보임
   // (공공데이터 GPS 는 몇십 초 늦게 바뀌어서, 가만히 두면 실제 버스보다 늦어 보임)
   const track = new Map();
-  const MAX_AHEAD_S = 45, MAX_SPEED = 16.7;
+  const MAX_AHEAD_S = 45, MAX_SPEED = 16.7, BACK_RESET_M = 400;
   const stopCh = (i) => { const x = snapped?.full[i]; return x && x.seg != null ? snapped.cum[x.seg] + x.t * (snapped.cum[x.seg + 1] - snapped.cum[x.seg]) : null; };
   const stopIdx = (b) => { let i = b.nodeId ? r.stops.findIndex((s) => s.id === b.nodeId) : -1; if (i < 0 && b.ord != null) i = r.stops.findIndex((s) => s.seq === b.ord); return i; };
   /** 새 버스 위치를 받으면: 지금 정류장~다음 정류장 사이 도로 위로 내리고 속도를 셈 */
@@ -285,6 +285,12 @@ export function routeScreen(root, p, ctx) {
       const lim = i >= 0 ? stopCh(i + 1) : null;
       const prev = track.get(b.vehicleNo);
       if (prev && Math.abs(h.ch - prev.ch) < 3) { prev.lim = lim ?? prev.lim; continue; } // 위치가 그대로면(자료가 아직 안 바뀜) 계속 앞으로
+      // 뒤로 가지 않게: 새 위치가 지금 보이는 자리보다 조금 뒤면(앞으로 움직여 보인 만큼) 그 자리에 멈춰 기다림.
+      // 400m 넘게 뒤면 회차·다음 운행으로 보고 바로 옮김
+      if (prev) {
+        const shown = shownCh(prev);
+        if (h.ch < shown && shown - h.ch < BACK_RESET_M) { track.set(b.vehicleNo, { ch: shown, at: now, v: 0, lim: lim ?? prev.lim }); continue; }
+      }
       let v = 0;
       if (prev && h.ch > prev.ch) v = Math.min(MAX_SPEED, (h.ch - prev.ch) / Math.max(1, (now - prev.at) / 1000));
       if (prev && prev.v && v) v = (v + prev.v) / 2;
@@ -292,13 +298,17 @@ export function routeScreen(root, p, ctx) {
     }
     for (const k of [...track.keys()]) if (!seen.has(k)) track.delete(k);
   };
+  /** 지금 보일 도로 위 자리(처음부터 m): 받은 자리에서 속도만큼 앞으로, 다음 정류장은 넘지 않게 */
+  function shownCh(t) {
+    let ch = t.ch + t.v * Math.min(MAX_AHEAD_S, (Date.now() - t.at) / 1000);
+    if (t.lim != null && t.lim > t.ch) ch = Math.min(ch, t.lim - 3);
+    return Math.max(t.ch, ch);
+  }
   /** 지금 보일 자리 */
   const busXY = (b) => {
     const t = track.get(b.vehicleNo);
     if (!t || !snapped) return snapPoint([b.lat, b.lng], road);
-    let ch = t.ch + t.v * Math.min(MAX_AHEAD_S, (Date.now() - t.at) / 1000);
-    if (t.lim != null && t.lim > t.ch) ch = Math.min(ch, t.lim - 3);
-    return pointAt(road, snapped.cum, Math.max(t.ch, ch));
+    return pointAt(road, snapped.cum, shownCh(t));
   };
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
   const drawMap = () => {
