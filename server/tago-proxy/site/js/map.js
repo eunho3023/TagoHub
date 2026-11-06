@@ -168,8 +168,9 @@ locBtn.addEventListener("click", (e) => {
   if (myPos && c && Math.hypot((c[0] - myPos[0]) * 111000, (c[1] - myPos[1]) * 88000) > 30) impl.view(myPos[0], myPos[1], Math.max(16, impl.zoom()));
   else stopMe();
 });
-function startMe() {
-  firstFix = true;
+/** 내 위치 켜기. center: 처음 받은 위치로 지도를 옮김, quiet: 못 받아도 알림창 없이 끔 (앱을 열 때 저절로 켤 때) */
+function startMe(center = true, quiet = false) {
+  firstFix = center;
   locBtn.classList.add("on", "wait");
   watchId = follow(
     (p) => {
@@ -178,7 +179,7 @@ function startMe() {
       impl?.me(myPos);
       if (firstFix && impl) { firstFix = false; impl.view(myPos[0], myPos[1], 16); }
     },
-    (msg) => { stopMe(); alert(msg); },
+    (msg) => { stopMe(); if (!quiet) alert(msg); },
   );
 }
 function stopMe() {
@@ -191,6 +192,12 @@ function stopMe() {
 export const MapView = {
   el,
   ready,
+  /** 앱을 열 때: 위치를 막아 두지 않았으면 내 위치를 켬 (center 면 지도도 내 위치로). 못 받으면 조용히 */
+  async autoLocate(center) {
+    if (watchId != null || !("geolocation" in navigator)) return;
+    try { if ((await navigator.permissions.query({ name: "geolocation" })).state === "denied") return; } catch (e) { /* 모르면 물어봄 */ }
+    startMe(center, true);
+  },
   /** 지도를 이 칸 안으로 옮김 */
   mount(container) { if (el.parentElement !== container) { container.appendChild(el); impl?.relayout(); } },
   view(lat, lng, z) { if (impl) impl.view(lat, lng, z); else pendingView = () => impl.view(lat, lng, z); },

@@ -137,3 +137,5 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme
 applyTheme();
 show();
 document.getElementById("splash")?.remove();
+// 열자마자 내 위치로 (정류장·노선 같은 화면 주소로 열었으면 위치 점만 켜고 지도는 그대로)
+MapView.autoLocate(/^#?\/?(map)?\/?$/.test(location.hash) || location.hash === "#/home");
