@@ -346,10 +346,69 @@ export async function arrivals(stop) {
       .filter((a) => { const k = a.routeId + "|" + a.arrSeconds; return !seen1.has(k) && seen1.add(k); })
       .filter((a) => { const k = a.routeNo + "|" + Math.floor((a.arrSeconds ?? -60) / 60); return !seen2.has(k) && seen2.add(k); })
       .sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
-    return { state: "ok", list, at: Date.now() };
+    const fixed = await fixByPosition(stop, list).catch(() => list);
+    return { state: "ok", list: fixed, at: Date.now() };
   } catch (e) {
     return { state: "failed", list: [], at: Date.now(), why: String(e.message || e) };
   }
+}
+
+// ── 버스 위치로 도착 정보 고치기 (앱 PassedByPosition 과 같은 규칙) ──
+// 도착 예측은 늦게 갱신되고 버스 위치가 더 새로운 경우가 많아서: 막 지나간 버스는 빼고, 위치가 더 가까우면 남은 정류장·시간을 줄임
+const APPROACH_STOPS = 6, JUST_PASSED_STOPS = 2, MAX_ROUTES = 6;
+const memo = new Map();
+function remembered(key, ms, make) {
+  const hit = memo.get(key);
+  if (hit && Date.now() - hit.at < ms) return hit.p;
+  const p = make().catch((e) => { memo.delete(key); throw e; });
+  memo.set(key, { at: Date.now(), p });
+  return p;
+}
+export function verdict(stop, busOrds, claimed) {
+  const window = Math.max(APPROACH_STOPS, (claimed ?? 0) + 2);
+  if (busOrds.some((o) => o >= stop - window && o <= stop - 1)) return "keep";
+  if (busOrds.includes(stop)) return (claimed ?? 0) > 0 ? "at" : "keep";
+  return busOrds.some((o) => o >= stop + 1 && o <= stop + JUST_PASSED_STOPS) ? "passed" : "keep";
+}
+export function closer(stop, busOrds, claimed, sec) {
+  if (!(claimed > 1)) return null;
+  const window = Math.max(APPROACH_STOPS, claimed + 2);
+  const near = busOrds.filter((o) => o >= stop - window && o <= stop - 1);
+  if (!near.length) return null;
+  const k = stop - Math.max(...near);
+  if (k >= claimed) return null;
+  let s = sec == null ? null : Math.floor((sec * k) / claimed);
+  if (s != null && k === 1) s = Math.min(s, 60);
+  return [k, s];
+}
+async function fixByPosition(stop, list) {
+  const firsts = new Map();
+  for (const a of list) {
+    if (a.prevStops == null || a.prevStops > APPROACH_STOPS || !a.routeId) continue;
+    const b = firsts.get(a.routeId);
+    if (!b || (a.arrSeconds ?? 1e9) < (b.arrSeconds ?? 1e9)) firsts.set(a.routeId, a);
+  }
+  if (!firsts.size) return list;
+  const ids = new Set([stop, ...(await sameSpot(stop))].map((s) => s.id));
+  const out = new Map();
+  await Promise.all([...firsts.values()].slice(0, MAX_ROUTES).map(async (a) => {
+    try {
+      const r = await remembered("route|" + a.routeId, 600000, () => route(a.routeId, a.city || null));
+      if (!r || !r.stops.length) return;
+      const ords = r.stops.filter((s) => ids.has(s.id)).map((s) => s.seq);
+      if (ords.length !== 1) return; // 순환 노선처럼 두 번 나오면 판단하지 않음
+      const pos = await remembered("pos|" + a.routeId, 12000, () => positions(r));
+      if (pos.state !== "ok") return;
+      const seqOf = new Map(r.stops.map((s) => [s.id, s.seq]));
+      const busOrds = pos.buses.map((b) => (b.nodeId && seqOf.has(b.nodeId) ? seqOf.get(b.nodeId) : b.ord)).filter((o) => o != null);
+      if (!busOrds.length) return;
+      if (verdict(ords[0], busOrds, a.prevStops) !== "keep") { out.set(a, null); return; }
+      const c = closer(ords[0], busOrds, a.prevStops, a.arrSeconds);
+      if (c) out.set(a, { ...a, prevStops: c[0], arrSeconds: c[1] ?? a.arrSeconds });
+    } catch (e) { /* 모르면 그대로 */ }
+  }));
+  if (!out.size) return list;
+  return list.flatMap((a) => (out.has(a) ? (out.get(a) ? [out.get(a)] : []) : [a])).sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
 }
 
 /** 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng}]} */
