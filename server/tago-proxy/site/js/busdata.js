@@ -401,6 +401,24 @@ export function closer(stop, busOrds, claimed, sec) {
   if (s != null && k === 1) s = Math.min(s, 60);
   return [k, s];
 }
+/** 노선 요약(기점·종점·첫차·막차·배차)만: 자료 파일에 있으면 파일에서, 없으면 TAGO 노선 정보 한 번 (정류장 목록은 받지 않음) */
+export function routeInfo(id, city) {
+  return remembered("info|" + id, 3600000, async () => {
+    const legacy = legacyId(id);
+    const m = (await cached(`data/routes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
+    if (m && m.no != null) {
+      const info = Array.isArray(m.info) ? m.info : [];
+      return { id, no: String(m.no), start: str(m.start), end: str(m.end), type: str(m.rtype), first: str(info[0]), last: str(info[1]), interval: int(info[2]), intervalSat: int(info[3]), intervalSun: int(info[4]) };
+    }
+    if (!city || !/^\d+$/.test(city)) return null;
+    const r = xmlRows(await getText("w/dg/1613000/BusRouteInfoInqireService/getRouteInfoIem", { cityCode: city, routeId: currentId(id) }))[0];
+    if (!r) return null;
+    const clockOf = (t) => (t && /^\d{3,4}$/.test(t) ? t.padStart(4, "0").replace(/(\d\d)(\d\d)/, "$1:$2") : null);
+    return { id, no: str(r.routeno), start: str(r.startnodenm), end: str(r.endnodenm), type: str(r.routetp), first: clockOf(r.startvehicletime), last: clockOf(r.endvehicletime),
+      interval: int(r.intervaltime), intervalSat: int(r.intervalsattime), intervalSun: int(r.intervalsuntime) };
+  });
+}
+
 /** 정류장 방면: 이 정류장을 지나는 노선에서 바로 다음 정류장 이름 (노선 몇 개를 보고 가장 많이 나온 것). 모르면 null */
 export async function towardOf(stop, routes) {
   const ids = new Set([stop, ...(await sameSpot(stop))].map((s) => s.id));

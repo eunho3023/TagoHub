@@ -110,12 +110,13 @@ export function stopScreen(root, p) {
     // 기점 → 종점이나 첫차·막차·배차가 없는 노선(자료 파일에 없는 노선)은 노선 정보를 한 번 받아 채움
     const hasPlan = r.sum && (r.sum.first || r.sum.last || r.sum.interval);
     const own = r.sum && [r.sum.start, r.sum.end].filter(Boolean).join(" → ");
-    if (r.id && (!own || !hasPlan) && !asked.has(r.id)) {
+    // 요청을 아끼려고: 기점·종점이 없거나, 지금 오는 버스가 없어 첫차·막차를 보여 줄 줄만, 한 화면에 15개까지 (노선 요약만, 한 번씩)
+    if (r.id && (!own || (live && !hasPlan && !r.arr.length)) && !asked.has(r.id) && asked.size < 15) {
       asked.add(r.id);
-      B.route(r.id, r.city || (/^\d+$/.test(stop.city) ? stop.city : null))
+      B.routeInfo(r.id, r.city || (/^\d+$/.test(stop.city) ? stop.city : null))
         .then((x) => {
           if (!x || !alive) return;
-          if (x.sum) infos.set(r.id, x.sum);
+          infos.set(r.id, x);
           const t = [x.start, x.end].filter(Boolean).join(" → ");
           if (t) ends.set(r.id, t);
           draw();
@@ -186,7 +187,9 @@ export function stopScreen(root, p) {
       const fixed = await refine;
       if (alive && live === got && fixed !== got.list) { live = { ...got, list: fixed }; draw(); }
     };
-    refresh = () => { tick(); B.stopRoutes(stop).then((s) => { sums = s; draw(); }).catch(() => {}); };
+    // 새로고침 단추: 도착 정보만 다시 (3초 안에 여러 번 누르면 한 번만)
+    let lastRefresh = 0;
+    refresh = () => { if (Date.now() - lastRefresh < 3000) return; lastRefresh = Date.now(); tick(); };
     tick();
     timers.push(setInterval(tick, REFRESH_MS), setInterval(tickTimes, 1000));
   })();
