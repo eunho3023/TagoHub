@@ -156,8 +156,9 @@ export async function stopRoutes(stop) {
   // 자료 조각에 요약이 없는 노선이 있으면 (경기·전주 등) 정류장을 지나는 노선을 서버로 물어 채움 (운행 안 하는 노선도 보이게)
   if (!ids.length || ids.some((id) => !sums[id])) {
     for (const s of await liveStopRoutes(stop, same).catch(() => [])) {
+      // 자료 파일 노선과 겹치는지만 번호+기점+종점으로 봄 (받아 온 노선끼리는 ID 가 다르면 경유지만 다른 다른 노선)
       if (seen.has(s.id) || seenSig.has(sig(s))) continue;
-      seen.add(s.id); seenSig.add(sig(s)); out.push(s);
+      seen.add(s.id); out.push(s);
     }
   }
   return out;
