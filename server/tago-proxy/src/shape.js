@@ -160,19 +160,31 @@ export async function build(stops, fetcher) {
   const done = (path, used) => removeDetours(path, used);
   const first = await buildRaw(stops, fetcher);
   if (!first) return null;
-  const sus = detourStops(first, stops);
+  const sus = detourStops(first, stops).slice(0, MAX_CHECKS);
   if (!sus.length) return done(first, stops);
-  const drop = new Set(sus);
-  const used2 = stops.filter((_, i) => !drop.has(i));
-  const second = await buildRaw(used2, fetcher);
-  if (!second) return done(first, stops);
-  const back = sus.filter((k) => distToPath(stops[k], second) > NEAR_MAIN_M);
-  if (!back.length) return done(second, used2);
-  if (back.length === sus.length) return done(first, stops);
-  const keep = new Set(back);
-  const used3 = stops.filter((_, i) => !drop.has(i) || keep.has(i));
-  const third = await buildRaw(used3, fetcher);
-  return third ? done(third, used3) : done(first, stops);
+  // 정류장마다 따로: 앞뒤 정류장만 이은 길에서 60m 안이면 큰길 위 정류장 → 뺌 (한꺼번에 빼면 붙은 정류장들이 같이 빠져 다른 길로 감)
+  const drop = new Set();
+  for (const k of sus) {
+    const pair = await osrmPath([stops[k - 1], stops[k + 1]], fetcher);
+    if (pair && distToPath(stops[k], pair) <= NEAR_MAIN_M) drop.add(k);
+  }
+  if (!drop.size) return done(first, stops);
+  const used = stops.filter((_, i) => !drop.has(i));
+  const second = await buildRaw(used, fetcher);
+  return second ? done(second, used) : done(first, stops);
+}
+const MAX_CHECKS = 12;
+
+/** OSRM 길 한 번 (실패하면 null) */
+async function osrmPath(points, fetcher) {
+  try {
+    const r = await fetcher(osrmUrl(points), { headers: { "User-Agent": "TagoHub-proxy" } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const g = j.code === "Ok" && j.routes && j.routes[0] && j.routes[0].geometry;
+    const shape = g ? decode(g, 6) : null;
+    return shape && shape.length >= 2 ? shape : null;
+  } catch (_) { return null; }
 }
 
 /** 구간마다 OSRM 길을 이음 (다듬기 전). 구간 실패·너무 긴 구간은 직선, 하나도 못 받으면 null */
@@ -202,8 +214,8 @@ async function buildRaw(stops, fetcher) {
 /** 정류장 목록이 바뀌면 다시 만들게 하는 표시 */
 export function signature(stops) {
   const f = stops[0], l = stops[stops.length - 1];
-  // v2: 골목으로 돌아 들어가는 정류장을 빼고 다시 만드는 방식 (예전 v1 모양은 다시 만듦)
-  return `v2:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
+  // v3: 골목으로 돌아 들어가는 정류장을 하나씩 확인해 빼고 다시 만드는 방식 (예전 모양은 다시 만듦)
+  return `v3:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
 }
 
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -261,7 +273,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   const cache = caches.default;
-  const key = new Request(`https://cache.tagohub/shape/v2/${id}`);
+  const key = new Request(`https://cache.tagohub/shape/v3/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
