@@ -217,11 +217,64 @@ async function buildRaw(stops, fetcher) {
   return anyRoad ? out : null;
 }
 
+// ── 카카오 경로 (앱 RoadShapeClient 와 같은 방법) ──
+// 정류장 6개씩 카카오 대중교통 길찾기를 받아, 이 노선 번호 버스를 타는 구간의 경로를 씀 (카카오 지도의 실제 버스 길).
+// 카카오에 보내는 것은 정류장 좌표(공개 자료)뿐. 구간 시작·끝이 정류장 200m 안, 사이 정류장 80m 곁을 지나고, 너무 돌지 않아야 채택
+export const KAKAO_CHUNK = 6, KAKAO_MAX_PARTS = 22;
+const sameNo = (a, b) => { const n = (s) => String(s || "").replace(/\s/g, "").replace(/번$/, ""); return n(a) !== "" && n(a) === n(b); };
+export function kakaoRidePath(body, routeNo, a, b) {
+  for (const r of body?.routes || []) {
+    for (const s of r.steps || []) {
+      const p = s.properties || {};
+      if (p.type !== "BUS" || !(p.vehicles || []).some((v) => sameNo(v.name, routeNo))) continue;
+      const pts = (s.path?.points || []).map((xy) => [parseFloat(xy[1]), parseFloat(xy[0])]).filter((q) => Number.isFinite(q[0]) && Number.isFinite(q[1]));
+      if (pts.length >= 2 && meters(pts[0], a) <= 200 && meters(pts[pts.length - 1], b) <= 200) return pts;
+    }
+  }
+  return null;
+}
+async function kakaoPiece(part, routeNo, key, fetcher) {
+  const [a, b] = [part[0], part[part.length - 1]];
+  try {
+    const q = `start_x=${a[1].toFixed(6)}&start_y=${a[0].toFixed(6)}&end_x=${b[1].toFixed(6)}&end_y=${b[0].toFixed(6)}`;
+    const r = await fetcher("https://dapi.kakao.com/v2/routing/publictraffic?" + q, { headers: { Authorization: "KakaoAK " + key } });
+    if (!r.ok) return null;
+    const p = kakaoRidePath(await r.json(), routeNo, a, b);
+    if (!p) return null;
+    if (part.slice(1, -1).some((s) => distToPath(s, p) > 80)) return null;
+    return length(p) <= length(part) * 2.2 + 300 ? p : null;
+  } catch (_) { return null; }
+}
+/** 카카오 경로로 만든 모양. 카카오가 못 준 구간은 그 구간만 OSRM. 절반 넘게 못 받으면 null (OSRM 방식으로) */
+export async function buildKakao(stops, routeNo, key, fetcher) {
+  const parts = chunks(stops, KAKAO_CHUNK);
+  // Workers 무료 요금제는 요청 하나에 바깥 요청 50번까지: 구간이 많으면(정류장 약 110개 넘음) 카카오는 쓰지 않음
+  if (parts.length > KAKAO_MAX_PARTS) return null;
+  const out = [];
+  let got = 0;
+  for (const part of parts) {
+    let piece = await kakaoPiece(part, routeNo, key, fetcher);
+    if (piece) got++;
+    else {
+      const o = await osrmPath(part, fetcher);
+      piece = o && length(o) <= length(part) * 3 + 300 ? removeDetours(o, part) : part;
+    }
+    out.push(...(out.length ? piece.slice(1) : piece));
+  }
+  return got * 2 >= parts.length ? out : null;
+}
+
+/** 정류장의 85% 가 선에서 100m 안 (앱 Shapes.fitsStops 와 같은 기준) */
+export function fitsStops(path, stops, maxM = 100, ratio = 0.85) {
+  if (!path || path.length < 2) return false;
+  return stops.filter((s) => distToPath(s, path) <= maxM).length >= stops.length * ratio;
+}
+
 /** 정류장 목록이 바뀌면 다시 만들게 하는 표시 */
 export function signature(stops) {
   const f = stops[0], l = stops[stops.length - 1];
-  // v4: 골목 쪽으로 잘못 찍힌 정류장(250m 안, ○○내 아님)도 빼고 큰길로 (예전 모양은 다시 만듦)
-  return `v4:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
+  // v5: 노선 번호가 있으면 카카오 경로 먼저 (예전 모양은 다시 만듦)
+  return `v5:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
 }
 
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -279,13 +332,18 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   const cache = caches.default;
-  const key = new Request(`https://cache.tagohub/shape/v4/${id}`);
+  // 노선 번호가 있으면 카카오 경로(앱과 같은 방법)를 먼저 씀
+  const no = (url.searchParams.get("no") || "").trim();
+  const routeNo = /^[0-9A-Za-z가-힣()-]{1,20}$/.test(no) ? no : null;
+  const kakaoKey = (env.KAKAO_REST_KEY || "").trim();
+  const useKakao = !!(routeNo && kakaoKey);
+  const key = new Request(`https://cache.tagohub/shape/v5${useKakao ? "k" : ""}/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
   const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, url.searchParams.get("city"), fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
-  const sig = signature(stops);
+  const sig = signature(stops) + (useKakao ? ":k" : "");
   let poly = null;
   if (env.DB) {
     await ensureTable(env.DB);
@@ -293,7 +351,12 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
     if (row && row.sig === sig) poly = row.poly;
   }
   if (!poly) {
-    const shape = await build(stops, fetcher);
+    let shape = null;
+    if (useKakao) {
+      const k = await buildKakao(stops, routeNo, kakaoKey, fetcher);
+      if (k && fitsStops(k, stops)) shape = k;
+    }
+    if (!shape) shape = await build(stops, fetcher);
     if (!shape) return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
     poly = encode(shape, 5);
     if (env.DB) {
