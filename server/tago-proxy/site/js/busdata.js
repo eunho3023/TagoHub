@@ -193,6 +193,13 @@ async function liveStopRoutes(stop, same) {
 
 /** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */
 export async function shape(routeId, city) {
+  // 앱과 같은 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력)가 있으면 그것 (자료 조각 shapes/)
+  try {
+    const legacy = legacyId(routeId);
+    const poly = (await cached(`data/shapes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
+    const pts = poly ? decodePolyline(String(poly), 5) : [];
+    if (pts.length >= 2) return pts;
+  } catch (e) { /* 서버에서 */ }
   try {
     const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city } : null)).poly;
     const pts = decodePolyline(String(poly), 5);
