@@ -187,6 +187,16 @@ function go(view, params, push = true) {
   screen.scrollTop = 0;
   (VIEWS[view] || VIEWS.home)(params);
 }
+$('#mobile-map-toggle')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  const expanded = $('#app').classList.toggle('map-expanded');
+  const button = $('#mobile-map-toggle');
+  button.setAttribute('aria-expanded', String(expanded));
+  button.setAttribute('aria-label', expanded ? '지도 영역 줄이기' : '지도 영역 늘리기');
+  button.textContent = expanded ? '지도 줄이기' : '지도 키우기';
+  window.setTimeout(() => M?.refresh(), 300);
+});
 function back() {
   S.nav.pop();
   const prev = S.nav[S.nav.length - 1];

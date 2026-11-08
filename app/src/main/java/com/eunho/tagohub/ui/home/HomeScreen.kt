@@ -168,6 +168,7 @@ fun HomeScreen(
     val sheetScope = androidx.compose.runtime.rememberCoroutineScope()
     var recentY by remember { mutableStateOf(0) }
     var favY by remember { mutableStateOf(0) }
+    var sheetExpanded by rememberSaveable { mutableStateOf(false) }
     BoxWithConstraints(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             // 위 카드: 앱 이름 + 검색 (검색어를 쓰면 결과가 이 안에 나오고 카드가 화면을 채움)
@@ -196,27 +197,55 @@ fun HomeScreen(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     HomeMapPreview({ onOpenTab(AppTab.Map) }, Modifier, fill = true)
                 }
-                // 아래 시트: 집·회사·즐겨찾기·최근 + 자세한 구역
+                // 아래 시트: 빠른 이동은 기본 노출, 주변·즐겨찾기·최근은 필요할 때 펼쳐 봄
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
                     shadowElevation = 14.dp,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = this@BoxWithConstraints.maxHeight * 0.5f),
+                    modifier = Modifier.fillMaxWidth().heightIn(
+                        max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.72f
+                        else (this@BoxWithConstraints.maxHeight * 0.46f).coerceAtLeast(178.dp),
+                    ),
                 ) {
-                    Column(Modifier.fillMaxWidth().verticalScroll(sheetScroll), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.padding(top = 10.dp, bottom = 12.dp).size(width = 40.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant))
-                        Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable(role = Role.Button) { sheetExpanded = !sheetExpanded }
+                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("빠른 이동", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    if (sheetExpanded) "주변 정류장 · 즐겨찾기 · 최근 목적지" else "즐겨찾기와 주변 정보를 확인하세요",
+                                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(if (sheetExpanded) "접기" else "더 보기", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Column(
+                            Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(sheetScroll)
+                                .padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                        ) {
                             ShortcutTiles(
                                 vm, onGoTo, onOpenTab,
-                                onFavorites = { sheetScope.launch { sheetScroll.animateScrollTo(favY) } },
-                                onRecent = { sheetScope.launch { sheetScroll.animateScrollTo(recentY) } },
+                                onFavorites = {
+                                    sheetExpanded = true
+                                    sheetScope.launch { delay(100); sheetScroll.animateScrollTo(favY) }
+                                },
+                                onRecent = {
+                                    sheetExpanded = true
+                                    sheetScope.launch { delay(100); sheetScroll.animateScrollTo(recentY) }
+                                },
                                 modifier = Modifier.padding(top = 2.dp),
                             )
-                            Column(Modifier.onGloballyPositioned { recentY = it.positionInParent().y.toInt() }) { RecentChips(onGoTo, Modifier) }
-                            Spacer(Modifier.height(10.dp))
-                            Column(Modifier.onGloballyPositioned { favY = it.positionInParent().y.toInt() }) { Favorites(vm, onFavorite) }
-                            Spacer(Modifier.height(16.dp))
-                            NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) })
+                            if (sheetExpanded) {
+                                Column(Modifier.onGloballyPositioned { recentY = it.positionInParent().y.toInt() }) { RecentChips(onGoTo, Modifier) }
+                                Spacer(Modifier.height(10.dp))
+                                Column(Modifier.onGloballyPositioned { favY = it.positionInParent().y.toInt() }) { Favorites(vm, onFavorite) }
+                                Spacer(Modifier.height(16.dp))
+                                NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) })
+                            }
                         }
                     }
                 }
