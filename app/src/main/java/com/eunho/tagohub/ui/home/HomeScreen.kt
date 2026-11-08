@@ -196,6 +196,29 @@ fun HomeScreen(
                 // 가운데: 내 위치 주변 지도 (누르면 지도 탭). 위치를 모르면 빈 배경
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     HomeMapPreview({ onOpenTab(AppTab.Map) }, Modifier, fill = true)
+                    // 지도 위에 떠 있는 전환 단추: 시트를 접으면 지도가 넓어지고, 펼치면 다시 좁아진다
+                    Surface(
+                        onClick = { sheetExpanded = !sheetExpanded },
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 14.dp),
+                    ) {
+                        Row(
+                            Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.Map, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (sheetExpanded) "지도 크게" else "지도 접기",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                 }
                 // 아래 시트: 빠른 이동은 기본 노출, 주변·즐겨찾기·최근은 필요할 때 펼쳐 봄
                 Surface(
@@ -203,8 +226,8 @@ fun HomeScreen(
                     shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
                     shadowElevation = 14.dp,
                     modifier = Modifier.fillMaxWidth().heightIn(
-                        max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.72f
-                        else (this@BoxWithConstraints.maxHeight * 0.46f).coerceAtLeast(178.dp),
+                        max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.74f
+                        else (this@BoxWithConstraints.maxHeight * 0.54f).coerceAtLeast(248.dp),
                     ),
                 ) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -217,7 +240,7 @@ fun HomeScreen(
                             Column(Modifier.weight(1f)) {
                                 Text("빠른 이동", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
                                 Text(
-                                    if (sheetExpanded) "주변 정류장 · 즐겨찾기 · 최근 목적지" else "즐겨찾기와 주변 정보를 확인하세요",
+                                    if (sheetExpanded) "주변 정류장 · 즐겨찾기 · 최근 목적지" else "지금 오는 버스와 자주 가는 곳",
                                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -239,7 +262,14 @@ fun HomeScreen(
                                 },
                                 modifier = Modifier.padding(top = 2.dp),
                             )
+                            // 지도 다음으로 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
+                            LiveArrivalsCard(
+                                onStop = search.onStop,
+                                onShowMap = { onOpenMap(MapMode.Bus) },
+                                modifier = Modifier.padding(top = 12.dp),
+                            )
                             if (sheetExpanded) {
+                                Spacer(Modifier.height(14.dp))
                                 Column(Modifier.onGloballyPositioned { recentY = it.positionInParent().y.toInt() }) { RecentChips(onGoTo, Modifier) }
                                 Spacer(Modifier.height(10.dp))
                                 Column(Modifier.onGloballyPositioned { favY = it.positionInParent().y.toInt() }) { Favorites(vm, onFavorite) }
