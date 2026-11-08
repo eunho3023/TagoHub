@@ -201,3 +201,26 @@ textarea:focus { border-color: var(--primary); }
 /* 정류장 시간표: 시간대 줄 안의 시각·노선 */
 .ttimes { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; }
 .tt { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── 홈 실시간 도착 카드 ── */
+.livesec { padding: 14px 16px 0; }
+.livecard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.live-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px; }
+.live-head b { font-size: 15px; font-weight: 800; }
+.live-head .link { flex: none; font-size: 13px; }
+.live-at { font-size: 12px; color: var(--muted); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex: none; animation: livedot 1.8s ease-in-out infinite; }
+@keyframes livedot { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.live-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 8px 14px; border-top: 1px solid var(--line); }
+.live-row .grow { min-width: 0; }
+.live-row b { font-size: 15px; font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-row small { margin-top: 2px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-eta { font-size: 16px; font-weight: 900; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.live-eta.soon { color: var(--soon); }
+.live-more { display: block; width: 100%; padding: 11px 14px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 700; color: var(--primary); text-align: center; }
+.live-note { margin: 0; padding: 2px 14px 12px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.live-skel { padding: 4px 14px 14px; }
+.live-skel i { display: block; height: 14px; margin-top: 10px; border-radius: 7px; background: var(--sv); }
+.live-skel i:first-child { width: 92%; }
+.live-skel i:last-child { width: 64%; }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }

@@ -1,5 +1,5 @@
-// 홈 (폰 앱 홈과 같은 모양): 로고·"어디로 가시나요?", 바로가기(집·회사·즐겨찾기·최근), 최근 검색, 즐겨찾기(가장 먼저 오는 버스), 내 주변 정류장, 공지.
-import { esc, busColor, subwayColor, meters } from "./core.js";
+// 홈 (폰 앱 홈과 같은 모양): 로고·"어디로 가시나요?"·지도 바로가기, 실시간 도착 카드, 바로가기(집·회사·즐겨찾기·최근), 최근 검색, 즐겨찾기, 내 주변 정류장, 공지.
+import { esc, busColor, subwayColor, meters, distText } from "./core.js";
 import { act, icon, note, bindInput } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent, HomeWork } from "./store.js";
@@ -7,15 +7,22 @@ import * as B from "./busdata.js";
 import { remember } from "./bus.js";
 import { startDirections } from "./places.js";
 import { latestNotice } from "./more.js";
-import { locate } from "./geo.js";
+import { locate, geoMessage } from "./geo.js";
 
-const st = { q: "", near: null, nearNote: null, first: new Map() };
+const st = {
+  q: "",
+  near: null,
+  nearNote: null,
+  first: new Map(),
+  // 실시간 도착 카드: idle | loading | ok | noperm | error
+  live: { state: "idle", rows: null, at: 0, note: null },
+};
 
 export function render(root) {
   let alive = true;
   root.innerHTML = `<div class="homecard">
       <div class="brand">${logo()}<div class="grow"><b>TagoHub</b><small>한 번에 연결되는 교통 정보</small></div>
-        ${isWide() ? "" : `<button class="outline" ${act(() => go("map"))}>지도</button>`}</div>
+        <button class="outline" ${act(() => go("map"))}>${icon("pin", 16)} 지도</button></div>
       <label class="bigsearch">${icon("pin", 20)}<input id="q" type="search" placeholder="정류장 이름으로 찾기" value="${esc(st.q)}" autocomplete="off"></label>
     </div><div id="body"></div>`;
   const body = root.querySelector("#body");
@@ -37,7 +44,7 @@ export function render(root) {
       r.slice(0, 15).forEach((s, i) => {
         if (!s.routes.length) return;
         B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => {
-          if (t && smalls[i] && my === seq) smalls[i].textContent = [s.no ? "정류장 번호 " + s.no : null, t + " 방면"].filter(Boolean).join(" · ");
+          if (t && smalls[i] && my === seq) smalls[i].textContent = [s.no ? "정류장 번호 " + esc(s.no) : null, t + " 방면"].filter(Boolean).join(" · ");
         }).catch(() => {});
       });
       return;
@@ -45,7 +52,8 @@ export function render(root) {
     const favStops = Favorites.stops.items.slice(0, 4), favSt = Favorites.stations.items, rec = Recent.places.items;
     const home = HomeWork.home, work = HomeWork.work;
     const tile = (label, ic, run) => `<button class="tile" ${act(run)}><span class="tile-ic">${icon(ic, 26)}</span><span>${label}</span></button>`;
-    body.innerHTML = `<div class="tiles">
+    body.innerHTML = `${liveSection()}
+      <div class="tiles">
         ${tile("집", "home", () => (home ? startDirections(home) : go("navi")))}
         ${tile("회사", "work", () => (work ? startDirections(work) : go("navi")))}
         ${tile("즐겨찾기", "star", () => body.querySelector("#fav")?.scrollIntoView({ behavior: "smooth" }))}
@@ -72,6 +80,75 @@ export function render(root) {
       <section class="sec"><div class="card"><button class="crow" ${act(() => go("notices"))}><b class="blue">공지</b><span class="grow">${esc(latestNotice()?.title || "공지사항 · 제보")}</span></button></div></section>`;
   };
 
+  /* ───────── 실시간 도착 카드 ───────── */
+  function liveSection() {
+    const L = st.live;
+    let rows = "";
+    if (L.state === "loading" || L.state === "idle") {
+      rows = `<div class="live-skel"><i></i><i></i></div>`;
+    } else if (L.state === "noperm" || L.state === "error") {
+      rows = `<p class="live-note">${esc(L.note || "위치를 확인하지 못했어요.")}</p>
+        <button class="live-more" ${act(paintLive)}>다시 시도</button>`;
+    } else if (!L.rows || !L.rows.length) {
+      rows = `<p class="live-note">700m 안에 도착 정보가 있는 정류장이 없어요.</p>
+        <button class="live-more" ${act(findNear)}>내 주변 정류장 보기</button>`;
+    } else {
+      rows = L.rows.map(({ stop, a, m }) => {
+        const text = B.arrivalParts(a, Math.floor((Date.now() - L.at) / 1000))[0];
+        const soon = (a.arrSeconds ?? 999) <= 30;
+        const meta = [distText(m), a.prevStops != null ? a.prevStops + "정류장 전" : null].filter(Boolean).join(" · ");
+        return `<button class="live-row" ${act(() => go("stop", stop.id, { lat: stop.lat, lng: stop.lng }))}>
+          <span class="badge" style="background:${busColor(a.routeType)}">${esc(a.routeNo)}</span>
+          <span class="grow"><b>${esc(stop.name)}</b><small>${esc(meta)}</small></span>
+          <span class="live-eta${soon ? " soon" : ""}">${esc(text)}</span></button>`;
+      }).join("") + `<button class="live-more" ${act(findNear)}>내 주변 정류장 모두 보기</button>`;
+    }
+    const at = L.at ? `<span class="live-at">${new Date(L.at).toTimeString().slice(0, 5)} 기준</span>` : "";
+    return `<div class="livesec"><div class="livecard">
+      <div class="live-head"><span class="live-dot"></span><b>실시간 도착</b>${at}<span class="grow"></span>
+        <button class="link" ${act(paintLive)}>새로고침</button></div>
+      ${rows}</div></div>`;
+  }
+
+  async function paintLive() {
+    if (!alive || st.q.trim()) return;
+    if (!("geolocation" in navigator)) {
+      st.live = { state: "noperm", rows: null, at: 0, note: "이 브라우저는 위치를 지원하지 않아요." };
+      draw();
+      return;
+    }
+    if (st.live.state !== "ok") { st.live = { ...st.live, state: "loading" }; draw(); }
+    let here;
+    try {
+      here = await locate();
+    } catch (e) {
+      st.live = { state: "noperm", rows: null, at: 0, note: await geoMessage(e).catch(() => "위치 권한이 꺼져 있어요.") };
+      draw();
+      return;
+    }
+    const [la, lo] = here;
+    try {
+      const near = (await B.stopsIn(la - 0.005, lo - 0.006, la + 0.005, lo + 0.006).catch(() => []))
+        .map((s) => ({ s, m: meters(la, lo, s.lat, s.lng) }))
+        .filter((x) => x.m <= 700)
+        .sort((a, b) => a.m - b.m)
+        .slice(0, 2);
+      const lists = await Promise.all(near.map(({ s }) => B.arrivals(s).catch(() => ({ state: "error", list: [] }))));
+      const rows = [];
+      near.forEach(({ s, m }, i) => {
+        const got = lists[i];
+        if (got.state !== "ok") return;
+        (got.list || []).slice(0, 2).forEach((a) => rows.push({ stop: s, a, m }));
+      });
+      if (!alive) return;
+      st.live = { state: "ok", rows: rows.slice(0, 4), at: Date.now(), note: null };
+    } catch (e) {
+      if (!alive) return;
+      st.live = { state: "error", rows: null, at: 0, note: "도착 정보를 받지 못했어요." };
+    }
+    draw();
+  }
+
   async function findNear() {
     st.nearNote = "위치를 받는 중..."; draw();
     let here;
@@ -91,9 +168,12 @@ export function render(root) {
   });
   refresh();
   const t = setInterval(refresh, 30000);
+  // 실시간 도착 카드 (20초마다). 첫 화면에서 바로 채운다
+  paintLive();
+  const lt = setInterval(paintLive, 20000);
   bindInput(root, "#q", (v) => { st.q = v; draw(); }, 400);
   draw();
-  return () => { alive = false; clearInterval(t); };
+  return () => { alive = false; clearInterval(t); clearInterval(lt); };
 }
 
 function logo() {
