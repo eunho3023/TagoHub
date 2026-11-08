@@ -100,12 +100,26 @@ fun TabScaffold(
     content: @Composable () -> Unit,
 ) {
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 큰 제목만 (앱 이름·설명은 홈에만)
-        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
-            Text(title, fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-        }
+        PageTitleHeader(title, Modifier.windowInsetsPadding(WindowInsets.statusBars))
         Box(Modifier.weight(1f)) { content() }
         AppBottomNav(tab, onTab)
+    }
+}
+
+@Composable
+private fun PageTitleHeader(title: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Text(
+            title,
+            Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            fontSize = 28.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.8).sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -135,12 +149,12 @@ fun MorePage(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        PageTitleHeader("설정", Modifier.windowInsetsPadding(WindowInsets.statusBars))
         Column(
-            Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars).verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 16.dp),
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text("설정", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                 SettingsLabel("자주 바꾸는 것", Icons.Outlined.Tune)
                 QuickToggles()
 

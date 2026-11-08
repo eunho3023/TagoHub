@@ -187,6 +187,26 @@ function go(view, params, push = true) {
   screen.scrollTop = 0;
   (VIEWS[view] || VIEWS.home)(params);
 }
+$('#mobile-map-toggle')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  const expanded = $('#app').classList.toggle('map-expanded');
+  const button = $('#mobile-map-toggle');
+  button.setAttribute('aria-expanded', String(expanded));
+  button.setAttribute('aria-label', expanded ? '지도 영역 줄이기' : '지도 영역 늘리기');
+  button.textContent = expanded ? '지도 줄이기' : '지도 키우기';
+  window.setTimeout(() => M?.refresh(), 300);
+});
+/* 지도 위 내 위치 버튼: 권한이 없으면 브라우저가 묻고, 실패하면 알림만 띄운다 */
+$('#map-locate')?.addEventListener('click', async () => {
+  try {
+    const here = await locate();
+    M.setView(here.lat, here.lng, 16);
+    if (S.cur?.view === 'home') paintLive();
+  } catch (e) {
+    toast(e.message);
+  }
+});
 function back() {
   S.nav.pop();
   const prev = S.nav[S.nav.length - 1];
@@ -203,6 +223,7 @@ function locate() {
     navigator.geolocation.getCurrentPosition(
       (p) => {
         S.here = { lat: p.coords.latitude, lng: p.coords.longitude };
+        S.geoDenied = false;
         clearLayer('me');
         M.marker('me', S.here.lat, S.here.lng, 'me');
         resolve(S.here);
@@ -228,21 +249,104 @@ function showStopsOnMap(stops) {
 /* ───────── 화면들 ───────── */
 const VIEWS = {};
 
-VIEWS.home = async function () {
-  const tile = (label, icon, color, view, off) => `<button class="tile ${off ? 'off' : ''}" data-view="${view}" style="background:${color}">${svg(icon)}<b>${label}</b></button>`;
-  screen.innerHTML = `<div class="pad" style="padding-top:28px">
-    <h1 class="h1">어디로<br>가시나요?</h1>
-    <form id="q" class="search" style="margin-top:14px">${svg('search')}<input id="qi" placeholder="장소 · 정류소 · 역 검색" aria-label="검색" autocomplete="off"></form>
-    <div class="tiles">
+/* ───────── 첫 화면: 지도 중심 + 실시간 도착 카드 ───────── */
+const LIVE_REFRESH_MS = 20000;
+
+/** 카드 뼈대: 제목 줄은 늘 같고 아래 내용만 상태에 따라 바뀐다 */
+function liveShell(inner, at) {
+  return `<div class="live-card">
+    <div class="live-head"><span class="live-dot" aria-hidden="true"></span><b>실시간 도착</b>
+      ${at ? `<span class="live-at num">${esc(at)} 기준</span>` : ''}
+      <span class="grow"></span><button class="live-rf" id="live-rf" type="button">새로고침</button></div>
+    ${inner}</div>`;
+}
+const liveNote = (html) => `<div class="live-note">${html}</div>`;
+const liveSkeleton = () => `<div class="live-skel" aria-hidden="true">${[0, 1].map(() => '<div class="sk-row"><i></i><b></b><em></em></div>').join('')}</div>`;
+
+/** 가까운 정류장 두 곳에서 지금 오는 버스 (합쳐서 최대 네 줄) */
+async function paintLive() {
+  const box = $('#live');
+  if (!box) return;
+  if (!navigator.geolocation) { box.innerHTML = liveShell(liveNote('이 브라우저는 위치를 지원하지 않아요.')); return; }
+  // 한 번 거부하면 20초마다 다시 묻지 않는다 (사용자가 직접 열 때만 재요청)
+  if (!S.here && S.geoDenied) {
+    box.innerHTML = liveShell(liveNote('위치 권한이 꺼져 있어 실시간 도착을 보여줄 수 없어요.')
+      + '<button class="live-more" id="live-locate" type="button">내 주변 정류장 열기</button>');
+    $('#live-locate')?.addEventListener('click', () => go('nearby'));
+    return;
+  }
+  if (!S.here) {
+    try {
+      await locate();
+    } catch (e) {
+      S.geoDenied = true;
+      box.innerHTML = liveShell(liveNote('<b>위치를 허용하면 지금 오는 버스가 보여요.</b><br><span class="sub">주소창의 위치 권한을 허용한 뒤 새로고침하세요.</span>')
+        + '<button class="live-more" id="live-locate" type="button">내 주변 정류장 열기</button>');
+      $('#live-locate')?.addEventListener('click', () => go('nearby'));
+      return;
+    }
+  }
+  if (!box.isConnected) return;
+  box.innerHTML = liveShell(liveSkeleton());
+  bindLive();
+  try {
+    const near = await api('/api/stops/near', { lat: S.here.lat, lng: S.here.lng, r: 700 });
+    const stops = (near.stops || []).slice(0, 2);
+    if (!box.isConnected) return;
+    if (!stops.length) { box.innerHTML = liveShell(liveNote('700m 안에 정류장이 없어요.')); return; }
+    const lists = await Promise.all(stops.map((s) => api('/api/bus/arrivals', { city: s.city, node: s.id }).catch(() => ({ arrivals: [] }))));
+    if (!box.isConnected) return;
+    const rows = [];
+    stops.forEach((s, i) => (lists[i].arrivals || []).slice(0, 2).forEach((a) => rows.push({ s, a })));
+    if (!rows.length) {
+      box.innerHTML = liveShell(liveNote('가까운 정류장의 도착 정보가 아직 없어요.') + '<button class="live-more" data-nearby type="button">내 주변 정류장 보기</button>');
+      bindLive();
+      return;
+    }
+    box.innerHTML = liveShell(rows.slice(0, 4).map(({ s, a }) => `<button class="live-row" type="button" data-stop='${esc(JSON.stringify(s))}'>
+        <span class="badge sm" style="background:${routeColor(a.routeType)}">${esc(a.routeNo)}</span>
+        <span class="grow"><b>${esc(s.name)}</b><small>${esc([s.distance != null ? km(s.distance) : '', a.prevStops != null ? a.prevStops + '정류장 전' : ''].filter(Boolean).join(' · '))}</small></span>
+        <span class="live-eta num ${a.sec != null && a.sec <= 30 ? 'soon' : ''}">${esc(etaText(a.sec))}</span></button>`).join('')
+      + '<button class="live-more" data-nearby type="button">내 주변 정류장 모두 보기</button>', new Date().toTimeString().slice(0, 5));
+    bindLive();
+  } catch (e) {
+    if (!box.isConnected) return;
+    box.innerHTML = liveShell(liveNote(esc(e.message || e)) + '<button class="live-more" data-live-retry type="button">다시 시도</button>');
+    bindLive();
+  }
+}
+
+function bindLive() {
+  $$('#live .live-row').forEach((b) => b.addEventListener('click', () => go('stop', JSON.parse(b.dataset.stop))));
+  $$('#live [data-nearby]').forEach((b) => b.addEventListener('click', () => go('nearby')));
+  $$('#live [data-live-retry]').forEach((b) => b.addEventListener('click', () => paintLive()));
+  $('#live-rf')?.addEventListener('click', () => paintLive());
+  $('#live-locate')?.addEventListener('click', () => go('nearby'));
+}
+
+VIEWS.home = function () {
+  const tile = (label, icon, color, view) => `<button class="tile" type="button" data-view="${view}" style="background:${color}">${svg(icon)}<b>${label}</b></button>`;
+  screen.innerHTML = `<div class="pad home-head">
+    <div class="brand-row"><span class="brand">TagoHub</span><span class="live-pill"><i></i>실시간</span><span class="grow"></span></div>
+    <h1 class="h1 home-h1">어디로 가시나요?</h1>
+    <form id="q" class="search home-search">${svg('search')}<input id="qi" placeholder="장소 · 정류소 · 역 검색" aria-label="검색" autocomplete="off"></form>
+    <div class="tiles quick">
       ${tile('지도', 'map', 'var(--c-map)', 'nearby')}${tile('버스', 'bus', 'var(--c-bus)', 'bus')}
       ${tile('지하철', 'subway', 'var(--c-subway)', 'subway')}${tile('기차', 'train', 'var(--c-train)', 'train')}
-      ${tile('고속·시외', 'coach', 'var(--c-coach)', 'coach', true)}${tile('항공', 'plane', 'var(--c-air)', 'air')}
     </div>
-    <button class="btn line" id="plan" style="width:100%;margin-top:10px">${svg('route').replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px;margin-right:6px"')}길찾기</button>
+    <div class="chips quick-more" style="padding:0">
+      <button class="chip" type="button" data-view="coach">고속·시외</button>
+      <button class="chip" type="button" data-view="air">항공</button>
+      <button class="chip" type="button" id="plan">길찾기</button>
+    </div>
+    <div class="label">실시간 도착</div>
+    <div id="live">${liveShell(liveSkeleton())}</div>
     <div class="label">자주 가는 곳</div><div id="favs" class="list" style="margin:0 -16px"></div></div>`;
   $('#q').addEventListener('submit', (e) => { e.preventDefault(); const q = $('#qi').value.trim(); if (q) go('search', q); });
-  $$('.tile').forEach((b) => b.addEventListener('click', () => (b.dataset.view === 'coach' ? toast('고속·시외버스는 웹 버전에서 아직 준비 중이에요') : go(b.dataset.view))));
+  $$('.tile, .chip[data-view]').forEach((b) => b.addEventListener('click', () => (b.dataset.view === 'coach' ? toast('고속·시외버스는 웹 버전에서 아직 준비 중이에요') : go(b.dataset.view))));
   $('#plan').addEventListener('click', () => go('plan'));
+  paintLive();
+  every(LIVE_REFRESH_MS, paintLive);
   const box = $('#favs');
   if (!S.favs.length) { box.innerHTML = '<div class="sub" style="padding:8px 16px">정류장의 ★ 를 누르면 여기에 모여요.</div>'; return; }
   box.innerHTML = S.favs.slice(0, 5).map((f) => `<button class="item" data-fav="${esc(f.id)}"><span class="badge" data-b style="background:var(--c-bus)">${svg('bus').replace('<svg', '<svg width="18" height="18"')}</span>
