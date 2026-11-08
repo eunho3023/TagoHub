@@ -1,4 +1,4 @@
-# TagoHub 웹 버전을 Google Cloud Run 에 올림 (처음 한 번 설정은 web/DEPLOY.md 참고)
+﻿# TagoHub 웹 버전을 Google Cloud Run 에 올림 (처음 한 번 설정은 web/DEPLOY.md 참고)
 #   .\web\deploy.ps1                      # 프로젝트 tagohub, 서울 리전(asia-northeast3)
 #   .\web\deploy.ps1 -Project 내프로젝트 -Region asia-northeast3 -Service tagohub-web
 # 키는 local.properties 에서 읽어 임시 파일로 Cloud Run 환경변수에 넣고, 끝나면 그 파일을 지움 (이미지·저장소에는 들어가지 않음)
