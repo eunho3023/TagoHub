@@ -93,14 +93,14 @@ export function render(root) {
       rows = `<p class="live-note">700m 안에 도착 정보가 있는 정류장이 없어요.</p>
         <button class="live-more" ${act(findNear)}>내 주변 정류장 보기</button>`;
     } else {
-      rows = L.rows.map(({ stop, a, m }) => {
+      rows = L.rows.map(({ stop, a, m }, i) => {
         const text = B.arrivalParts(a, Math.floor((Date.now() - L.at) / 1000))[0];
         const soon = (a.arrSeconds ?? 999) <= 30;
         const meta = [distText(m), a.prevStops != null ? a.prevStops + "정류장 전" : null].filter(Boolean).join(" · ");
         return `<button class="live-row" ${act(() => go("stop", stop.id, { lat: stop.lat, lng: stop.lng }))}>
           <span class="badge" style="background:${busColor(a.routeType)}">${esc(a.routeNo)}</span>
           <span class="grow"><b>${esc(stop.name)}</b><small>${esc(meta)}</small></span>
-          <span class="live-eta${soon ? " soon" : ""}">${esc(text)}</span></button>`;
+          <span class="live-eta${soon ? " soon" : ""}" data-live="${i}">${esc(text)}</span></button>`;
       }).join("") + `<button class="live-more" ${act(findNear)}>내 주변 정류장 모두 보기</button>`;
     }
     const at = L.at ? `<span class="live-at">${new Date(L.at).toTimeString().slice(0, 5)} 기준</span>` : "";
@@ -149,6 +149,23 @@ export function render(root) {
     draw();
   }
 
+  // 받아 둔 도착 시각으로 1초마다 남은 시간만 다시 계산한다 (서버 요청 없음).
+  // 20초·10초 주기 사이에도 "3분"이 "2분"으로 줄어 실제처럼 보이게.
+  function tickEta() {
+    const L = st.live;
+    if (L.state !== "ok" || !L.rows || !L.rows.length) return;
+    const nodes = body.querySelectorAll("[data-live]");
+    if (!nodes.length) return;
+    const el = Math.floor((Date.now() - L.at) / 1000);
+    nodes.forEach((n) => {
+      const r = L.rows[+n.dataset.live];
+      if (!r) return;
+      const text = B.arrivalParts(r.a, el)[0];
+      if (n.textContent !== text) n.textContent = text;
+      n.classList.toggle("soon", (r.a.arrSeconds ?? 1e9) - el <= 30);
+    });
+  }
+
   async function findNear() {
     st.nearNote = "위치를 받는 중..."; draw();
     let here;
@@ -168,12 +185,28 @@ export function render(root) {
   });
   refresh();
   const t = setInterval(refresh, 30000);
-  // 실시간 도착 카드 (20초마다). 첫 화면에서 바로 채운다
+  // 실시간 도착 카드: 첫 화면에서 바로 채우고, 남은 시간은 1초마다 줄인다.
+  // 서버 저장(5초)이 짧아 10초 주기면 사실상 최신이다. 탭이 가려지면 요청을 멈춘다.
+  const POLL_MS = 10000;
+  let lt = 0;
+  const startPoll = () => { if (!lt) lt = setInterval(() => { if (!document.hidden) paintLive(); }, POLL_MS); };
+  const stopPoll = () => { clearInterval(lt); lt = 0; };
+  const onVis = () => { if (document.hidden) stopPoll(); else { paintLive(); startPoll(); } };
+  const onOnline = () => paintLive();
+  document.addEventListener("visibilitychange", onVis);
+  window.addEventListener("online", onOnline);
   paintLive();
-  const lt = setInterval(paintLive, 20000);
+  startPoll();
+  const tk = setInterval(() => { if (!document.hidden) tickEta(); }, 1000);
   bindInput(root, "#q", (v) => { st.q = v; draw(); }, 400);
   draw();
-  return () => { alive = false; clearInterval(t); clearInterval(lt); };
+  return () => {
+    alive = false;
+    clearInterval(t); clearInterval(tk);
+    stopPoll();
+    document.removeEventListener("visibilitychange", onVis);
+    window.removeEventListener("online", onOnline);
+  };
 }
 
 function logo() {
