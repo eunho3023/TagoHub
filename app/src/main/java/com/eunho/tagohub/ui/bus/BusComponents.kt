@@ -153,7 +153,8 @@ internal fun StopRouteItem(
     // 정류장을 이미 지나간 버스는 바로 지움 (다음 새로고침을 기다리지 않고)
     val row = row0.copy(arrivals = row0.arrivals.filterNot { com.eunho.tagohub.data.PassedBus.passed(it, elapsedSec) })
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
-    val soon = Color(0xFFD7262E)
+    // 곧 도착 강조색은 테마 오류색: 라이트에서는 진한 빨강, 다크에서는 밝은 빨강으로 읽힌다
+    val soon = MaterialTheme.colorScheme.error
     Row(
         Modifier
             .fillMaxWidth()
@@ -166,7 +167,7 @@ internal fun StopRouteItem(
             // 노선 번호: 노선 색 칩에 흰 글씨 (종류는 색으로)
             Text(
                 row.routeNo,
-                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
+                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
                 color = Color.White, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
@@ -232,8 +233,8 @@ internal fun RouteInfoCard(r: BusRoute) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             if (r.startName != null || r.endName != null) {

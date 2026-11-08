@@ -1059,7 +1059,7 @@ private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
         Modifier
             .fillMaxWidth()
             .height(heightDp),
-        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         shadowElevation = 10.dp,
         color = MaterialTheme.colorScheme.surface,
     ) {
@@ -1087,7 +1087,7 @@ private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
             ) {
                 Box(
                     Modifier
-                        .size(width = 40.dp, height = 5.dp)
+                        .size(width = 44.dp, height = 5.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
