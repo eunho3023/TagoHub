@@ -160,13 +160,14 @@ private fun LiveCard(
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalDarkTheme.current
-    val live = if (dark) Color(0xFF3DDC84) else Color(0xFF0F7B3F)
+    // 보드 위에서는 어두운 바탕과 대비가 큰 라임을 쓴다 (라이트·다크 공통)
+    val live = Color(0xFFC9F751)
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = 2.dp,
+        shape = RoundedCornerShape(20.dp),
+        color = if (dark) Color(0xFF121C2B) else Color(0xFF0B1420),
+        border = BorderStroke(1.dp, Color(0x1FFFFFFF)),
+        shadowElevation = 8.dp,
     ) {
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(
@@ -175,11 +176,11 @@ private fun LiveCard(
             ) {
                 Box(Modifier.size(8.dp).background(live, CircleShape))
                 Spacer(Modifier.width(8.dp))
-                Text("실시간 도착", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                Text("실시간 도착", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFEAF1FA))
                 Spacer(Modifier.width(8.dp))
                 // 받은 시각을 작게: 값이 늘 최신인지 눈으로 확인할 수 있게
                 if (state is LiveState.Ready) {
-                    Text("${state.at} 기준", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${state.at} 기준", fontSize = 12.sp, color = Color(0xFF93A3B8))
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -191,7 +192,7 @@ private fun LiveCard(
                         .padding(horizontal = 4.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Color(0xFF9DB4FF),
                 )
             }
             Spacer(Modifier.height(6.dp))
@@ -222,7 +223,7 @@ private fun LiveCard(
                             if (i > 0) {
                                 HorizontalDivider(
                                     Modifier.padding(horizontal = 14.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                    color = Color(0x1AFFFFFF),
                                 )
                             }
                             LiveRow(st, route, live, onStop)
@@ -237,7 +238,7 @@ private fun LiveCard(
                                 .padding(horizontal = 14.dp),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = Color(0xFF9DB4FF),
                         )
                     }
                 }
@@ -278,7 +279,7 @@ private fun LiveRow(st: LiveStopRow, route: RouteEta, live: Color, onStop: (BusS
                     st.stop.name,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Color(0xFFEAF1FA),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -286,7 +287,7 @@ private fun LiveRow(st: LiveStopRow, route: RouteEta, live: Color, onStop: (BusS
                 Text(
                     listOfNotNull(where, st.stop.nodeNo).joinToString(" · "),
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFF93A3B8),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -300,7 +301,7 @@ private fun LiveRow(st: LiveStopRow, route: RouteEta, live: Color, onStop: (BusS
                         fontFamily = NumberFont,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (route.seconds != null && route.seconds <= 180) live else MaterialTheme.colorScheme.onSurface,
+                        color = if (route.seconds != null && route.seconds <= 180) live else Color(0xFFEAF1FA),
                     )
                 }
             }
@@ -319,17 +320,17 @@ private fun CheckingRows() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(width = 44.dp, height = 26.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+                        .background(Color(0x14FFFFFF), RoundedCornerShape(8.dp)),
                 )
                 Spacer(Modifier.width(10.dp))
                 Box(
                     Modifier.weight(if (i == 0) 1f else 0.8f).height(13.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(7.dp)),
+                        .background(Color(0x14FFFFFF), RoundedCornerShape(7.dp)),
                 )
                 Spacer(Modifier.weight(0.5f))
                 Box(
                     Modifier.size(width = 34.dp, height = 15.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(7.dp)),
+                        .background(Color(0x14FFFFFF), RoundedCornerShape(7.dp)),
                 )
             }
         }
@@ -340,7 +341,7 @@ private fun CheckingRows() {
 @Composable
 private fun LiveMessage(text: String, primary: Pair<String, () -> Unit>, secondary: Pair<String, () -> Unit>? = null) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
-        Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = Color(0xFFB6C3D4))
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LivePill(primary.first, filled = true, onClick = primary.second)
@@ -355,14 +356,14 @@ private fun LivePill(label: String, filled: Boolean, onClick: () -> Unit) {
         onClick = onClick,
         shape = CircleShape,
         color = if (filled) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-        border = if (filled) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = if (filled) null else BorderStroke(1.dp, Color(0x33FFFFFF)),
     ) {
         Text(
             label,
             Modifier.heightIn(min = 36.dp).wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 14.dp),
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            color = if (filled) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+            color = if (filled) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFFEAF1FA),
         )
     }
 }

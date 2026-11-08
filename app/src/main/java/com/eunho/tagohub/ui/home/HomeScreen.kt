@@ -231,7 +231,7 @@ fun HomeScreen(
                     shadowElevation = 14.dp,
                     modifier = Modifier.fillMaxWidth().heightIn(
                         max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.74f
-                        else (this@BoxWithConstraints.maxHeight * 0.54f).coerceAtLeast(248.dp),
+                        else (this@BoxWithConstraints.maxHeight * 0.58f).coerceAtLeast(268.dp),
                     ),
                 ) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -242,9 +242,9 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("빠른 이동", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                                Text("지금 오는 버스", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
                                 Text(
-                                    if (sheetExpanded) "주변 정류장 · 즐겨찾기 · 최근 목적지" else "지금 오는 버스와 자주 가는 곳",
+                                    if (sheetExpanded) "내 주변 정류장 · 즐겨찾기 · 최근 목적지" else "내 주변 정류장의 실시간 도착",
                                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -254,6 +254,12 @@ fun HomeScreen(
                             Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(sheetScroll)
                                 .padding(horizontal = 16.dp).padding(bottom = 16.dp),
                         ) {
+                            // 시트를 열면 가장 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
+                            LiveArrivalsCard(
+                                onStop = search.onStop,
+                                onShowMap = { onOpenMap(MapMode.Bus) },
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
                             ShortcutTiles(
                                 vm, onGoTo, onOpenTab,
                                 onFavorites = {
@@ -264,12 +270,6 @@ fun HomeScreen(
                                     sheetExpanded = true
                                     sheetScope.launch { delay(100); sheetScroll.animateScrollTo(recentY) }
                                 },
-                                modifier = Modifier.padding(top = 2.dp),
-                            )
-                            // 지도 다음으로 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
-                            LiveArrivalsCard(
-                                onStop = search.onStop,
-                                onShowMap = { onOpenMap(MapMode.Bus) },
                                 modifier = Modifier.padding(top = 12.dp),
                             )
                             if (sheetExpanded) {
