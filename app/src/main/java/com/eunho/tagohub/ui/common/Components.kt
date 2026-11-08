@@ -159,7 +159,7 @@ fun AnimatedValueText(
     ) { value -> content(value) }
 }
 
-/** 화면 제목. 흰 바탕에 굵은 제목, 제목 앞의 작은 색 점이 교통수단. 아래에 얇은 선. */
+/** 화면 제목. 바탕과 같은 면에 굵은 제목, 제목 앞의 작은 색 점이 교통수단. */
 @Composable
 fun ScreenTitle(
     title: String,
@@ -168,11 +168,11 @@ fun ScreenTitle(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface) {
+    Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onSurface) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = if (onBack == null) 16.dp else 4.dp, end = 8.dp, top = 14.dp, bottom = 14.dp),
+                .padding(start = if (onBack == null) 18.dp else 2.dp, end = 8.dp, top = 16.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (onBack != null) {
@@ -181,29 +181,30 @@ fun ScreenTitle(
             Column(Modifier.weight(1f)) {
                 // 어느 교통수단인지는 제목 앞의 수단 색 점으로만 표시
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(12.dp).clip(CircleShape).background(color))
-                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+                    Spacer(Modifier.width(9.dp))
                     Text(
                         title,
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.Black,
                         modifier = Modifier.weight(1f),
+                        letterSpacing = (-0.5).sp,
                     )
                 }
                 if (!subtitle.isNullOrBlank()) {
                     Text(
                         subtitle,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 19.dp, top = 2.dp),
                     )
                 }
             }
             actions()
         }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /** 호선·노선 원형 배지 (지하철 노선도의 숫자 원). 환승역은 여러 개를 나란히 */
@@ -258,7 +259,7 @@ fun SearchBox(
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); onSearch() }),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
     )
 }
 
@@ -307,16 +308,16 @@ fun <T> LoadView(
 /** 노선번호·등급 배지 */
 @Composable
 fun Pill(text: String, color: Color, modifier: Modifier = Modifier, filled: Boolean = true) {
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(8.dp)
     Text(
         text,
         modifier = modifier
             .clip(shape)
             .then(if (filled) Modifier.background(color) else Modifier.border(1.dp, color, shape))
-            .padding(horizontal = 7.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 3.dp),
         color = if (filled) Color.White else color,
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.ExtraBold,
         textAlign = TextAlign.Center,
         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     )
@@ -326,10 +327,11 @@ fun Pill(text: String, color: Color, modifier: Modifier = Modifier, filled: Bool
 fun SectionHeader(text: String) {
     Text(
         text,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 6.dp),
+        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 8.dp),
         style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.ExtraBold,
         color = MaterialTheme.colorScheme.onSurface,
+        letterSpacing = (-0.3).sp,
     )
 }
 
@@ -343,7 +345,7 @@ fun ChoiceTabs(
 ) {
     Row(
         modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -354,19 +356,21 @@ fun ChoiceTabs(
             Surface(
                 onClick = { onSelect(index) },
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(11.dp),
+                shape = RoundedCornerShape(15.dp),
                 color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
                 border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+                shadowElevation = if (selected) 2.dp else 0.dp,
             ) {
-                Box(Modifier.heightIn(min = 42.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.heightIn(min = 44.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
                     Text(
                         label,
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
                         color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis,
+                        letterSpacing = (-0.2).sp,
                     )
                 }
             }

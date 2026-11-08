@@ -58,41 +58,41 @@ object BoardColor {
 }
 
 private val Light = lightColorScheme(
-    primary = Color(0xFF2563EB),
+    primary = Color(0xFF2B59FF),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE8EFFE),
+    primaryContainer = Color(0xFFE9EEFF),
     onPrimaryContainer = Color(0xFF0F2A6B),
-    secondary = Color(0xFF2563EB),
+    secondary = Color(0xFF2B59FF),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE8EFFE),
+    secondaryContainer = Color(0xFFE9EEFF),
     onSecondaryContainer = Color(0xFF0F2A6B),
-    background = Color(0xFFF4F6F9),
-    onBackground = Color(0xFF111827),
+    background = Color(0xFFF3F5F8),
+    onBackground = Color(0xFF0B1220),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF111827),
-    surfaceVariant = Color(0xFFECEFF3),
-    onSurfaceVariant = Color(0xFF5B6573),
-    outline = Color(0xFF7B8794),
-    outlineVariant = Color(0xFFE1E6EC),
+    onSurface = Color(0xFF0B1220),
+    surfaceVariant = Color(0xFFEDF1F6),
+    onSurfaceVariant = Color(0xFF5C6A7D),
+    outline = Color(0xFF7C8A9C),
+    outlineVariant = Color(0xFFE4E9F0),
 )
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFF7DA2FF),
+    primary = Color(0xFF7C9BFF),
     onPrimary = Color(0xFF0B1220),
     primaryContainer = Color(0xFF1B2742),
     onPrimaryContainer = Color(0xFFDCE6FF),
-    secondary = Color(0xFF7DA2FF),
+    secondary = Color(0xFF7C9BFF),
     onSecondary = Color(0xFF0B1220),
     secondaryContainer = Color(0xFF1B2742),
     onSecondaryContainer = Color(0xFFDCE6FF),
-    background = Color(0xFF0E1217),
-    onBackground = Color(0xFFF3F5F7),
-    surface = Color(0xFF171C23),
-    onSurface = Color(0xFFF3F5F7),
-    surfaceVariant = Color(0xFF222A33),
-    onSurfaceVariant = Color(0xFFA9B4C0),
-    outline = Color(0xFF6B7683),
-    outlineVariant = Color(0xFF262E38),
+    background = Color(0xFF0B1220),
+    onBackground = Color(0xFFF2F6FB),
+    surface = Color(0xFF121C2B),
+    onSurface = Color(0xFFF2F6FB),
+    surfaceVariant = Color(0xFF1B2739),
+    onSurfaceVariant = Color(0xFFA7B4C6),
+    outline = Color(0xFF74849A),
+    outlineVariant = Color(0xFF243247),
 )
 
 /** 읽기 쉬운 글자 크기: 본문 15~16, 보조 설명 14, 작은 레이블도 13sp 이상. 숫자·제목은 굵게 */
@@ -106,20 +106,20 @@ private val AppTypography = Typography().let { d ->
         labelSmall = d.labelSmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
         titleSmall = d.titleSmall.copy(fontSize = 16.sp, lineHeight = 22.sp),
         titleMedium = d.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
-        titleLarge = d.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
-        headlineSmall = d.headlineSmall.copy(fontSize = 24.sp, lineHeight = 30.sp),
-        headlineMedium = d.headlineMedium.copy(fontSize = 28.sp, lineHeight = 34.sp),
+        titleLarge = d.titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp),
+        headlineSmall = d.headlineSmall.copy(fontSize = 26.sp, lineHeight = 32.sp),
+        headlineMedium = d.headlineMedium.copy(fontSize = 30.sp, lineHeight = 36.sp),
     )
 }
 
 /** 화면 제목 머리띠 색: 모든 화면에서 한 가지 남색 (교통수단 색은 번호 배지·아이콘에만) */
 @Composable
-fun headerColor(): Color = if (LocalDarkTheme.current) Color(0xFF111B2B) else Color(0xFF0F2747)
+fun headerColor(): Color = if (LocalDarkTheme.current) Color(0xFF101B2B) else Color(0xFF0B1220)
 
 private val AppShapes = Shapes().copy(
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(20.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(24.dp),
 )
 
 @Composable
