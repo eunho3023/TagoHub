@@ -228,8 +228,8 @@ export function stopTable(root, p) {
     let estCount = 0, officialCount = 0;
     for (const s of sums) {
       if (recorded.has(s.id) || !plans.get(s.id)) continue;
-      const { sum, offset } = plans.get(s.id);
-      const ts = B.plannedTimes(sum, offset, day);
+      const { sum, offset, downOffset } = plans.get(s.id);
+      const ts = B.plannedTimes(sum, offset, day, downOffset);
       if (ts.length) { if (sum.deps) officialCount++; else estCount++; }
       for (const m of ts) rows.push({ m, est: true, s, sum });
     }
@@ -252,7 +252,7 @@ export function stopTable(root, p) {
     const byHour = new Map();
     for (const r of rows) { const h = Math.floor(r.m / 60) % 24; if (!byHour.has(h)) byHour.set(h, []); byHour.get(h).push(r); }
     html += `<div class="list">${[...byHour.entries()].map(([h, list]) => `<div class="row col"><b>${String(h).padStart(2, "0")}시</b><span class="ttimes">${list.map((r) => {
-      const tip = r.est && r.sum.deps ? `${r.sum.source || "공식 배차시간표"} 기점 출발 ${hhmm(r.m - Math.round(plans.get(r.s.id)?.offset || 0))} + 이 정류장까지 약 ${Math.round(plans.get(r.s.id)?.offset || 0)}분` : r.est ? `예상 · 기점 첫차 ${r.sum.first || "?"} 막차 ${r.sum.last || "?"}${B.intervalOn(r.sum, day) > 0 ? " 배차 " + B.intervalOn(r.sum, day) + "분" : ""}` : `${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`;
+      const tip = r.est && r.sum.deps ? `${r.sum.source || "공식 배차시간표"} 출발 시각 + 이 정류장까지 걸리는 시간 (예상)` : r.est ? `예상 · 기점 첫차 ${r.sum.first || "?"} 막차 ${r.sum.last || "?"}${B.intervalOn(r.sum, day) > 0 ? " 배차 " + B.intervalOn(r.sum, day) + "분" : ""}` : `${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`;
       return `<span class="tt ${today && r.m < nowMin ? "muted" : ""}" title="${esc(tip)}"><b>${r.est ? "~" : ""}${hhmm(r.m)}</b> <span class="badge" style="background:${busColor(r.s.type)}">${esc(r.s.no)}</span></span>`;
     }).join(" ")}</span></div>`).join("")}</div>`;
     root.innerHTML = html;

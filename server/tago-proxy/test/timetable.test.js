@@ -29,3 +29,27 @@ test("전주 시간표 주소: 9자리만, 받은 것은 하루 저장", async (
   await handleJeonjuTime("305001764", ctx, fetcher);
   assert.equal(calls, 1);
 });
+
+import { parseCheonanHtml, parseChangwon, parseUlsan, handleBusTime } from "../src/timetable.js";
+test("천안 시간표 화면: 평일·주말·공휴일 칸을 나눠 읽음", () => {
+  const html = "<dl><dt>평일 출발시간</dt><dd>06:00</dd><dd>06:20</dd></dl><dl><dt>주말 출발시간</dt><dd>07:00</dd></dl><dl><dt>공휴일 출발시간</dt></dl>";
+  const t = parseCheonanHtml(html);
+  assert.deepEqual([t.weekday, t.sat, t.holi], [[360, 380], [420], [420]]);
+  assert.equal(parseCheonanHtml("<html></html>"), null);
+});
+test("창원: 기점(0)·종점(1) 출발을 따로", () => {
+  const d = { rows: [{ updnSe: "0", startTime: "05:40" }, { updnSe: "1", startTime: "06:10" }] };
+  const t = parseChangwon([d, d, { rows: [] }]);
+  assert.deepEqual([t.weekday, t.weekdayDown, t.holi], [[340], [370], []]);
+});
+test("울산: 기점·순환 칸, 괄호 붙은 시각도 읽음", () => {
+  const j = { rows: [{ fiducialInfo: [{ bttStarttime: "0620" }, { bttStarttime: "0650(경유)" }], circularInfo: [{ bttStarttime: "0530" }] }] };
+  assert.deepEqual(parseUlsan(j, false), [380, 410]);
+  assert.deepEqual(parseUlsan(j, true), [330]);
+});
+test("지역 시간표 주소: 모르는 지역·형식은 400", async () => {
+  globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+  const ctx = { waitUntil() {} };
+  assert.equal((await handleBusTime("seoul", "123456789", ctx)).status, 400);
+  assert.equal((await handleBusTime("ulsan", "12", ctx)).status, 400);
+});

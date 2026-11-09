@@ -7,7 +7,7 @@ import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps } from "./gps.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
-import { handleJeonjuTime } from "./timetable.js";
+import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
 
 export default {
@@ -62,8 +62,9 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
-  // 전주 공식 배차시간표 (지자체 버스정보 사이트, src/timetable.js)
+  // 지자체 공식 배차시간표 (전주·울산·천안·창원 버스정보 사이트, src/timetable.js)
   if (url.pathname.startsWith("/w/bus/jeonju/time/")) return handleJeonjuTime(url.pathname.slice("/w/bus/jeonju/time/".length), ctx);
+  if (url.pathname.startsWith("/w/bus/time/")) { const [area, id] = url.pathname.slice("/w/bus/time/".length).split("/"); return handleBusTime(area, id, ctx); }
   if (url.pathname.startsWith("/w/bus/")) return busWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/icn/")) return icnWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
