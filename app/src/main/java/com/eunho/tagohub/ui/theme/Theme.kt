@@ -55,6 +55,16 @@ object BoardColor {
     val Danger = Color(0xFFD1343B)
     val ArriveLight = Color(0xFF0F7B3F)
     val ArriveDark = Color(0xFF3DDC84)
+    // 실시간 보드(도착 안내판): 라이트·다크와 무관하게 늘 같은 남색 판을 쓴다.
+    // "어두운 판 = 지금 바뀌는 값"을 사용자가 학습하도록 화면마다 같은 값을 쓴다.
+    val Surface = Color(0xFF0C1522)         // 보드 바탕
+    val SurfaceAlt = Color(0xFF121C2A)      // 보드 안 카드·열 구분 바탕
+    val Line = Color(0x1FFFFFFF)            // 보드 안 구분선 (흰색 12%)
+    val On = Color(0xFFF2F6FB)              // 보드 위 본문
+    val Muted = Color(0xFF9FB0C6)           // 보드 위 보조 설명
+    val Link = Color(0xFF9DB4FF)            // 보드 위 누를 수 있는 글자
+    val Live = Color(0xFFC9F751)            // LIVE·임박 강조 (위에는 반드시 잉크색 글자)
+    val OnLive = Color(0xFF0B1220)
 }
 
 private val Light = lightColorScheme(

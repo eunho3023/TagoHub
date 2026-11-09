@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,7 +48,11 @@ import com.eunho.tagohub.ui.bus.currentLocation
 import com.eunho.tagohub.ui.bus.hasLocationPermission
 import com.eunho.tagohub.ui.bus.lastKnownLocation
 import com.eunho.tagohub.ui.common.AnimatedValueText
-import com.eunho.tagohub.ui.theme.LocalDarkTheme
+import com.eunho.tagohub.ui.common.BoardDivider
+import com.eunho.tagohub.ui.common.BoardLink
+import com.eunho.tagohub.ui.common.BoardUpdated
+import com.eunho.tagohub.ui.common.LiveBoard
+import com.eunho.tagohub.ui.theme.BoardColor
 import com.eunho.tagohub.ui.theme.NumberFont
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.Dispatchers
@@ -159,87 +164,51 @@ private fun LiveCard(
     onShowMap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val dark = LocalDarkTheme.current
-    // 보드 위에서는 어두운 바탕과 대비가 큰 라임을 쓴다 (라이트·다크 공통)
-    val live = Color(0xFFC9F751)
-    Surface(
+    val live = BoardColor.Live
+    // 정류장마다 두 노선까지, 모두 합쳐 네 줄까지만 (카드가 길어지지 않게)
+    val rows = (state as? LiveState.Ready)?.stops
+        ?.flatMap { st -> st.routes.take(2).map { r -> st to r } }
+        ?.take(4)
+        .orEmpty()
+    // 판 아래 한 줄: 갱신 상태와 바로 가는 길. 줄이 없으면(안내 문구만 있으면) 그리지 않는다
+    val footer: (@Composable RowScope.() -> Unit)? = if (rows.isEmpty()) null else {
+        {
+            BoardUpdated("15초마다 갱신")
+            Spacer(Modifier.weight(1f))
+            BoardLink("새로고침", onRetry)
+            BoardLink("모두 보기", onShowMap)
+        }
+    }
+    LiveBoard(
+        title = "실시간 도착",
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = if (dark) Color(0xFF121C2B) else Color(0xFF0B1420),
-        border = BorderStroke(1.dp, Color(0x1FFFFFFF)),
-        shadowElevation = 8.dp,
+        sub = (state as? LiveState.Ready)?.let { "${it.at} 기준" },
+        footer = footer,
     ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(8.dp).background(live, CircleShape))
-                Spacer(Modifier.width(8.dp))
-                Text("실시간 도착", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFEAF1FA))
-                Spacer(Modifier.width(8.dp))
-                // 받은 시각을 작게: 값이 늘 최신인지 눈으로 확인할 수 있게
-                if (state is LiveState.Ready) {
-                    Text("${state.at} 기준", fontSize = 12.sp, color = Color(0xFF93A3B8))
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "새로고침",
-                    Modifier
-                        .heightIn(min = 32.dp)
-                        .clickable(role = Role.Button, onClick = onRetry)
-                        .wrapContentHeight(Alignment.CenterVertically)
-                        .padding(horizontal = 4.dp),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF9DB4FF),
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            when (state) {
-                LiveState.Checking -> CheckingRows()
-                LiveState.NoPermission -> LiveMessage(
-                    text = "위치를 허용하면 지금 오는 버스를 바로 보여드려요.",
-                    primary = "다시 확인" to onRetry,
-                    secondary = "지도에서 보기" to onShowMap,
-                )
+        when (state) {
+            LiveState.Checking -> CheckingRows()
+            LiveState.NoPermission -> LiveMessage(
+                text = "위치를 허용하면 지금 오는 버스를 바로 보여드려요.",
+                primary = "다시 확인" to onRetry,
+                secondary = "지도에서 보기" to onShowMap,
+            )
 
-                is LiveState.Problem -> LiveMessage(
-                    text = state.text,
-                    primary = "다시 시도" to onRetry,
-                    secondary = "지도에서 보기" to onShowMap,
-                )
+            is LiveState.Problem -> LiveMessage(
+                text = state.text,
+                primary = "다시 시도" to onRetry,
+                secondary = "지도에서 보기" to onShowMap,
+            )
 
-                is LiveState.Ready -> {
-                    // 정류장마다 두 노선까지, 모두 합쳐 네 줄까지만 (카드가 길어지지 않게)
-                    val rows = state.stops.flatMap { st -> st.routes.take(2).map { r -> st to r } }.take(4)
-                    if (rows.isEmpty()) {
-                        LiveMessage(
-                            text = "가까운 정류장의 도착 정보가 아직 없어요.",
-                            primary = "지도에서 보기" to onShowMap,
-                        )
-                    } else {
-                        rows.forEachIndexed { i, (st, route) ->
-                            if (i > 0) {
-                                HorizontalDivider(
-                                    Modifier.padding(horizontal = 14.dp),
-                                    color = Color(0x1AFFFFFF),
-                                )
-                            }
-                            LiveRow(st, route, live, onStop)
-                        }
-                        Text(
-                            "내 주변 정류장 모두 보기",
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable(role = Role.Button, onClick = onShowMap)
-                                .heightIn(min = 38.dp)
-                                .wrapContentHeight(Alignment.CenterVertically)
-                                .padding(horizontal = 14.dp),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF9DB4FF),
-                        )
+            is LiveState.Ready -> {
+                if (rows.isEmpty()) {
+                    LiveMessage(
+                        text = "가까운 정류장의 도착 정보가 아직 없어요.",
+                        primary = "지도에서 보기" to onShowMap,
+                    )
+                } else {
+                    rows.forEachIndexed { i, (st, route) ->
+                        if (i > 0) BoardDivider()
+                        LiveRow(st, route, live, onStop)
                     }
                 }
             }
@@ -279,7 +248,7 @@ private fun LiveRow(st: LiveStopRow, route: RouteEta, live: Color, onStop: (BusS
                     st.stop.name,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFEAF1FA),
+                    color = BoardColor.On,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -287,7 +256,7 @@ private fun LiveRow(st: LiveStopRow, route: RouteEta, live: Color, onStop: (BusS
                 Text(
                     listOfNotNull(where, st.stop.nodeNo).joinToString(" · "),
                     fontSize = 11.sp,
-                    color = Color(0xFF93A3B8),
+                    color = BoardColor.Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -301,7 +270,7 @@ private fun LiveRow(st: LiveStopRow, route: RouteEta, live: Color, onStop: (BusS
                         fontFamily = NumberFont,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (route.seconds != null && route.seconds <= 180) live else Color(0xFFEAF1FA),
+                        color = if (route.seconds != null && route.seconds <= 180) live else BoardColor.On,
                     )
                 }
             }
@@ -320,17 +289,17 @@ private fun CheckingRows() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(width = 44.dp, height = 26.dp)
-                        .background(Color(0x14FFFFFF), RoundedCornerShape(8.dp)),
+                        .background(BoardColor.SurfaceAlt, RoundedCornerShape(8.dp)),
                 )
                 Spacer(Modifier.width(10.dp))
                 Box(
                     Modifier.weight(if (i == 0) 1f else 0.8f).height(13.dp)
-                        .background(Color(0x14FFFFFF), RoundedCornerShape(7.dp)),
+                        .background(BoardColor.SurfaceAlt, RoundedCornerShape(7.dp)),
                 )
                 Spacer(Modifier.weight(0.5f))
                 Box(
                     Modifier.size(width = 34.dp, height = 15.dp)
-                        .background(Color(0x14FFFFFF), RoundedCornerShape(7.dp)),
+                        .background(BoardColor.SurfaceAlt, RoundedCornerShape(7.dp)),
                 )
             }
         }
@@ -341,7 +310,7 @@ private fun CheckingRows() {
 @Composable
 private fun LiveMessage(text: String, primary: Pair<String, () -> Unit>, secondary: Pair<String, () -> Unit>? = null) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
-        Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = Color(0xFFB6C3D4))
+        Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = BoardColor.Muted)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LivePill(primary.first, filled = true, onClick = primary.second)
@@ -355,7 +324,7 @@ private fun LivePill(label: String, filled: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = if (filled) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        color = if (filled) BoardColor.Live else Color.Transparent,
         border = if (filled) null else BorderStroke(1.dp, Color(0x33FFFFFF)),
     ) {
         Text(
@@ -363,7 +332,7 @@ private fun LivePill(label: String, filled: Boolean, onClick: () -> Unit) {
             Modifier.heightIn(min = 36.dp).wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 14.dp),
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            color = if (filled) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFFEAF1FA),
+            color = if (filled) BoardColor.OnLive else BoardColor.On,
         )
     }
 }

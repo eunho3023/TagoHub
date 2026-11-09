@@ -167,6 +167,9 @@ import com.eunho.tagohub.ui.bus.RouteListRow
 import com.eunho.tagohub.ui.bus.StopListRow
 import com.eunho.tagohub.ui.bus.TimelineRow
 import com.eunho.tagohub.ui.bus.TurnMarker
+import com.eunho.tagohub.ui.common.BoardLink
+import com.eunho.tagohub.ui.common.BoardUpdated
+import com.eunho.tagohub.ui.common.LiveBoard
 import com.eunho.tagohub.ui.common.PlacePickerSheet
 import com.eunho.tagohub.ui.common.SectionHeader
 import com.eunho.tagohub.ui.common.SearchBox
@@ -181,6 +184,7 @@ import com.eunho.tagohub.ui.common.Pill
 import com.eunho.tagohub.ui.common.Tnum
 import com.eunho.tagohub.data.StationGroup
 import com.eunho.tagohub.ui.theme.subwayLineColor
+import com.eunho.tagohub.ui.theme.BoardColor
 import com.eunho.tagohub.ui.theme.ModeColor
 import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
@@ -1293,11 +1297,23 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                 val companions by d.others.collectAsStateWithLifecycle()
                 com.eunho.tagohub.ui.bus.BoardBellHost(d.stop, companions) { bellOn, onBell ->
                     LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
-                        LazyColumn(Modifier.fillMaxSize()) {
-                            items(hideDuplicateNumbers(list)) { row ->
-                                // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
-                                StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }) { vm.showRoute(row) }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        // 도착 정보는 홈과 같은 짙은 남색 판에 담는다 (시안 04 정류소)
+                        LiveBoard(
+                            title = "도착 정보",
+                            sub = "15초마다 갱신",
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+                            footer = {
+                                BoardUpdated("방금 갱신")
+                                Spacer(Modifier.weight(1f))
+                                BoardLink("시간표", { vm.openStopTimetable() })
+                            },
+                        ) {
+                            LazyColumn(Modifier.weight(1f)) {
+                                items(hideDuplicateNumbers(list)) { row ->
+                                    // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
+                                    StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }, onBoard = true) { vm.showRoute(row) }
+                                    HorizontalDivider(color = BoardColor.Line)
+                                }
                             }
                         }
                     }
