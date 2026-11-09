@@ -75,6 +75,8 @@ function mergeRows(sums, arrivals) {
 export function stopScreen(root, p) {
   let stop = known.get(p.id);
   let alive = true, live = null, sums = null, city = null, toward = null;
+  // 노선 목록(자료 파일·교통안전공단)과 실시간 도착(TAGO 등)을 같이 보여 줌: 둘 다 올 때까지(최대 6초) 줄을 그리지 않음
+  let waited = false;
   const timers = [];
   const ensure = async () => {
     if (!stop && p.lat) stop = await B.stopAt(p.id, +p.lat, +p.lng);
@@ -138,9 +140,10 @@ export function stopScreen(root, p) {
     if (!alive || !stop) return;
     const elapsed = elapsedNow();
     const arr = (live?.list || []).filter((a) => !B.passed(a, elapsed));
-    rows = mergeRows(sums || [], live?.list || []);
+    const both = waited || (sums && live);
+    rows = both ? mergeRows(sums || [], live?.list || []) : [];
     let status = "";
-    if (!sums && !live) status = "불러오는 중...";
+    if (!both) status = "불러오는 중...";
     else if (!live) status = "실시간 도착을 받는 중...";
     else if (live.state === "unsupported") status = "이 정류장의 실시간 도착은 웹 버전에서 볼 수 없어요. 폰 앱에서 볼 수 있어요.";
     else if (live.state === "failed") status = "실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.";
@@ -163,6 +166,7 @@ export function stopScreen(root, p) {
     root.innerHTML = header("정류장", null, { back: true }) + note("불러오는 중...");
     if (!(await ensure())) return;
     draw();
+    timers.push(setTimeout(() => { waited = true; draw(); }, 6000));
     B.cityName(stop.city).then((c) => { city = c; draw(); });
     B.stopRoutes(stop).then((s) => {
       sums = s; draw();
