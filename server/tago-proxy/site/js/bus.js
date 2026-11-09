@@ -225,18 +225,19 @@ export function stopTable(root, p) {
       for (const sl of t.slots) if (sl.days >= 2) { rows.push({ m: sl.expected, early: sl.earliest, late: sl.latest, days: sl.days, of: t.days, s }); recorded.add(rid); }
     }
     // 기록이 모자란 노선은 첫차·막차·배차 간격과 기점에서 걸리는 시간으로 계산한 예상 시각 (~ 표시)
-    let estCount = 0;
+    let estCount = 0, officialCount = 0;
     for (const s of sums) {
       if (recorded.has(s.id) || !plans.get(s.id)) continue;
       const { sum, offset } = plans.get(s.id);
       const ts = B.plannedTimes(sum, offset, day);
-      if (ts.length) estCount++;
+      if (ts.length) { if (sum.deps) officialCount++; else estCount++; }
       for (const m of ts) rows.push({ m, est: true, s, sum });
     }
     rows.sort((a, b) => a.m - b.m || naturalCompare(a.s.no, b.s.no));
     const today = day === isoDay(), sn = seoulNow(), nowMin = sn.h * 60 + sn.mi;
     let html = head + note(`기록: 최근 6주 동안 버스가 이 정류장을 지난 시각 중 여러 날 같은 무렵에 온 운행 (${DAY_NAMES[day - 1]}요일 기록 ${recDays}일).` +
-      (estCount ? ` ~ 표시는 기록이 모자란 노선 ${estCount}개를 첫차·막차·배차 간격으로 계산한 예상 시각이라 실제와 다를 수 있어요.` : ""));
+      (officialCount ? ` ~ 표시 중 노선 ${officialCount}개는 지자체 공식 배차시간표(기점 출발 시각)에 이 정류장까지 걸리는 시간을 더한 시각이에요.` : "") +
+      (estCount ? ` ~ 표시 중 노선 ${estCount}개는 첫차·막차·배차 간격으로 계산한 예상 시각이라 실제와 다를 수 있어요.` : ""));
     if (failed) html += note("지난 운행 기록을 받지 못해 예상 시각만 보여 줘요.");
     if (!rows.length) {
       html += note("아직 이 요일 기록이 모자라고, 계산할 첫차·막차 정보도 없어요.");
@@ -251,7 +252,7 @@ export function stopTable(root, p) {
     const byHour = new Map();
     for (const r of rows) { const h = Math.floor(r.m / 60) % 24; if (!byHour.has(h)) byHour.set(h, []); byHour.get(h).push(r); }
     html += `<div class="list">${[...byHour.entries()].map(([h, list]) => `<div class="row col"><b>${String(h).padStart(2, "0")}시</b><span class="ttimes">${list.map((r) => {
-      const tip = r.est ? `예상 · 기점 첫차 ${r.sum.first || "?"} 막차 ${r.sum.last || "?"}${B.intervalOn(r.sum, day) > 0 ? " 배차 " + B.intervalOn(r.sum, day) + "분" : ""}` : `${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`;
+      const tip = r.est && r.sum.deps ? `${r.sum.source || "공식 배차시간표"} 기점 출발 ${hhmm(r.m - Math.round(plans.get(r.s.id)?.offset || 0))} + 이 정류장까지 약 ${Math.round(plans.get(r.s.id)?.offset || 0)}분` : r.est ? `예상 · 기점 첫차 ${r.sum.first || "?"} 막차 ${r.sum.last || "?"}${B.intervalOn(r.sum, day) > 0 ? " 배차 " + B.intervalOn(r.sum, day) + "분" : ""}` : `${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`;
       return `<span class="tt ${today && r.m < nowMin ? "muted" : ""}" title="${esc(tip)}"><b>${r.est ? "~" : ""}${hhmm(r.m)}</b> <span class="badge" style="background:${busColor(r.s.type)}">${esc(r.s.no)}</span></span>`;
     }).join(" ")}</span></div>`).join("")}</div>`;
     root.innerHTML = html;

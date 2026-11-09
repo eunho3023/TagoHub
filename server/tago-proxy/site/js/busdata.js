@@ -490,6 +490,12 @@ const clockMin = (t) => { const m = /^(\d{1,2}):?(\d\d)$/.exec(String(t || "").t
  */
 export function plannedTimes(sum, offset, day) {
   if (!sum) return [];
+  // 지자체 공식 배차시간표(기점 출발 시각 전체)가 있으면 그것을 씀
+  if (sum.deps) {
+    const list = day === 6 ? sum.deps.sat : day === 7 ? sum.deps.holi : sum.deps.weekday;
+    const off = Math.max(0, Math.round(offset || 0));
+    return Array.isArray(list) ? list.map((m) => m + off) : [];
+  }
   const first = clockMin(sum.first);
   let last = clockMin(sum.last);
   if (first == null) return [];
@@ -521,7 +527,15 @@ export async function plannedFor(stop, rt) {
   const ids = new Set([stop, ...(await sameSpot(stop))].flatMap((s) => [s.id, currentId(s.id)]));
   const r = await remembered("route|" + rt.id, 600000, () => route(rt.id, rt.city || (/^\d+$/.test(stop.city) ? stop.city : null)));
   if (!r) return null;
-  const sum = rt.first ? rt : r.sum;
+  let sum = rt.first ? rt : r.sum;
+  // 전주: 전주시 버스정보시스템 배차시간표 (서버가 하루 저장, src/timetable.js)
+  if (/^JUB\d{9}$/.test(rt.id)) {
+    const deps = await remembered("jjtime|" + rt.id, 3600000, () => getJson("w/bus/jeonju/time/" + rt.id.slice(3))).catch(() => null);
+    if (deps && Array.isArray(deps.weekday) && deps.weekday.length) {
+      const fmt = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+      sum = { ...(sum || {}), first: fmt(deps.weekday[0]), last: fmt(deps.weekday[deps.weekday.length - 1]), deps, source: deps.source };
+    }
+  }
   if (!sum || !sum.first) return null;
   const offset = offsetMinutes(r.stops, ids);
   return offset == null ? null : { sum, offset };
