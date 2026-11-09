@@ -1,7 +1,7 @@
 // 지자체 버스정보 사이트의 공식 배차시간표 (노선별 기점 출발 시각 전체). 공공데이터 API 에는 첫차·막차·배차 간격만 있어
 // 정류장 시간표를 더 정확하게 만들려고 씀. 노선 ID 는 TAGO 노선 ID 의 숫자 9자리와 같음.
 // GET /w/bus/time/<지역>/<노선 9자리> → {weekday, sat, holi:[분...], weekdayDown?, satDown?, holiDown?, note, source} (하루 저장)
-//  - 전주 its.jeonju.go.kr, 울산 its.ulsan.kr, 천안 its.cheonan.go.kr(클라우드 접속 막힘 → 배포 때 받음), 창원 bus.changwon.go.kr,
+//  - 전주 its.jeonju.go.kr, 울산 its.ulsan.kr, 천안 its.cheonan.go.kr·구미 bis.gumi.go.kr(클라우드 접속 막힘 → 배포 때 받음), 창원 bus.changwon.go.kr,
 //    대구 businfo.daegu.go.kr(주요 정류장 통과 시각), 제주 bus.jeju.go.kr(엑셀), 진주 bis.jinju.go.kr, 구미 bis.gumi.go.kr
 //  - …Down 은 종점에서 출발하는 시각 (양쪽 끝에서 출발하는 노선)
 

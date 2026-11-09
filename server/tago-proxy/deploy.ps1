@@ -74,8 +74,8 @@ if (-not $py) {
 if ($py) {
     $env:PYTHONIOENCODING = 'utf-8'
     & $py (Join-Path $PSScriptRoot '..\..\pipeline\build_web_data.py') --out (Join-Path $PSScriptRoot 'public\data')
-    # 클라우드 서버 접속을 막는 지역(천안)의 공식 배차시간표는 이 컴퓨터에서 받아 같이 올림 (실패해도 계속)
-    Write-Host '준비: 천안 버스 배차시간표 받는 중 (1~2분)...'
+    # 클라우드 서버 접속을 막는 지역(천안·구미)의 공식 배차시간표는 이 컴퓨터에서 받아 같이 올림 (실패해도 계속)
+    Write-Host '준비: 천안·구미 버스 배차시간표 받는 중 (2~3분)...'
     & $py (Join-Path $PSScriptRoot '..\..\pipeline\fetch_city_times.py') --out (Join-Path $PSScriptRoot 'public\data')
 } else {
     Write-Host '  파이썬이 없어서 자료 조각은 건너뜀 (웹·PC 버전의 정류장 찾기만 빠짐)'
