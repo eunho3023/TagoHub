@@ -481,6 +481,52 @@ export function timetable(minutes, isoDay) {
   return { days: new Set(uniq.map((x) => x[0])).size, slots };
 }
 
+// ── 예상 시간표 (기록이 모자란 노선): 첫차·막차·배차 간격 + 기점에서 이 정류장까지 걸리는 시간 ──
+const EST_M_PER_MIN = 300, EST_STOP_MIN = 0.3;
+const clockMin = (t) => { const m = /^(\d{1,2}):?(\d\d)$/.exec(String(t || "").trim()); return m ? +m[1] * 60 + +m[2] : null; };
+/**
+ * 노선 요약(sum)과 기점→정류장 걸리는 분(offset)으로 이 요일(day)의 예상 도착 시각(하루 중 분) 목록.
+ * 첫차=막차면 한 번, 배차 간격이 3~180분이면 첫차부터 막차까지, 간격이 없으면 첫차·막차만. 모르면 []
+ */
+export function plannedTimes(sum, offset, day) {
+  if (!sum) return [];
+  const first = clockMin(sum.first);
+  let last = clockMin(sum.last);
+  if (first == null) return [];
+  if (last == null) last = first;
+  if (last < first) last += 1440;   // 자정 넘어 막차
+  const iv = intervalOn(sum, day);
+  const off = Math.max(0, Math.round(offset || 0));
+  if (last === first) return [first + off];
+  if (!(iv >= 3 && iv <= 180)) return [first + off, last + off];
+  const out = [];
+  for (let t = first; t <= last && out.length < 200; t += iv) out.push(t + off);
+  if (out[out.length - 1] !== last + off && last - (out[out.length - 1] - off) >= 2) out.push(last + off);
+  return out;
+}
+/** 노선 정류장 목록에서 기점부터 이 정류장(ids 중 하나)까지 걸리는 분 (거리 ÷ 시속 18km + 정류장마다 18초). 못 찾으면 null */
+export function offsetMinutes(stops, ids) {
+  const i = stops.findIndex((s) => ids.has(s.id) || ids.has(currentId(s.id || "")));
+  if (i < 0) return null;
+  let m = 0;
+  for (let k = 0; k < i; k++) {
+    const a = stops[k], b = stops[k + 1];
+    if (a.lat != null && b.lat != null) m += meters(a.lat, a.lng, b.lat, b.lng) / EST_M_PER_MIN;
+    m += EST_STOP_MIN;
+  }
+  return m;
+}
+/** 이 정류장을 지나는 노선 하나의 예상 시간표 재료 {sum, offset} (노선 정보는 10분 기억). 모르면 null */
+export async function plannedFor(stop, rt) {
+  const ids = new Set([stop, ...(await sameSpot(stop))].flatMap((s) => [s.id, currentId(s.id)]));
+  const r = await remembered("route|" + rt.id, 600000, () => route(rt.id, rt.city || (/^\d+$/.test(stop.city) ? stop.city : null)));
+  if (!r) return null;
+  const sum = rt.first ? rt : r.sum;
+  if (!sum || !sum.first) return null;
+  const offset = offsetMinutes(r.stops, ids);
+  return offset == null ? null : { sum, offset };
+}
+
 /** 정류장 방면: 이 정류장을 지나는 노선에서 바로 다음 정류장 이름 (노선 몇 개를 보고 가장 많이 나온 것). 모르면 null */
 export async function towardOf(stop, routes) {
   const ids = new Set([stop, ...(await sameSpot(stop))].map((s) => s.id));

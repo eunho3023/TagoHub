@@ -207,29 +207,39 @@ const DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
 const hhmm = (m) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
 export function stopTable(root, p) {
   let alive = true, day = isoDay(), log = null, sums = null, failed = false, stop = known.get(p.id);
+  const plans = new Map();   // 노선 id → {sum, offset} (예상 시간표 재료)
   const draw = () => {
     if (!alive) return;
-    const head = header(stop ? stop.name : "정류장", "정류장 시간표 · 지난 운행 기록", { back: true }) +
+    const head = header(stop ? stop.name : "정류장", "정류장 시간표 · 지난 운행 기록 + 예상", { back: true }) +
       `<div class="seg">${DAY_NAMES.map((n, i) => `<button class="${day === i + 1 ? "on" : ""}" ${act(() => { day = i + 1; draw(); })}>${n}</button>`).join("")}</div>`;
-    if (failed) { root.innerHTML = head + note("기록을 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
     if (!log || !sums) { root.innerHTML = head + note("불러오는 중..."); return; }
     const noOf = new Map(sums.map((s) => [s.id, s]));
     // 노선마다 이 요일 시간표 → 여러 날(2일 넘게) 같은 무렵에 기록된 운행만
-    const rows = [];
+    const rows = [], recorded = new Set();
     let recDays = 0;
     for (const [rid, mins] of Object.entries(log)) {
       const s = noOf.get(rid);
       if (!s) continue;
       const t = B.timetable(mins, day);
       recDays = Math.max(recDays, t.days);
-      for (const sl of t.slots) if (sl.days >= 2) rows.push({ m: sl.expected, early: sl.earliest, late: sl.latest, days: sl.days, of: t.days, s });
+      for (const sl of t.slots) if (sl.days >= 2) { rows.push({ m: sl.expected, early: sl.earliest, late: sl.latest, days: sl.days, of: t.days, s }); recorded.add(rid); }
+    }
+    // 기록이 모자란 노선은 첫차·막차·배차 간격과 기점에서 걸리는 시간으로 계산한 예상 시각 (~ 표시)
+    let estCount = 0;
+    for (const s of sums) {
+      if (recorded.has(s.id) || !plans.get(s.id)) continue;
+      const { sum, offset } = plans.get(s.id);
+      const ts = B.plannedTimes(sum, offset, day);
+      if (ts.length) estCount++;
+      for (const m of ts) rows.push({ m, est: true, s, sum });
     }
     rows.sort((a, b) => a.m - b.m || naturalCompare(a.s.no, b.s.no));
     const today = day === isoDay(), sn = seoulNow(), nowMin = sn.h * 60 + sn.mi;
-    let html = head + note(`최근 6주 동안 버스가 이 정류장을 지난 시각을 모아, 여러 날 같은 무렵에 온 운행만 보여 줘요 (${DAY_NAMES[day - 1]}요일 기록 ${recDays}일). 실제와 몇 분 다를 수 있어요.`);
+    let html = head + note(`기록: 최근 6주 동안 버스가 이 정류장을 지난 시각 중 여러 날 같은 무렵에 온 운행 (${DAY_NAMES[day - 1]}요일 기록 ${recDays}일).` +
+      (estCount ? ` ~ 표시는 기록이 모자란 노선 ${estCount}개를 첫차·막차·배차 간격으로 계산한 예상 시각이라 실제와 다를 수 있어요.` : ""));
+    if (failed) html += note("지난 운행 기록을 받지 못해 예상 시각만 보여 줘요.");
     if (!rows.length) {
-      // 기록이 모자라면 노선별 첫차·막차·배차 (자료 파일)
-      html += note("아직 이 요일 기록이 모자라요. 버스가 지난 기록이 여러 날 쌓이면 시간표가 생겨요.");
+      html += note("아직 이 요일 기록이 모자라고, 계산할 첫차·막차 정보도 없어요.");
       html += sectionHead("노선별 첫차·막차·배차") + `<div class="list">${sums.map((s) => {
         const plan = [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, day) > 0 && "배차 " + B.intervalOn(s, day) + "분"].filter(Boolean).join(" · ");
         return `<div class="row"><span class="badge" style="background:${busColor(s.type)}">${esc(s.no)}</span><span class="grow"><small>${esc(plan || "정보 없음")}</small></span></div>`;
@@ -241,7 +251,8 @@ export function stopTable(root, p) {
     const byHour = new Map();
     for (const r of rows) { const h = Math.floor(r.m / 60) % 24; if (!byHour.has(h)) byHour.set(h, []); byHour.get(h).push(r); }
     html += `<div class="list">${[...byHour.entries()].map(([h, list]) => `<div class="row col"><b>${String(h).padStart(2, "0")}시</b><span class="ttimes">${list.map((r) => {
-      return `<span class="tt ${today && r.m < nowMin ? "muted" : ""}" title="${esc(`${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`)}"><b>${hhmm(r.m)}</b> <span class="badge" style="background:${busColor(r.s.type)}">${esc(r.s.no)}</span></span>`;
+      const tip = r.est ? `예상 · 기점 첫차 ${r.sum.first || "?"} 막차 ${r.sum.last || "?"}${B.intervalOn(r.sum, day) > 0 ? " 배차 " + B.intervalOn(r.sum, day) + "분" : ""}` : `${hhmm(r.early)}~${hhmm(r.late)} · ${r.days}일 기록`;
+      return `<span class="tt ${today && r.m < nowMin ? "muted" : ""}" title="${esc(tip)}"><b>${r.est ? "~" : ""}${hhmm(r.m)}</b> <span class="badge" style="background:${busColor(r.s.type)}">${esc(r.s.no)}</span></span>`;
     }).join(" ")}</span></div>`).join("")}</div>`;
     root.innerHTML = html;
     if (today) root.querySelector(`.tt:not(.muted)`)?.scrollIntoView({ block: "center" });
@@ -254,6 +265,9 @@ export function stopTable(root, p) {
     const [l, s] = await Promise.all([B.stopLog(stop).catch(() => null), B.stopRoutes(stop).catch(() => [])]);
     if (l == null) failed = true;
     log = l || {}; sums = s;
+    draw();
+    // 예상 시간표 재료: 노선 정류장 목록(기점에서 걸리는 시간)과 첫차·막차 (노선 15개까지, 받는 대로 다시 그림)
+    await Promise.all(sums.slice(0, 15).map((rt) => B.plannedFor(stop, rt).then((x) => { if (x) plans.set(rt.id, x); }).catch(() => null)));
     draw();
   })();
   return () => { alive = false; };
