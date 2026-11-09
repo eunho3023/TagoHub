@@ -4,7 +4,7 @@
 // 공공데이터 하루 사용량을 지키려고 하루 POLL_PER_DAY(기본 3,000)번까지만, 오전 5시~자정(한국 시각)에만 물음.
 
 import { upstreamUrl, webRequest, cacheable } from "./proxy.js";
-import { hitsFromBusLc } from "./log.js";
+import { hitsFromBusLc, prevStore } from "./log.js";
 import { recordGps } from "./gps.js";
 import { bucket } from "./shape.js";
 
@@ -67,7 +67,7 @@ export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
       const res = await fetcher(upstreamUrl(w.path, w.search, env.DATA_GO_KR_KEY), { headers: { Accept: "application/xml" } });
       const body = await res.text();
       if (cacheable(res.status, body)) {
-        await hitsFromBusLc(db, caches.default, r.route_id, body, nowMs, await ordMap(env, r.route_id));
+        await hitsFromBusLc(db, prevStore(db), r.route_id, body, nowMs, await ordMap(env, r.route_id));
         await recordGps(db, r.route_id, r.city, body).catch(() => 0);
       }
     } catch (_) { /* 다음에 */ }

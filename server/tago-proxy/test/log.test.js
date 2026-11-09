@@ -78,3 +78,25 @@ test("웹 정류장 기록 읽기: 노선별로 묶음", async () => {
   assert.deepEqual((await r.json()).routes, { R1: [10, 30], R2: [20] });
   assert.equal((await handleWebLog(new URL("https://x/w/log/stop?node=bad%20id"), { DB: db })).status, 400);
 });
+
+import { prevStore } from "../src/log.js";
+test("바로 앞 버스 위치는 D1 에 (예약 작업이 다른 지역 서버에서 돌아도 이어짐), 차량 번호는 저장 안 함", async () => {
+  const rows = new Map(), written = [];
+  const db = {
+    prepare: (sql) => ({
+      run: async () => {},
+      bind: (...a) => ({
+        sql, a,
+        first: async () => (rows.has(a[0]) ? { v: rows.get(a[0]) } : null),
+        run: async () => { if (sql.startsWith("INSERT INTO bus_prev")) rows.set(a[0], a[1]); },
+      }),
+    }),
+    batch: async (s) => { written.push(...s.filter((x) => x.sql.startsWith("INSERT OR IGNORE INTO hits"))); },
+  };
+  const xml = (ord, node) => `<items><item><vehicleno>전북70자1234</vehicleno><nodeord>${ord}</nodeord><nodeid>${node}</nodeid></item></items>`;
+  const t0 = 1_800_000_000_000;
+  assert.equal(await hitsFromBusLc(db, prevStore(db), "JUB305001", xml(5, "JUB1"), t0), 0);
+  assert.equal(await hitsFromBusLc(db, prevStore(db), "JUB305001", xml(6, "JUB2"), t0 + 120000), 1);
+  assert.equal(written[0].a[1], "JUB2");
+  assert.ok(!rows.get("JUB305001").includes("1234"));
+});

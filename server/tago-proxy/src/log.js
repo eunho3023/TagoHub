@@ -95,10 +95,42 @@ export async function handleWebLog(url, env) {
   return new Response(JSON.stringify({ routes }), { headers: { ...WEB_HEAD, "Cache-Control": "public, max-age=300" } });
 }
 
+/** 차량 번호 대신 쓰는 짧은 값 (같은 노선 안에서 같은 차인지만 알면 됨, 번호는 저장하지 않음) */
+function vehKey(routeId, v) {
+  let h = 0x811c9dc5;
+  for (const c of routeId + "|" + v) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  return h.toString(36);
+}
+
+let prevReady = false;
+/**
+ * 바로 앞 버스 위치를 D1 에 두는 저장소 (cache 와 같은 match/put 모양).
+ * 예약 작업은 실행마다 다른 지역 서버에서 돌 수 있어 지역별 임시 저장소(caches.default)로는 앞 응답을 못 찾음.
+ */
+export function prevStore(db) {
+  const idOf = (k) => k.url.slice(k.url.lastIndexOf("/") + 1);
+  const ensure = async () => {
+    if (prevReady) return;
+    await db.prepare("CREATE TABLE IF NOT EXISTS bus_prev (route_id TEXT PRIMARY KEY, v TEXT NOT NULL) WITHOUT ROWID").run();
+    prevReady = true;
+  };
+  return {
+    match: async (k) => {
+      await ensure();
+      const r = await db.prepare("SELECT v FROM bus_prev WHERE route_id = ?").bind(idOf(k)).first();
+      return r ? new Response(r.v) : undefined;
+    },
+    put: async (k, res) => {
+      await ensure();
+      await db.prepare("INSERT INTO bus_prev (route_id, v) VALUES (?, ?) ON CONFLICT(route_id) DO UPDATE SET v = excluded.v").bind(idOf(k), await res.text()).run();
+    },
+  };
+}
+
 /**
  * 노선별 버스 위치 응답(TAGO)을 받을 때마다: 바로 앞 응답(5분 안)과 비교해 정류장을 옮겨 간 버스는
  * 지금 정류장에 지금 도착한 것으로 기록 (앱 ArrivalStats.hits 와 같은 생각, 한 번에 6정류장 넘게 건너뛴 것은 버림).
- * 차량 번호는 비교에만 쓰고 서버 임시 저장소에 5분만 둠 (기록에는 노선·정류장·분만).
+ * 차량 번호는 바꾼 값으로 비교에만 쓰고 노선마다 바로 앞 응답 하나만 둠 (기록에는 노선·정류장·분만).
  */
 export async function hitsFromBusLc(db, cache, routeId, xml, nowMs = Date.now(), ordToNode = null) {
   if (!db || !ID.test(routeId || "")) return 0;
@@ -106,7 +138,7 @@ export async function hitsFromBusLc(db, cache, routeId, xml, nowMs = Date.now(),
   const cur = {};
   for (const m of String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     const v = tag(m[1], "vehicleno"), ord = parseInt(tag(m[1], "nodeord"), 10), node = tag(m[1], "nodeid");
-    if (v && Number.isFinite(ord) && node && ID.test(node)) cur[v] = [ord, node];
+    if (v && Number.isFinite(ord) && node && ID.test(node)) cur[vehKey(routeId, v)] = [ord, node];
   }
   const key = new Request(`https://cache.tagohub/prevpos/${routeId}`);
   const prevRes = await cache.match(key);

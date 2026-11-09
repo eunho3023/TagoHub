@@ -3,7 +3,7 @@
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
-import { handleLog, handleWebLog, hitsFromBusLc } from "./log.js";
+import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps } from "./gps.js";
 import { noteInterest, pollCron } from "./poll.js";
@@ -102,7 +102,7 @@ async function dataGo(path, search, accept, env, ctx, extra) {
       const q = new URLSearchParams(search);
       ctx.waitUntil(recordGps(env.DB, q.get("routeId"), q.get("cityCode"), body).catch(() => 0));
       // 정류장을 옮겨 간 버스 → 지난 운행 기록 (정류장 시간표)
-      ctx.waitUntil(hitsFromBusLc(env.DB, caches.default, q.get("routeId"), body).catch(() => 0));
+      ctx.waitUntil(hitsFromBusLc(env.DB, prevStore(env.DB), q.get("routeId"), body).catch(() => 0));
       // 이 노선을 보는 사람이 있음 → 예약 작업이 스스로 모을 노선 후보
       ctx.waitUntil(noteInterest(env.DB, q.get("routeId"), q.get("cityCode")).catch(() => null));
     }
