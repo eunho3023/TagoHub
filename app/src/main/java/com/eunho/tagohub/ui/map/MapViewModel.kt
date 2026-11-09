@@ -2189,6 +2189,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val ids = setOf(d.stop.nodeId) + d.others.value.map { it.nodeId }
         val seqs = stops.filter { it.nodeId in ids }.map { it.ord }
         if (seqs.isEmpty()) return item.copy(loaded = true)
+        // 지자체 버스정보시스템 공식 배차시간표 (울산·천안·창원·대구·제주·진주·구미, 중계 서버) — 있으면 그것을 먼저
+        com.eunho.tagohub.data.CityTimetable.fetch(item.routeId, item.routeNo)?.let { deps ->
+            val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
+            val times = com.eunho.tagohub.data.CityTimetable.stopTimes(deps, day, stops, seqs, info?.endName ?: item.endName) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+            if (times.isNotEmpty()) return item.copy(minutes = times, loaded = true, estimated = false)
+        }
         // 앱에 넣어둔 실제 운행 시간표(광주 평일, 창녕 농어촌)가 있으면 그 출발 시각 — 첫차·막차 정보가 없는 노선도
         val real = if (day == DayKind.Weekday) stopDb?.let { db -> withContext(Dispatchers.IO) { db.timetable(city, item.routeNo) } }.orEmpty() else emptyMap()
         val endName = info?.endName ?: stops.lastOrNull()?.name
