@@ -6,15 +6,15 @@ import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPat
 import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps } from "./gps.js";
-import { noteInterest, pollCron } from "./poll.js";
+import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleReport } from "./report.js";
 
 export default {
   // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(shapeCron(env).catch(() => null));
-    // 관심 노선 버스 위치를 스스로 물어 통과 기록 모으기 (정류장 시간표, src/poll.js)
-    ctx.waitUntil(pollCron(env).catch(() => null));
+    // 관심 노선 버스 위치를 스스로 물어 통과 기록 모으기 (정류장 시간표, src/poll.js).
+    // 노선 모양 만들기보다 먼저: 한 번 실행의 외부 요청 수 한도를 모양 만들기가 다 쓰기 전에
+    ctx.waitUntil(pollCron(env).catch(() => null).then(() => shapeCron(env)).catch(() => null));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -48,13 +48,14 @@ async function web(request, url, env, ctx) {
     return handleReport(request, env, ctx);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
-  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/"))) {
+  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/"))) {
     const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
   if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
   // 정류장 지난 운행 기록 (정류장 시간표, src/log.js)
   if (url.pathname === "/w/log/stop") return handleWebLog(url, env);
+  if (url.pathname === "/w/poll/status") return new Response(JSON.stringify(await pollStatus(env)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);

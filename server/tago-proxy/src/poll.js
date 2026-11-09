@@ -44,12 +44,30 @@ async function ordMap(env, routeId) {
   } catch (_) { return null; }
 }
 
+/** 상태 숫자 (set 이면 바꿈, 아니면 더함) */
+async function bump(db, k, v, set = false) {
+  await db.prepare(`INSERT INTO poll_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = ${set ? "excluded.v" : "v + excluded.v"}`).bind(k, v).run();
+}
+
+/** GET /w/poll/status → 예약 작업이 도는지 (오늘 물은 횟수·쌓은 기록·실패, 관심 노선과 마지막으로 물은 때). 개인 정보 없음 */
+export async function pollStatus(env, nowMs = Date.now()) {
+  const db = env.DB;
+  if (!db) return { db: false };
+  await ensure(db);
+  const { day } = kst(nowMs);
+  const meta = Object.fromEntries(((await db.prepare("SELECT k, v FROM poll_meta WHERE k IN (?, ?, ?, ?, ?)").bind("cron:last", "day:" + day, "hits:" + day, "bad:" + day, "err:" + day).all()).results || []).map((r) => [r.k.split(":")[0], r.v]));
+  const top = ((await db.prepare("SELECT route_id, city, score, polled FROM route_interest ORDER BY score DESC LIMIT ?").bind(ACTIVE).all()).results || [])
+    .map((r) => ({ route: r.route_id, city: r.city, score: Math.round(r.score * 10) / 10, polledAgoS: r.polled ? Math.round((nowMs - r.polled) / 1000) : null }));
+  return { db: true, key: !!env.DATA_GO_KR_KEY, cronAgoS: meta.cron ? Math.round((nowMs - meta.cron) / 1000) : null, today: { polled: meta.day || 0, hits: meta.hits || 0, bad: meta.bad || 0, err: meta.err || 0 }, top };
+}
+
 /** 예약 작업 (1분마다): 관심 노선 중 2분 넘게 안 물은 것 3개까지 물어 기록. {polled, left} 또는 쉬는 까닭 */
 export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
   const db = env.DB;
   if (!db || !env.DATA_GO_KR_KEY) return { skip: "no db/key" };
   const { day, hour, minute } = kst(nowMs);
   await ensure(db);
+  await bump(db, "cron:last", nowMs, true);
   // 관심도는 하루에 한 번(새벽 4시) 반으로 줄여 요즘 보는 노선을 앞으로
   if (hour === 4 && minute === 0) await db.prepare("UPDATE route_interest SET score = score / 2").run();
   if (hour < 5) return { skip: "night" };
@@ -67,10 +85,11 @@ export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
       const res = await fetcher(upstreamUrl(w.path, w.search, env.DATA_GO_KR_KEY), { headers: { Accept: "application/xml" } });
       const body = await res.text();
       if (cacheable(res.status, body)) {
-        await hitsFromBusLc(db, prevStore(db), r.route_id, body, nowMs, await ordMap(env, r.route_id));
+        const got = await hitsFromBusLc(db, prevStore(db), r.route_id, body, nowMs, await ordMap(env, r.route_id));
+        if (got) await bump(db, "hits:" + day, got);
         await recordGps(db, r.route_id, r.city, body).catch(() => 0);
-      }
-    } catch (_) { /* 다음에 */ }
+      } else await bump(db, "bad:" + day, 1);
+    } catch (_) { await bump(db, "err:" + day, 1); }
     await db.prepare("UPDATE route_interest SET polled = ? WHERE route_id = ?").bind(nowMs, r.route_id).run();
   }
   if (n) await db.prepare("INSERT INTO poll_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = v + excluded.v").bind("day:" + day, n).run();
