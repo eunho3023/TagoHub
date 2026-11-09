@@ -1,7 +1,7 @@
 """배포할 때 받는 지자체 공식 배차시간표 (서버(클라우드)에서는 접속이 막힌 지역용).
 
-천안시 버스정보시스템(its.cheonan.go.kr)은 클라우드 서버에서 오는 요청을 받지 않아,
-deploy.ps1 을 실행하는 컴퓨터에서 받아 웹 자료 조각(public/data/times/cheonan.json)으로 같이 올림.
+천안(its.cheonan.go.kr)·구미(bis.gumi.go.kr) 버스정보시스템은 클라우드 서버에서 오는 요청을 받지 않아,
+deploy.ps1 을 실행하는 컴퓨터에서 받아 웹 자료 조각(public/data/times/<지역>.json)으로 같이 올림.
 형식: {노선 9자리: {"weekday": [분...], "sat": [...], "holi": [...], "source": "..."}}
 실패해도 배포는 계속 (그 지역은 첫차·막차 예상 시각으로 보임).
 """
@@ -15,6 +15,7 @@ import urllib.request
 
 UA = {"User-Agent": "Mozilla/5.0 (compatible; TagoHub/1.0)", "Accept-Language": "ko-KR,ko;q=0.9"}
 CHEONAN = "https://its.cheonan.go.kr"
+GUMI = "https://bis.gumi.go.kr"
 
 
 def _req(url, data=None, timeout=20):
@@ -74,6 +75,22 @@ def cheonan_one(rid):
     return parse_cheonan_html(_req(CHEONAN + "/bis/showBusTimeTable.do?" + q))
 
 
+def gumi_all():
+    """구미: 노선 목록(routeId) → 평일(bType 0)·주말(2) 출발 시각"""
+    rows = json.loads(_req(GUMI + "/localbus/selectBusRouteList", {})).get("rows") or []
+    out = {}
+    for rid in dict.fromkeys(str(r.get("routeId")) for r in rows if r.get("routeId")):
+        try:
+            day = lambda b: clock_list(x.get("starttime") for x in (json.loads(_req(GUMI + "/localbus/getTimetableInfo", {"routeId": rid, "bType": b})).get("rows") or []))
+            w, h = day(0), day(2)
+            if w:
+                out[rid] = {"weekday": w, "sat": h or w, "holi": h or w, "source": "구미시 버스정보시스템"}
+        except Exception:
+            pass
+        time.sleep(0.1)
+    return out, len(rows)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="public/data 폴더")
@@ -97,6 +114,14 @@ def main():
     if out:
         with open(os.path.join(a.out, "times", "cheonan.json"), "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    try:
+        gm, n = gumi_all()
+        print(f"  구미 배차시간표 {len(gm)}개 노선 (목록 {n}줄)")
+        if gm:
+            with open(os.path.join(a.out, "times", "gumi.json"), "w", encoding="utf-8") as f:
+                json.dump(gm, f, ensure_ascii=False, separators=(",", ":"))
+    except Exception as e:
+        print(f"  구미 배차시간표 받기 실패 (건너뜀): {e}")
     return 0
 
 

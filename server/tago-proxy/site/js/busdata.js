@@ -577,8 +577,8 @@ export async function plannedFor(stop, rt) {
   if (area && /^[A-Z]{3}\d{1,12}$/.test(rt.id)) {
     const q = area === "daegu" || area === "jeju" ? "?no=" + encodeURIComponent(rt.no || r.no || "") : "";
     let deps = await remembered("bustime|" + rt.id, 3600000, () => getJson(`w/bus/time/${area}/${rt.id.slice(3)}${q}`)).catch(() => null);
-    // 서버가 못 받는 지역(천안)은 배포할 때 받아 둔 자료 조각 (pipeline/fetch_city_times.py)
-    if ((!deps || !Array.isArray(deps.weekday)) && area === "cheonan") deps = (await cached(`data/times/${area}.json`).catch(() => ({})))[rt.id.slice(3)] || null;
+    // 서버가 못 받는 지역(천안·구미)은 배포할 때 받아 둔 자료 조각 (pipeline/fetch_city_times.py)
+    if ((!deps || !Array.isArray(deps.weekday)) && (area === "cheonan" || area === "gumi")) deps = (await cached(`data/times/${area}.json`).catch(() => ({})))[rt.id.slice(3)] || null;
     if (deps && Array.isArray(deps.weekday) && deps.weekday.length) {
       const fmt = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
       sum = { ...(sum || {}), first: fmt(deps.weekday[0]), last: fmt(deps.weekday[deps.weekday.length - 1]), deps, source: deps.source };
