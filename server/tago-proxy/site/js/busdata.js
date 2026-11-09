@@ -525,17 +525,60 @@ export function offsetMinutes(stops, ids, from = 0) {
   return m;
 }
 /** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
-const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon" };
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi" };
+/** 시간표 주요 정류장 이름 ↔ 노선 정류장 이름 맞추기용: 괄호 안·띄어쓰기·종점 표시를 빼고 학교 이름은 줄임말로 */
+const normName = (s) => String(s || "").replace(/\[[^\]]*\]|\([^)]*\)/g, "").replace(/[\s.·]/g, "")
+  .replace(/초등학교/g, "초교").replace(/중학교/g, "중").replace(/고등학교/g, "고").replace(/(종점|기점|정류장|정류소|가상)$/g, "");
+const sameName = (a, b) => !!a && !!b && (a === b || (Math.min(a.length, b.length) >= 2 && (a.startsWith(b) || b.startsWith(a) || (Math.min(a.length, b.length) >= 3 && (a.includes(b) || b.includes(a))))));
+/**
+ * 회차별 주요 정류장 통과 시각표 {points, trips} → 노선 정류장 목록의 i 번째 정류장 도착 시각들.
+ * 주요 정류장을 노선 순서대로 이름으로 맞추고, 앞뒤 주요 정류장 시각을 거리(예상 걸리는 시간) 비율로 나눔.
+ * 앞뒤 주요 정류장 중 한쪽 시각이 없는 회차(이 정류장을 안 지나는 짧은 운행)는 뺌
+ */
+export function timesAtStop(table, stops, i) {
+  if (!table || !Array.isArray(table.points) || !Array.isArray(table.trips) || i < 0) return [];
+  const cum = [0];
+  for (let k = 1; k < stops.length; k++) {
+    const a = stops[k - 1], b = stops[k];
+    cum.push(cum[k - 1] + (a.lat != null && b.lat != null ? meters(a.lat, a.lng, b.lat, b.lng) / EST_M_PER_MIN : 0) + EST_STOP_MIN);
+  }
+  let from = 0;
+  const at = table.points.map((p) => {
+    const n = normName(p);
+    const k = stops.findIndex((s, j) => j >= from && sameName(normName(s.name), n));
+    if (k >= 0) from = k + 1;
+    return k;
+  });
+  if (at.filter((k) => k >= 0).length < 2) return [];
+  const out = new Set();
+  for (const trip of table.trips) {
+    let a = null, b = null;
+    trip.forEach((m, c) => {
+      const k = at[c];
+      if (m == null || k < 0) return;
+      if (k <= i && (!a || k >= a.k)) a = { k, m };
+      if (k >= i && (!b || k < b.k)) b = { k, m };
+    });
+    if (!a || !b) continue;
+    if (a.k === b.k) { out.add(a.m); continue; }
+    const span = cum[b.k] - cum[a.k];
+    out.add(Math.round(a.m + (b.m - a.m) * (span > 0 ? (cum[i] - cum[a.k]) / span : 0)));
+  }
+  return [...out].sort((x, y) => x - y);
+}
 /** 이 정류장을 지나는 노선 하나의 예상 시간표 재료 {sum, offset, downOffset} (노선 정보는 10분 기억). 모르면 null */
 export async function plannedFor(stop, rt) {
   const ids = new Set([stop, ...(await sameSpot(stop))].flatMap((s) => [s.id, currentId(s.id)]));
   const r = await remembered("route|" + rt.id, 600000, () => route(rt.id, rt.city || (/^\d+$/.test(stop.city) ? stop.city : null)));
   if (!r) return null;
   let sum = rt.first ? rt : r.sum;
-  // 지자체 버스정보시스템 배차시간표 (전주·울산·천안·창원, 서버가 하루 저장)
+  // 지자체 버스정보시스템 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미, 서버가 하루 저장)
   const area = TIME_AREAS[String(rt.id).slice(0, 3)];
-  if (area && /^[A-Z]{3}\d{9}$/.test(rt.id)) {
-    const deps = await remembered("bustime|" + rt.id, 3600000, () => getJson(`w/bus/time/${area}/${rt.id.slice(3)}`)).catch(() => null);
+  if (area && /^[A-Z]{3}\d{1,12}$/.test(rt.id)) {
+    const q = area === "daegu" || area === "jeju" ? "?no=" + encodeURIComponent(rt.no || r.no || "") : "";
+    let deps = await remembered("bustime|" + rt.id, 3600000, () => getJson(`w/bus/time/${area}/${rt.id.slice(3)}${q}`)).catch(() => null);
+    // 서버가 못 받는 지역(천안)은 배포할 때 받아 둔 자료 조각 (pipeline/fetch_city_times.py)
+    if ((!deps || !Array.isArray(deps.weekday)) && area === "cheonan") deps = (await cached(`data/times/${area}.json`).catch(() => ({})))[rt.id.slice(3)] || null;
     if (deps && Array.isArray(deps.weekday) && deps.weekday.length) {
       const fmt = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
       sum = { ...(sum || {}), first: fmt(deps.weekday[0]), last: fmt(deps.weekday[deps.weekday.length - 1]), deps, source: deps.source };
@@ -544,6 +587,13 @@ export async function plannedFor(stop, rt) {
   if (!sum || !sum.first) return null;
   const offset = offsetMinutes(r.stops, ids);
   if (offset == null) return null;
+  // 주요 정류장 통과 시각표가 있으면 (대구·제주) 이 정류장 시각을 바로 계산. 방향별 표 여러 개면 정류장 순서가 맞는 표만
+  if (sum.deps && Array.isArray(sum.deps.tables) && sum.deps.tables.length) {
+    const i = r.stops.findIndex((s) => ids.has(s.id) || ids.has(currentId(s.id || "")));
+    const dayTimes = (key) => [...new Set(sum.deps.tables.filter((t) => (t.days || []).includes(key)).flatMap((t) => timesAtStop(t, r.stops, i)))].sort((a, b) => a - b);
+    const at = { weekday: dayTimes("weekday"), sat: dayTimes("sat"), holi: dayTimes("holi") };
+    if (at.weekday.length || at.sat.length) return { sum: { ...sum, deps: { ...at, source: sum.deps.source } }, offset: 0, downOffset: null };
+  }
   // 종점에서도 출발하는 노선: 종점(회차) 정류장 뒤쪽이면 종점 출발 버스는 회차점부터 걸리는 시간
   let downOffset = null;
   if (sum.deps && Array.isArray(sum.deps.weekdayDown) && sum.deps.weekdayDown.length) {
