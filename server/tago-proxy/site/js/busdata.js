@@ -488,13 +488,15 @@ const clockMin = (t) => { const m = /^(\d{1,2}):?(\d\d)$/.exec(String(t || "").t
  * 노선 요약(sum)과 기점→정류장 걸리는 분(offset)으로 이 요일(day)의 예상 도착 시각(하루 중 분) 목록.
  * 첫차=막차면 한 번, 배차 간격이 3~180분이면 첫차부터 막차까지, 간격이 없으면 첫차·막차만. 모르면 []
  */
-export function plannedTimes(sum, offset, day) {
+export function plannedTimes(sum, offset, day, downOffset = null) {
   if (!sum) return [];
-  // 지자체 공식 배차시간표(기점 출발 시각 전체)가 있으면 그것을 씀
+  // 지자체 공식 배차시간표(기점 출발 시각 전체)가 있으면 그것을 씀. 종점에서도 출발하는 노선은 돌아오는 쪽 정류장에 그 버스도 더함
   if (sum.deps) {
-    const list = day === 6 ? sum.deps.sat : day === 7 ? sum.deps.holi : sum.deps.weekday;
+    const pick = (k) => { const d = sum.deps; const l = day === 6 ? d[k.replace("weekday", "sat")] : day === 7 ? d[k.replace("weekday", "holi")] : d[k]; return Array.isArray(l) ? l : []; };
     const off = Math.max(0, Math.round(offset || 0));
-    return Array.isArray(list) ? list.map((m) => m + off) : [];
+    const out = pick("weekday").map((m) => m + off);
+    if (downOffset != null) for (const m of pick("weekdayDown")) out.push(m + Math.max(0, Math.round(downOffset)));
+    return [...new Set(out)].sort((a, b) => a - b);
   }
   const first = clockMin(sum.first);
   let last = clockMin(sum.last);
@@ -510,27 +512,30 @@ export function plannedTimes(sum, offset, day) {
   if (out[out.length - 1] !== last + off && last - (out[out.length - 1] - off) >= 2) out.push(last + off);
   return out;
 }
-/** 노선 정류장 목록에서 기점부터 이 정류장(ids 중 하나)까지 걸리는 분 (거리 ÷ 시속 18km + 정류장마다 18초). 못 찾으면 null */
-export function offsetMinutes(stops, ids) {
-  const i = stops.findIndex((s) => ids.has(s.id) || ids.has(currentId(s.id || "")));
+/** 노선 정류장 목록에서 from 번째 정류장부터 이 정류장(ids 중 하나)까지 걸리는 분 (거리 ÷ 시속 18km + 정류장마다 18초). 못 찾으면 null */
+export function offsetMinutes(stops, ids, from = 0) {
+  const i = stops.findIndex((s, k) => k >= from && (ids.has(s.id) || ids.has(currentId(s.id || ""))));
   if (i < 0) return null;
   let m = 0;
-  for (let k = 0; k < i; k++) {
+  for (let k = from; k < i; k++) {
     const a = stops[k], b = stops[k + 1];
     if (a.lat != null && b.lat != null) m += meters(a.lat, a.lng, b.lat, b.lng) / EST_M_PER_MIN;
     m += EST_STOP_MIN;
   }
   return m;
 }
-/** 이 정류장을 지나는 노선 하나의 예상 시간표 재료 {sum, offset} (노선 정보는 10분 기억). 모르면 null */
+/** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon" };
+/** 이 정류장을 지나는 노선 하나의 예상 시간표 재료 {sum, offset, downOffset} (노선 정보는 10분 기억). 모르면 null */
 export async function plannedFor(stop, rt) {
   const ids = new Set([stop, ...(await sameSpot(stop))].flatMap((s) => [s.id, currentId(s.id)]));
   const r = await remembered("route|" + rt.id, 600000, () => route(rt.id, rt.city || (/^\d+$/.test(stop.city) ? stop.city : null)));
   if (!r) return null;
   let sum = rt.first ? rt : r.sum;
-  // 전주: 전주시 버스정보시스템 배차시간표 (서버가 하루 저장, src/timetable.js)
-  if (/^JUB\d{9}$/.test(rt.id)) {
-    const deps = await remembered("jjtime|" + rt.id, 3600000, () => getJson("w/bus/jeonju/time/" + rt.id.slice(3))).catch(() => null);
+  // 지자체 버스정보시스템 배차시간표 (전주·울산·천안·창원, 서버가 하루 저장)
+  const area = TIME_AREAS[String(rt.id).slice(0, 3)];
+  if (area && /^[A-Z]{3}\d{9}$/.test(rt.id)) {
+    const deps = await remembered("bustime|" + rt.id, 3600000, () => getJson(`w/bus/time/${area}/${rt.id.slice(3)}`)).catch(() => null);
     if (deps && Array.isArray(deps.weekday) && deps.weekday.length) {
       const fmt = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
       sum = { ...(sum || {}), first: fmt(deps.weekday[0]), last: fmt(deps.weekday[deps.weekday.length - 1]), deps, source: deps.source };
@@ -538,7 +543,15 @@ export async function plannedFor(stop, rt) {
   }
   if (!sum || !sum.first) return null;
   const offset = offsetMinutes(r.stops, ids);
-  return offset == null ? null : { sum, offset };
+  if (offset == null) return null;
+  // 종점에서도 출발하는 노선: 종점(회차) 정류장 뒤쪽이면 종점 출발 버스는 회차점부터 걸리는 시간
+  let downOffset = null;
+  if (sum.deps && Array.isArray(sum.deps.weekdayDown) && sum.deps.weekdayDown.length) {
+    const endName = String(r.end || sum.end || "").replace(/\s/g, "");
+    const turn = endName ? r.stops.findIndex((s, k) => k > 0 && String(s.name).replace(/\s/g, "") === endName) : -1;
+    if (turn > 0) downOffset = offsetMinutes(r.stops, ids, turn);
+  }
+  return { sum, offset, downOffset };
 }
 
 /** 정류장 방면: 이 정류장을 지나는 노선에서 바로 다음 정류장 이름 (노선 몇 개를 보고 가장 많이 나온 것). 모르면 null */
