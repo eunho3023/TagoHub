@@ -917,14 +917,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { com.eunho.tagohub.data.TrainStationGeo.matchNear(name, lat, lng, 400.0) }
             } else null
             val facility = poiKind != null && (poiKind != com.eunho.tagohub.ui.ModeJump.Kind.Train || rail != null)
-            val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 40) } }.orEmpty().map { it.first }
+            // 전국 정류소 좌표(내장 DB): 반경 300m 후보를 넉넉히 받아 이름·좌표로 맞춘다
+            val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 60) } }.orEmpty().map { it.first }
             val cachedStops = stops.values.filter { stop ->
                 stop.lat != null && stop.lng != null &&
                     com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat!!, stop.lng!!) <= 300.0
             }
             val near = (dbStops + cachedStops).distinctBy { it.nodeId }
-            // 정류장 POI 는 도로 중심에 찍혀 30~50m 벌어지므로 조금 넓게(60m), 그 밖은 40m
-            val nearM = if (busPoi) 60.0 else 40.0
+            // 이름이 맞으면 거리와 무관하게 그 정류장을 고르고(PoiMatch.pick 1·2단계),
+            // 이름이 안 맞을 때만 좌표로 고른다. 좌표는 내장 DB 것이 정확하므로 문턱을 좁게 둔다.
+            val nearM = if (busPoi) 40.0 else 25.0
             val stop = if (facility) null else com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, nearM)
             // 이름 없이 역 아이콘만 눌렀을 때도(이름이 비면 이름 매칭이 안 됨) 바로 앞(80m)에 있는 역이면 그 역
             val nameSaysBus = name.contains("정류") || name.contains("버스")
