@@ -399,63 +399,36 @@ private fun SortSheet(current: TripSort, onPick: (TripSort) -> Unit, onDismiss: 
 fun TripRow(t: Trip, accent: Color, past: Boolean, next: Boolean) {
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     val kc = kindColor(t.kind, accent)
-    Surface(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .alpha(if (past) 0.4f else 1f),
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(if (next) 2.dp else 1.dp, if (next) accent else MaterialTheme.colorScheme.outlineVariant),
+    val dayShift = if (t.dep != null && t.arr != null) ChronoUnit.DAYS.between(t.dep.toLocalDate(), t.arr.toLocalDate()) else 0
+    // 카드 골격은 common.RideCard — 기차와 항공(국내·국제)이 같은 카드를 쓴다
+    com.eunho.tagohub.ui.common.RideCard(
+        accent = kc,
+        depText = t.dep?.let(TagoTime::hm) ?: "--:--",
+        arrText = (t.arr?.let(TagoTime::hm) ?: "--:--") + if (dayShift > 0) " +${dayShift}일" else "",
+        depLabel = t.depName,
+        arrLabel = t.arrName,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        badge = t.kind,
+        badgeColor = kc,
+        code = t.number,
+        duration = Fmt.duration(t.dep, t.arr),
+        dimmed = past,
+        emphasized = next,
+        headNote = if (next) "다음 출발" else null,
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (t.kind.isNotBlank()) Pill(t.kind, kc)
-                t.number?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold) }
-                Spacer(Modifier.weight(1f))
-                if (next) Text("다음 출발", style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.ExtraBold)
-            }
-            Spacer(Modifier.height(8.dp))
-            val dayShift = if (t.dep != null && t.arr != null) ChronoUnit.DAYS.between(t.dep.toLocalDate(), t.arr.toLocalDate()) else 0
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    t.dep?.let(TagoTime::hm) ?: "--:--",
-                    style = MaterialTheme.typography.headlineSmall.merge(Tnum),
-                    fontWeight = FontWeight.ExtraBold,
-                )
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Fmt.duration(t.dep, t.arr)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = variant, fontWeight = FontWeight.Bold) }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).border(2.dp, kc, CircleShape))
-                        Box(Modifier.weight(1f).height(3.dp).background(kc.copy(alpha = 0.5f)))
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(kc))
-                    }
-                }
-                Text(
-                    (t.arr?.let(TagoTime::hm) ?: "--:--") + if (dayShift > 0) " +${dayShift}일" else "",
-                    style = MaterialTheme.typography.headlineSmall.merge(Tnum),
-                    fontWeight = FontWeight.ExtraBold,
-                )
-            }
-            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(t.depName, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = variant)
-                Text(t.arrName, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = variant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-            }
-            Spacer(Modifier.height(10.dp))
-            if (t.prices.isEmpty()) {
-                Text("요금 정보 없음", style = MaterialTheme.typography.bodySmall, color = variant)
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    t.prices.forEach { (label, won) ->
-                        Row(
-                            Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (t.prices.size > 1) Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = variant)
-                            else Spacer(Modifier.weight(1f))
-                            Text(Fmt.won(won), style = MaterialTheme.typography.titleSmall.merge(Tnum), fontWeight = FontWeight.ExtraBold)
-                        }
+        if (t.prices.isEmpty()) {
+            Text("요금 정보 없음", style = MaterialTheme.typography.bodySmall, color = variant)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                t.prices.forEach { (label, won) ->
+                    Row(
+                        Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (t.prices.size > 1) Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = variant)
+                        else Spacer(Modifier.weight(1f))
+                        Text(Fmt.won(won), style = MaterialTheme.typography.titleSmall.merge(Tnum), fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
