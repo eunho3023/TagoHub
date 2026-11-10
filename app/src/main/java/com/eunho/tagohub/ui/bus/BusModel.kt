@@ -86,6 +86,8 @@ sealed class BusDest {
     class Stop(val stop: BusStop, private val preset: List<BusStop>? = null) : BusDest() {
         /** 같은 자리의 다른 시군 정류장 (패널 머리에 번호를 함께 표시) */
         val others = MutableStateFlow(preset.orEmpty())
+        /** 같은 자리 다른 시군 정류장을 한 번 찾았는지 (찾은 뒤에는 15초 새로고침마다 다시 묻지 않음) */
+        internal var companionsSearched = false
         /** 다음 정류장 이름 = "○○ 방면" */
         val direction = MutableStateFlow<String?>(null)
         val rows = MutableStateFlow<Load<List<StopRouteRow>>>(Load.Loading)
@@ -374,6 +376,22 @@ private suspend fun tsbTargets(repo: TagoRepository, s: BusStop, db: StopDb?): L
 }
 
 internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
+    // 같은 자리의 타 시·군 정류장을 내장 좌표 DB(30m)에서 **먼저** 확정한다.
+    // 예전에는 첫 화면을 누른 정류장의 시·군 노선만으로 그리고, 타 시·군은 findCompanions(네트워크) 뒤에야
+    // 붙였기 때문에 진안을 누르면 전주가, 전주를 누르면 진안이 뒤늦게 나타났다.
+    if (d.companions == null) {
+        val dbEarly = StopDb.peek()
+        val la = d.stop.lat
+        val ln = d.stop.lng
+        if (dbEarly != null && la != null && ln != null) {
+            val near = withContext(Dispatchers.IO) { dbEarly.near(la, ln, 60.0, 30) }.map { it.first }
+            val quickComps = com.eunho.tagohub.data.StopMerge.companions(d.stop, near)
+            if (quickComps.isNotEmpty()) {
+                d.companions = quickComps
+                d.others.value = quickComps
+            }
+        }
+    }
     // 처음 열 때: 노선 목록(대부분 앱 안 데이터)을 먼저 보여주고, 실시간 도착은 받아지는 대로 채움 (전에는 다 받을 때까지 빈 화면 2초)
     if (d.rows.value is Load.Loading && d.lastRoutes == null) {
         (stopRoutesFor(repo, d.stop) as? TagoResult.Success)?.data?.takeIf { it.isNotEmpty() }?.let { quick ->
@@ -430,7 +448,13 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         }
     }
     // 같은 자리의 다른 시군 정류장 (번호를 함께 보여주고, 그 정류장에 서는 버스도 같은 목록에)
-    val comps = d.companions ?: findCompanions(repo, d.stop, db).also { d.companions = it }
+    // 내장 DB 로 못 찾은 것(파일에 없는 TAGO 정류장)만 한 번 더 네트워크로 찾아 합친다
+    if (!d.companionsSearched) {
+        d.companionsSearched = true
+        val found = findCompanions(repo, d.stop, db)
+        d.companions = (d.companions.orEmpty() + found).distinctBy { it.nodeId }
+    }
+    val comps = d.companions.orEmpty()
     if (d.others.value != comps) d.others.value = comps
     // 조회 대상: 자체 API 지역 정류장은 그대로, TSB 정류장은 버스가 서는 시군마다 하나씩
     val entries = d.entries ?: coroutineScope {
