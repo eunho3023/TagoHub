@@ -12,6 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -138,6 +139,7 @@ internal fun StopListRow(s: BusStop, distance: String?, region: String? = null, 
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 /** elapsedSec: 도착정보를 받은 뒤 지난 초. 다음 갱신 전까지 매초 줄어든다 */
 /** dirLabel: 정류장 방면 (회차 노선에만 붙임 — 편도 노선은 기점-종점으로 충분) */
@@ -183,11 +185,13 @@ internal fun StopRouteItem(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "($ends)",
-                        Modifier.weight(1f),
+                        // 한 줄에 다 안 들어가면 전광판처럼 옆으로 흐른다 (들어가면 멈춤)
+                        Modifier.weight(1f).basicMarquee(iterations = Int.MAX_VALUE),
                         style = MaterialTheme.typography.bodySmall,
                         color = variant,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
                     )
                 }
             }
@@ -198,7 +202,15 @@ internal fun StopRouteItem(
             val dir = a0?.towards?.let { "$it 방면" } ?: if (roundTrip) dirLabel?.let { "$it 방면" } else null
             val sub = listOfNotNull(row.region, dir, a0?.atStop?.let { "현재 $it" })
                 .joinToString("   ").ifEmpty { null }
-            if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant)
+            if (sub != null) Text(
+                sub,
+                Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                style = MaterialTheme.typography.bodyMedium,
+                color = variant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+            )
             if (onPast != null) {
                 Text(
                     "과거 시간표 ›",
