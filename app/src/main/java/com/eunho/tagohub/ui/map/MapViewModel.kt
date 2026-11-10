@@ -2136,6 +2136,58 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         stopBoard.value = null
     }
 
+    // ───────────────── 과거 시간표 (지난 1·2·3주 비교) ─────────────────
+
+    /** 과거 시간표에서 고른 요일 (월~일) */
+    val pastDay = MutableStateFlow(java.time.LocalDate.now().dayOfWeek)
+
+    /** 과거 시간표에서 고른 노선 */
+    val pastRouteId = MutableStateFlow<String?>(null)
+
+    /** 과거 시간표 3열 (null 이면 닫힘) */
+    val pastTimetable = MutableStateFlow<Load<List<PastDay>>?>(null)
+    private var pastJob: Job? = null
+
+    /** 고른 노선·요일의 지난 3주 기록을 모은다. 노선을 안 주면 목록의 첫 노선 */
+    fun openPastTimetable(
+        routeId: String? = pastRouteId.value,
+        day: java.time.DayOfWeek = pastDay.value,
+    ) {
+        val d = selected.value ?: return
+        pastDay.value = day
+        pastJob?.cancel()
+        pastTimetable.value = Load.Loading
+        pastJob = viewModelScope.launch {
+            val rows = (d.rows.first { it !is Load.Loading } as? Load.Ok)?.value.orEmpty()
+            val route = rows.firstOrNull { it.routeId == routeId } ?: rows.firstOrNull()
+            if (route == null) {
+                pastTimetable.value = Load.Fail("이 정류장을 지나는 노선 정보가 없어요.")
+                return@launch
+            }
+            pastRouteId.value = route.routeId
+            pastTimetable.value = tracked {
+                val hits = runCatching {
+                    com.eunho.tagohub.data.ObservedSchedule.hits(route.routeId, d.stop.nodeId)
+                }.getOrDefault(emptyList())
+                Load.Ok(PastTimetable.columns(hits, d.stop.nodeId, day))
+            }
+        }
+    }
+
+    fun setPastDay(day: java.time.DayOfWeek) {
+        if (day != pastDay.value) openPastTimetable(day = day)
+    }
+
+    fun setPastRoute(routeId: String) {
+        if (routeId != pastRouteId.value) openPastTimetable(routeId = routeId)
+    }
+
+    fun closePastTimetable() {
+        pastJob?.cancel()
+        pastTimetable.value = null
+        pastRouteId.value = null
+    }
+
     /**
      * 노선마다 지난 운행 기록(이 폰 + 서버에 모인 기록)을 먼저 보고, 기록이 하나도 없을 때만
      * 공식 배차시간표·첫차막차로 채운다. 기록이 있는 노선에 예상 시각을 섞지 않는 것도 웹과 같다.
