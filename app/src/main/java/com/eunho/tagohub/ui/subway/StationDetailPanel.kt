@@ -166,6 +166,13 @@ private fun StationDetailBody(
     onFavorite: (() -> Unit)? = null,
 ) {
     val tab by d.tab.collectAsStateWithLifecycle()
+    val infoTab by d.infoTab.collectAsStateWithLifecycle()
+    // 상위 탭 6개: 실시간 · 시간표 · 출구 · 편의시설 · 노선도 · 혼잡도 (2단 탭을 1단으로 펼친 결과)
+    val section = when (tab) {
+        StationTab.Live -> 0
+        StationTab.Timetable -> 1
+        else -> 2 + infoTab.ordinal
+    }
     val lines = d.group.displayLines
     val color = subwayLineColor(lines.first())
     val stationName = d.group.name.let { if (it.endsWith("역")) it else "${it}역" }
@@ -267,23 +274,33 @@ private fun StationDetailBody(
                 }
             }
         }
-        // 상위 탭은 세 개만 노출하고, 역의 부가 정보는 역 정보 안에서 고른다.
-        ChoiceTabs(
-            labels = StationTab.entries.map { it.label },
-            selectedIndex = tab.ordinal,
-            onSelect = { c.setTab(d, StationTab.entries[it]) },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        // 상위 탭: 역 정보 안에 숨겨 두었던 출구·편의시설·노선도·혼잡도를 1단으로 펼친다 (시안 06)
+        com.eunho.tagohub.ui.common.UnderlineTabs(
+            labels = listOf("실시간", "시간표", "출구", "편의시설", "노선도", "혼잡도"),
+            selectedIndex = section,
+            onSelect = { i ->
+                when (i) {
+                    0 -> c.setTab(d, StationTab.Live)
+                    1 -> c.setTab(d, StationTab.Timetable)
+                    else -> {
+                        // 2단 탭은 없앴지만 데이터 로딩은 기존 역 정보 탭을 그대로 쓴다
+                        c.setTab(d, StationTab.Info)
+                        c.setInfoTab(d, StationInfoTab.entries[i - 2])
+                    }
+                }
+            },
+            modifier = Modifier.padding(top = 2.dp),
         )
         // 탭을 바꾸면 내용이 8dp 옆으로 밀리며 교차 페이드 (220ms). 기기 설정이 애니메이션을 끄면 바로 바뀜
         val reduce = com.eunho.tagohub.ui.common.rememberReduceMotion()
         val shift = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
         androidx.compose.animation.AnimatedContent(
-            targetState = tab,
+            targetState = section,
             modifier = Modifier.weight(1f),
             transitionSpec = {
                 if (reduce) androidx.compose.animation.ContentTransform(androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(0)), androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(0)))
                 else {
-                    val dir = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                    val dir = if (targetState >= initialState) 1 else -1
                     (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) + androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { dir * shift }) togetherWith
                         (androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) + androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(220)) { -dir * shift })
                 }
@@ -291,9 +308,12 @@ private fun StationDetailBody(
             label = "station-tab",
         ) { current ->
             when (current) {
-                StationTab.Live -> LiveTab(d, c, onArrivalClick)
-                StationTab.Timetable -> TimetableTab(d, c)
-                StationTab.Info -> StationInfoContent(d, c)
+                0 -> LiveTab(d, c, onArrivalClick)
+                1 -> TimetableTab(d, c)
+                2 -> ExitsTab(d, c)
+                3 -> FacilitiesTab(d)
+                4 -> RouteTab(d, c)
+                else -> CongestionTab(d)
             }
         }
         // 아래: 파란 [출발][도착] 알약 (이 역을 길찾기 출발지·도착지로)
@@ -368,27 +388,6 @@ private fun FacilitiesTab(d: StationDetail) {
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StationInfoContent(d: StationDetail, c: StationDetailController) {
-    val selected by d.infoTab.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize()) {
-        ChoiceTabs(
-            labels = StationInfoTab.entries.map { it.label },
-            selectedIndex = selected.ordinal,
-            onSelect = { c.setInfoTab(d, StationInfoTab.entries[it]) },
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-        )
-        Box(Modifier.weight(1f)) {
-            when (selected) {
-                StationInfoTab.Exits -> ExitsTab(d, c)
-                StationInfoTab.Facilities -> FacilitiesTab(d)
-                StationInfoTab.Route -> RouteTab(d, c)
-                StationInfoTab.Congestion -> CongestionTab(d)
             }
         }
     }
