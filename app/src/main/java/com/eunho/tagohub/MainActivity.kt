@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.TrainKinds.init(filesDir)
         lifecycleScope.launch {
             StopDb.get(applicationContext)
+            // 같은 자리 타 시·군 정류장 표: 서버(Firebase 등)에 더 새것이 있으면 하루 한 번·와이파이에서 받아 둠
+            com.eunho.tagohub.data.StopCompanions.refresh(applicationContext)
             // 정류장·노선 데이터 자동 업데이트 (데이터 저장소, 하루 한 번·와이파이에서만)
             com.eunho.tagohub.data.DataUpdater.check(applicationContext)
         }

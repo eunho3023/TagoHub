@@ -70,6 +70,9 @@ android {
         buildConfigField("String", "KAKAO_REST_KEY", "\"${apiKey("KAKAO_REST_KEY")}\"")
         // 정류장·노선 데이터 저장소 안내 파일 (GitHub Release data-latest 의 manifest.json, pipeline/README.md). local.properties 로 바꿀 수 있음
         buildConfigField("String", "DATA_MANIFEST_URL", "\"${localProps.getProperty("DATA_MANIFEST_URL", "https://github.com/eunho3023/TagoHub/releases/download/data-latest/manifest.json")}\"")
+        // 같은 자리 타 시·군 정류장 표(stop_companions.tsv)를 Firebase Storage·Hosting 등에 올렸을 때의 주소.
+        // 비우면 앱에 넣은 표(assets)만 쓰고, 있으면 하루 한 번·와이파이에서 바뀐 것만 받아 씀
+        buildConfigField("String", "STOP_COMPANIONS_URL", "\"${localProps.getProperty("STOP_COMPANIONS_URL", "")}\"")
     }
 
     signingConfigs {

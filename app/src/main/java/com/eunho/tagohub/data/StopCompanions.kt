@@ -1,6 +1,16 @@
 package com.eunho.tagohub.data
 
 import android.content.Context
+import android.content.Context.CONNECTIVITY_SERVICE
+import android.net.ConnectivityManager
+import android.util.Log
+import com.eunho.tagohub.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * 같은 자리에 여러 시·군 정류장이 겹치는 곳의 표 (assets/stop_companions.tsv).
@@ -12,6 +22,11 @@ import android.content.Context
  * 표는 정류장 좌표가 바뀔 때만 다시 만들면 된다.
  */
 object StopCompanions {
+    private const val TAG = "TagoCompanions"
+    private const val PREF = "companions_update"
+    private const val NAME = "stop_companions.tsv"
+    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+
     private var appContext: Context? = null
     @Volatile private var loaded = false
     private var map: Map<String, List<BusStop>> = emptyMap()
@@ -24,12 +39,54 @@ object StopCompanions {
         if (loaded) return
         synchronized(this) {
             if (loaded) return
-            val text = appContext?.let { c ->
-                runCatching { c.assets.open("stop_companions.tsv").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
-            }
+            // 서버(Firebase 등)에서 받아 둔 파일이 있으면 그것부터, 없으면 앱에 넣은 표
+            val cached = appContext?.let { c -> File(c.filesDir, NAME).takeIf { it.isFile && it.length() > 1024 } }
+            val text = cached?.let { f -> runCatching { f.readText(Charsets.UTF_8) }.getOrNull() }
+                ?: appContext?.let { c ->
+                    runCatching { c.assets.open(NAME).bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
+                }
             if (text != null) map = parse(text)
             loaded = true
         }
+    }
+
+    /**
+     * 서버에 올린 표가 앱에 넣은 것보다 새로우면 받아서 다음부터 그 파일을 쓴다.
+     * 하루 한 번, 와이파이에서만, ETag 가 그대로면(304) 내려받지 않는다. 실패하면 앱에 넣은 표를 그대로 씀.
+     * 주소는 local.properties 의 STOP_COMPANIONS_URL (Firebase Storage·Hosting 주소).
+     */
+    suspend fun refresh(ctx: Context, force: Boolean = false) = withContext(Dispatchers.IO) {
+        val url = runCatching { BuildConfig.STOP_COMPANIONS_URL.trim() }.getOrDefault("")
+        if (url.isEmpty()) return@withContext
+        val prefs = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (!force && now - prefs.getLong("last", 0) < 20 * 3600_000L) return@withContext
+        val cm = ctx.getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (cm == null || cm.activeNetwork == null || cm.isActiveNetworkMetered) return@withContext
+        prefs.edit().putLong("last", now).apply()
+        runCatching {
+            val target = File(ctx.filesDir, NAME)
+            val etagFile = File(ctx.filesDir, "$NAME.etag")
+            val etag = etagFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
+            val req = Request.Builder().url(url).apply {
+                if (etag.isNotEmpty() && target.isFile) header("If-None-Match", etag)
+            }.build()
+            client.newCall(req).execute().use { r ->
+                if (r.code == 304) return@runCatching
+                if (!r.isSuccessful) error("HTTP ${r.code}")
+                val body = r.body ?: error("빈 응답")
+                val tmp = File(ctx.filesDir, "$NAME.tmp")
+                body.byteStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                if (tmp.length() < 1024) { tmp.delete(); error("파일이 너무 작음") }
+                if (!tmp.renameTo(target)) { tmp.delete(); error("바꿔 쓰기 실패") }
+                etagFile.writeText(r.header("ETag").orEmpty())
+                synchronized(this@StopCompanions) {
+                    loaded = false
+                    map = emptyMap()
+                }
+                Log.i(TAG, "정류장 동반 표를 서버 것으로 바꿈 (${target.length()} bytes)")
+            }
+        }.onFailure { Log.w(TAG, "정류장 동반 표 갱신 실패: ${it.message}") }
     }
 
     /** 이 정류장과 같은 자리에 서는 다른 시·군 정류장 (없으면 빈 목록) */
