@@ -1375,18 +1375,6 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                     Text(if (timetable == null) "시간표" else "실시간", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 }
             }
-            Surface(
-                onClick = { if (pastTimetable == null) vm.openPastTimetable() else vm.closePastTimetable() },
-                shape = androidx.compose.foundation.shape.CircleShape,
-                color = if (pastTimetable == null) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
-                contentColor = if (pastTimetable == null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
-            ) {
-                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("과거", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
-                }
-            }
             if (showMap != null) {
                 Surface(onClick = showMap, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
                     Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -3409,8 +3397,13 @@ private fun ObservedTimetable(routeId: String, nodeId: String, color: Color) {
                         if (i == 0) {
                             Text("첫", Modifier.border(1.dp, color, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp), color = color, style = MaterialTheme.typography.labelSmall)
                             Spacer(Modifier.width(6.dp))
+                        } else if (i == table.slots.lastIndex) {
+                            Text("막", Modifier.border(1.dp, color, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp), color = color, style = MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(6.dp))
                         }
                         Text(clock(slot.expected), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                        // 사진처럼 예상 시각 옆에 펼침 표시 (이 행이 그 시각의 기록)
+                        Text("›", Modifier.padding(start = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                     }
                     Text(clock(slot.earliest), Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(clock(slot.latest), Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
