@@ -155,48 +155,49 @@ fun MorePage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-                SettingsLabel("자주 바꾸는 것", Icons.Outlined.Tune)
-                QuickToggles()
+                val uri = androidx.compose.ui.platform.LocalUriHandler.current
 
-                SettingsLabel("화면 모드", Icons.Outlined.Palette)
-                ThemeModePicker()
+                // 화면: 보이는 것부터 (테마·야간 모드·내 위치 아이콘)
+                com.eunho.tagohub.ui.common.SettingsGroup("화면", "테마와 지도 표시") {
+                    com.eunho.tagohub.ui.common.SettingsField("화면 모드") { ThemeModePicker() }
+                    com.eunho.tagohub.ui.common.SettingsDivider()
+                    com.eunho.tagohub.ui.common.SettingsField("야간 주행 모드") { NightModePicker() }
+                    com.eunho.tagohub.ui.common.SettingsDivider()
+                    com.eunho.tagohub.ui.common.SettingsField("내 위치 아이콘") { VehiclePicker() }
+                }
 
-                SettingsLabel("야간 주행 모드", Icons.Outlined.NightsStay)
-                NightModePicker()
+                // 길안내: 바로 켜고 끄는 것 → 음성 크기 → 알릴 항목
+                com.eunho.tagohub.ui.common.SettingsGroup("길안내", "안내 음성과 알릴 항목") {
+                    QuickToggles()
+                    com.eunho.tagohub.ui.common.SettingsDivider()
+                    GuidanceSettings()
+                }
 
-                SettingsLabel("내 위치 아이콘", Icons.Outlined.MyLocation)
-                VehiclePicker()
-
-                SettingsLabel("길안내", Icons.Outlined.Navigation)
-                GuidanceSettings()
-
-                SettingsLabel("계정", Icons.Outlined.AccountCircle)
-                SettingsCard { AccountRow() }
-
-                SettingsLabel("정보", Icons.Outlined.Info)
-                // 앱이 비정상 종료된 적이 있으면 원인을 보고 공유할 수 있음
+                // 기록·데이터: 기기에 쌓인 것
                 var crash by remember { mutableStateOf(com.eunho.tagohub.data.CrashLog.last()) }
                 var showCrash by remember { mutableStateOf(false) }
-                SettingsCard {
-                    MoreRow("기록·즐겨찾기 관리", onHistory)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MoreRow("공지사항", onNotices)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MoreRow("앱 제보", onReport)
+                com.eunho.tagohub.ui.common.SettingsGroup("기록·데이터", "이 기기에 쌓인 기록") {
+                    com.eunho.tagohub.ui.common.SettingsRow("기록·즐겨찾기 관리", onClick = onHistory)
                     if (crash != null) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        MoreRow("최근 오류") { showCrash = true }
+                        com.eunho.tagohub.ui.common.SettingsDivider()
+                        com.eunho.tagohub.ui.common.SettingsRow("최근 오류", onClick = { showCrash = true })
                     }
                 }
-                // 약관 및 정책: 웹 버전과 같은 문서(서버 /legal/)를 브라우저로 엶 — 플레이스토어의 개인정보 처리방침 주소와도 같음
-                SettingsLabel("약관 및 정책", Icons.Outlined.Policy)
-                val uri = androidx.compose.ui.platform.LocalUriHandler.current
-                SettingsCard {
-                    LEGAL_PAGES.forEachIndexed { i, (title, page) ->
-                        if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        MoreRow(title) { runCatching { uri.openUri(legalUrl(page)) } }
+
+                // 정보·계정: 계정 연결, 공지, 제보, 약관
+                com.eunho.tagohub.ui.common.SettingsGroup("정보·계정", "계정 연결과 문서") {
+                    AccountRow()
+                    com.eunho.tagohub.ui.common.SettingsDivider()
+                    com.eunho.tagohub.ui.common.SettingsRow("공지사항", onClick = onNotices)
+                    com.eunho.tagohub.ui.common.SettingsDivider()
+                    com.eunho.tagohub.ui.common.SettingsRow("앱 제보", onClick = onReport)
+                    // 약관 및 정책: 웹 버전과 같은 문서(서버 /legal/)를 브라우저로 엶 — 플레이스토어의 개인정보 처리방침 주소와도 같음
+                    LEGAL_PAGES.forEach { (title, page) ->
+                        com.eunho.tagohub.ui.common.SettingsDivider()
+                        com.eunho.tagohub.ui.common.SettingsRow(title, onClick = { runCatching { uri.openUri(legalUrl(page)) } })
                     }
                 }
+
                 if (showCrash) crash?.let { text ->
                     val context = androidx.compose.ui.platform.LocalContext.current
                     androidx.compose.material3.AlertDialog(
@@ -218,13 +219,14 @@ fun MorePage(
                         },
                     )
                 }
+
                 // 버전을 7번 누르면 개발자 모드(키 설정 안내·모의주행 같은 개발자용 표시)가 켜지고 꺼짐
                 val devContext = LocalContext.current
                 var taps by remember { mutableStateOf(0) }
                 Text(
-                    "앱 버전 ${com.eunho.tagohub.BuildConfig.VERSION_NAME}" + if (com.eunho.tagohub.core.DevMode.on) " · 개발자 모드" else "",
+                    "앱 버전 " + com.eunho.tagohub.BuildConfig.VERSION_NAME + if (com.eunho.tagohub.core.DevMode.on) " · 개발자 모드" else "",
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).clickable {
+                    modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp).clickable {
                         taps += 1
                         if (taps >= 7) {
                             taps = 0
@@ -239,51 +241,22 @@ fun MorePage(
     }
 }
 
-@Composable
-private fun SettingsLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
-    Row(Modifier.padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (icon != null) {
-            androidx.compose.material3.Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-/** 자주 바꾸는 켜기/끄기만 맨 위에 모은 카드: 안내 음성 · 단속 안내 · 보호구역 안내 */
+/** 자주 바꾸는 켜기/끄기: 안내 음성 · 단속 안내 · 보호구역 안내 */
 @Composable
 private fun QuickToggles() {
     val context = LocalContext.current
     val voiceOn by com.eunho.tagohub.guidance.DriveGuidance.voiceOn.collectAsStateWithLifecycle()
     val groups by com.eunho.tagohub.guidance.DriveGuidance.zoneGroups.collectAsStateWithLifecycle()
-    SettingsCard {
-        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("안내 음성", Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            com.eunho.tagohub.ui.common.ClearSwitch(voiceOn, { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = it })
-        }
-        QUICK_ZONES.forEach { g ->
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(g.label, Modifier.weight(1f).padding(end = 10.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                com.eunho.tagohub.ui.common.ClearSwitch(g in groups, { com.eunho.tagohub.guidance.DriveGuidance.setZoneGroup(context, g, it) })
-            }
-        }
+    com.eunho.tagohub.ui.common.SettingsToggleRow("안내 음성", voiceOn, { com.eunho.tagohub.guidance.DriveGuidance.voiceOn.value = it })
+    QUICK_ZONES.forEach { g ->
+        com.eunho.tagohub.ui.common.SettingsDivider()
+        com.eunho.tagohub.ui.common.SettingsToggleRow(g.label, g in groups, { com.eunho.tagohub.guidance.DriveGuidance.setZoneGroup(context, g, it) })
     }
 }
 
 private val QUICK_ZONES = listOf(com.eunho.tagohub.data.ZoneGroup.Camera, com.eunho.tagohub.data.ZoneGroup.Protect)
 
-@Composable
-private fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth(),
-    ) { Column(content = content) }
-}
-
-/** 길안내 설정: 안내 음성 켜고 끄기, 음성 크기, 안내받을 항목 (자주 쓰는 4개 먼저, 나머지는 펼쳐서) */
+/** 길안내 설정: 음성 크기, 안내받을 항목 (자주 쓰는 4개 먼저, 나머지는 펼쳐서) */
 @Composable
 private fun GuidanceSettings() {
     val context = LocalContext.current
@@ -293,29 +266,24 @@ private fun GuidanceSettings() {
     var more by remember { mutableStateOf(false) }
     val main = listOf(com.eunho.tagohub.data.ZoneGroup.Parking, com.eunho.tagohub.data.ZoneGroup.Bump)
     val rest = com.eunho.tagohub.data.ZoneGroup.entries - main.toSet() - QUICK_ZONES.toSet()
-    SettingsCard {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text("음성 크기", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            androidx.compose.material3.Slider(
-                value = volume,
-                onValueChange = { com.eunho.tagohub.guidance.DriveGuidance.voiceVolume.value = it },
-                enabled = voiceOn,
-            )
-        }
-        (main + if (more) rest else emptyList()).forEach { g ->
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(g.label, Modifier.weight(1f).padding(end = 10.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                com.eunho.tagohub.ui.common.ClearSwitch(g in groups, { com.eunho.tagohub.guidance.DriveGuidance.setZoneGroup(context, g, it) })
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text(
-            if (more) "접기" else "그 밖의 안내 항목 ${rest.size}개 보기",
-            Modifier.fillMaxWidth().clickable { more = !more }.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 14.dp),
-            fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Text("음성 크기", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        androidx.compose.material3.Slider(
+            value = volume,
+            onValueChange = { com.eunho.tagohub.guidance.DriveGuidance.voiceVolume.value = it },
+            enabled = voiceOn,
         )
     }
+    (main + if (more) rest else emptyList()).forEach { g ->
+        com.eunho.tagohub.ui.common.SettingsDivider()
+        com.eunho.tagohub.ui.common.SettingsToggleRow(g.label, g in groups, { com.eunho.tagohub.guidance.DriveGuidance.setZoneGroup(context, g, it) })
+    }
+    com.eunho.tagohub.ui.common.SettingsDivider()
+    Text(
+        if (more) "접기" else "그 밖의 안내 항목 " + rest.size + "개 보기",
+        Modifier.fillMaxWidth().clickable { more = !more }.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 14.dp),
+        fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 /** 구글 계정 연결: 연결하면 즐겨찾기·설정이 계정에 이어져서 앱을 지우거나 폰을 바꿔도 유지됨 */
@@ -404,17 +372,6 @@ private fun AccountRow() {
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("취소") } },
         )
-    }
-}
-
-@Composable
-private fun MoreRow(label: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = onClick).padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-        Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
