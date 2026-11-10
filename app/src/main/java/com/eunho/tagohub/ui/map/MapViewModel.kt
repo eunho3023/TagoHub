@@ -2096,10 +2096,102 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 노선 상세에서 고른 정류장으로 이동해 해당 노선을 우선 선택한 시간표를 연다. */
+   /** 노선 상세에서 고른 정류장으로 이동해 해당 노선을 우선 선택한 시간표를 연다. */
     fun openRouteStopTimetable(nodeId: String, routeId: String) {
         onStopClick(nodeId)
         openStopTimetable(preferredRouteId = routeId)
+    }
+
+    // ───────────────── 정류장 시간표 (웹과 같은 기준) ─────────────────
+
+    /** 시간표에서 고른 요일 (월~일). 웹처럼 7개 중 하나를 고른다 */
+    val boardDay = MutableStateFlow(java.time.LocalDate.now().dayOfWeek)
+
+    /** 기록을 먼저 쓰고 모자란 노선만 예상으로 채운 정류장 시간표 */
+    val stopBoard = MutableStateFlow<Load<List<BoardTime>>?>(null)
+    private var boardJob: Job? = null
+
+    /** 정류장 시간표를 만든다 (요일을 주면 그 요일 기준). 웹 stopTable 과 같은 순서 */
+    fun openStopBoard(day: java.time.DayOfWeek = boardDay.value) {
+        val d = selected.value ?: return
+        boardDay.value = day
+        boardJob?.cancel()
+        stopBoard.value = Load.Loading
+        boardJob = viewModelScope.launch {
+            val rows = d.rows.first { it !is Load.Loading }
+            if (rows !is Load.Ok) {
+                stopBoard.value = Load.Fail("정류장 노선 정보를 불러오지 못했어요.")
+                return@launch
+            }
+            stopBoard.value = tracked { loadBoard(d, day) }
+        }
+    }
+
+    fun setBoardDay(day: java.time.DayOfWeek) {
+        if (day != boardDay.value) openStopBoard(day)
+    }
+
+    fun closeStopBoard() {
+        boardJob?.cancel()
+        stopBoard.value = null
+    }
+
+    /**
+     * 노선마다 지난 운행 기록(이 폰 + 서버에 모인 기록)을 먼저 보고, 기록이 하나도 없을 때만
+     * 공식 배차시간표·첫차막차로 채운다. 기록이 있는 노선에 예상 시각을 섞지 않는 것도 웹과 같다.
+     */
+    private suspend fun loadBoard(d: BusDest.Stop, day: java.time.DayOfWeek): Load<List<BoardTime>> {
+        val rows = (d.rows.value as? Load.Ok)?.value.orEmpty()
+        if (rows.isEmpty()) return Load.Fail("이 정류장을 지나는 노선을 아직 불러오지 못했어요. 잠시 후 다시 눌러주세요.")
+        val routes = rows.distinctBy { it.routeId + "|" + it.cityCode }.take(StopBoard.MAX_ROUTES)
+        val nodes = (listOf(d.stop.nodeId) + d.others.value.map { it.nodeId }).distinct()
+        val dayKind = StopBoard.dayKind(day)
+        val pairs = coroutineScope {
+            routes.map { r ->
+                async {
+                    val recorded = recordedTimes(r, nodes, day)
+                    if (recorded.isNotEmpty()) recorded to emptyList<BoardTime>()
+                    else emptyList<BoardTime>() to plannedTimes(d, r, dayKind)
+                }
+            }.awaitAll()
+        }
+        val merged = StopBoard.merge(pairs.flatMap { it.first }, pairs.flatMap { it.second })
+        if (merged.isEmpty()) return Load.Fail("이 요일은 기록도 배차 정보도 없어요.")
+        return Load.Ok(merged)
+    }
+
+    /** 노선 하나의 지난 운행 기록 → 고른 요일 시각 (여러 날 같은 무렵에 온 것만) */
+    private suspend fun recordedTimes(
+        r: com.eunho.tagohub.ui.bus.StopRouteRow,
+        nodes: List<String>,
+        day: java.time.DayOfWeek,
+    ): List<BoardTime> {
+        for (node in nodes) {
+            val hits = runCatching { com.eunho.tagohub.data.ObservedSchedule.hits(r.routeId, node) }.getOrDefault(emptyList())
+            if (hits.isEmpty()) continue
+            val slots = com.eunho.tagohub.data.ArrivalLog.table(hits, node, day).slots.filter { it.days >= StopBoard.MIN_DAYS }
+            if (slots.isNotEmpty()) {
+                return slots.map {
+                    BoardTime(it.expected, r.routeId, r.routeNo, r.routeType, BoardTime.Source.Recorded, it.earliest, it.latest, it.days)
+                }
+            }
+        }
+        return emptyList()
+    }
+
+    /** 기록이 없는 노선: 공식 배차표가 있으면 그것, 없으면 첫차·막차·배차간격 + 이 정류장까지 소요시간 */
+    private suspend fun plannedTimes(
+        d: BusDest.Stop,
+        r: com.eunho.tagohub.ui.bus.StopRouteRow,
+        dayKind: DayKind,
+    ): List<BoardTime> {
+        val item = RouteTimes(
+            r.routeId, r.routeNo, r.routeType, emptyList(), r.startName, r.endName,
+            loaded = false, estimated = true, cityCode = r.cityCode ?: d.stop.cityCode,
+        )
+        val t = runCatching { estimateTimes(d, item, dayKind) }.getOrNull() ?: return emptyList()
+        val source = if (t.estimated) BoardTime.Source.Planned else BoardTime.Source.Official
+        return t.minutes.map { BoardTime(it, t.routeId, t.routeNo, t.routeType, source) }
     }
 
     fun closeStopTimetable() {

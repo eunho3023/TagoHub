@@ -1292,7 +1292,8 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
         Box(Modifier.weight(1f)) {
             val tt = timetable
             if (tt != null) {
-                StopTimetable(vm, tt, d.stop.nodeId)
+                // 웹과 같은 기준(지난 운행 기록 우선 + 모자란 노선만 예상)을 기본으로 보여 준다
+                StopBoardPanel(vm, tt, d.stop.nodeId)
             } else {
                 val companions by d.others.collectAsStateWithLifecycle()
                 com.eunho.tagohub.ui.bus.BoardBellHost(d.stop, companions) { bellOn, onBell ->
@@ -1537,6 +1538,138 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 정류장 시간표 — 웹(bus.js stopTable)과 같은 기준.
+ * 지난 운행 기록(최근 6주, 같은 요일에 여러 날 같은 무렵)을 먼저 쓰고, 기록이 하나도 없는 노선만
+ * 공식 배차표·첫차막차로 채워 `~` 로 표시한다. 노선별 첫차·막차 표는 「노선별 자세히」에 그대로 남긴다.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun StopBoardPanel(vm: MapViewModel, timetable: Load<List<RouteTimes>>, nodeId: String) {
+    val day by vm.boardDay.collectAsStateWithLifecycle()
+    val board by vm.stopBoard.collectAsStateWithLifecycle()
+    var detail by rememberSaveable { mutableStateOf(false) }
+    // 이 정류장을 열 때 한 번 만들고, 요일을 바꾸면 그 요일로 다시 만든다
+    LaunchedEffect(nodeId) { vm.openStopBoard() }
+    Column(Modifier.fillMaxSize()) {
+        if (detail) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { detail = false }) { Text("← 한눈에 보기") }
+                Text("노선별 상세", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+            Box(Modifier.weight(1f)) { StopTimetable(vm, timetable, nodeId) }
+            return@Column
+        }
+        Text(
+            "지난 운행 기록(최근 6주)을 먼저 쓰고, 기록이 모자란 노선만 공식 배차표·첫차막차로 채웁니다. ~ 는 예상 시각이에요.",
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(java.time.DayOfWeek.entries) { k ->
+                com.eunho.tagohub.ui.common.PillChip(
+                    k.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.KOREAN),
+                    k == day,
+                    { vm.setBoardDay(k) },
+                )
+            }
+        }
+        when (val b = board) {
+            null -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                Text("시간표를 만드는 중…", style = MaterialTheme.typography.bodyMedium)
+            }
+            is Load.Idle, is Load.Loading -> LinearProgressIndicator(
+                Modifier.fillMaxWidth().padding(16.dp),
+                color = ModeColor.Bus,
+            )
+            is Load.Fail -> com.eunho.tagohub.ui.common.MessageBox(b.message, isError = true, onRetry = { vm.openStopBoard() })
+            is Load.Ok -> StopBoardTable(b.value, day, Modifier.weight(1f))
+        }
+        TextButton(onClick = { detail = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text("노선별 자세히 (첫차·막차 표)")
+        }
+    }
+}
+
+/** 기록·예상을 시간대별로 묶어 한 줄에 늘어놓는다 (웹 stopTable 의 시간대 묶음과 같음) */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun StopBoardTable(entries: List<BoardTime>, day: java.time.DayOfWeek, modifier: Modifier = Modifier) {
+    val groups = remember(entries) { StopBoard.byHour(entries) }
+    val today = day == java.time.LocalDate.now().dayOfWeek
+    val now by produceState(java.time.LocalTime.now().let { it.hour * 60 + it.minute }, day) {
+        while (true) {
+            val t = java.time.LocalTime.now()
+            value = t.hour * 60 + t.minute
+            delay(30_000L)
+        }
+    }
+    val recorded = entries.count { !it.estimated }
+    Column(modifier) {
+        Text(
+            "기록 ${recorded}회 · 예상 ${entries.size - recorded}회",
+            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(groups) { group ->
+                val hour = group.first
+                val list = group.second
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        "%02d시".format(hour),
+                        Modifier.width(48.dp),
+                        style = MaterialTheme.typography.titleSmall.merge(Tnum),
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    androidx.compose.foundation.layout.FlowRow(
+                        Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        list.forEach { e ->
+                            val color = busRouteColor(e.routeType)
+                            val past = today && e.minute < now
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    (if (e.estimated) "~" else "") + StopBoard.clock(e.minute),
+                                    style = MaterialTheme.typography.bodyMedium.merge(Tnum),
+                                    fontWeight = if (e.estimated) FontWeight.Medium else FontWeight.ExtraBold,
+                                    color = if (past) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Surface(shape = RoundedCornerShape(6.dp), color = color.copy(alpha = 0.15f)) {
+                                    Text(
+                                        e.routeNo,
+                                        Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = color,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
