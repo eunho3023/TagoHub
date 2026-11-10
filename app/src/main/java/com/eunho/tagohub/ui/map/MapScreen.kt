@@ -982,6 +982,69 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Work) }) { Text("회사로 저장") }
             }
+            // 가까운 정류장·역: 주소만 있는 장소를 눌렀을 때도 여기서 바로 정류장·역으로 넘어갈 수 있게
+            val transit by vm.nearbyTransit.collectAsStateWithLifecycle()
+            transit?.let { t ->
+                if (t.stops.isNotEmpty() || t.stations.isNotEmpty()) {
+                    Text(
+                        "가까운 정류장·역",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, end = 10.dp),
+                    )
+                    val distText = { d: Double -> if (d >= 1000) "%.1fkm".format(d / 1000) else "${d.toInt()}m" }
+                    t.stations.forEach { (g, d) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.openNearbyStation(g) }.padding(top = 6.dp, end = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.DirectionsSubway, contentDescription = null, tint = ModeColor.Subway, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    if (g.name.endsWith("역")) g.name else "${g.name}역",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (g.displayLines.isNotEmpty()) Text(
+                                    g.displayLines.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    t.stops.forEach { (s, d) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.openNearbyStop(s.nodeId) }.padding(top = 6.dp, end = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = ModeColor.Bus, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    s.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    listOfNotNull(s.nodeNo?.let { "정류장 $it" }, "도보 ${(d / 67.0).toInt() + 1}분").joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
             // 주변 찾기 (카카오 카테고리로 장소 검색)
             androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->

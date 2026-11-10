@@ -861,6 +861,41 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 장소 카드의 '주변 찾기' 결과 (카카오 카테고리 검색) */
     val nearby = MutableStateFlow<Pair<String, List<com.eunho.tagohub.data.Place2>>?>(null)
+
+    /**
+     * 장소 카드에 함께 보여 줄 "가까운 정류장·역".
+     * 정류장·역이 아닌 곳(주소만 있는 장소)을 눌렀을 때, 여기서 바로 정류장·역으로 넘어갈 수 있게 한다.
+     */
+    data class NearbyTransit(
+        val stops: List<Pair<BusStop, Double>> = emptyList(),
+        val stations: List<Pair<com.eunho.tagohub.data.StationGroup, Double>> = emptyList(),
+    )
+    val nearbyTransit = MutableStateFlow<NearbyTransit?>(null)
+    private var nearbyTransitJob: Job? = null
+
+    /** 고른 자리 주변의 정류장(400m, 5곳)·역(800m, 3곳)을 채운다 */
+    private fun loadNearbyTransit(lat: Double, lng: Double) {
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
+        nearbyTransitJob = viewModelScope.launch {
+            val stops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 400.0, 5) } }.orEmpty()
+            val stations = index?.nearbyGroups(lat, lng, 800.0, 3).orEmpty()
+            nearbyTransit.value = NearbyTransit(stops, stations)
+        }
+    }
+
+    /** 장소 카드의 "가까운 정류장"을 누름 → 그 정류장 패널 */
+    fun openNearbyStop(nodeId: String) {
+        val s = nearbyTransit.value?.stops?.firstOrNull { it.first.nodeId == nodeId }?.first ?: return
+        closePick()
+        pickStop(s)
+    }
+
+    /** 장소 카드의 "가까운 역"을 누름 → 그 역 상세 */
+    fun openNearbyStation(g: com.eunho.tagohub.data.StationGroup) {
+        closePick()
+        focusStation(g)
+    }
     fun findNearby(code: String, label: String) {
         val p = picked.value ?: return
         viewModelScope.launch { nearby.value = label to com.eunho.tagohub.data.KakaoExtra.category(code, p.lat, p.lng) }
@@ -900,6 +935,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         canvas?.setPin(p.lat, p.lng)
         canvas?.moveTo(p.lat, p.lng, null)
         nearby.value = null
+        loadNearbyTransit(p.lat, p.lng)
     }
     val picked = MutableStateFlow<PickedPlace?>(null)
 
@@ -971,6 +1007,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             clearForPlace()
             picked.value = first
             nearby.value = null
+            loadNearbyTransit(lat, lng)
             canvas?.setPin(lat, lng)
             updatePickedAddress(first)
         }
@@ -986,6 +1023,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         clearForPlace()
         picked.value = p
         nearby.value = null
+        loadNearbyTransit(lat, lng)
         canvas?.setPin(lat, lng)
         updatePickedAddress(p)
     }
@@ -1083,6 +1121,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         nearby.value = null
         picked.value = null
         canvas?.setPin(null, null)
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
     }
 
     /** 정류장 패널의 출발지·도착지 버튼 → 길찾기 */
@@ -1850,6 +1890,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pickStop(s: BusStop, at: Pair<Double, Double>? = null) {
         if (canvas == null && s.lat != null && s.lng != null) pendingFocus = s.lat!! to s.lng!!
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
         clearBusSearch()
         closeStopTimetable()
         stops[s.nodeId] = s
@@ -1914,6 +1956,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun focusStation(g: StationGroup, at: Pair<Double, Double>? = null, line: String? = null) {
         if (canvas == null) pendingFocus = g.lat to g.lng
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
         tappedPin = at
         if (at == null) canvas?.focus(g.lat, g.lng)
         openStation(g, line)

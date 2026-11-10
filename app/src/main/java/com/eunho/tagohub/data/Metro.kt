@@ -379,6 +379,15 @@ class StationIndex(rawStations: List<MetroStation>) {
             .minByOrNull { (_, distance) -> distance }
             ?.first
 
+    /** 장소 카드의 "가까운 역": [maxDistanceM] 안의 역 [n]곳 (거리순) */
+    fun nearbyGroups(lat: Double, lng: Double, maxDistanceM: Double = 800.0, n: Int = 3): List<Pair<StationGroup, Double>> =
+        groups.asSequence()
+            .map { group -> group to group.distanceTo(lat, lng) }
+            .filter { (_, distance) -> distance <= maxDistanceM }
+            .sortedBy { (_, distance) -> distance }
+            .take(n)
+            .toList()
+
     private fun buildGroups(): List<StationGroup> {
         val buckets = ArrayList<MutableList<MetroStation>>()
         stations.groupBy { it.norm }.values.forEach { same ->
