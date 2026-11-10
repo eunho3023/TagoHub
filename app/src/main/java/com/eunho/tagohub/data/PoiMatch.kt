@@ -32,7 +32,13 @@ object PoiMatch {
         return if (first.endsWith("역") && LINE_OR_EXIT.matches(t.substring(i).trim())) first else t
     }
 
+    /**
+     * 정류장 이름은 "전주역.전주역사거리"처럼 점 뒤에 사거리·건물 이름을 덧붙이기도 한다.
+     * 점 뒤를 붙여 버리면 "전주역" POI 와 같다고 보지 못해 정류장 대신 주소 카드가 떴으므로,
+     * 첫 점 앞까지만 비교한다.
+     */
     fun norm(s: String): String = stripLineSuffix(s)
+        .substringBefore('.')
         .replace(Regex("\\(.*?\\)"), "")
         .replace(Regex("\\d+호선"), "")
         .replace(Regex("[\\s.·,\\-_]"), "")

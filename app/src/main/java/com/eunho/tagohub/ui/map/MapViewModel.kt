@@ -908,21 +908,31 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val selectingEndpoint = panel.value == MapPanel.Plan && trip.editing.value != null
             // 1) 버스 정류장: POI 와 내장 정류소 좌표가 어긋난 경우도 매칭
+            val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
+            // 이름이 기차역·터미널·공항이면 그 시설로 먼저 본다. 같은 이름의 버스 정류장이 더 가까워도
+            // ("전주역" 정류장이 "전주역" 역사보다 앞에 있어 KTX 역을 눌렀는데 정류장이 열리던 문제)
+            val poiKind = com.eunho.tagohub.ui.ModeJump.kindOf(name)
+            // 기차역은 이름만으로 단정하지 않고, 전국 역 목록에 실제 역이 근처에 있는지 확인한다
+            val rail = if (poiKind == com.eunho.tagohub.ui.ModeJump.Kind.Train) {
+                withContext(Dispatchers.IO) { com.eunho.tagohub.data.TrainStationGeo.matchNear(name, lat, lng, 400.0) }
+            } else null
+            val facility = poiKind != null && (poiKind != com.eunho.tagohub.ui.ModeJump.Kind.Train || rail != null)
             val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 40) } }.orEmpty().map { it.first }
             val cachedStops = stops.values.filter { stop ->
                 stop.lat != null && stop.lng != null &&
                     com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat!!, stop.lng!!) <= 300.0
             }
             val near = (dbStops + cachedStops).distinctBy { it.nodeId }
-            val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
+            // 정류장 POI 는 도로 중심에 찍혀 30~50m 벌어지므로 조금 넓게(60m), 그 밖은 40m
+            val nearM = if (busPoi) 60.0 else 40.0
+            val stop = if (facility) null else com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, nearM)
             // 이름 없이 역 아이콘만 눌렀을 때도(이름이 비면 이름 매칭이 안 됨) 바로 앞(80m)에 있는 역이면 그 역
             val nameSaysBus = name.contains("정류") || name.contains("버스")
-            val station = index?.matchPoi(name, lat, lng)
+            val station = if (facility) null else index?.matchPoi(name, lat, lng)
                 ?: if (nameSaysBus) null else index?.nearestGroup(lat, lng, if (name.isBlank()) 80.0 else 40.0)
             val stopDistance = stop?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat ?: lat, it.lng ?: lng) }
             // 환승역은 중심점이 아니라 노선별 역 중 가까운 곳으로 잼 (중심점으로 재면 실제 역 앞에서도 근처 정류장이 이겼음)
             val stationDistance = station?.distanceTo(lat, lng)
-            val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
             // 이름이 지하철역("강남역", "강남역 2호선")이면 같은 이름의 정류장이 더 가까워도 역을 연다
             val useStop = stop != null && (
                 station == null || busPoi ||
@@ -949,8 +959,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
-            // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게
-            val title = name.ifBlank { "선택한 장소" }
+            // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게 (역 이름은 역 목록의 정식 이름을 씀)
+            val title = (rail?.name ?: name).ifBlank { "선택한 장소" }
             if (selectingEndpoint) {
                 trip.pick(PlanPoint(title, null, lat, lng))
                 return@launch
