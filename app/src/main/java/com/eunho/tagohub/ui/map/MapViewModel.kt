@@ -867,7 +867,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      * 정류장·역이 아닌 곳(주소만 있는 장소)을 눌렀을 때, 여기서 바로 정류장·역으로 넘어갈 수 있게 한다.
      */
     data class NearbyTransit(
-        val stops: List<Pair<BusStop, Double>> = emptyList(),
+        // 같은 자리에 타 시·군 정류장이 함께 서면 한 줄로 묶는다 (StopMerge)
+        val stops: List<Pair<com.eunho.tagohub.data.MergedStop, Double>> = emptyList(),
         val stations: List<Pair<com.eunho.tagohub.data.StationGroup, Double>> = emptyList(),
     )
     val nearbyTransit = MutableStateFlow<NearbyTransit?>(null)
@@ -878,7 +879,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         nearbyTransitJob?.cancel()
         nearbyTransit.value = null
         nearbyTransitJob = viewModelScope.launch {
-            val stops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 400.0, 5) } }.orEmpty()
+            // 후보를 넉넉히 받아 시·군이 겹치는 정류장을 하나로 합친 뒤 가까운 5곳만
+            val raw = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 400.0, 16) } }.orEmpty()
+            val stops = withContext(Dispatchers.Default) {
+                com.eunho.tagohub.data.StopMerge.merge(raw.map { it.first })
+                    .map { m -> m to com.eunho.tagohub.core.Geo.meters(lat, lng, m.main.lat ?: lat, m.main.lng ?: lng) }
+                    .sortedBy { it.second }
+                    .take(5)
+            }
             val stations = index?.nearbyGroups(lat, lng, 800.0, 3).orEmpty()
             nearbyTransit.value = NearbyTransit(stops, stations)
         }
@@ -886,7 +894,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 장소 카드의 "가까운 정류장"을 누름 → 그 정류장 패널 */
     fun openNearbyStop(nodeId: String) {
-        val s = nearbyTransit.value?.stops?.firstOrNull { it.first.nodeId == nodeId }?.first ?: return
+        val s = nearbyTransit.value?.stops?.firstOrNull { it.first.main.nodeId == nodeId }?.first?.main ?: return
         closePick()
         pickStop(s)
     }

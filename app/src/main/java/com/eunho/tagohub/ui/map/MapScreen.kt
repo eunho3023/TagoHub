@@ -985,13 +985,21 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
             // 가까운 정류장·역: 주소만 있는 장소를 눌렀을 때도 여기서 바로 정류장·역으로 넘어갈 수 있게
             val transit by vm.nearbyTransit.collectAsStateWithLifecycle()
             transit?.let { t ->
-                if (t.stops.isNotEmpty() || t.stations.isNotEmpty()) {
+                Text(
+                    "가까운 정류장·역",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp, end = 10.dp),
+                )
+                if (t.stops.isEmpty() && t.stations.isEmpty()) {
                     Text(
-                        "가까운 정류장·역",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 8.dp, end = 10.dp),
+                        "반경 800m 안에 정류장·역이 없어요",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, end = 10.dp),
                     )
+                }
+                if (t.stops.isNotEmpty() || t.stations.isNotEmpty()) {
                     val distText = { d: Double -> if (d >= 1000) "%.1fkm".format(d / 1000) else "${d.toInt()}m" }
                     t.stations.forEach { (g, d) ->
                         Row(
@@ -1019,7 +1027,8 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                             Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    t.stops.forEach { (s, d) ->
+                    t.stops.forEach { (m, d) ->
+                        val s = m.main
                         Row(
                             Modifier.fillMaxWidth().clickable { vm.openNearbyStop(s.nodeId) }.padding(top = 6.dp, end = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1035,9 +1044,16 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    listOfNotNull(s.nodeNo?.let { "정류장 $it" }, "도보 ${(d / 67.0).toInt() + 1}분").joinToString(" · "),
+                                    // 타 시·군이 같이 서는 정류장은 번호를 모두 모아 한 줄로 (예: "정류장 30690 · 3110313")
+                                    listOfNotNull(
+                                        m.numbers.ifBlank { null }?.let { "정류장 $it" },
+                                        "도보 ${(d / 67.0).toInt() + 1}분",
+                                        m.others.takeIf { it.isNotEmpty() }?.let { "타 시·군 ${it.size}곳" },
+                                    ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
