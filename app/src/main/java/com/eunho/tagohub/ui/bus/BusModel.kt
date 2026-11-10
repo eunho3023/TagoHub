@@ -380,15 +380,23 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
     // 예전에는 첫 화면을 누른 정류장의 시·군 노선만으로 그리고, 타 시·군은 findCompanions(네트워크) 뒤에야
     // 붙였기 때문에 진안을 누르면 전주가, 전주를 누르면 진안이 뒤늦게 나타났다.
     if (d.companions == null) {
-        val dbEarly = StopDb.peek()
-        val la = d.stop.lat
-        val ln = d.stop.lng
-        if (dbEarly != null && la != null && ln != null) {
-            val near = withContext(Dispatchers.IO) { dbEarly.near(la, ln, 60.0, 30) }.map { it.first }
-            val quickComps = com.eunho.tagohub.data.StopMerge.companions(d.stop, near)
-            if (quickComps.isNotEmpty()) {
-                d.companions = quickComps
-                d.others.value = quickComps
+        // 1) 미리 만들어 둔 표(assets/stop_companions.tsv)에서 바로 — 조회·네트워크 없음
+        val pre = com.eunho.tagohub.data.StopCompanions.of(d.stop.nodeId)
+        if (pre.isNotEmpty()) {
+            d.companions = pre
+            d.others.value = pre
+        } else {
+            // 2) 표에 없는 정류장(새로 생긴 곳)은 내장 좌표 DB 로 계산
+            val dbEarly = StopDb.peek()
+            val la = d.stop.lat
+            val ln = d.stop.lng
+            if (dbEarly != null && la != null && ln != null) {
+                val near = withContext(Dispatchers.IO) { dbEarly.near(la, ln, 60.0, 30) }.map { it.first }
+                val quickComps = com.eunho.tagohub.data.StopMerge.companions(d.stop, near)
+                if (quickComps.isNotEmpty()) {
+                    d.companions = quickComps
+                    d.others.value = quickComps
+                }
             }
         }
     }
