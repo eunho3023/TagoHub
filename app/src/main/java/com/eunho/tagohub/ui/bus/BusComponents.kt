@@ -148,12 +148,17 @@ internal fun StopRouteItem(
     dirLabel: String? = null,
     bellOn: Boolean = false,
     onBell: (() -> Unit)? = null,
+    /** 짙은 남색 실시간 보드 위에 놓을 때 true: 판 전용 글자색·강조색을 쓴다 */
+    onBoard: Boolean = false,
     onClick: () -> Unit,
 ) {
     // 정류장을 이미 지나간 버스는 바로 지움 (다음 새로고침을 기다리지 않고)
     val row = row0.copy(arrivals = row0.arrivals.filterNot { com.eunho.tagohub.data.PassedBus.passed(it, elapsedSec) })
-    val variant = MaterialTheme.colorScheme.onSurfaceVariant
-    val soon = Color(0xFFD7262E)
+    // 보드(어두운 판) 위에서는 판 전용 색, 흰 카드에서는 테마 색을 그대로 쓴다
+    val variant = if (onBoard) BoardColor.Muted else MaterialTheme.colorScheme.onSurfaceVariant
+    // 곧 도착 강조색: 보드에서는 라임, 흰 카드에서는 테마 오류색 (라이트 진한 빨강 / 다크 밝은 빨강)
+    val soon = if (onBoard) BoardColor.Live else MaterialTheme.colorScheme.error
+    val strong = if (onBoard) BoardColor.On else MaterialTheme.colorScheme.onSurface
     Row(
         Modifier
             .fillMaxWidth()
@@ -166,7 +171,7 @@ internal fun StopRouteItem(
             // 노선 번호: 노선 색 칩에 흰 글씨 (종류는 색으로)
             Text(
                 row.routeNo,
-                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
+                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
                 color = Color.White, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
@@ -193,7 +198,7 @@ internal fun StopRouteItem(
                         Text(
                             parts.first(),
                             style = MaterialTheme.typography.titleLarge.merge(Tnum),
-                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) MaterialTheme.colorScheme.onSurface else soon,
+                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) strong else soon,
                             fontWeight = FontWeight.Black,
                             textAlign = androidx.compose.ui.text.style.TextAlign.End,
                         )
@@ -215,7 +220,7 @@ internal fun StopRouteItem(
                 Icon(
                     if (bellOn) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsNone,
                     contentDescription = if (bellOn) "승차 알림 끄기" else "승차 알림",
-                    tint = if (bellOn) ModeColor.Bus else variant,
+                    tint = if (bellOn) (if (onBoard) BoardColor.Live else ModeColor.Bus) else variant,
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -232,8 +237,8 @@ internal fun RouteInfoCard(r: BusRoute) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             if (r.startName != null || r.endName != null) {

@@ -111,11 +111,11 @@ private fun PageTitleHeader(title: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Text(
             title,
-            Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            fontSize = 28.sp,
-            lineHeight = 36.sp,
+            Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+            fontSize = 26.sp,
+            lineHeight = 34.sp,
             fontWeight = FontWeight.Black,
-            letterSpacing = (-0.8).sp,
+            letterSpacing = (-0.7).sp,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,

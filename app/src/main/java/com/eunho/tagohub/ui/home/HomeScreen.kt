@@ -92,33 +92,37 @@ enum class AppTab(val label: String, val icon: ImageVector) {
 
 @Composable
 fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier = Modifier) {
-    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shadowElevation = 12.dp) {
         Column {
-            Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            Row(Modifier.fillMaxWidth().height(72.dp)) {
+            Row(Modifier.fillMaxWidth().height(70.dp)) {
                 AppTab.entries.forEach { tab ->
                     val on = tab == active
-                    val tint = if (on) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
+                    val tint = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                     Column(
                         Modifier.weight(1f).fillMaxSize().clickable(role = Role.Tab) { onSelect(tab) },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        // 고른 탭은 아이콘 뒤에 연한 파란 알약
+                        // 고른 탭은 아이콘 뒤에 잉크색 알약 (다크에서는 밝은 알약)
                         Box(
                             Modifier
-                                .size(width = 52.dp, height = 28.dp)
-                                .background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent, RoundedCornerShape(14.dp)),
+                                .size(width = 54.dp, height = 30.dp)
+                                .background(if (on) MaterialTheme.colorScheme.onSurface else Color.Transparent, RoundedCornerShape(15.dp)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(tab.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                            Icon(
+                                tab.icon,
+                                contentDescription = null,
+                                tint = if (on) MaterialTheme.colorScheme.surface else tint,
+                                modifier = Modifier.size(21.dp),
+                            )
                         }
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(3.dp))
                         // 글자 크기 설정이 커져도 탭 이름이 잘리지 않게 최대 두 줄로 표시
                         Text(
                             tab.label,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            fontWeight = if (on) FontWeight.Black else FontWeight.SemiBold,
                             color = tint,
                             maxLines = 2,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -227,7 +231,7 @@ fun HomeScreen(
                     shadowElevation = 14.dp,
                     modifier = Modifier.fillMaxWidth().heightIn(
                         max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.74f
-                        else (this@BoxWithConstraints.maxHeight * 0.54f).coerceAtLeast(248.dp),
+                        else (this@BoxWithConstraints.maxHeight * 0.58f).coerceAtLeast(268.dp),
                     ),
                 ) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -238,9 +242,9 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("빠른 이동", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                                Text("지금 오는 버스", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
                                 Text(
-                                    if (sheetExpanded) "주변 정류장 · 즐겨찾기 · 최근 목적지" else "지금 오는 버스와 자주 가는 곳",
+                                    if (sheetExpanded) "내 주변 정류장 · 즐겨찾기 · 최근 목적지" else "내 주변 정류장의 실시간 도착",
                                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -250,6 +254,12 @@ fun HomeScreen(
                             Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(sheetScroll)
                                 .padding(horizontal = 16.dp).padding(bottom = 16.dp),
                         ) {
+                            // 시트를 열면 가장 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
+                            LiveArrivalsCard(
+                                onStop = search.onStop,
+                                onShowMap = { onOpenMap(MapMode.Bus) },
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
                             ShortcutTiles(
                                 vm, onGoTo, onOpenTab,
                                 onFavorites = {
@@ -260,12 +270,6 @@ fun HomeScreen(
                                     sheetExpanded = true
                                     sheetScope.launch { delay(100); sheetScroll.animateScrollTo(recentY) }
                                 },
-                                modifier = Modifier.padding(top = 2.dp),
-                            )
-                            // 지도 다음으로 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
-                            LiveArrivalsCard(
-                                onStop = search.onStop,
-                                onShowMap = { onOpenMap(MapMode.Bus) },
                                 modifier = Modifier.padding(top = 12.dp),
                             )
                             if (sheetExpanded) {
@@ -365,26 +369,27 @@ private fun ModeTile(t: Tile, dark: Boolean, modifier: Modifier = Modifier) {
     // 한 줄에 세 칸: 흰 카드, 위에 수단 색 원형 아이콘, 아래에 이름 (긴 이름도 줄바꿈 없이 한 줄에 들어가는 크기)
     Surface(
         onClick = t.onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier.heightIn(min = 76.dp),
+        shadowElevation = 1.dp,
+        modifier = modifier.heightIn(min = 78.dp),
     ) {
         Column(
-            Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+            Modifier.padding(horizontal = 4.dp, vertical = 11.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
         ) {
             Box(
-                Modifier.size(34.dp).background(if (dark) t.dark else t.light, androidx.compose.foundation.shape.CircleShape),
+                Modifier.size(38.dp).background(if (dark) t.dark else t.light, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(t.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
             }
 com.eunho.tagohub.ui.common.FitText(
                 t.label,
-                maxSizeSp = 14f, minSizeSp = 9f,
-                fontWeight = FontWeight.Bold,
+                maxSizeSp = 13.5f, minSizeSp = 9f,
+                fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
@@ -407,7 +412,8 @@ private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpen
                 Surface(
                     onClick = click,
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
