@@ -1314,11 +1314,41 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                                 BoardLink("시간표", { vm.openStopTimetable() })
                             },
                         ) {
+                            // 실시간이 있는 노선을 먼저, 없으면 아래 "예상 시간표" 구역에 (사진의 정류장 목록과 같은 구성)
+                            val visible = hideDuplicateNumbers(list)
+                            val live = visible.filter { r -> r.arrivals.any { !it.estimated } }
+                            val estimated = visible.filterNot { r -> r.arrivals.any { !it.estimated } }
                             LazyColumn(Modifier.weight(1f)) {
-                                items(hideDuplicateNumbers(list)) { row ->
+                                items(live) { row ->
                                     // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
-                                    StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }, onBoard = true) { vm.showRoute(row) }
+                                    StopRouteItem(
+                                        row, elapsedSec, direction,
+                                        bellOn = bellOn(row), onBell = { onBell(row) },
+                                        onPast = { vm.openPastTimetable(row.routeId) },
+                                        onBoard = true,
+                                    ) { vm.showRoute(row) }
                                     HorizontalDivider(color = BoardColor.Line)
+                                }
+                                if (estimated.isNotEmpty()) {
+                                    item {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text("예상 시간표", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = BoardColor.On)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("과거 운행정보 기반", style = MaterialTheme.typography.labelMedium, color = BoardColor.Muted)
+                                        }
+                                    }
+                                    items(estimated) { row ->
+                                        StopRouteItem(
+                                            row, elapsedSec, direction,
+                                            bellOn = bellOn(row), onBell = { onBell(row) },
+                                            onPast = { vm.openPastTimetable(row.routeId) },
+                                            onBoard = true,
+                                        ) { vm.showRoute(row) }
+                                        HorizontalDivider(color = BoardColor.Line)
+                                    }
                                 }
                             }
                         }

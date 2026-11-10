@@ -148,6 +148,8 @@ internal fun StopRouteItem(
     dirLabel: String? = null,
     bellOn: Boolean = false,
     onBell: (() -> Unit)? = null,
+    /** 이 노선의 과거 시간표 열기 (사진의 행별 "과거 시간표 ›" 링크). null 이면 안 보임 */
+    onPast: (() -> Unit)? = null,
     /** 짙은 남색 실시간 보드 위에 놓을 때 true: 판 전용 글자색·강조색을 쓴다 */
     onBoard: Boolean = false,
     onClick: () -> Unit,
@@ -183,6 +185,15 @@ internal fun StopRouteItem(
             val sub = listOfNotNull(row.region, dir ?: ends.ifEmpty { null }, a0?.atStop?.let { "현재 $it" })
                 .joinToString("   ").ifEmpty { null }
             if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant)
+            if (onPast != null) {
+                Text(
+                    "과거 시간표 ›",
+                    Modifier.clickable(onClick = onPast).padding(top = 2.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (onBoard) BoardColor.Live else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         // 오른쪽: 가장 빠른 버스의 남은 시간을 크게, 정류장 수·저상은 작게. 다음 버스는 그 아래 한 줄
