@@ -231,46 +231,30 @@ private fun LivePane(vm: CoachViewModel) {
 @Composable
 private fun ExpArrivalRow(a: ExpArrival) {
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .alpha(if (a.arrived) 0.45f else 1f),
-        verticalAlignment = Alignment.CenterVertically,
+    // 기차·항공과 같은 카드(common.RideCard). 고속버스만의 정보는 아래 한 줄에만 담는다
+    com.eunho.tagohub.ui.common.RideCard(
+        accent = ModeColor.Coach,
+        depText = a.depMinute?.let { TagoTime.clockText(it) } ?: "--:--",
+        arrText = a.arrPredict?.let { TagoTime.hm(it) } ?: "--:--",
+        depLabel = "출발",
+        arrLabel = if (a.arrived) "도착 완료" else "도착 예정",
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        badge = a.grade,
+        badgeColor = ModeColor.Coach,
+        code = a.corp,
+        dimmed = a.arrived,
+        headNote = if (a.arrived) null else a.remainMinutes?.let { Fmt.minutes(it) + " 후" } ?: a.remainText,
     ) {
-        Column(Modifier.width(72.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                a.depMinute?.let { TagoTime.clockText(it) } ?: "--:--",
-                style = MaterialTheme.typography.titleLarge.merge(Tnum),
-                fontWeight = FontWeight.Bold,
-            )
-            Text("출발", style = MaterialTheme.typography.labelSmall, color = variant)
-        }
-        Column(Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                a.grade?.let { Pill(it, ModeColor.Coach) }
-                a.corp?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            }
-            Text(
-                if (a.arrived) "도착 완료" else "현재 ${a.location ?: "위치 미상"}",
+                if (a.arrived) "도착 완료" else "현재 " + (a.location ?: "위치 미상"),
+                Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall,
                 color = variant,
             )
-        }
-        Column(horizontalAlignment = Alignment.End) {
             if (!a.arrived) {
-                AnimatedValueText(a.remainMinutes?.let { Fmt.minutes(it) + " 후" } ?: a.remainText, label = "coach-remaining-time") { value ->
-                    Text(
-                        value,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = ModeColor.Coach,
-                    )
-                }
-            }
-            a.arrPredict?.let {
-                AnimatedValueText(TagoTime.hm(it) + if (a.arrived) " 도착" else " 도착 예정", label = "coach-arrival-prediction") { value ->
-                    Text(value, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = variant)
+                a.arrPredict?.let {
+                    Text("도착 예정 " + TagoTime.hm(it), style = MaterialTheme.typography.bodySmall, color = variant)
                 }
             }
         }
