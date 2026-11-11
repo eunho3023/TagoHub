@@ -7,6 +7,7 @@ import com.eunho.tagohub.data.BusSeen
 import com.eunho.tagohub.data.Graph
 import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteSpeed
+import com.eunho.tagohub.data.RouteTravel
 import com.eunho.tagohub.data.TagoRepository
 import com.eunho.tagohub.data.TripPlanner
 import kotlinx.coroutines.coroutineScope
@@ -71,7 +72,8 @@ internal fun tripMinutes(line: TripPlanner.Line?, stops: List<com.eunho.tagohub.
  */
 internal fun timedAlong(routeId: String, stops: List<com.eunho.tagohub.data.RouteStop>, line: TripPlanner.Line?, nowMs: Long = System.currentTimeMillis()): (com.eunho.tagohub.data.BusLocation, Int) -> Double? = { b, i ->
     val next = stops.getOrNull(i + 1)
-    val travel = next?.let { TripPlanner.minutesBetween(line, stops[i].ord, it.ord) * RouteSpeed.factor(routeId) * 60.0 }
+    // 정류장 사이 실제 걸리는 시간: 앱이 모은 구간 실측이 있으면 그것, 없으면 거리 × 지금 도로 상황
+    val travel = next?.let { RouteTravel.travelSec(routeId, stops[i].ord, it.ord) { a, c -> TripPlanner.minutesBetween(line, a, c) } }
     RouteLive.timedAlong(BusSeen.since(routeId, b.vehicleNo, b.ord), nowMs, travel)
 }
 
@@ -102,8 +104,10 @@ internal suspend fun positionArrivals(repo: TagoRepository, stop: BusStop, row: 
     val behind = RouteLive.allAway(target, pos.at, pos.left)
     return behind.filterIndexed { i, away -> away <= if (i == 0) MAX_ESTIMATE_STOPS else MAX_SECOND_STOPS }.take(2).map { away ->
         val seconds = if (away == 0) 0 else {
-            val usual = TripPlanner.minutesBetween(line, stops[target - away].ord, stops[target].ord)
-            Math.round(usual * RouteSpeed.factor(d.routeId) * 60).toInt()
+            val sec = RouteTravel.travelSec(d.routeId, stops[target - away].ord, stops[target].ord) { a, b ->
+                TripPlanner.minutesBetween(line, a, b)
+            }
+            Math.round(sec).toInt()
         }
         BusArrival(
             routeId = row.routeId, routeNo = row.routeNo, routeType = row.routeType,

@@ -44,6 +44,25 @@ class RouteGeom(val shape: List<LatLng>?, stops: List<RouteStop>) {
         ord?.let { o -> pts.firstOrNull { it.ord == o } }?.let { LatLng(it.lat!!, it.lng!!) }
 
     /**
+     * [fromOrd] 정류장 → [toOrd] 정류장 사이의 선 위 구간 (정류장 좌표로 시작·끝).
+     * 선형이 없거나 두 정류장을 앞뒤로 잇지 못하면 두 정류장을 잇는 직선.
+     * GPS 없는 버스가 정류장 사이를 움직이는 모습을 그릴 때 쓴다.
+     */
+    fun segment(fromOrd: Int, toOrd: Int): List<LatLng>? {
+        val a = stopPoint(fromOrd) ?: return null
+        val b = stopPoint(toOrd) ?: return null
+        if (shape == null) return listOf(a, b)
+        val ia = pts.indexOfFirst { it.ord == fromOrd }
+        val ib = pts.indexOfFirst { it.ord == toOrd }
+        val idx = stopIdx
+        if (idx == null || ia < 0 || ib < 0 || ib <= ia) return listOf(a, b)
+        val lo = idx[ia]
+        val hi = idx[ib]
+        if (hi <= lo || hi >= line.size) return listOf(a, b)
+        return listOf(a) + line.subList(lo, hi + 1) + b
+    }
+
+    /**
      * GPS 점을 노선 선 위로 붙인다.
      *
      * [after] 는 직전에 붙였던 선 위 거리(m). 버스는 뒤로 가지 않으므로 그보다 [BACK_M] 넘게 뒤인 구간은 건너뛴다
