@@ -61,6 +61,8 @@ object ArrivalLog {
 
     /** 이번에 받은 버스 위치를 보고, 정류장을 옮겨 간 버스가 있으면 기록 */
     fun observe(routeId: String, buses: List<BusLocation>, stops: List<RouteStop>, nowMs: Long = System.currentTimeMillis()) {
+        // 같은 차량이 다음 정류장으로 넘어간 시간 = 구간 실측 통행시간 (도착 예정에 씀)
+        SegmentTimes.observe(routeId, buses, nowMs)
         val ords = buses.mapNotNull { b -> b.vehicleNo?.takeIf { !it.startsWith("#") }?.let { v -> b.ord?.let { v to it } } }.toMap()
         val prev = last.put(routeId, Snap(nowMs, ords)) ?: return
         val found = ArrivalStats.hits(prev.ords, prev.atMs, buses, nowMs, stops)

@@ -1,0 +1,113 @@
+package com.eunho.tagohub.data
+
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * 노선의 정류장 구간별 실제 통행 시간(초)을 앱이 본 버스 위치에서 모은다.
+ *
+ * 같은 차량이 한 정류장에서 다음 정류장으로 넘어가는 데 걸린 시간을 기록해 두면,
+ * 거리 × 평균속도로 어림하는 것보다 정체·신호 대기를 반영한 도착 예정을 만들 수 있다.
+ * 자료는 `filesDir/seg_times/<노선>.tsv` 에 `fromOrd \t toOrd \t 초 \t epoch초` 로 쌓고 14일치만 남긴다.
+ */
+object SegmentTimes {
+    private const val KEEP_DAYS = 14L
+    private const val MAX_LINES = 20_000
+    private const val MIN_SEC = 10
+    private const val MAX_SEC = 1_800
+    /** 한 번에 이보다 많은 정류장을 건너뛰면 데이터가 빠진 것으로 보고 버린다 */
+    private const val MAX_JUMP = 3
+
+    @Volatile private var dir: File? = null
+    private class At(val ord: Int, val atMs: Long)
+    private val last = ConcurrentHashMap<String, At>()
+
+    fun init(root: File) {
+        dir = File(root, "seg_times").apply { mkdirs() }
+    }
+
+    /** 버스 위치를 받을 때마다 호출: 같은 차량이 다음 정류장으로 넘어간 것을 보면 구간 시간을 남긴다 */
+    fun observe(routeId: String, buses: List<BusLocation>, nowMs: Long = System.currentTimeMillis()) {
+        if (dir == null) return
+        for (b in buses) {
+            val v = b.vehicleNo?.takeIf { !it.startsWith("#") } ?: continue
+            val ord = b.ord ?: continue
+            val prev = last.put(routeId + "|" + v, At(ord, nowMs)) ?: continue
+            if (ord <= prev.ord || ord - prev.ord > MAX_JUMP) continue
+            val sec = ((nowMs - prev.atMs) / 1000).toInt()
+            if (sec !in MIN_SEC..MAX_SEC) continue
+            append(routeId, prev.ord, ord, sec, nowMs)
+        }
+        if (last.size > 3_000) last.entries.removeIf { nowMs - it.value.atMs > 3_600_000L }
+    }
+
+    private fun file(routeId: String): File? =
+        dir?.let { File(it, routeId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".tsv") }
+
+    @Synchronized
+    private fun append(routeId: String, from: Int, to: Int, sec: Int, nowMs: Long) {
+        val f = file(routeId) ?: return
+        runCatching {
+            f.appendText("$from\t$to\t$sec\t${nowMs / 1000}\n")
+            if (f.length() > MAX_LINES * 16L) {
+                val keep = read(routeId, nowMs).takeLast(MAX_LINES / 2)
+                f.writeText(keep.joinToString("") { "${it.from}\t${it.to}\t${it.sec}\t${it.epochSec}\n" })
+            }
+        }
+    }
+
+    class Sample(val from: Int, val to: Int, val sec: Int, val epochSec: Long)
+
+    @Synchronized
+    fun read(routeId: String, nowMs: Long = System.currentTimeMillis()): List<Sample> {
+        val f = file(routeId)?.takeIf { it.exists() } ?: return emptyList()
+        val oldest = nowMs / 1000 - KEEP_DAYS * 86_400
+        return runCatching {
+            f.readLines().mapNotNull { line ->
+                val t = line.split('\t')
+                if (t.size < 4) return@mapNotNull null
+                val from = t[0].toIntOrNull() ?: return@mapNotNull null
+                val to = t[1].toIntOrNull() ?: return@mapNotNull null
+                val sec = t[2].toIntOrNull() ?: return@mapNotNull null
+                val at = t[3].toLongOrNull() ?: return@mapNotNull null
+                if (at < oldest) null else Sample(from, to, sec, at)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * [fromOrd] 에서 [toOrd] 까지 걸리는 실측 초(중앙값). 모르면 null.
+     *  - 같은 구간 기록이 있으면 그것
+     *  - 여러 정류장을 한 번에 지나간 기록만 있으면 정류장 수로 나눠서
+     *  - 아니면 한 정류장씩 이어 붙인다
+     */
+    fun seconds(routeId: String, fromOrd: Int, toOrd: Int, nowMs: Long = System.currentTimeMillis()): Double? {
+        if (toOrd <= fromOrd) return null
+        val samples = read(routeId, nowMs)
+        if (samples.isEmpty()) return null
+        samples.filter { it.from == fromOrd && it.to == toOrd }.map { it.sec }.medianOfInts()?.let { return it }
+        samples.filter { it.from == fromOrd && it.to > toOrd }
+            .map { it.sec.toDouble() * (toOrd - fromOrd) / (it.to - it.from) }.medianOfDoubles()?.let { return it }
+        var sum = 0.0
+        var cur = fromOrd
+        while (cur < toOrd) {
+            val next = samples.filter { it.from == cur && it.to > cur }.minByOrNull { it.to } ?: return null
+            val step = minOf(next.to, toOrd) - cur
+            sum += next.sec.toDouble() * step / (next.to - next.from)
+            cur = minOf(next.to, toOrd)
+        }
+        return sum.takeIf { it > 0 }
+    }
+
+    private fun List<Int>.medianOfInts(): Double? {
+        if (isEmpty()) return null
+        return sorted()[size / 2].toDouble()
+    }
+
+    private fun List<Double>.medianOfDoubles(): Double? {
+        if (isEmpty()) return null
+        return sorted()[size / 2]
+    }
+
+    internal fun reset() = last.clear()
+}

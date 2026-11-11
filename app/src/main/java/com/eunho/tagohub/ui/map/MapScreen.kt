@@ -1806,7 +1806,10 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                 else away?.let { n ->
                     val from = list[i - n]
                     val seconds = if (n > 0) {
-                        val estimate = TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId) * 60.0
+                        // 앱이 모은 구간 실측 통행시간(같은 차량이 다음 정류장에 나타난 간격)이 있으면 그것을 먼저
+                        val measured = com.eunho.tagohub.data.SegmentTimes.seconds(d.routeId, from.ord, s.ord)
+                        val estimate = measured
+                            ?: (TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId) * 60.0)
                         if (estimate.isFinite()) Math.round(estimate).toInt().coerceAtLeast(1) else null
                     } else null
                     val remaining = seconds?.let { (it - routeElapsedSec).coerceAtLeast(0) }

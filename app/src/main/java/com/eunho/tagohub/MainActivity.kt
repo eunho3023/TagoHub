@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())
         com.eunho.tagohub.data.OverlaySnapshot.init(filesDir)
         com.eunho.tagohub.data.ArrivalLog.init(filesDir)
+        com.eunho.tagohub.data.SegmentTimes.init(filesDir)
         // 지난 운행 기록을 중계 서버에도 모아 다른 사용자들과 함께 씀 (서버를 안 쓰면 아무것도 안 함)
         com.eunho.tagohub.data.ArrivalLog.onHits = com.eunho.tagohub.data.SharedArrivalLog::enqueue
         com.eunho.tagohub.data.DriveLog.init(filesDir)
