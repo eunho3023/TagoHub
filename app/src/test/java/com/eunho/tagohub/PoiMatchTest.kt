@@ -56,6 +56,31 @@ class PoiMatchTest {
     }
 
     @Test
+    fun dottedStopNamesMatchTheirHead() {
+        // 정류장 이름은 "전주역.전주역사거리"처럼 점 뒤에 사거리·건물 이름이 붙는다.
+        // 점 뒤를 함께 비교하면 "전주역" POI 와 같다고 보지 못해 정류장 대신 주소 카드가 떴다.
+        assertTrue(PoiMatch.similar("전주역", "전주역.전주역사거리"))
+        assertTrue(PoiMatch.similar("시청", "시청.호남빌딩"))
+        val stops = listOf(S("전주역.전주역사거리", 35.8400, 127.1200))
+        // 40m 밖이어도 이름이 같으면 그 정류장
+        assertEquals(stops[0], PoiMatch.pick("전주역", 35.84030, 127.12030, stops, { it.name }, { it.lat to it.lng }, 40.0))
+    }
+
+    @Test
+    fun exactNameBeatsACloserDifferentName() {
+        // 전국 정류소 좌표가 있어도, 이름이 정확히 같은 정류장을 먼저 고른다
+        // (길 건너 "시청앞"이 5m, "시청"이 70m 여도 "시청" POI 는 "시청" 정류장)
+        val stops = listOf(
+            S("시청앞", 36.35100, 127.38500),
+            S("시청", 36.35160, 127.38500),
+        )
+        assertEquals(stops[1], PoiMatch.pick("시청", 36.35105, 127.385, stops, { it.name }, { it.lat to it.lng }, 25.0))
+        // 이름이 안 맞으면 좌표가 25m 안일 때만
+        assertEquals(stops[0], PoiMatch.pick("모르는곳", 36.35102, 127.385, stops, { it.name }, { it.lat to it.lng }, 25.0))
+        assertEquals(null, PoiMatch.pick("모르는곳", 36.35200, 127.385, stops, { it.name }, { it.lat to it.lng }, 25.0))
+    }
+
+    @Test
     fun stationPoiMatchesNearbyStationByNameWithinEntranceOffset() {
         val station = MetroStation("1", "샘플", "1호선", 37.0, 127.0, "테스트 운영기관")
         val index = StationIndex(listOf(station))

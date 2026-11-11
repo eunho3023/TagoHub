@@ -982,6 +982,85 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Work) }) { Text("회사로 저장") }
             }
+            // 가까운 정류장·역: 주소만 있는 장소를 눌렀을 때도 여기서 바로 정류장·역으로 넘어갈 수 있게
+            val transit by vm.nearbyTransit.collectAsStateWithLifecycle()
+            transit?.let { t ->
+                Text(
+                    "가까운 정류장·역",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp, end = 10.dp),
+                )
+                if (t.stops.isEmpty() && t.stations.isEmpty()) {
+                    Text(
+                        "반경 800m 안에 정류장·역이 없어요",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, end = 10.dp),
+                    )
+                }
+                if (t.stops.isNotEmpty() || t.stations.isNotEmpty()) {
+                    val distText = { d: Double -> if (d >= 1000) "%.1fkm".format(d / 1000) else "${d.toInt()}m" }
+                    t.stations.forEach { (g, d) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.openNearbyStation(g) }.padding(top = 6.dp, end = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.DirectionsSubway, contentDescription = null, tint = ModeColor.Subway, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    if (g.name.endsWith("역")) g.name else "${g.name}역",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (g.displayLines.isNotEmpty()) Text(
+                                    g.displayLines.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    t.stops.forEach { (m, d) ->
+                        val s = m.main
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.openNearbyStop(s.nodeId) }.padding(top = 6.dp, end = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = ModeColor.Bus, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    s.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    // 타 시·군이 같이 서는 정류장은 번호를 모두 모아 한 줄로 (예: "정류장 30690 · 3110313")
+                                    listOfNotNull(
+                                        m.numbers.ifBlank { null }?.let { "정류장 $it" },
+                                        "도보 ${(d / 67.0).toInt() + 1}분",
+                                        m.others.takeIf { it.isNotEmpty() }?.let { "타 시·군 ${it.size}곳" },
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
             // 주변 찾기 (카카오 카테고리로 장소 검색)
             androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->
@@ -1720,12 +1799,17 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val liveOf = { i: Int, s: RouteStop ->
                 // 도착정보(API)와 버스 위치가 어긋나면 위치를 믿음: 이미 와 있는데 "1정류장 전", 가까이 버스가 보이는데 "7정류장 전"(API 가 그 버스를 빠뜨림)
                 val away = com.eunho.tagohub.data.RouteLive.stopsAway(i, busPos.at, busPos.left)
+                // 버스가 이미 이 정류장을 지나갔는데 도착정보가 늦게 와서 "도착 전"으로 남는 경우 → "지나감"
+                if (away == null && com.eunho.tagohub.data.RouteLive.passed(i, busPos.at, busPos.left)) "지나감"
                 // 고른 정류장은 도착정보가 위치와 맞을 때만 그대로 (어긋나면 앞뒤 정류장처럼 위치로 세서 말이 맞게)
-                if (s.nodeId == d.focusNodeId && focusArrival != null && com.eunho.tagohub.data.RouteLive.useApiAtFocus(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
+                else if (s.nodeId == d.focusNodeId && focusArrival != null && com.eunho.tagohub.data.RouteLive.useApiAtFocus(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
                 else away?.let { n ->
                     val from = list[i - n]
                     val seconds = if (n > 0) {
-                        val estimate = TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId) * 60.0
+                        // 앱이 모은 구간 실측 통행시간(같은 차량이 다음 정류장에 나타난 간격)이 있으면 그것을 먼저
+                        val measured = com.eunho.tagohub.data.SegmentTimes.seconds(d.routeId, from.ord, s.ord)
+                        val estimate = measured
+                            ?: (TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId) * 60.0)
                         if (estimate.isFinite()) Math.round(estimate).toInt().coerceAtLeast(1) else null
                     } else null
                     val remaining = seconds?.let { (it - routeElapsedSec).coerceAtLeast(0) }

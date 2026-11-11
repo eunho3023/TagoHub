@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.CloudSync.start(applicationContext)
         com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
         com.eunho.tagohub.data.CoachTerminalGeo.init(applicationContext)
+        com.eunho.tagohub.data.StopCompanions.init(applicationContext)
         com.eunho.tagohub.data.TrainTimetable.init(applicationContext)
         com.eunho.tagohub.data.AirSchedule.init(applicationContext)
         com.eunho.tagohub.data.SubwayCongestion.init(applicationContext)
@@ -62,6 +63,8 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.TrainKinds.init(filesDir)
         lifecycleScope.launch {
             StopDb.get(applicationContext)
+            // 같은 자리 타 시·군 정류장 표: 서버(Firebase 등)에 더 새것이 있으면 하루 한 번·와이파이에서 받아 둠
+            com.eunho.tagohub.data.StopCompanions.refresh(applicationContext)
             // 정류장·노선 데이터 자동 업데이트 (데이터 저장소, 하루 한 번·와이파이에서만)
             com.eunho.tagohub.data.DataUpdater.check(applicationContext)
         }
@@ -69,6 +72,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())
         com.eunho.tagohub.data.OverlaySnapshot.init(filesDir)
         com.eunho.tagohub.data.ArrivalLog.init(filesDir)
+        com.eunho.tagohub.data.SegmentTimes.init(filesDir)
         // 지난 운행 기록을 중계 서버에도 모아 다른 사용자들과 함께 씀 (서버를 안 쓰면 아무것도 안 함)
         com.eunho.tagohub.data.ArrivalLog.onHits = com.eunho.tagohub.data.SharedArrivalLog::enqueue
         com.eunho.tagohub.data.DriveLog.init(filesDir)

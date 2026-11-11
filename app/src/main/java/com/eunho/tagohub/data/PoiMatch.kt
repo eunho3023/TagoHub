@@ -32,7 +32,13 @@ object PoiMatch {
         return if (first.endsWith("역") && LINE_OR_EXIT.matches(t.substring(i).trim())) first else t
     }
 
+    /**
+     * 정류장 이름은 "전주역.전주역사거리"처럼 점 뒤에 사거리·건물 이름을 덧붙이기도 한다.
+     * 점 뒤를 붙여 버리면 "전주역" POI 와 같다고 보지 못해 정류장 대신 주소 카드가 떴으므로,
+     * 첫 점 앞까지만 비교한다.
+     */
     fun norm(s: String): String = stripLineSuffix(s)
+        .substringBefore('.')
         .replace(Regex("\\(.*?\\)"), "")
         .replace(Regex("\\d+호선"), "")
         .replace(Regex("[\\s.·,\\-_]"), "")
@@ -46,9 +52,17 @@ object PoiMatch {
         return x == y || (minOf(x.length, y.length) >= 3 && (x.contains(y) || y.contains(x)))
     }
 
-    /** 가까운 후보(이름, 위도, 경도) 중: 이름이 비슷한 가장 가까운 것 → 없으면 nearM 안의 가장 가까운 것 */
+    /**
+     * 전국 정류소 좌표(내장 DB)로 지도 POI 를 정류장에 맞춘다. 좌표는 이름 확인용으로 함께 쓴다.
+     * 1) 이름이 **정확히** 같은 후보 중 가장 가까운 것 (이름이 같으면 300m 안이면 인정)
+     * 2) 이름이 비슷한 후보 중 가장 가까운 것
+     * 3) 이름이 안 맞으면 좌표가 nearM 안으로 매우 가까운 것 (정류장 아이콘은 좌표가 정확할 때만)
+     */
     fun <T> pick(name: String, lat: Double, lng: Double, cands: List<T>, nameOf: (T) -> String, posOf: (T) -> Pair<Double, Double>?, nearM: Double): T? {
         val withD = cands.mapNotNull { c -> posOf(c)?.let { (la, ln) -> c to Geo.meters(lat, lng, la, ln) } }.sortedBy { it.second }
-        return withD.firstOrNull { similar(name, nameOf(it.first)) }?.first ?: withD.firstOrNull { it.second <= nearM }?.first
+        val n = norm(name)
+        return (if (n.isEmpty()) null else withD.firstOrNull { norm(nameOf(it.first)) == n }?.first)
+            ?: withD.firstOrNull { similar(name, nameOf(it.first)) }?.first
+            ?: withD.firstOrNull { it.second <= nearM }?.first
     }
 }

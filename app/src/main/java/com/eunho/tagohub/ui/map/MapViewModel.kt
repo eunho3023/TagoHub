@@ -122,6 +122,8 @@ enum class MapMode { Bus, Subway, Transit }
 internal const val ROUTE_SHEET_FRAC = 0.7f
 
 class MapViewModel(app: Application) : AndroidViewModel(app) {
+    /** 선형(모양)이 없는 노선의 버스를 도로 위에 붙일 때 쓰는 도로 링크 (처음 필요할 때 한 번 읽음) */
+    private var roadLinks: com.eunho.tagohub.data.RoadLinkIndex? = null
     init {
         // 정체 구간을 지도에 찍을 VDS 위치 파일 (assets/ex_vds.json)
         com.eunho.tagohub.data.ExMapLayers.vdsJson = {
@@ -861,6 +863,49 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 장소 카드의 '주변 찾기' 결과 (카카오 카테고리 검색) */
     val nearby = MutableStateFlow<Pair<String, List<com.eunho.tagohub.data.Place2>>?>(null)
+
+    /**
+     * 장소 카드에 함께 보여 줄 "가까운 정류장·역".
+     * 정류장·역이 아닌 곳(주소만 있는 장소)을 눌렀을 때, 여기서 바로 정류장·역으로 넘어갈 수 있게 한다.
+     */
+    data class NearbyTransit(
+        // 같은 자리에 타 시·군 정류장이 함께 서면 한 줄로 묶는다 (StopMerge)
+        val stops: List<Pair<com.eunho.tagohub.data.MergedStop, Double>> = emptyList(),
+        val stations: List<Pair<com.eunho.tagohub.data.StationGroup, Double>> = emptyList(),
+    )
+    val nearbyTransit = MutableStateFlow<NearbyTransit?>(null)
+    private var nearbyTransitJob: Job? = null
+
+    /** 고른 자리 주변의 정류장(400m, 5곳)·역(800m, 3곳)을 채운다 */
+    private fun loadNearbyTransit(lat: Double, lng: Double) {
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
+        nearbyTransitJob = viewModelScope.launch {
+            // 후보를 넉넉히 받아 시·군이 겹치는 정류장을 하나로 합친 뒤 가까운 5곳만
+            val raw = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 400.0, 16) } }.orEmpty()
+            val stops = withContext(Dispatchers.Default) {
+                com.eunho.tagohub.data.StopMerge.merge(raw.map { it.first })
+                    .map { m -> m to com.eunho.tagohub.core.Geo.meters(lat, lng, m.main.lat ?: lat, m.main.lng ?: lng) }
+                    .sortedBy { it.second }
+                    .take(5)
+            }
+            val stations = index?.nearbyGroups(lat, lng, 800.0, 3).orEmpty()
+            nearbyTransit.value = NearbyTransit(stops, stations)
+        }
+    }
+
+    /** 장소 카드의 "가까운 정류장"을 누름 → 그 정류장 패널 */
+    fun openNearbyStop(nodeId: String) {
+        val s = nearbyTransit.value?.stops?.firstOrNull { it.first.main.nodeId == nodeId }?.first?.main ?: return
+        closePick()
+        pickStop(s)
+    }
+
+    /** 장소 카드의 "가까운 역"을 누름 → 그 역 상세 */
+    fun openNearbyStation(g: com.eunho.tagohub.data.StationGroup) {
+        closePick()
+        focusStation(g)
+    }
     fun findNearby(code: String, label: String) {
         val p = picked.value ?: return
         viewModelScope.launch { nearby.value = label to com.eunho.tagohub.data.KakaoExtra.category(code, p.lat, p.lng) }
@@ -900,6 +945,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         canvas?.setPin(p.lat, p.lng)
         canvas?.moveTo(p.lat, p.lng, null)
         nearby.value = null
+        loadNearbyTransit(p.lat, p.lng)
     }
     val picked = MutableStateFlow<PickedPlace?>(null)
 
@@ -908,21 +954,33 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val selectingEndpoint = panel.value == MapPanel.Plan && trip.editing.value != null
             // 1) 버스 정류장: POI 와 내장 정류소 좌표가 어긋난 경우도 매칭
-            val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 40) } }.orEmpty().map { it.first }
+            val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
+            // 이름이 기차역·터미널·공항이면 그 시설로 먼저 본다. 같은 이름의 버스 정류장이 더 가까워도
+            // ("전주역" 정류장이 "전주역" 역사보다 앞에 있어 KTX 역을 눌렀는데 정류장이 열리던 문제)
+            val poiKind = com.eunho.tagohub.ui.ModeJump.kindOf(name)
+            // 기차역은 이름만으로 단정하지 않고, 전국 역 목록에 실제 역이 근처에 있는지 확인한다
+            val rail = if (poiKind == com.eunho.tagohub.ui.ModeJump.Kind.Train) {
+                withContext(Dispatchers.IO) { com.eunho.tagohub.data.TrainStationGeo.matchNear(name, lat, lng, 400.0) }
+            } else null
+            val facility = poiKind != null && (poiKind != com.eunho.tagohub.ui.ModeJump.Kind.Train || rail != null)
+            // 전국 정류소 좌표(내장 DB): 반경 300m 후보를 넉넉히 받아 이름·좌표로 맞춘다
+            val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 60) } }.orEmpty().map { it.first }
             val cachedStops = stops.values.filter { stop ->
                 stop.lat != null && stop.lng != null &&
                     com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat!!, stop.lng!!) <= 300.0
             }
             val near = (dbStops + cachedStops).distinctBy { it.nodeId }
-            val stop = com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, 25.0)
+            // 이름이 맞으면 거리와 무관하게 그 정류장을 고르고(PoiMatch.pick 1·2단계),
+            // 이름이 안 맞을 때만 좌표로 고른다. 좌표는 내장 DB 것이 정확하므로 문턱을 좁게 둔다.
+            val nearM = if (busPoi) 40.0 else 25.0
+            val stop = if (facility) null else com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, nearM)
             // 이름 없이 역 아이콘만 눌렀을 때도(이름이 비면 이름 매칭이 안 됨) 바로 앞(80m)에 있는 역이면 그 역
             val nameSaysBus = name.contains("정류") || name.contains("버스")
-            val station = index?.matchPoi(name, lat, lng)
+            val station = if (facility) null else index?.matchPoi(name, lat, lng)
                 ?: if (nameSaysBus) null else index?.nearestGroup(lat, lng, if (name.isBlank()) 80.0 else 40.0)
             val stopDistance = stop?.let { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat ?: lat, it.lng ?: lng) }
             // 환승역은 중심점이 아니라 노선별 역 중 가까운 곳으로 잼 (중심점으로 재면 실제 역 앞에서도 근처 정류장이 이겼음)
             val stationDistance = station?.distanceTo(lat, lng)
-            val busPoi = name.contains("정류장") || name.contains("정류소") || name.contains("버스")
             // 이름이 지하철역("강남역", "강남역 2호선")이면 같은 이름의 정류장이 더 가까워도 역을 연다
             val useStop = stop != null && (
                 station == null || busPoi ||
@@ -949,8 +1007,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             // 3) 그 밖의 장소: 출발·도착으로 쓸지
-            // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게
-            val title = name.ifBlank { "선택한 장소" }
+            // 기차역·터미널·공항이면 그 시간표로 바로 갈 수 있게 (역 이름은 역 목록의 정식 이름을 씀)
+            val title = (rail?.name ?: name).ifBlank { "선택한 장소" }
             if (selectingEndpoint) {
                 trip.pick(PlanPoint(title, null, lat, lng))
                 return@launch
@@ -959,6 +1017,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             clearForPlace()
             picked.value = first
             nearby.value = null
+            loadNearbyTransit(lat, lng)
             canvas?.setPin(lat, lng)
             updatePickedAddress(first)
         }
@@ -974,6 +1033,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         clearForPlace()
         picked.value = p
         nearby.value = null
+        loadNearbyTransit(lat, lng)
         canvas?.setPin(lat, lng)
         updatePickedAddress(p)
     }
@@ -1071,6 +1131,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         nearby.value = null
         picked.value = null
         canvas?.setPin(null, null)
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
     }
 
     /** 정류장 패널의 출발지·도착지 버튼 → 길찾기 */
@@ -1838,6 +1900,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pickStop(s: BusStop, at: Pair<Double, Double>? = null) {
         if (canvas == null && s.lat != null && s.lng != null) pendingFocus = s.lat!! to s.lng!!
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
         clearBusSearch()
         closeStopTimetable()
         stops[s.nodeId] = s
@@ -1902,6 +1966,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun focusStation(g: StationGroup, at: Pair<Double, Double>? = null, line: String? = null) {
         if (canvas == null) pendingFocus = g.lat to g.lng
+        nearbyTransitJob?.cancel()
+        nearbyTransit.value = null
         tappedPin = at
         if (at == null) canvas?.focus(g.lat, g.lng)
         openStation(g, line)
@@ -2639,11 +2705,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val shape = d.shape.value
         val now = System.currentTimeMillis()
         canvas?.setBuses(d.buses.value.mapIndexedNotNull { n, b ->
-            val g = b.vehicleNo?.let { d.gps[it] }?.track ?: return@mapIndexedNotNull null // GPS 없음 → 지도에 안 그림
             val id = b.vehicleNo ?: "bus$n"
-            val path = GpsTracker.path(g, d.geom?.line ?: shape)
+            val g = b.vehicleNo?.let { d.gps[it] }?.track
+            if (g == null) {
+                // GPS 가 없는 지역(정류장 순번만 주는 API): 알려준 정류장 자리에 그린다.
+                // 전에는 지도에서 아예 빠져서 "버스가 안 보인다"로 보였다
+                val pt = d.geom?.stopPoint(b.ord) ?: return@mapIndexedNotNull null
+                // 정류장 순번만 알려 주는 지역: 정류장 자리에 두되 '추' 글리프로 추정 위치임을 보여 준다
+                return@mapIndexedNotNull VehiclePin(
+                    id, listOf(pt), 1.0, 1.0, 0L, color,
+                    b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "추",
+                )
+            }
+            // 선형(모양)이 없는 노선은 정류장을 직선으로 이은 선 대신, 지금 좌표를 가장 가까운 도로 위로 붙여 그린다
+            val onRoad = if (shape == null) roadLinks?.snap(g.to.lat, g.to.lng) else null
+            val path = if (onRoad != null) listOf(onRoad) else GpsTracker.path(g, d.geom?.line ?: shape)
             val dur = g.durMs.toDouble()
-            val k = if (g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
+            val k = if (onRoad != null || g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
             VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "")
         })
         pushKlidBuses()
@@ -2680,6 +2758,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // 선형이 없는 노선의 버스를 도로 위에 붙일 때 씀 (한 번만 읽음, 약 14MB)
+        viewModelScope.launch { roadLinks = com.eunho.tagohub.data.RoadLinkIndex.get(getApplication()) }
         // 핀(꾹 누른 곳·고른 정류장·역)은 위 상태에서 계산해서 그림. 닫을 때 일일이 지우던 방식은 빠뜨리는 경로가 있어 아이콘이 남았음
         viewModelScope.launch {
             combine(picked, panel, selected, station, stationLineName) { p, pn, sel, st, line -> expectedPin(p, pn, sel, st, line) }

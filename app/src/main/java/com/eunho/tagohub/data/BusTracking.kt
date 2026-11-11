@@ -2,6 +2,7 @@ package com.eunho.tagohub.data
 
 import com.eunho.tagohub.core.Geo
 import kotlin.math.cos
+import kotlin.math.abs
 
 /**
  * 지도에 그릴 GPS 이동 한 구간. 위치는 모두 노선 선 위로 붙인(snap) 점이라 버스가 선을 벗어나지 않는다.
@@ -42,31 +43,67 @@ class RouteGeom(val shape: List<LatLng>?, stops: List<RouteStop>) {
     fun stopPoint(ord: Int?): LatLng? =
         ord?.let { o -> pts.firstOrNull { it.ord == o } }?.let { LatLng(it.lat!!, it.lng!!) }
 
-    fun snap(ord: Int?, p: LatLng): Snap? {
+    /**
+     * GPS 점을 노선 선 위로 붙인다.
+     *
+     * [after] 는 직전에 붙였던 선 위 거리(m). 버스는 뒤로 가지 않으므로 그보다 [BACK_M] 넘게 뒤인 구간은 건너뛴다
+     * (같은 도로를 반대 방향으로도 지나는 노선에서 반대 차로에 붙던 문제).
+     * [bearing] 은 이동 방위(도). 구간 방향과 100도 넘게 다르면 건너뛴다.
+     * 둘 다로 후보가 없으면(정류장 순번이 갑자기 바뀐 경우 등) 제약 없이 가장 가까운 점으로 붙인다.
+     */
+    fun snap(ord: Int?, p: LatLng, after: Double? = null, bearing: Double? = null): Snap? {
         if (line.size < 2) return null
         val k = ord?.let { o -> pts.indexOfFirst { it.ord == o } }?.takeIf { it >= 0 }
         val idx = stopIdx
         val lo = if (k != null && idx != null) idx[maxOf(0, k - 1)] else 0
         val hi = if (k != null && idx != null) idx[minOf(pts.lastIndex, k + 1)] else line.lastIndex
-        var best: Snap? = null
-        var bestD = Double.MAX_VALUE
         val kx = cos(Math.toRadians(p.lat)) // 경도 1도의 실제 길이 보정 (좁은 범위라 평면 근사)
-        for (i in lo until maxOf(lo + 1, hi)) {
-            if (i + 1 >= line.size) break
-            val a = line[i]
-            val b = line[i + 1]
-            val dx = (b.lng - a.lng) * kx
-            val dy = b.lat - a.lat
-            val len2 = dx * dx + dy * dy
-            val t = if (len2 == 0.0) 0.0 else (((p.lng - a.lng) * kx * dx + (p.lat - a.lat) * dy) / len2).coerceIn(0.0, 1.0)
-            val q = LatLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t)
-            val d = Geo.meters(p.lat, p.lng, q.lat, q.lng)
-            if (d < bestD) {
-                bestD = d
-                best = Snap(i, q, cum[i] + (cum[i + 1] - cum[i]) * t)
+        fun nearest(allow: (Int, Double) -> Boolean): Snap? {
+            var best: Snap? = null
+            var bestD = Double.MAX_VALUE
+            for (i in lo until maxOf(lo + 1, hi)) {
+                if (i + 1 >= line.size) break
+                val a = line[i]
+                val b = line[i + 1]
+                val dx = (b.lng - a.lng) * kx
+                val dy = b.lat - a.lat
+                val len2 = dx * dx + dy * dy
+                val t = if (len2 == 0.0) 0.0 else (((p.lng - a.lng) * kx * dx + (p.lat - a.lat) * dy) / len2).coerceIn(0.0, 1.0)
+                val q = LatLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t)
+                val d = Geo.meters(p.lat, p.lng, q.lat, q.lng)
+                val prog = cum[i] + (cum[i + 1] - cum[i]) * t
+                if (!allow(i, prog)) continue
+                if (d < bestD) {
+                    bestD = d
+                    best = Snap(i, q, prog)
+                }
             }
+            return best
         }
-        return best
+        val guided = nearest { i, prog ->
+            val forward = after == null || prog >= after - BACK_M
+            val heading = bearing == null || abs(angleDiff(bearingOf(i), bearing)) <= 100.0
+            forward && heading
+        }
+        return guided ?: nearest { _, _ -> true }
+    }
+
+    /** i번째 구간이 향하는 방위(도, 북=0) */
+    private fun bearingOf(i: Int): Double {
+        val a = line[i]
+        val b = line[i + 1]
+        val kx = cos(Math.toRadians(a.lat))
+        return Math.toDegrees(Math.atan2((b.lng - a.lng) * kx, b.lat - a.lat))
+    }
+
+    private fun angleDiff(a: Double, b: Double): Double {
+        val d = (a - b) % 360.0
+        return if (d > 180) d - 360 else if (d < -180) d + 360 else d
+    }
+
+    companion object {
+        /** 버스가 이보다 뒤로 붙으면 늦게 온 옛 좌표로 본다 */
+        const val BACK_M = 40.0
     }
 }
 
@@ -91,15 +128,20 @@ object GpsTracker {
     const val OFF_STOP_M = 25.0
 
     fun next(prev: State?, p: LatLng, ord: Int?, geom: RouteGeom?, now: Long): State {
-        val s = geom?.snap(ord, p)
-        val shown = s?.point ?: p
-        fun track(from: LatLng?, fromSeg: Int?, dur: Long) = GpsTrack(from, shown, now, dur, fromSeg, s?.seg, s?.progress, ord, p)
         // 처음부터 정류장과 떨어진 좌표면 실시간 GPS 로 바로 판단 (추정 → GPS 전환 때 뒤로 튀는 것 방지)
         val offStop = geom?.stopPoint(ord)?.let { Geo.meters(it.lat, it.lng, p.lat, p.lng) > OFF_STOP_M } ?: false
-        if (prev == null) return State(track(null, null, 0), live = offStop)
+        if (prev == null) {
+            val s0 = geom?.snap(ord, p)
+            return State(GpsTrack(null, s0?.point ?: p, now, 0, null, s0?.seg, s0?.progress, ord, p), live = offStop)
+        }
         val g = prev.track
         val moved = Geo.meters(g.raw.lat, g.raw.lng, p.lat, p.lng)
         if (moved < MOVE_MIN_M) return prev.copy(backStreak = 0)
+        // 움직인 방향을 알면 그 방향과 맞는 구간에만 붙인다 (반대 차로·이미 지나온 구간 방지)
+        val bearing = if (moved >= 15.0) bearingDeg(g.raw, p) else null
+        val s = geom?.snap(ord, p, after = g.progress, bearing = bearing)
+        val shown = s?.point ?: p
+        fun track(from: LatLng?, fromSeg: Int?, dur: Long) = GpsTrack(from, shown, now, dur, fromSeg, s?.seg, s?.progress, ord, p)
         // 같은 정류장 순번인데 좌표가 움직임, 또는 정류장과 떨어진 좌표 = 진짜 실시간 GPS
         val live = prev.live || offStop || (ord != null && ord == g.ord)
 
@@ -116,6 +158,12 @@ object GpsTracker {
         }
         if (newTrip) return State(track(null, null, 0), 0, live)
         return State(track(g.to, g.toSeg, (now - g.at).coerceIn(5_000, 30_000)), 0, live)
+    }
+
+    /** a → b 로 움직인 방위(도, 북=0). 두 점이 가까워도 방향은 쓸 만하다 */
+    private fun bearingDeg(a: LatLng, b: LatLng): Double {
+        val kx = cos(Math.toRadians(a.lat))
+        return Math.toDegrees(Math.atan2((b.lng - a.lng) * kx, b.lat - a.lat))
     }
 
     /** 그릴 경로: 붙인 점 → 선의 꼭짓점들 → 붙인 점 (선을 따라감) */
