@@ -2703,8 +2703,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val shape = d.shape.value
         val now = System.currentTimeMillis()
         canvas?.setBuses(d.buses.value.mapIndexedNotNull { n, b ->
-            val g = b.vehicleNo?.let { d.gps[it] }?.track ?: return@mapIndexedNotNull null // GPS 없음 → 지도에 안 그림
             val id = b.vehicleNo ?: "bus$n"
+            val g = b.vehicleNo?.let { d.gps[it] }?.track
+            if (g == null) {
+                // GPS 가 없는 지역(정류장 순번만 주는 API): 알려준 정류장 자리에 그린다.
+                // 전에는 지도에서 아예 빠져서 "버스가 안 보인다"로 보였다
+                val pt = d.geom?.stopPoint(b.ord) ?: return@mapIndexedNotNull null
+                return@mapIndexedNotNull VehiclePin(
+                    id, listOf(pt), 1.0, 1.0, 0L, color,
+                    b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "",
+                )
+            }
             val path = GpsTracker.path(g, d.geom?.line ?: shape)
             val dur = g.durMs.toDouble()
             val k = if (g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
