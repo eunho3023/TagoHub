@@ -1799,8 +1799,10 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val liveOf = { i: Int, s: RouteStop ->
                 // 도착정보(API)와 버스 위치가 어긋나면 위치를 믿음: 이미 와 있는데 "1정류장 전", 가까이 버스가 보이는데 "7정류장 전"(API 가 그 버스를 빠뜨림)
                 val away = com.eunho.tagohub.data.RouteLive.stopsAway(i, busPos.at, busPos.left)
+                // 버스가 이미 이 정류장을 지나갔는데 도착정보가 늦게 와서 "도착 전"으로 남는 경우 → "지나감"
+                if (away == null && com.eunho.tagohub.data.RouteLive.passed(i, busPos.at, busPos.left)) "지나감"
                 // 고른 정류장은 도착정보가 위치와 맞을 때만 그대로 (어긋나면 앞뒤 정류장처럼 위치로 세서 말이 맞게)
-                if (s.nodeId == d.focusNodeId && focusArrival != null && com.eunho.tagohub.data.RouteLive.useApiAtFocus(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
+                else if (s.nodeId == d.focusNodeId && focusArrival != null && com.eunho.tagohub.data.RouteLive.useApiAtFocus(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
                 else away?.let { n ->
                     val from = list[i - n]
                     val seconds = if (n > 0) {

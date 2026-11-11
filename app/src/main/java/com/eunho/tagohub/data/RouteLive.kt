@@ -13,6 +13,13 @@ object RouteLive {
     fun stopsAway(stopIndex: Int, busIndexes: List<Int>, left: List<Int> = emptyList()): Int? =
         allAway(stopIndex, busIndexes, left).firstOrNull()
 
+    /**
+     * 이 정류장을 이미 지나간 버스가 있는지. 있으면 도착정보(API)가 아직 "N정류장 전"으로 와도
+     * "지나감"으로 보여 준다 (이미 지났는데 도착 전으로 남아 있던 문제).
+     */
+    fun passed(stopIndex: Int, at: List<Int>, left: List<Int>): Boolean =
+        at.any { it > stopIndex } || left.any { it >= stopIndex }
+
     /** 버스 위치 API 는 마지막으로 지난 정류장만 알려 줘서, 정류장을 떠난 뒤에도 같은 정류장으로 잡힘: GPS 로 본 버스 위치 */
     class Positions(
         /** 정류장에 서 있는(떠나지 않은) 버스가 있는 정류장 번호 */
