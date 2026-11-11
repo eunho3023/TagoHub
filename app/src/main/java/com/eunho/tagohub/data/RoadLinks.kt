@@ -75,6 +75,47 @@ class RoadLinkIndex(private val buf: ByteBuffer) {
         return best
     }
 
+    /**
+     * [lat],[lng] 를 가장 가까운 도로 링크 위로 붙인 좌표.
+     * 노선 선형(모양)이 없어 정류장을 직선으로 이은 노선에서, 그 직선 대신 실제 도로 위에 버스를 그릴 때 쓴다.
+     * [bearing] 이 있으면 그 방향과 50도 넘게 다른 링크는 건너뛴다(반대 차로 방지).
+     */
+    fun snap(lat: Double, lng: Double, bearing: Double? = null, maxM: Double = 30.0): LatLng? {
+        if (count == 0) return null
+        val kx = 111_000.0 * cos(Math.toRadians(lat))
+        val ky = 111_000.0
+        val la = (lat * 1e5).toInt()
+        val ln = (lng * 1e5).toInt()
+        var best: LatLng? = null
+        var bestD = Double.MAX_VALUE
+        for (dy in -1..1) for (dx in -1..1) {
+            val cell = cellOf(la + dy * 1000, ln + dx * 1000)
+            var i = lowerBound(cell)
+            while (i < count && cellOf(lat1(i), lng1(i)) == cell) {
+                val o = HEADER + i * REC
+                val ax = (buf.getInt(o + 4) - ln) / 1e5 * kx
+                val ay = (buf.getInt(o) - la) / 1e5 * ky
+                val bx = ax + buf.getShort(o + 10) / 1e5 * kx
+                val by = ay + buf.getShort(o + 8) / 1e5 * ky
+                i++
+                val vx = bx - ax
+                val vy = by - ay
+                val len2 = vx * vx + vy * vy
+                val t = if (len2 == 0.0) 0.0 else ((-ax) * vx + (-ay) * vy) / len2
+                val tc = t.coerceIn(0.0, 1.0)
+                val d = hypot(ax + vx * tc, ay + vy * tc)
+                if (d > maxM || d >= bestD) continue
+                if (bearing != null && len2 > 4.0) {
+                    val seg = Math.toDegrees(atan2(vx, vy))
+                    if (abs(HeadingMath.delta(bearing, seg)) > MAX_TURN_DEG) continue
+                }
+                bestD = d
+                best = LatLng(lat + by / ky, lng + bx / kx)
+            }
+        }
+        return best
+    }
+
     companion object {
         const val ASSET = "road_links.bin"
         const val MAGIC = 0x4C4E4B31

@@ -122,6 +122,8 @@ enum class MapMode { Bus, Subway, Transit }
 internal const val ROUTE_SHEET_FRAC = 0.7f
 
 class MapViewModel(app: Application) : AndroidViewModel(app) {
+    /** 선형(모양)이 없는 노선의 버스를 도로 위에 붙일 때 쓰는 도로 링크 (처음 필요할 때 한 번 읽음) */
+    private var roadLinks: com.eunho.tagohub.data.RoadLinkIndex? = null
     init {
         // 정체 구간을 지도에 찍을 VDS 위치 파일 (assets/ex_vds.json)
         com.eunho.tagohub.data.ExMapLayers.vdsJson = {
@@ -2709,14 +2711,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 // GPS 가 없는 지역(정류장 순번만 주는 API): 알려준 정류장 자리에 그린다.
                 // 전에는 지도에서 아예 빠져서 "버스가 안 보인다"로 보였다
                 val pt = d.geom?.stopPoint(b.ord) ?: return@mapIndexedNotNull null
+                // 정류장 순번만 알려 주는 지역: 정류장 자리에 두되 '추' 글리프로 추정 위치임을 보여 준다
                 return@mapIndexedNotNull VehiclePin(
                     id, listOf(pt), 1.0, 1.0, 0L, color,
-                    b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "",
+                    b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "추",
                 )
             }
-            val path = GpsTracker.path(g, d.geom?.line ?: shape)
+            // 선형(모양)이 없는 노선은 정류장을 직선으로 이은 선 대신, 지금 좌표를 가장 가까운 도로 위로 붙여 그린다
+            val onRoad = if (shape == null) roadLinks?.snap(g.to.lat, g.to.lng) else null
+            val path = if (onRoad != null) listOf(onRoad) else GpsTracker.path(g, d.geom?.line ?: shape)
             val dur = g.durMs.toDouble()
-            val k = if (g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
+            val k = if (onRoad != null || g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
             VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "")
         })
         pushKlidBuses()
@@ -2753,6 +2758,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // 선형이 없는 노선의 버스를 도로 위에 붙일 때 씀 (한 번만 읽음, 약 14MB)
+        viewModelScope.launch { roadLinks = com.eunho.tagohub.data.RoadLinkIndex.get(getApplication()) }
         // 핀(꾹 누른 곳·고른 정류장·역)은 위 상태에서 계산해서 그림. 닫을 때 일일이 지우던 방식은 빠뜨리는 경로가 있어 아이콘이 남았음
         viewModelScope.launch {
             combine(picked, panel, selected, station, stationLineName) { p, pn, sel, st, line -> expectedPin(p, pn, sel, st, line) }
