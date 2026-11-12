@@ -22,6 +22,12 @@ object SegmentTimes {
     private class At(val ord: Int, val atMs: Long)
     private val last = ConcurrentHashMap<String, At>()
 
+    /** 최근 읽은 표본. 시간표는 한 번 계산할 때 같은 노선 구간을 수백 번 묻는다 (파일을 그때마다 읽으면 느림) */
+    private class Cached(val atMs: Long, val samples: List<Sample>)
+    private val cache = ConcurrentHashMap<String, Cached>()
+    private const val CACHE_MS = 30_000L
+    private const val MAX_CACHED_ROUTES = 200
+
     fun init(root: File) {
         dir = File(root, "seg_times").apply { mkdirs() }
     }
@@ -49,6 +55,7 @@ object SegmentTimes {
         val f = file(routeId) ?: return
         runCatching {
             f.appendText("$from\t$to\t$sec\t${nowMs / 1000}\n")
+            cache.remove(routeId)
             if (f.length() > MAX_LINES * 16L) {
                 val keep = read(routeId, nowMs).takeLast(MAX_LINES / 2)
                 f.writeText(keep.joinToString("") { "${it.from}\t${it.to}\t${it.sec}\t${it.epochSec}\n" })
@@ -76,6 +83,18 @@ object SegmentTimes {
     }
 
     /**
+     * [read] 를 [CACHE_MS] 동안 재사용한다. 도착 예정·시간표는 같은 노선을 여러 번(정류장마다, 운행마다) 묻기 때문에
+     * 매번 파일을 읽으면 느려진다. 새 기록이 쌓이면 [append] 가 캐시를 지운다.
+     */
+    fun samples(routeId: String, nowMs: Long = System.currentTimeMillis()): List<Sample> {
+        cache[routeId]?.takeIf { nowMs - it.atMs in 0 until CACHE_MS }?.let { return it.samples }
+        val fresh = read(routeId, nowMs)
+        if (cache.size >= MAX_CACHED_ROUTES) cache.clear()
+        cache[routeId] = Cached(nowMs, fresh)
+        return fresh
+    }
+
+    /**
      * [fromOrd] 에서 [toOrd] 까지 걸리는 실측 초(중앙값). 모르면 null.
      *  - 같은 구간 기록이 있으면 그것
      *  - 여러 정류장을 한 번에 지나간 기록만 있으면 정류장 수로 나눠서
@@ -83,7 +102,7 @@ object SegmentTimes {
      */
     fun seconds(routeId: String, fromOrd: Int, toOrd: Int, nowMs: Long = System.currentTimeMillis()): Double? {
         if (toOrd <= fromOrd) return null
-        val samples = read(routeId, nowMs)
+        val samples = samples(routeId, nowMs)
         if (samples.isEmpty()) return null
         samples.filter { it.from == fromOrd && it.to == toOrd }.map { it.sec }.medianOfInts()?.let { return it }
         samples.filter { it.from == fromOrd && it.to > toOrd }
@@ -109,5 +128,8 @@ object SegmentTimes {
         return sorted()[size / 2]
     }
 
-    internal fun reset() = last.clear()
+    internal fun reset() {
+        last.clear()
+        cache.clear()
+    }
 }

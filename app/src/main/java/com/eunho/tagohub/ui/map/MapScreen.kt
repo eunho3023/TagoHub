@@ -1448,7 +1448,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
     var pick by remember(preferredRouteId) { mutableStateOf(preferredRouteId) }
     Column(Modifier.fillMaxSize()) {
         Text(
-            "첫차·막차와 배차간격으로 계산한 예상 시간표로 실제 상황과 다를 수 있습니다.",
+            "첫차·막차·배차간격에 정류장 사이 소요시간을 더해 계산한 예상 시간표입니다. 실제 상황과 다를 수 있습니다.",
             Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1517,6 +1517,15 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                             }
                         }
                     }
+                }
+                // 이 노선은 앱이 실제로 본 정류장 사이 통행시간으로 계산했는지
+                if (cur.measured) {
+                    Text(
+                        "지난 운행에서 잰 정류장 사이 소요시간을 반영했어요.",
+                        Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 // 계획 시각(첫차·막차·배차) ↔ 지난 운행 기록(이 폰이 본 실제 도착을 요일별로)
                 var observed by rememberSaveable { mutableStateOf(false) }
@@ -1807,9 +1816,9 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     val from = list[i - n]
                     val seconds = if (n > 0) {
                         // 앱이 모은 구간 실측 통행시간(같은 차량이 다음 정류장에 나타난 간격)이 있으면 그것을 먼저
-                        val measured = com.eunho.tagohub.data.SegmentTimes.seconds(d.routeId, from.ord, s.ord)
-                        val estimate = measured
-                            ?: (TripPlanner.minutesBetween(routeLine, from.ord, s.ord) * com.eunho.tagohub.data.RouteSpeed.factor(d.routeId) * 60.0)
+                        val estimate = com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, from.ord, s.ord) { a, b ->
+                            TripPlanner.minutesBetween(routeLine, a, b)
+                        }
                         if (estimate.isFinite()) Math.round(estimate).toInt().coerceAtLeast(1) else null
                     } else null
                     val remaining = seconds?.let { (it - routeElapsedSec).coerceAtLeast(0) }

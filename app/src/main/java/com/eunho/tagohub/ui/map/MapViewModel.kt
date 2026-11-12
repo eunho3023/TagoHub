@@ -13,6 +13,8 @@ import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.data.BusRoute
+import com.eunho.tagohub.data.BusLocation
+import com.eunho.tagohub.data.BusSeen
 import com.eunho.tagohub.data.BusSearch
 import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.City
@@ -39,7 +41,10 @@ import com.eunho.tagohub.data.StationGroup
 import com.eunho.tagohub.data.StationIndex
 import com.eunho.tagohub.data.StopDb
 import com.eunho.tagohub.data.RouteDirections
+import com.eunho.tagohub.data.RouteGeom
+import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteStop
+import com.eunho.tagohub.data.RouteTravel
 import com.eunho.tagohub.data.MergedStop
 import com.eunho.tagohub.data.StopMerge
 import com.eunho.tagohub.data.DayKind
@@ -2213,8 +2218,15 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     val line = TripPlanner.Line(id, routes[id]?.first ?: id, stops)
                     val seqs = stops.filter { it.nodeId == d.stop.nodeId }.map { it.ord }
                     val starts = JeonjuTimetable.startsFor(day, courses, schedule)
-                    val times = JeonjuTimetable.stopTimes(starts, seqs) { a, b -> TripPlanner.minutesBetween(line, a, b) }
-                    RouteTimes(id, routes[id]?.first ?: id, routes[id]?.second, times, ends[id]?.first, ends[id]?.second, cityCode = "35010")
+                    // 이 정류장까지 오는 시간도 앱이 모은 실측 구간 시간을 먼저 쓴다
+                    val mins = RouteTravel.minutesFn(id, stops) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+                    val times = JeonjuTimetable.stopTimes(starts, seqs, mins)
+                    val measured = stops.isNotEmpty() && seqs.isNotEmpty() &&
+                        RouteTravel.usesMeasured(id, stops, stops.first().ord, seqs.min())
+                    RouteTimes(
+                        id, routes[id]?.first ?: id, routes[id]?.second, times, ends[id]?.first, ends[id]?.second,
+                        cityCode = "35010", measured = measured,
+                    )
                 }
             }.awaitAll().filterNotNull().filter { it.minutes.isNotEmpty() }
         }
@@ -2241,7 +2253,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 첫차·막차·배차간격 + 이 정류장까지 소요시간(노선 정류장 거리) */
+    /** 첫차·막차·배차간격 + 이 정류장까지 소요시간(실측 구간 시간, 없으면 노선 정류장 거리) */
     private suspend fun estimateTimes(d: BusDest.Stop, item: RouteTimes, day: DayKind): RouteTimes {
         val raw = item.cityCode ?: d.stop.cityCode
         val city = if (raw.startsWith("TS")) stopDb?.let { db -> withContext(Dispatchers.IO) { db.tagoCity(raw) } } ?: raw else raw
@@ -2255,11 +2267,15 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val ids = setOf(d.stop.nodeId) + d.others.value.map { it.nodeId }
         val seqs = stops.filter { it.nodeId in ids }.map { it.ord }
         if (seqs.isEmpty()) return item.copy(loaded = true)
+        // 정류장 사이 소요시간: 앱이 실제로 본 구간 통행시간(같은 차량이 다음 정류장에 나타난 간격)이 있으면 그것,
+        // 없으면 노선 정류장 거리로 어림. 운행(출발 시각)마다 같은 구간을 다시 묻기 때문에 한 번만 계산한다
+        val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
+        val mins = RouteTravel.minutesFn(item.routeId, stops) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+        val measured = RouteTravel.usesMeasured(item.routeId, stops, stops.first().ord, seqs.minOrNull() ?: stops.first().ord)
         // 지자체 버스정보시스템 공식 배차시간표 (울산·천안·창원·대구·제주·진주·구미, 중계 서버) — 있으면 그것을 먼저
         com.eunho.tagohub.data.CityTimetable.fetch(item.routeId, item.routeNo)?.let { deps ->
-            val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
-            val times = com.eunho.tagohub.data.CityTimetable.stopTimes(deps, day, stops, seqs, info?.endName ?: item.endName) { a, b -> TripPlanner.minutesBetween(line, a, b) }
-            if (times.isNotEmpty()) return item.copy(minutes = times, loaded = true, estimated = false)
+            val times = com.eunho.tagohub.data.CityTimetable.stopTimes(deps, day, stops, seqs, info?.endName ?: item.endName, mins)
+            if (times.isNotEmpty()) return item.copy(minutes = times, loaded = true, estimated = false, measured = measured)
         }
         // 앱에 넣어둔 실제 운행 시간표(광주 평일, 창녕 농어촌)가 있으면 그 출발 시각 — 첫차·막차 정보가 없는 노선도
         val real = if (day == DayKind.Weekday) stopDb?.let { db -> withContext(Dispatchers.IO) { db.timetable(city, item.routeNo) } }.orEmpty() else emptyMap()
@@ -2268,17 +2284,15 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 맞는 방향이 없으면 방향이 하나뿐일 때만 그걸 씀 (여러 방향·노선이 같은 번호를 쓰면 다른 노선 시각을 빌려오지 않음)
             ?: real.values.singleOrNull()
         if (realDir != null && realDir.isNotEmpty()) {
-            val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
             val starts = realDir.map { com.eunho.tagohub.data.CourseStart(it, stops.first().ord) }
-            val times = JeonjuTimetable.stopTimes(starts, seqs) { a, b -> TripPlanner.minutesBetween(line, a, b) }
-            return item.copy(minutes = times, loaded = true, estimated = false)
+            val times = JeonjuTimetable.stopTimes(starts, seqs, mins)
+            return item.copy(minutes = times, loaded = true, estimated = false, measured = measured)
         }
         if (info == null || first == null || last == null) return item.copy(loaded = true)
         val interval = JeonjuTimetable.intervalFor(day, info.interval, info.intervalSat, info.intervalSun)
         val starts = JeonjuTimetable.fromInterval(first, last, interval, stops.first().ord)
-        val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
-        val times = JeonjuTimetable.stopTimes(starts, seqs) { a, b -> TripPlanner.minutesBetween(line, a, b) }
-        return item.copy(minutes = times, loaded = true)
+        val times = JeonjuTimetable.stopTimes(starts, seqs, mins)
+        return item.copy(minutes = times, loaded = true, measured = measured)
     }
 
     /** 노선 패널: 정류장마다 첫차·막차 예상 시각 (전주는 회차별 실제 출발, 그 외 전국은 첫차·막차 + 소요시간) */
@@ -2291,8 +2305,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val schedule = if (day != DayKind.Weekday) (Graph.jeonju.schedule(d.routeId) as? TagoResult.Success)?.data else null
             val starts = JeonjuTimetable.startsFor(day, courses, schedule)
             if (starts.isEmpty()) return
+            val mins = RouteTravel.minutesFn(d.routeId, stops) { a, b -> TripPlanner.minutesBetween(line, a, b) }
             d.stopTimes.value = stops.associate { st ->
-                val t = JeonjuTimetable.stopTimes(starts, listOf(st.ord)) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+                val t = JeonjuTimetable.stopTimes(starts, listOf(st.ord), mins)
                 st.ord to ((t.firstOrNull() ?: -1) to (t.lastOrNull() ?: -1))
             }.filterValues { it.first >= 0 }
             return
@@ -2302,8 +2317,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         var last = JeonjuTimetable.parseClock(info.lastTime) ?: return
         if (last < first) last += 1440
         val startOrd = stops.firstOrNull()?.ord ?: return
+        val mins = RouteTravel.minutesFn(d.routeId, stops) { a, b -> TripPlanner.minutesBetween(line, a, b) }
         d.stopTimes.value = stops.associate { st ->
-            val off = Math.round(TripPlanner.minutesBetween(line, startOrd, st.ord)).toInt()
+            val off = Math.round(mins(startOrd, st.ord)).toInt()
             st.ord to ((first + off) to (last + off))
         }
     }
@@ -2704,27 +2720,62 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val color = busRouteColor(d.routeType).toArgb()
         val shape = d.shape.value
         val now = System.currentTimeMillis()
+        val line = d.stops.value.valueOrNull()?.takeIf { it.size >= 2 }?.let { TripPlanner.Line(d.routeId, d.routeNo, it) }
         canvas?.setBuses(d.buses.value.mapIndexedNotNull { n, b ->
             val id = b.vehicleNo ?: "bus$n"
-            val g = b.vehicleNo?.let { d.gps[it] }?.track
-            if (g == null) {
-                // GPS 가 없는 지역(정류장 순번만 주는 API): 알려준 정류장 자리에 그린다.
-                // 전에는 지도에서 아예 빠져서 "버스가 안 보인다"로 보였다
-                val pt = d.geom?.stopPoint(b.ord) ?: return@mapIndexedNotNull null
-                // 정류장 순번만 알려 주는 지역: 정류장 자리에 두되 '추' 글리프로 추정 위치임을 보여 준다
-                return@mapIndexedNotNull VehiclePin(
-                    id, listOf(pt), 1.0, 1.0, 0L, color,
-                    b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "추",
-                )
+            val label = b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty()
+            val state = b.vehicleNo?.let { d.gps[it] }
+            val g = state?.track
+            // GPS 가 없는 지역(정류장 순번만 주는 API, 정류장 좌표만 주는 API)은 정류장 사이를 시간에 따라 움직이는 추정으로.
+            // 전에는 알려준 정류장 자리에 멈춰 있어서 "버스가 안 움직인다"로 보였다
+            if (g == null || state?.live != true) {
+                estimatedPin(d, b, id, label, color, now, line)?.let { return@mapIndexedNotNull it }
+                if (g == null) return@mapIndexedNotNull null
             }
             // 선형(모양)이 없는 노선은 정류장을 직선으로 이은 선 대신, 지금 좌표를 가장 가까운 도로 위로 붙여 그린다
             val onRoad = if (shape == null) roadLinks?.snap(g.to.lat, g.to.lng) else null
             val path = if (onRoad != null) listOf(onRoad) else GpsTracker.path(g, d.geom?.line ?: shape)
             val dur = g.durMs.toDouble()
             val k = if (onRoad != null || g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
-            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty(), "")
+            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, label, "")
         })
         pushKlidBuses()
+    }
+
+    /**
+     * GPS 가 없는 버스의 지도 위치: 알려준 정류장에 처음 보인 시각([BusSeen])부터 다음 정류장까지 실제 걸리는 시간
+     * ([RouteTravel.travelSec]: 앱이 모은 구간 실측, 없으면 거리 × 지금 도로 상황)만큼 노선 선 위를 움직인다.
+     * API 는 다음 정류장에 닿을 때까지 같은 순번을 주기 때문에, 시간으로 어림하지 않으면 정류장에 멈춰 보인다.
+     * 기점·종점(출발을 기다리며 오래 서 있는 자리)은 어림하지 않고 정류장 자리에 둔다. 추정 위치는 '추' 글리프로 구분한다.
+     */
+    private fun estimatedPin(
+        d: BusDest.Route,
+        b: BusLocation,
+        id: String,
+        label: String,
+        color: Int,
+        now: Long,
+        line: TripPlanner.Line?,
+    ): VehiclePin? {
+        val stops = d.stops.value.valueOrNull().orEmpty()
+        val i = stops.indexOfFirst { it.ord == b.ord }
+        if (i < 0) return null
+        val here = stops[i]
+        val at = LatLng(here.lat ?: return null, here.lng ?: return null)
+        fun still() = VehiclePin(id, listOf(at), 1.0, 1.0, 0L, color, label, "추")
+        val next = stops.getOrNull(i + 1)
+        if (i == 0 || next == null) return still()
+        val nextLat = next.lat ?: return still()
+        val nextLng = next.lng ?: return still()
+        val travel = RouteTravel.travelSec(d.routeId, here.ord, next.ord) { a, c -> TripPlanner.minutesBetween(line, a, c) }
+        val k = RouteLive.progress(BusSeen.since(d.routeId, b.vehicleNo, b.ord), now, travel)
+        if (k <= 0.0) return still()
+        // GPS 를 주지 않는 지역은 RouteGeom 이 아직 없을 수 있다 → 노선 선형으로 한 번 만들어 선을 따라 움직이게
+        val geom = d.geom ?: d.shape.value?.takeIf { it.size >= 2 }?.let { shape ->
+            RouteGeom(shape, stops).also { d.geom = it }
+        }
+        val path = geom?.segment(here.ord, next.ord) ?: listOf(at, LatLng(nextLat, nextLng))
+        return VehiclePin(id, path, k, 1.0, ((1 - k) * travel * 1000).toLong(), color, label, "추")
     }
 
     /** 현재 중심에서 먼 정류소부터 버려 마커 수를 제한 */

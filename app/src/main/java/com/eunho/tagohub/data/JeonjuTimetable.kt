@@ -42,6 +42,8 @@ data class RouteTimes(
     val estimated: Boolean = false,
     /** TAGO 조회용 도시코드 */
     val cityCode: String? = null,
+    /** 정류장 사이 실측 통행시간(지난 운행에서 잰 값)을 반영했는지 */
+    val measured: Boolean = false,
 )
 
 /**

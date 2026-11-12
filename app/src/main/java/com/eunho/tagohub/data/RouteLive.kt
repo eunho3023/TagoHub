@@ -105,6 +105,19 @@ object RouteLive {
     }
 
     /**
+     * 지도에서 GPS 없는 버스가 정류장 [sinceMs] 에 처음 보인 뒤 [travelSec] 동안 다음 정류장까지 간 비율(0~1).
+     * [timedAlong] 은 목록에서 "떠났는지"만 보려고 0.9 에서 멈추지만, 지도는 다음 정류장에 닿을 때까지
+     * 이어서 움직여야 해서 1 까지 간다 (닿으면 API 가 다음 순번을 줄 때까지 그 자리에 기다린다).
+     */
+    fun progress(sinceMs: Long?, nowMs: Long, travelSec: Double?): Double {
+        val since = sinceMs ?: return 0.0
+        val gone = (nowMs - since) / 1000.0 - DWELL_SEC
+        if (gone <= 0) return 0.0
+        val t = travelSec?.takeIf { it.isFinite() && it > 0 } ?: 60.0
+        return (gone / t).coerceIn(0.0, 1.0)
+    }
+
+    /**
      * 버스가 [i] 번째 정류장을 떠나 간 비율: GPS·상태값으로 알 수 있으면 그것, GPS 가 없으면 [timed] 로 어림.
      * 첫 정류장(기점, 출발을 기다리며 오래 서 있음)과 마지막 정류장은 어림하지 않는다.
      */
