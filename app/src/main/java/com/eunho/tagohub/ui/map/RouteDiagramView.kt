@@ -9,6 +9,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -26,7 +28,9 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eunho.tagohub.data.RouteDiagram
+import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteStop
+import kotlinx.coroutines.delay
 
 /** 노선 배치도: 정류장을 줄 세워 한눈에 보는 그림 (서울시 배치 좌표가 있는 노선은 그대로, 나머지는 ㄹ자). 정류장을 누르면 그 정류장으로 */
 @Composable
@@ -34,8 +38,8 @@ fun RouteDiagramView(
     routeId: String,
     stops: List<RouteStop>,
     color: Color,
-    /** 버스 위치: 정류장 번호 + 정류장 사이 비율 (3.0 = 4번째 정류장, 3.5 = 4번째와 5번째 사이) */
-    busPositions: List<Float>,
+    /** 버스 위치: GPS 는 고정, GPS 없는 버스는 시간에 따라 정류장 사이를 움직인다 */
+    busMotions: List<RouteLive.Motion>,
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier = Modifier,
@@ -44,7 +48,7 @@ fun RouteDiagramView(
     val cells = remember(routeId, stops) {
         RouteDiagram.layout(routeId, stops.map { it.nodeId }, RouteDiagram.official(context), PER_ROW)
     }
-    DiagramCanvas(stops, cells, color, busPositions, focusedNodeId, onStop, modifier)
+    DiagramCanvas(stops, cells, color, busMotions, focusedNodeId, onStop, modifier)
 }
 
 private const val PER_ROW = 4
@@ -54,7 +58,7 @@ private fun DiagramCanvas(
     stops: List<RouteStop>,
     cells: List<RouteDiagram.Cell>,
     color: Color,
-    busPositions: List<Float>,
+    busMotions: List<RouteLive.Motion>,
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier,
@@ -64,6 +68,16 @@ private fun DiagramCanvas(
     val ink = MaterialTheme.colorScheme.onSurface
     val rows = ((cells.maxOfOrNull { it.y } ?: 0f).toInt() + 1)
     val rowH = 92.dp
+    // 배치도만 30fps 로 다시 그린다 (화면 전체 재구성 없이 Canvas draw 만 무효화)
+    val now = remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(busMotions) {
+        if (busMotions.any { it.animated }) {
+            while (true) {
+                delay(33)
+                now.longValue = System.currentTimeMillis()
+            }
+        }
+    }
     Box(modifier.verticalScroll(rememberScrollState())) {
         val pos = { w: Float, c: RouteDiagram.Cell, rh: Float ->
             val colW = w / PER_ROW
@@ -123,15 +137,18 @@ private fun DiagramCanvas(
                 }
             }
             // 버스: 정류장 위, 또는 떠난 버스는 정류장 사이 (노란 원)
-            busPositions.forEach { f ->
-                val i = kotlin.math.floor(f).toInt().coerceIn(0, pts.lastIndex)
-                val t = f - i
-                val from = pts[i]
-                val to = pts.getOrNull(i + 1) ?: from
-                // 줄이 바뀌는 곳(다른 줄로 건너뜀)은 사이에 그리면 엉뚱한 곳이라 출발 정류장 쪽에 그림
-                val at = if (kotlin.math.abs(from.y - to.y) > 1f) from else Offset(from.x + (to.x - from.x) * t, from.y)
-                drawCircle(Color.White, radius = 9.dp.toPx(), center = at)
-                drawCircle(Color(0xFFFFB300), radius = 7.dp.toPx(), center = at)
+            if (pts.isNotEmpty()) {
+                busMotions.forEach { m ->
+                    val f = m.fraction(now.longValue)
+                    val i = kotlin.math.floor(f).toInt().coerceIn(0, pts.lastIndex)
+                    val t = (f - i).coerceIn(0f, 1f)
+                    val from = pts[i]
+                    val to = pts.getOrNull(i + 1) ?: from
+                    // 줄이 바뀌는 곳(다른 줄로 건너뜀)은 사이에 그리면 엉뚱한 곳이라 출발 정류장 쪽에 그림
+                    val at = if (kotlin.math.abs(from.y - to.y) > 1f) from else Offset(from.x + (to.x - from.x) * t, from.y)
+                    drawCircle(Color.White, radius = 9.dp.toPx(), center = at)
+                    drawCircle(Color(0xFFFFB300), radius = 7.dp.toPx(), center = at)
+                }
             }
         }
     }

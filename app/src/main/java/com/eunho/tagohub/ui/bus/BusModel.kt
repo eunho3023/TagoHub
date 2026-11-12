@@ -32,6 +32,7 @@ import com.eunho.tagohub.data.StopDb
 import com.eunho.tagohub.data.TagoRepository
 import com.eunho.tagohub.core.Row
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -138,6 +139,8 @@ sealed class BusDest {
     ) : BusDest() {
         val info = MutableStateFlow<Load<BusRoute?>>(Load.Loading)
         val stops = MutableStateFlow<Load<List<RouteStop>>>(Load.Loading)
+        /** 정류장 목록이 확정된 시점. 노선 정보보다 버스 위치를 먼저 받는 데 쓴다. */
+        val stopsReady = CompletableDeferred<Unit>()
         val buses = MutableStateFlow<List<BusLocation>>(emptyList())
         val updated = MutableStateFlow<LocalTime?>(null)
 
@@ -569,21 +572,29 @@ private suspend fun jeonjuCoords(rows: List<Row>): Map<String, LatLng> {
     return withContext(Dispatchers.IO) { db.coords(ids) }
 }
 
+/** 정류장 목록을 화면에 알리고, 처음 확정된 순간을 [BusDest.Route.stopsReady] 로 알린다. */
+private fun BusDest.Route.publishStops(load: Load<List<RouteStop>>) {
+    stops.value = load
+    if (load !is Load.Loading) stopsReady.complete(Unit)
+}
+
 internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
     if (Jeju.isJeju(d.routeId)) {
         val st = cachedStops(d.routeId) { (Graph.jeju.routeStops(d.routeId) as? TagoResult.Success)?.data }
-        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("제주 노선 정류장을 받지 못했어요.")
+        d.publishStops(if (st != null) Load.Ok(st) else Load.Fail("제주 노선 정류장을 받지 못했어요."))
         d.info.value = Load.Ok(cachedInfo(d.routeId) { Graph.jeju.routeInfo(d.routeId) })
         return
     }
     // 자체 API 지역: 노선 정류장·정보 모두 그 지역 API (TAGO 로 대체하지 않음)
     if (Gyeonggi.isGyeonggi(d.routeId)) {
-        val info = cachedInfo(d.routeId) { (Graph.gyeonggi.routeInfo(d.routeId) as? TagoResult.Success)?.data }
         // 앱 안 노선 정류장(경기 노선경유정류소, 2023) — 첫 정류장이 지금 노선 기점과 다르면 개편된 것으로 보고 경기 API
         val local = StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.routeStops(d.routeId) } }.orEmpty()
+        // 앱 안 정류장이 있으면 노선 정보 응답을 기다리지 않고 먼저 확정한다 (버스 위치를 그 사이에 조회)
+        if (local.isNotEmpty()) d.publishStops(Load.Ok(local))
+        val info = cachedInfo(d.routeId) { (Graph.gyeonggi.routeInfo(d.routeId) as? TagoResult.Success)?.data }
         val st = if (local.isNotEmpty() && GyeonggiRouteBook.sameStop(local.first().name, info?.startName)) local
             else cachedStops(d.routeId) { (Graph.gyeonggi.routeStops(d.routeId) as? TagoResult.Success)?.data }
-        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("경기 노선 정류장을 받지 못했어요.")
+        if (st !== local) d.publishStops(if (st != null) Load.Ok(st) else Load.Fail("경기 노선 정류장을 받지 못했어요."))
         d.info.value = Load.Ok(info)
         return
     }
@@ -594,7 +605,7 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
                 JeonjuMappers.routeStops(rows) { coords[it] }
             }
         }
-        d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("전주 노선 정류장을 받지 못했어요.")
+        d.publishStops(if (st != null) Load.Ok(st) else Load.Fail("전주 노선 정류장을 받지 못했어요."))
         d.info.value = Load.Ok(cachedInfo(d.routeId) { (Graph.jeonju.routeInfo(d.routeId) as? TagoResult.Success)?.data })
         return
     }
@@ -606,7 +617,7 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
             if (SeoulBus.isSeoul(d.routeId) && local.all { it.upDown.isNullOrBlank() }) {
                 local = com.eunho.tagohub.data.RouteDirections.markTurn(local, Graph.seoulBus.turnStation(d.routeId))
             }
-            d.stops.value = Load.Ok(local)
+            d.publishStops(Load.Ok(local))
             val seoulInfo = if (SeoulBus.isSeoul(d.routeId)) cachedInfo(d.routeId) { (Graph.seoulBus.routeInfo(d.routeId) as? TagoResult.Success)?.data } else null
             d.info.value = Load.Ok(seoulInfo ?: withContext(Dispatchers.IO) { db.routeById(d.routeId) })
             return
@@ -618,9 +629,9 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
         coroutineScope {
             launch { d.info.value = Load.Ok(cachedInfo(d.routeId) { (Graph.seoulBus.routeInfo(d.routeId) as? TagoResult.Success)?.data }) }
             launch {
-                if (d.stops.value !is Load.Ok) d.stops.value = Load.Loading
+                if (d.stops.value !is Load.Ok) d.publishStops(Load.Loading)
                 val st = cachedStops(d.routeId) { (Graph.seoulBus.routeStops(d.routeId) as? TagoResult.Success)?.data }
-                d.stops.value = if (!st.isNullOrEmpty()) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했어요.")
+                d.publishStops(if (!st.isNullOrEmpty()) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했어요."))
             }
         }
         return
@@ -631,9 +642,9 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
             d.info.value = Load.Ok(k ?: cachedInfo(d.routeId) { (repo.routeInfo(d.cityCode, d.routeId) as? TagoResult.Success)?.data })
         }
         launch {
-            if (d.stops.value !is Load.Ok) d.stops.value = Load.Loading
+            if (d.stops.value !is Load.Ok) d.publishStops(Load.Loading)
             val st = cachedStops(d.routeId) { (repo.routeStops(d.cityCode, d.routeId) as? TagoResult.Success)?.data }
-            d.stops.value = if (st != null) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했어요.")
+            d.publishStops(if (st != null) Load.Ok(st) else Load.Fail("노선 정류장을 받지 못했어요."))
         }
     }
 }
@@ -643,6 +654,28 @@ internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
  * 1) TAGO 버스위치 = 실시간 GPS (전주 포함). 정류장 순번도 전주시 API 와 같다.
  * 2) TAGO 가 안 되면 전주시 API (정류장 단위, GPS 없음) — [jeonjuWithGps]
  */
+/** 마지막으로 성공한 버스 위치. 노선을 다시 열 때 API 응답을 기다리지 않고 먼저 보여 준다. */
+internal object RouteBusCache {
+    private data class Entry(val at: Long, val buses: List<BusLocation>)
+    private val entries = HashMap<String, Entry>()
+    private const val TTL_MS = 60_000L
+
+    @Synchronized
+    fun get(routeId: String): List<BusLocation> {
+        val e = entries[routeId] ?: return emptyList()
+        if (System.currentTimeMillis() - e.at > TTL_MS) {
+            entries.remove(routeId)
+            return emptyList()
+        }
+        return e.buses
+    }
+
+    @Synchronized
+    fun put(routeId: String, buses: List<BusLocation>) {
+        if (buses.isNotEmpty()) entries[routeId] = Entry(System.currentTimeMillis(), buses)
+    }
+}
+
 internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
     fetchBusData(repo, d)
     // 같은 번호 노선(기점·종점이 다른 변형)이 버스 위치를 공유하는 지역이 있어서(전주: 변형마다 같은 버스가 옴, 번호로 TAGO 노선을 고르는 세종·원주·포항),
@@ -650,6 +683,7 @@ internal suspend fun refreshBusData(repo: TagoRepository, d: BusDest.Route) {
     if (d.buses.value.isNotEmpty() && !variantRunning(d)) d.buses.value = emptyList()
     // 버스가 정류장을 옮겨 간 실제 시간으로 이 노선의 도로 상황(평소 대비 느림/빠름)을 갱신
     val buses = d.buses.value
+    if (buses.isNotEmpty()) RouteBusCache.put(d.routeId, buses)
     // 차량이 정류장에 처음 보인 시각(GPS 없는 버스의 출발 어림)과 정류장 도착 기록(요일별 예상 시간표)
     BusSeen.update(d.routeId, buses)
     d.stops.value.valueOrNull()?.let { ArrivalLog.observe(d.routeId, buses, it) }

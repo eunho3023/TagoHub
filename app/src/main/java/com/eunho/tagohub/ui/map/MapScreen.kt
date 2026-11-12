@@ -1747,15 +1747,10 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
-            // GPS 없는 지역(경기·전주 등)은 정류장 순번만 와서, 그 정류장에 처음 보인 뒤
-            // 실제 구간 통행시간만큼 다음 정류장으로 움직이는 모습을 그린다 (5초마다 갱신).
-            val nowTick by produceState(System.currentTimeMillis()) {
-                while (true) {
-                    delay(5_000)
-                    value = System.currentTimeMillis()
-                }
-            }
-            val placement = remember(buses, list, nowTick) {
+            // 버스 데이터가 바뀔 때만 배치를 계산한다. 배치도는 그 사이를 시간으로 움직이고,
+            // 목록의 "정류장 사이" 표시는 다음 버스 갱신 때 새 위치로 옮긴다.
+            val placement = remember(buses, list) {
+                val now = System.currentTimeMillis()
                 com.eunho.tagohub.data.RouteLive.placement(buses, list) { b, i ->
                     val from = list.getOrNull(i)
                     val to = list.getOrNull(i + 1)
@@ -1766,9 +1761,21 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         val sec = com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, from.ord, to.ord) { a, z ->
                             com.eunho.tagohub.data.TripPlanner.minutesBetween(line, a, z)
                         }
-                        com.eunho.tagohub.data.RouteLive.timedAlong(since, nowTick, sec)
+                        com.eunho.tagohub.data.RouteLive.timedAlong(since, now, sec)
                     }
                 }
+            }
+            val motions = remember(buses, list) {
+                val line = com.eunho.tagohub.data.TripPlanner.Line(d.routeId, d.routeNo, list)
+                com.eunho.tagohub.data.RouteLive.motions(
+                    buses, list,
+                    since = { b, i -> com.eunho.tagohub.data.BusSeen.since(d.routeId, b.vehicleNo, list[i].ord) },
+                    travelSec = { i, j ->
+                        com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, list[i].ord, list[j].ord) { a, z ->
+                            com.eunho.tagohub.data.TripPlanner.minutesBetween(line, a, z)
+                        }
+                    },
+                )
             }
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
             list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
@@ -1804,7 +1811,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     routeId = d.routeId,
                     stops = list,
                     color = color,
-                    busPositions = placement.fractions,
+                    busMotions = motions,
                     focusedNodeId = d.focusNodeId,
                     onStop = { vm.focusRouteStop(it.nodeId) },
                     modifier = Modifier.fillMaxSize(),
