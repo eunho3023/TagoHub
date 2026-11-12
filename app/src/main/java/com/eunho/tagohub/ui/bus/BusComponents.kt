@@ -138,10 +138,13 @@ internal fun StopListRow(s: BusStop, distance: String?, region: String? = null, 
     }
 }
 
-@Composable
+/** 도착 예정 시각이 이만큼 지나도 "정류장 도착"이 남으면 화면에서 숨김 */
+private const val STALE_ARRIVED_SEC = 60
+
 /** elapsedSec: 도착정보를 받은 뒤 지난 초. 다음 갱신 전까지 매초 줄어든다 */
 /** dirLabel: 정류장 방면 (회차 노선에만 붙임 — 편도 노선은 기점-종점으로 충분) */
 /** onBell: 승차 알림 종 (null 이면 안 보임), bellOn: 이 노선에 승차 알림이 켜져 있음 */
+@Composable
 internal fun StopRouteItem(
     row0: StopRouteRow,
     elapsedSec: Int = 0,
@@ -152,8 +155,12 @@ internal fun StopRouteItem(
     onBoard: Boolean = false,
     onClick: () -> Unit,
 ) {
-    // 웹과 같게: API 가 준 도착 정보를 화면에서 걸러내지 않는다 (다음 새로고침까지 그대로)
-    val row = row0
+    // API 가 "정류장 도착"을 계속 주는 지역(전주 등)은 버스가 떠난 뒤에도 몇 분씩 남는다.
+    // 도착 예정 시각이 1분 넘게 지난 "도착"만 화면에서 숨긴다 (값을 새로 만들지는 않음).
+    val row = row0.copy(arrivals = row0.arrivals.filterNot { a ->
+        val sec = a.arrSeconds
+        a.prevStops == 0 && sec != null && sec + STALE_ARRIVED_SEC < elapsedSec
+    })
     // 보드(어두운 판) 위에서는 판 전용 색, 흰 카드에서는 테마 색을 그대로 쓴다
     val variant = if (onBoard) BoardColor.Muted else MaterialTheme.colorScheme.onSurfaceVariant
     // 곧 도착 강조색: 보드에서는 라임, 흰 카드에서는 테마 오류색 (라이트 진한 빨강 / 다크 밝은 빨강)
@@ -259,6 +266,8 @@ internal fun TimelineRow(
     isFirst: Boolean,
     isLast: Boolean,
     buses: List<BusLocation>,
+    /** 이 정류장을 막 떠나 다음 정류장으로 가는 중인 버스 (띠의 아래쪽, 다음 정류장 바로 앞에 그림) */
+    between: List<BusLocation> = emptyList(),
     focused: Boolean,
     /** 이 정류장 첫차·막차 예상 시각 ("07:24 - 23:12") */
     times: String? = null,
@@ -288,6 +297,20 @@ internal fun TimelineRow(
                     )
                 }
             }
+            // 이 정류소를 떠나 다음 정류소로 가는 중인 버스: 아래쪽(다음 정류소 바로 앞)에 차량번호
+            between.firstOrNull()?.let { b ->
+                Column(Modifier.align(Alignment.BottomEnd).padding(bottom = 2.dp), horizontalAlignment = Alignment.End) {
+                    FitText(
+                        (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (between.size > 1) " 외 ${between.size - 1}" else "",
+                        Modifier
+                            .padding(end = 6.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        maxSizeSp = 11f, minSizeSp = 8f,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
         }
         Box(
             Modifier
@@ -309,6 +332,21 @@ internal fun TimelineRow(
                         .weight(1f)
                         .background(if (isLast) Color.Transparent else color)
                 )
+            }
+            if (between.isNotEmpty()) {
+                // 떠난 버스: 띠 아래쪽에 작은 앰버 원 (정류소 점과 겹치지 않게)
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 2.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(BoardColor.AmberFill)
+                        .border(2.dp, color, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.DirectionsBus, contentDescription = "이동 중인 버스", tint = BoardColor.OnAmber, modifier = Modifier.size(10.dp))
+                }
             }
             if (buses.isNotEmpty()) {
                 // 버스가 있는 정류소: 앰버 원에 버스 아이콘

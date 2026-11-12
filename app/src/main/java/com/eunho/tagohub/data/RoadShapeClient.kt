@@ -71,8 +71,19 @@ object RoadShapeClient {
                 piece = Shapes.slice(fallback, part.first(), part.last())
                     ?.takeIf { p -> Shapes.passesStops(p, part.drop(1).dropLast(1), 80.0) }
             }
+            if (piece == null && kakao) {
+                // 대중교통 경로가 없으면 자동차 길찾기로 도로를 따라간다 (직선으로 건물을 가로지르지 않게)
+                val vias = part.drop(1).dropLast(1).take(KakaoDrive.MAX_WAYPOINTS)
+                val (_, route) = KakaoExtra.drive(part.first(), part.last(), vias = vias)
+                piece = route?.points?.takeIf { it.size >= 2 }
+                    ?.takeIf { p ->
+                        Shapes.passesStops(p, part.drop(1).dropLast(1), 80.0) &&
+                            Shapes.length(p) <= Shapes.length(part) * 2.2 + 300
+                    }
+            }
             if (piece == null) {
-                piece = fetch(part)?.takeIf { Shapes.length(it) <= Shapes.length(part) * 3 + 300 }?.let { Shapes.removeDetours(it, part) }
+                // OSRM 이 블록을 한 바퀴 도는 구간도 실제 도로일 수 있어 직선으로 바꾸지 않는다
+                piece = fetch(part)?.takeIf { Shapes.length(it) <= Shapes.length(part) * 3 + 300 }
             }
             if (piece != null) anyRoad = true
             val seg = piece ?: part

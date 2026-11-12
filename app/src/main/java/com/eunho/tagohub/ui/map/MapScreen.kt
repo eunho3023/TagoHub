@@ -1747,8 +1747,29 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
-            // 웹과 같게: 버스는 알려준 정류장 자리에만 표시한다 (정류장 사이 추정 이동 없음)
-            val placement = remember(buses, list) { com.eunho.tagohub.data.RouteLive.placement(buses, list) }
+            // GPS 없는 지역(경기·전주 등)은 정류장 순번만 와서, 그 정류장에 처음 보인 뒤
+            // 실제 구간 통행시간만큼 다음 정류장으로 움직이는 모습을 그린다 (5초마다 갱신).
+            val nowTick by produceState(System.currentTimeMillis()) {
+                while (true) {
+                    delay(5_000)
+                    value = System.currentTimeMillis()
+                }
+            }
+            val placement = remember(buses, list, nowTick) {
+                com.eunho.tagohub.data.RouteLive.placement(buses, list) { b, i ->
+                    val from = list.getOrNull(i)
+                    val to = list.getOrNull(i + 1)
+                    val since = if (from != null) com.eunho.tagohub.data.BusSeen.since(d.routeId, b.vehicleNo, from.ord) else null
+                    if (from == null || to == null || since == null) null
+                    else {
+                        val line = com.eunho.tagohub.data.TripPlanner.Line(d.routeId, d.routeNo, list)
+                        val sec = com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, from.ord, to.ord) { a, z ->
+                            com.eunho.tagohub.data.TripPlanner.minutesBetween(line, a, z)
+                        }
+                        com.eunho.tagohub.data.RouteLive.timedAlong(since, nowTick, sec)
+                    }
+                }
+            }
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
             list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1775,7 +1796,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             LaunchedEffect(list) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
                 val target = list.indexOfFirst { it.nodeId == d.focusNodeId }.takeIf { it >= 0 }
-                    ?: placement.at.keys.minOrNull()
+                    ?: (placement.at.keys + placement.between.keys).minOrNull()
                 if (target != null) listState.scrollToItem(target)
             }
             if (diagram) {
@@ -1796,6 +1817,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         isFirst = i == 0,
                         isLast = i == list.lastIndex,
                         buses = placement.at[i].orEmpty(),
+                        between = placement.between[i].orEmpty(),
                         focused = s.nodeId == d.focusNodeId,
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
                     ) { vm.focusRouteStop(s.nodeId) }

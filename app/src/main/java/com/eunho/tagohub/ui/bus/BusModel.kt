@@ -412,7 +412,9 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
 
     // 지나간 버스 확인(노선마다 버스 위치 조회)·같은 자리 다른 정류장 조회는 몇 초 걸려서,
     // 처음 열 때는 받은 도착 정보를 먼저 보여주고 다 끝나면 고친 목록으로 바꿈
-    if (arr is TagoResult.Success && arr.data.isNotEmpty() && d.lastArrivals == null) {
+    // 갱신할 때마다 API 도착 정보를 먼저 그린다. 버스 위치 확인(dropPassedByPosition)은 몇 초 걸려서
+    // 그것을 기다리면 화면이 늦게 바뀐다 (웹과 같이 받은 값을 바로 보여 주고, 아래에서 한 번 더 고침).
+    if (arr is TagoResult.Success) {
         d.rows.value = Load.Ok(
             mergeStopRows(arr.data, d.lastRoutes.orEmpty())
                 .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
