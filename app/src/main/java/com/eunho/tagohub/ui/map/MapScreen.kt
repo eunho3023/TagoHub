@@ -1352,6 +1352,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             onRefresh = vm::refreshNow,
         )
         val timetable by vm.stopTimetable.collectAsStateWithLifecycle()
+        val pastTimetable by vm.pastTimetable.collectAsStateWithLifecycle()
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         androidx.compose.material3.OutlinedButton(
             onClick = {
@@ -1370,8 +1371,13 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
         // 노선 목록(가운데, 남는 높이를 모두 씀) + 아래 고정 바
         Box(Modifier.weight(1f)) {
             val tt = timetable
-            if (tt != null) {
-                StopTimetable(vm, tt, d.stop.nodeId)
+            val past = pastTimetable
+            if (past != null) {
+                // 과거 시간표: 지난 1·2·3주 기록을 세 열로
+                PastTimetablePanel(vm, d)
+            } else if (tt != null) {
+                // 웹과 같은 기준(지난 운행 기록 우선 + 모자란 노선만 예상)을 기본으로 보여 준다
+                StopBoardPanel(vm, tt, d.stop.nodeId)
             } else {
                 val companions by d.others.collectAsStateWithLifecycle()
                 com.eunho.tagohub.ui.bus.BoardBellHost(d.stop, companions) { bellOn, onBell ->
@@ -1387,11 +1393,41 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                                 BoardLink("시간표", { vm.openStopTimetable() })
                             },
                         ) {
+                            // 실시간이 있는 노선을 먼저, 없으면 아래 "예상 시간표" 구역에 (사진의 정류장 목록과 같은 구성)
+                            val visible = hideDuplicateNumbers(list)
+                            val live = visible.filter { r -> r.arrivals.any { !it.estimated } }
+                            val estimated = visible.filterNot { r -> r.arrivals.any { !it.estimated } }
                             LazyColumn(Modifier.weight(1f)) {
-                                items(hideDuplicateNumbers(list)) { row ->
+                                items(live) { row ->
                                     // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
-                                    StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }, onBoard = true) { vm.showRoute(row) }
+                                    StopRouteItem(
+                                        row, elapsedSec, direction,
+                                        bellOn = bellOn(row), onBell = { onBell(row) },
+                                        onPast = { vm.openPastTimetable(row.routeId) },
+                                        onBoard = true,
+                                    ) { vm.showRoute(row) }
                                     HorizontalDivider(color = BoardColor.Line)
+                                }
+                                if (estimated.isNotEmpty()) {
+                                    item {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text("예상 시간표", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = BoardColor.On)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("과거 운행정보 기반", style = MaterialTheme.typography.labelMedium, color = BoardColor.Muted)
+                                        }
+                                    }
+                                    items(estimated) { row ->
+                                        StopRouteItem(
+                                            row, elapsedSec, direction,
+                                            bellOn = bellOn(row), onBell = { onBell(row) },
+                                            onPast = { vm.openPastTimetable(row.routeId) },
+                                            onBoard = true,
+                                        ) { vm.showRoute(row) }
+                                        HorizontalDivider(color = BoardColor.Line)
+                                    }
                                 }
                             }
                         }
@@ -1625,6 +1661,320 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 과거 시간표 — 고른 요일의 지난 1·2·3주 기록을 세 열로 나란히 놓는다 (참고 화면의 과거 시간표).
+ * 노선·요일을 바꾸면 그 기준으로 다시 모은다.
+ */
+@Composable
+private fun PastTimetablePanel(vm: MapViewModel, d: BusDest.Stop) {
+    val state by vm.pastTimetable.collectAsStateWithLifecycle()
+    val day by vm.pastDay.collectAsStateWithLifecycle()
+    val routeId by vm.pastRouteId.collectAsStateWithLifecycle()
+    val rowsState by d.rows.collectAsStateWithLifecycle()
+    val rows = (rowsState as? Load.Ok<List<com.eunho.tagohub.ui.bus.StopRouteRow>>)?.value.orEmpty()
+    val route = rows.firstOrNull { it.routeId == routeId } ?: rows.firstOrNull()
+    var picking by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            "지난 운행 기록으로 만든 과거 시간표예요. 오늘 도착 시각과는 차이가 날 수 있어요.",
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Surface(
+            onClick = { picking = true },
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        ) {
+            Row(Modifier.heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (route != null) {
+                    RouteNoBadge(route.routeNo, route.routeType)
+                    Text(
+                        listOfNotNull(route.startName, route.endName).joinToString("-").ifBlank { route.routeNo },
+                        Modifier.padding(start = 8.dp).weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    Text("노선 선택", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                }
+                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "노선 선택")
+            }
+        }
+        if (picking) {
+            ModalBottomSheet(onDismissRequest = { picking = false }) {
+                Text(
+                    "버스 선택", Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                )
+                LazyColumn(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                    items(rows) { r ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { picking = false; vm.setPastRoute(r.routeId) }
+                                .padding(horizontal = 4.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RouteNoBadge(r.routeNo, r.routeType)
+                            Text(
+                                "(" + listOf(r.startName, r.endName).filterNotNull().joinToString("-") + ")",
+                                Modifier.padding(start = 8.dp).weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (r.routeId == route?.routeId) Icon(Icons.Filled.Check, contentDescription = "선택됨")
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+        }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(java.time.DayOfWeek.entries) { k ->
+                com.eunho.tagohub.ui.common.PillChip(PastTimetable.dayLabel(k), k == day, { vm.setPastDay(k) })
+            }
+        }
+        when (val s = state) {
+            null -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                Text("불러오는 중…", style = MaterialTheme.typography.bodyMedium)
+            }
+            is Load.Idle, is Load.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp), color = ModeColor.Bus)
+            is Load.Fail -> com.eunho.tagohub.ui.common.MessageBox(s.message, isError = true, onRetry = { vm.openPastTimetable() })
+            is Load.Ok -> PastTimetableTable(s.value, Modifier.weight(1f))
+        }
+    }
+}
+
+/** 노선 번호 배지 (일반·순환 색) */
+@Composable
+private fun RouteNoBadge(no: String, type: String?) {
+    val c = busRouteColor(type)
+    Surface(shape = RoundedCornerShape(6.dp), color = c) {
+        Text(
+            no,
+            Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelLarge.merge(Tnum),
+            color = Color.White,
+            fontWeight = FontWeight.ExtraBold,
+        )
+    }
+}
+
+/** 첫·막 배지 (사진의 작은 네모) */
+@Composable
+private fun PastBadge(text: String) {
+    val c = MaterialTheme.colorScheme.primary
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = c.copy(alpha = 0.10f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, c.copy(alpha = 0.5f)),
+        modifier = Modifier.padding(end = 4.dp),
+    ) {
+        Text(text, Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = c, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** 3주 열 표: 열마다 그날 지난 시각을 위에서부터 채운다. 첫·막에 배지 */
+@Composable
+private fun PastTimetableTable(columns: List<PastDay>, modifier: Modifier = Modifier) {
+    val maxRows = columns.maxOfOrNull { it.minutes.size } ?: 0
+    if (maxRows == 0) {
+        com.eunho.tagohub.ui.common.MessageBox("이 요일은 아직 기록이 없어요. 이 노선이나 정류장을 열어 두면 버스가 지날 때마다 시각이 쌓여요.")
+        return
+    }
+    val range = remember(columns) { PastTimetable.hourRange(columns) }
+    var hour by remember(columns) { mutableStateOf<Int?>(null) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(hour) {
+        val h = hour ?: return@LaunchedEffect
+        val idx = (0 until maxRows).firstOrNull { i ->
+            columns.any { c -> (c.minutes.getOrNull(i) ?: Int.MAX_VALUE) >= h * 60 }
+        } ?: 0
+        listState.scrollToItem(idx)
+    }
+    Column(modifier) {
+        range?.let { r ->
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(r.toList()) { h -> com.eunho.tagohub.ui.common.PillChip("${h}시", h == hour, { hour = h }) }
+            }
+        }
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)).padding(vertical = 8.dp)) {
+            columns.forEach { c ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(c.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold)
+                    Text(PastTimetable.dateLabel(c.date), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            items(maxRows) { i ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    columns.forEach { c ->
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            val m = c.minutes.getOrNull(i)
+                            if (m == null) {
+                                Text("–", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (i == 0) PastBadge("첫") else if (i == c.minutes.lastIndex) PastBadge("막")
+                                    Text(StopBoard.clock(m), style = MaterialTheme.typography.titleMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold)
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            }
+        }
+    }
+}
+
+/**
+ * 정류장 시간표 — 웹(bus.js stopTable)과 같은 기준.
+ * 지난 운행 기록(최근 6주, 같은 요일에 여러 날 같은 무렵)을 먼저 쓰고, 기록이 하나도 없는 노선만
+ * 공식 배차표·첫차막차로 채워 `~` 로 표시한다. 노선별 첫차·막차 표는 「노선별 자세히」에 그대로 남긴다.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun StopBoardPanel(vm: MapViewModel, timetable: Load<List<RouteTimes>>, nodeId: String) {
+    val day by vm.boardDay.collectAsStateWithLifecycle()
+    val board by vm.stopBoard.collectAsStateWithLifecycle()
+    var detail by rememberSaveable { mutableStateOf(false) }
+    // 이 정류장을 열 때 한 번 만들고, 요일을 바꾸면 그 요일로 다시 만든다
+    LaunchedEffect(nodeId) { vm.openStopBoard() }
+    Column(Modifier.fillMaxSize()) {
+        if (detail) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { detail = false }) { Text("← 한눈에 보기") }
+                Text("노선별 상세", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+            Box(Modifier.weight(1f)) { StopTimetable(vm, timetable, nodeId) }
+            return@Column
+        }
+        Text(
+            "지난 운행 기록(최근 6주)을 먼저 쓰고, 기록이 모자란 노선만 공식 배차표·첫차막차로 채웁니다. ~ 는 예상 시각이에요.",
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(java.time.DayOfWeek.entries) { k ->
+                com.eunho.tagohub.ui.common.PillChip(
+                    k.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.KOREAN),
+                    k == day,
+                    { vm.setBoardDay(k) },
+                )
+            }
+        }
+        when (val b = board) {
+            null -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                Text("시간표를 만드는 중…", style = MaterialTheme.typography.bodyMedium)
+            }
+            is Load.Idle, is Load.Loading -> LinearProgressIndicator(
+                Modifier.fillMaxWidth().padding(16.dp),
+                color = ModeColor.Bus,
+            )
+            is Load.Fail -> com.eunho.tagohub.ui.common.MessageBox(b.message, isError = true, onRetry = { vm.openStopBoard() })
+            is Load.Ok -> StopBoardTable(b.value, day, Modifier.weight(1f))
+        }
+        TextButton(onClick = { detail = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text("노선별 자세히 (첫차·막차 표)")
+        }
+    }
+}
+
+/** 기록·예상을 시간대별로 묶어 한 줄에 늘어놓는다 (웹 stopTable 의 시간대 묶음과 같음) */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun StopBoardTable(entries: List<BoardTime>, day: java.time.DayOfWeek, modifier: Modifier = Modifier) {
+    val groups = remember(entries) { StopBoard.byHour(entries) }
+    val today = day == java.time.LocalDate.now().dayOfWeek
+    val now by produceState(java.time.LocalTime.now().let { it.hour * 60 + it.minute }, day) {
+        while (true) {
+            val t = java.time.LocalTime.now()
+            value = t.hour * 60 + t.minute
+            delay(30_000L)
+        }
+    }
+    val recorded = entries.count { !it.estimated }
+    Column(modifier) {
+        Text(
+            "기록 ${recorded}회 · 예상 ${entries.size - recorded}회",
+            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(groups) { group ->
+                val hour = group.first
+                val list = group.second
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        "%02d시".format(hour),
+                        Modifier.width(48.dp),
+                        style = MaterialTheme.typography.titleSmall.merge(Tnum),
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    androidx.compose.foundation.layout.FlowRow(
+                        Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        list.forEach { e ->
+                            val color = busRouteColor(e.routeType)
+                            val past = today && e.minute < now
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    (if (e.estimated) "~" else "") + StopBoard.clock(e.minute),
+                                    style = MaterialTheme.typography.bodyMedium.merge(Tnum),
+                                    fontWeight = if (e.estimated) FontWeight.Medium else FontWeight.ExtraBold,
+                                    color = if (past) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Surface(shape = RoundedCornerShape(6.dp), color = color.copy(alpha = 0.15f)) {
+                                    Text(
+                                        e.routeNo,
+                                        Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = color,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
@@ -3140,8 +3490,13 @@ private fun ObservedTimetable(routeId: String, nodeId: String, color: Color) {
                         if (i == 0) {
                             Text("첫", Modifier.border(1.dp, color, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp), color = color, style = MaterialTheme.typography.labelSmall)
                             Spacer(Modifier.width(6.dp))
+                        } else if (i == table.slots.lastIndex) {
+                            Text("막", Modifier.border(1.dp, color, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp), color = color, style = MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(6.dp))
                         }
                         Text(clock(slot.expected), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                        // 사진처럼 예상 시각 옆에 펼침 표시 (이 행이 그 시각의 기록)
+                        Text("›", Modifier.padding(start = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                     }
                     Text(clock(slot.earliest), Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(clock(slot.latest), Modifier.weight(1f), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)

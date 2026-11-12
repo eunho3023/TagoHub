@@ -12,6 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -138,6 +139,7 @@ internal fun StopListRow(s: BusStop, distance: String?, region: String? = null, 
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 /** elapsedSec: 도착정보를 받은 뒤 지난 초. 다음 갱신 전까지 매초 줄어든다 */
 /** dirLabel: 정류장 방면 (회차 노선에만 붙임 — 편도 노선은 기점-종점으로 충분) */
@@ -148,6 +150,8 @@ internal fun StopRouteItem(
     dirLabel: String? = null,
     bellOn: Boolean = false,
     onBell: (() -> Unit)? = null,
+    /** 이 노선의 과거 시간표 열기 (사진의 행별 "과거 시간표 ›" 링크). null 이면 안 보임 */
+    onPast: (() -> Unit)? = null,
     /** 짙은 남색 실시간 보드 위에 놓을 때 true: 판 전용 글자색·강조색을 쓴다 */
     onBoard: Boolean = false,
     onClick: () -> Unit,
@@ -166,23 +170,56 @@ internal fun StopRouteItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 왼쪽: 노선 종류 배지 + 큰 노선번호, 아래에 방면(없으면 기점 → 종점)
+        // 왼쪽: 사진처럼 [종류 라벨] [노선번호] (기점-종점) 한 줄, 아래에 방면
         Column(Modifier.weight(1f)) {
-            // 노선 번호: 노선 색 칩에 흰 글씨 (종류는 색으로)
-            Text(
-                row.routeNo,
-                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
-                color = Color.White, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RouteKindLabel(row.routeType)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    row.routeNo,
+                    color = strong, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                val ends = listOfNotNull(row.startName, row.endName).joinToString("-")
+                if (ends.isNotEmpty()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "($ends)",
+                        // 한 줄에 다 안 들어가면 전광판처럼 옆으로 흐른다 (들어가면 멈춤)
+                        Modifier.weight(1f).basicMarquee(iterations = Int.MAX_VALUE),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = variant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                    )
+                }
+            }
             Spacer(Modifier.height(4.dp))
             val a0 = row.arrivals.firstOrNull()
             val roundTrip = com.eunho.tagohub.data.RouteDirections.isRoundTrip(row.startName, row.endName)
             // 방면(지역 API, 없으면 순환 노선의 방향) · 현재 정류장(지역 API)
             val dir = a0?.towards?.let { "$it 방면" } ?: if (roundTrip) dirLabel?.let { "$it 방면" } else null
-            val ends = listOfNotNull(row.startName, row.endName).joinToString(" → ")
-            val sub = listOfNotNull(row.region, dir ?: ends.ifEmpty { null }, a0?.atStop?.let { "현재 $it" })
+            val sub = listOfNotNull(row.region, dir, a0?.atStop?.let { "현재 $it" })
                 .joinToString("   ").ifEmpty { null }
-            if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant)
+            if (sub != null) Text(
+                sub,
+                Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                style = MaterialTheme.typography.bodyMedium,
+                color = variant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+            )
+            if (onPast != null) {
+                Text(
+                    "과거 시간표 ›",
+                    Modifier.clickable(onClick = onPast).padding(top = 2.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (onBoard) BoardColor.Live else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         // 오른쪽: 가장 빠른 버스의 남은 시간을 크게, 정류장 수·저상은 작게. 다음 버스는 그 아래 한 줄
@@ -198,7 +235,8 @@ internal fun StopRouteItem(
                         Text(
                             parts.first(),
                             style = MaterialTheme.typography.titleLarge.merge(Tnum),
-                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) strong else soon,
+                            // 사진처럼 실시간 남은 시간은 늘 빨갛게, 기록으로 어림한 값만 회색
+                            color = if (first.estimated) variant else soon,
                             fontWeight = FontWeight.Black,
                             textAlign = androidx.compose.ui.text.style.TextAlign.End,
                         )
@@ -209,7 +247,7 @@ internal fun StopRouteItem(
                     Text(
                         value,
                         style = MaterialTheme.typography.bodyLarge.merge(Tnum),
-                        color = if (second.estimated || (second.arrSeconds ?: 0) - elapsedSec > 180) variant else soon,
+                        color = if (second.estimated) variant else soon,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
                     )
                 }
@@ -225,6 +263,29 @@ internal fun StopRouteItem(
                 )
             }
         }
+    }
+}
+
+/**
+ * 노선 종류 라벨 (사진의 "일바" 자리). 색은 노선 색, 글자는 2~3자로 줄인다.
+ * "일반형시내" 는 "일반" 으로 (경기 일반형시내버스).
+ */
+@Composable
+internal fun RouteKindLabel(type: String?) {
+    val label = when {
+        type.isNullOrBlank() -> "버스"
+        "일반형시내" in type -> "일반"
+        "순환" in type -> "순환"
+        else -> type.take(3)
+    }
+    Surface(shape = RoundedCornerShape(4.dp), color = busRouteColor(type)) {
+        Text(
+            label,
+            Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
