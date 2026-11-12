@@ -170,6 +170,27 @@ function toggleFav(stop) {
 }
 function every(ms, fn) { S.timers.push(setInterval(fn, ms)); }
 function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; }
+/**
+ * 키가 같은 행은 DOM 을 그대로 두고 바뀐 값만 고친다.
+ * 도착 목록은 1초마다 다시 그리는데, innerHTML 로 갈아 끼우면 행 수만큼 노드를 새로 만들고
+ * 스크롤·포커스가 초기화된다. 같은 키의 행은 그대로 두고 순서만 맞춘다.
+ */
+function patchRows(box, items, keyOf, make, update) {
+  const prev = new Map();
+  for (const el of box.children) if (el.dataset.k) prev.set(el.dataset.k, el);
+  const keep = new Set();
+  let at = box.firstElementChild;
+  items.forEach((it, i) => {
+    const k = String(keyOf(it, i));
+    keep.add(k);
+    let el = prev.get(k);
+    if (el) update(el, it, i);
+    else { el = make(it, i); el.dataset.k = k; }
+    if (el === at) at = el.nextElementSibling;
+    else box.insertBefore(el, at);
+  });
+  for (const el of [...box.children]) if (el.dataset.k && !keep.has(el.dataset.k)) el.remove();
+}
 const screen = $('#screen');
 
 /* ───────── 이동 ───────── */
@@ -449,14 +470,34 @@ VIEWS.stop = function (s) {
     const rows = data.arrivals.map((a) => ({ ...a, info: known.get(a.routeId) }));
     const withArr = new Set(rows.map((r) => r.routeId));
     routes.filter((r) => !withArr.has(r.routeId)).forEach((r) => rows.push({ routeId: r.routeId, routeNo: r.routeNo, routeType: r.routeType, sec: null, info: r }));
-    $('#rows').innerHTML = rows.length ? rows.map((a) => {
-      const sec = a.sec == null ? null : Math.max(0, Math.round(a.sec - el));
-      const ends = a.info ? [a.info.start, a.info.end].filter(Boolean).join(' → ') : '';
-      return `<button class="item" data-route="${esc(a.routeId)}"><span class="badge" style="background:${routeColor(a.routeType)}">${esc(a.routeNo)}</span>
-        <span class="grow"><div class="name">${esc(ends || a.routeNo)}</div><div class="sm">${esc([a.routeType, a.vehicleType].filter(Boolean).join(' · '))}</div></span>
-        <span class="eta num ${sec != null && sec <= 30 ? 'soon' : ''}">${esc(etaText(sec))}<small>${a.prevStops != null ? a.prevStops + '정류장 전' : ''}</small></span></button>`;
-    }).join('') : '<div class="note">이 정류장의 버스 정보가 없습니다.</div>';
-    $$('[data-route]').forEach((b) => b.addEventListener('click', () => go('route', { city: s.city, route: b.dataset.route, focus: s.id })));
+    const box = $('#rows');
+    if (!rows.length) { box.innerHTML = '<div class="note">이 정류장의 버스 정보가 없습니다.</div>'; return; }
+    // 처음 그릴 때만 로딩·안내 문구를 지운다. 이후에는 행을 그대로 두고 값만 고친다
+    if (!box.querySelector('[data-k]')) box.innerHTML = '';
+    const seen = new Map();
+    patchRows(box, rows,
+      (a) => { const n = seen.get(a.routeId) || 0; seen.set(a.routeId, n + 1); return a.routeId + '#' + n; },
+      (a) => {
+        const b = document.createElement('button');
+        b.className = 'item';
+        b.dataset.route = a.routeId;
+        b.innerHTML = '<span class="badge"></span><span class="grow"><div class="name"></div><div class="sm"></div></span><span class="eta num"><span class="t"></span><small></small></span>';
+        b.addEventListener('click', () => go('route', { city: s.city, route: a.routeId, focus: s.id }));
+        return b;
+      },
+      (b, a) => {
+        const sec = a.sec == null ? null : Math.max(0, Math.round(a.sec - el));
+        const ends = a.info ? [a.info.start, a.info.end].filter(Boolean).join(' → ') : '';
+        const badge = b.firstElementChild;
+        badge.style.background = routeColor(a.routeType);
+        badge.textContent = a.routeNo;
+        b.querySelector('.name').textContent = ends || a.routeNo;
+        b.querySelector('.sm').textContent = [a.routeType, a.vehicleType].filter(Boolean).join(' · ');
+        const eta = b.querySelector('.eta');
+        eta.classList.toggle('soon', sec != null && sec <= 30);
+        eta.querySelector('.t').textContent = etaText(sec);
+        eta.querySelector('small').textContent = a.prevStops != null ? a.prevStops + '정류장 전' : '';
+      });
   };
   const load = async () => {
     $('#rf').disabled = true;
@@ -527,12 +568,29 @@ VIEWS.station = function (st) {
     const el = (Date.now() - got) / 1000;
     const key = (a) => (a.sec ? a.sec : /도착|진입|출발/.test(a.msg || '') ? 1 : 99999);
     const sorted = [...data.arrivals].sort((a, b) => key(a) - key(b));
-    $('#rows').innerHTML = data.arrivals.length ? `<div class="list">${sorted.map((a) => {
-      const sec = a.sec ? Math.max(0, Math.round(a.sec - el)) : null;
-      const txt = sec ? (sec < 60 ? '곧 도착' : Math.ceil(sec / 60) + '분') : (a.msg || '').replace(/\[(\d+)\]번째 전역.*/, '$1정거장 전').slice(0, 14);
-      return `<div class="item">${lineBadge(a.line, true)}<span class="grow"><div class="name">${esc(a.dest ? a.dest + '행' : a.text)}</div><div class="sm">${esc([a.updown, a.now && '현재 ' + a.now].filter(Boolean).join(' · '))}${a.express ? ' · 급행' : ''}${a.last ? ' · 막차' : ''}</div></span>
-        <span class="eta num ${txt === '곧 도착' ? 'soon' : ''}">${esc(txt)}</span></div>`;
-    }).join('')}</div>` : '<div class="note">지금 도착 예정인 열차가 없습니다.</div>';
+    const box = $('#rows');
+    if (!sorted.length) { box.innerHTML = '<div class="note">지금 도착 예정인 열차가 없습니다.</div>'; return; }
+    // 처음 그릴 때만 로딩·안내 문구를 지운다. 이후에는 행을 그대로 두고 값만 고친다
+    let list = box.querySelector('.list');
+    if (!list || !list.querySelector('[data-k]')) { box.innerHTML = ''; list = document.createElement('div'); list.className = 'list'; box.appendChild(list); }
+    const seen = new Map();
+    patchRows(list, sorted,
+      (a) => { const base = [a.line, a.dest, a.updown, a.text].join('|'); const n = seen.get(base) || 0; seen.set(base, n + 1); return base + '#' + n; },
+      (a) => {
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML = lineBadge(a.line, true) + '<span class="grow"><div class="name"></div><div class="sm"></div></span><span class="eta num"></span>';
+        return row;
+      },
+      (row, a) => {
+        const sec = a.sec ? Math.max(0, Math.round(a.sec - el)) : null;
+        const txt = sec ? (sec < 60 ? '곧 도착' : Math.ceil(sec / 60) + '분') : (a.msg || '').replace(/\[(\d+)\]번째 전역.*/, '$1정거장 전').slice(0, 14);
+        row.querySelector('.name').textContent = (a.dest ? a.dest + '행' : a.text) || '';
+        row.querySelector('.sm').textContent = [a.updown, a.now && '현재 ' + a.now].filter(Boolean).join(' · ') + (a.express ? ' · 급행' : '') + (a.last ? ' · 막차' : '');
+        const eta = row.querySelector('.eta');
+        eta.classList.toggle('soon', txt === '곧 도착');
+        eta.textContent = txt;
+      });
   };
   const load = async () => {
     try {
