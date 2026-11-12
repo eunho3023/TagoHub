@@ -135,6 +135,7 @@ class RouteGeom(val shape: List<LatLng>?, stops: List<RouteStop>) {
  * - live: 같은 정류장 순번에서 좌표가 실제로 바뀌는 걸 한 번이라도 봤는지.
  *   지역에 따라 TAGO 가 GPS 대신 정류장 좌표를 주는데(정류장에 닿을 때만 바뀜), 그런 버스는 live 가 안 되고
  *   정류장 순번으로 시간에 따라 움직이는 추정 방식으로 그린다 (안 그러면 정류장 사이에서 멈춰 보임).
+ *   처음 받은 좌표가 정류장 점과 2m 넘게 어긋나면 실제 GPS 로 본다(정류장 좌표를 그대로 주는 API 는 정확히 같다).
  */
 object GpsTracker {
     const val MOVE_MIN_M = 8.0
@@ -151,7 +152,9 @@ object GpsTracker {
         val offStop = geom?.stopPoint(ord)?.let { Geo.meters(it.lat, it.lng, p.lat, p.lng) > OFF_STOP_M } ?: false
         if (prev == null) {
             val s0 = geom?.snap(ord, p)
-            return State(GpsTrack(null, s0?.point ?: p, now, 0, null, s0?.seg, s0?.progress, ord, p), live = offStop)
+            // 정류장에 막 도착해 멈춘 GPS 버스도 지도에 보이도록, 정류장 점과 몇 m 어긋나면 실시간으로 본다.
+            val offPoint = geom?.stopPoint(ord)?.let { Geo.meters(it.lat, it.lng, p.lat, p.lng) } ?: 0.0
+            return State(GpsTrack(null, s0?.point ?: p, now, 0, null, s0?.seg, s0?.progress, ord, p), live = offStop || offPoint > 2.0)
         }
         val g = prev.track
         val moved = Geo.meters(g.raw.lat, g.raw.lng, p.lat, p.lng)
