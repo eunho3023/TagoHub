@@ -1783,18 +1783,10 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
             val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
-            // GPS 없는 버스(전주·경기 등)가 정류장을 떠났는지는 머문 시간으로 어림하므로 몇 초마다 다시 나눔
-            val nowTick by produceState(System.currentTimeMillis()) {
-                while (true) {
-                    delay(5_000L)
-                    value = System.currentTimeMillis()
-                }
-            }
-            val timed = remember(list, routeLine, nowTick) { com.eunho.tagohub.ui.bus.timedAlong(d.routeId, list, routeLine, nowTick) }
-            // 버스를 정류장에 서 있는 것과, 정류장을 떠나 다음 정류장으로 가는 중인 것(GPS, 없으면 머문 시간)으로 나눔
-            val placement = remember(buses, list, timed) { com.eunho.tagohub.data.RouteLive.placement(buses, list, timed) }
+            // 웹과 같게: 버스는 알려준 정류장 자리에만 표시한다 (정류장 사이 추정 이동 없음)
+            val placement = remember(buses, list) { com.eunho.tagohub.data.RouteLive.placement(buses, list) }
             // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
-            val busPos = remember(buses, list, timed) { com.eunho.tagohub.data.RouteLive.positions(buses, list, timed) }
+            val busPos = remember(buses, list) { com.eunho.tagohub.data.RouteLive.positions(buses, list) }
             // 서버에서 같은 위치가 반복되어도 카운트다운은 이어가고, 버스 위치가 바뀌었을 때만 새 기준으로 시작한다.
             val routeReceivedAt = remember(buses) { updated }
             val routeElapsedSec by produceState(arrivalAgeSeconds(routeReceivedAt), buses) {
