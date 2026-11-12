@@ -216,7 +216,8 @@ object RouteLive {
             if (i < 0) return@mapNotNull null
             val here = stops[i]
             departedAlong(b, here, stops.getOrNull(i + 1))?.let { d ->
-                return@mapNotNull Motion(i, d.toFloat().coerceIn(0f, 1f), 0, 0.0)
+                val f = (i + d).toFloat().coerceIn(i.toFloat(), (i + 1).toFloat())
+                return@mapNotNull Motion(i, f, 0, 0.0)
             }
             if (b.state == 1 || i == 0 || i >= stops.lastIndex || !noGps(b, here)) {
                 return@mapNotNull Motion(i, 0f, 0, 0.0)
