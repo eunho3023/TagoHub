@@ -13,8 +13,6 @@ import com.eunho.tagohub.core.TagoResult
 import com.eunho.tagohub.core.toLoad
 import com.eunho.tagohub.core.valueOrNull
 import com.eunho.tagohub.data.BusRoute
-import com.eunho.tagohub.data.BusLocation
-import com.eunho.tagohub.data.BusSeen
 import com.eunho.tagohub.data.BusSearch
 import com.eunho.tagohub.data.BusStop
 import com.eunho.tagohub.data.City
@@ -41,8 +39,6 @@ import com.eunho.tagohub.data.StationGroup
 import com.eunho.tagohub.data.StationIndex
 import com.eunho.tagohub.data.StopDb
 import com.eunho.tagohub.data.RouteDirections
-import com.eunho.tagohub.data.RouteGeom
-import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteStop
 import com.eunho.tagohub.data.RouteTravel
 import com.eunho.tagohub.data.MergedStop
@@ -2707,7 +2703,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * 지도의 버스: GPS 를 주는 API(제주 BIS, TAGO, 서울)는 그 좌표, GPS 가 없는 API(경기 GBIS·전주시: 정류장 순번만)는
-     * 버스가 있는 정류장 자리에서 시작해 정류장 순번으로 시간에 따라 움직이는 추정으로 그린다 ([stopPosition], 웹과 같음).
+     * 지도에 그리지 않고 노선도(정류장 띠)에서만 보여 준다.
      * GPS 버스는 노선 선 위로 붙인 위치를, 직전 위치 → 새 위치로 노선을 따라 이동 (그대로면 멈춤, 뒤로는 안 감).
      */
     private fun pushBuses() {
@@ -2720,18 +2716,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val color = busRouteColor(d.routeType).toArgb()
         val shape = d.shape.value
         val now = System.currentTimeMillis()
-        val line = d.stops.value.valueOrNull()?.takeIf { it.size >= 2 }?.let { TripPlanner.Line(d.routeId, d.routeNo, it) }
         canvas?.setBuses(d.buses.value.mapIndexedNotNull { n, b ->
             val id = b.vehicleNo ?: "bus$n"
             val label = b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty()
             val state = b.vehicleNo?.let { d.gps[it] }
             val g = state?.track
-            // GPS 가 없는 지역(정류장 순번만 주는 API, 정류장 좌표만 주는 API)은 정류장 사이를 시간에 따라 움직이는 추정으로.
-            // 전에는 알려준 정류장 자리에 멈춰 있어서 "버스가 안 움직인다"로 보였다
-            if (g == null || state?.live != true) {
-                estimatedPin(d, b, id, label, color, now, line)?.let { return@mapIndexedNotNull it }
-                if (g == null) return@mapIndexedNotNull null
-            }
+            // GPS 좌표가 없는 버스(정류장 순번만 주는 지역, TAGO 가 정류장 좌표만 주는 버스)는 지도에 그리지 않는다.
+            // 이런 버스는 노선도(정류장 띠)에서만 보여 준다.
+            if (g == null || state?.live != true) return@mapIndexedNotNull null
             // 선형(모양)이 없는 노선은 정류장을 직선으로 이은 선 대신, 지금 좌표를 가장 가까운 도로 위로 붙여 그린다
             val onRoad = if (shape == null) roadLinks?.snap(g.to.lat, g.to.lng) else null
             val path = if (onRoad != null) listOf(onRoad) else GpsTracker.path(g, d.geom?.line ?: shape)
@@ -2740,42 +2732,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, label, "")
         })
         pushKlidBuses()
-    }
-
-    /**
-     * GPS 가 없는 버스의 지도 위치: 알려준 정류장에 처음 보인 시각([BusSeen])부터 다음 정류장까지 실제 걸리는 시간
-     * ([RouteTravel.travelSec]: 앱이 모은 구간 실측, 없으면 거리 × 지금 도로 상황)만큼 노선 선 위를 움직인다.
-     * API 는 다음 정류장에 닿을 때까지 같은 순번을 주기 때문에, 시간으로 어림하지 않으면 정류장에 멈춰 보인다.
-     * 기점·종점(출발을 기다리며 오래 서 있는 자리)은 어림하지 않고 정류장 자리에 둔다. 추정 위치는 '추' 글리프로 구분한다.
-     */
-    private fun estimatedPin(
-        d: BusDest.Route,
-        b: BusLocation,
-        id: String,
-        label: String,
-        color: Int,
-        now: Long,
-        line: TripPlanner.Line?,
-    ): VehiclePin? {
-        val stops = d.stops.value.valueOrNull().orEmpty()
-        val i = stops.indexOfFirst { it.ord == b.ord }
-        if (i < 0) return null
-        val here = stops[i]
-        val at = LatLng(here.lat ?: return null, here.lng ?: return null)
-        fun still() = VehiclePin(id, listOf(at), 1.0, 1.0, 0L, color, label, "추")
-        val next = stops.getOrNull(i + 1)
-        if (i == 0 || next == null) return still()
-        val nextLat = next.lat ?: return still()
-        val nextLng = next.lng ?: return still()
-        val travel = RouteTravel.travelSec(d.routeId, here.ord, next.ord) { a, c -> TripPlanner.minutesBetween(line, a, c) }
-        val k = RouteLive.progress(BusSeen.since(d.routeId, b.vehicleNo, b.ord), now, travel)
-        if (k <= 0.0) return still()
-        // GPS 를 주지 않는 지역은 RouteGeom 이 아직 없을 수 있다 → 노선 선형으로 한 번 만들어 선을 따라 움직이게
-        val geom = d.geom ?: d.shape.value?.takeIf { it.size >= 2 }?.let { shape ->
-            RouteGeom(shape, stops).also { d.geom = it }
-        }
-        val path = geom?.segment(here.ord, next.ord) ?: listOf(at, LatLng(nextLat, nextLng))
-        return VehiclePin(id, path, k, 1.0, ((1 - k) * travel * 1000).toLong(), color, label, "추")
     }
 
     /** 현재 중심에서 먼 정류소부터 버려 마커 수를 제한 */
