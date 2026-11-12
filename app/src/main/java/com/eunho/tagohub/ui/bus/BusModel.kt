@@ -98,11 +98,6 @@ sealed class BusDest {
 
         internal var lastArrivals: List<BusArrival>? = null
 
-        /** 도착정보에 없는 노선을 버스 위치로 어림한 결과 (노선 → 시각, 결과) */
-        internal val estimated = HashMap<String, Pair<Long, List<BusArrival>>>()
-        /** 노선 → "정류장 도착"이 처음 보인 시각 (떠난 버스가 계속 "도착"으로 남지 않게) */
-        internal val arrivedSince = HashMap<String, Long>()
-
         /** 같은 자리의 다른 시군 정류장과 그 도착정보·경유노선 */
         internal var companions: List<BusStop>? = preset
         internal val compArrivals = HashMap<String, List<BusArrival>>()
@@ -493,22 +488,16 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
 
     applyFixed?.invoke()
 
-    val main = fillFromPositions(
-        repo, d.stop,
-        mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
-            .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) },
-        d.estimated,
-    ).let { rows ->
-        val now = System.currentTimeMillis()
-        rows.map { r -> r.copy(arrivals = com.eunho.tagohub.data.ArrivedHold.filter(r.routeId, r.arrivals, d.arrivedSince, now)) }
-    }
+    // 웹과 같게: 도착 정보는 API 가 준 값만 쓴다 (버스 위치로 채우거나 보정하지 않음)
+    val main = mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
+        .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
     val mainNos = main.map { it.routeNo }.toSet()
     // 같은 자리의 다른 시군 정류장 노선도 버스 위치·배차로 둘째 버스를 채움 (전에는 이 정류장 노선만)
     val others = entries.flatMap { c ->
         val rows = mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
             .map { it.copy(region = regionLabel(db, c.cityCode), cityCode = c.cityCode) }
             .filter { it.routeNo !in mainNos } // 이미 이 정류장 정보에 있는 노선은 두 번 안 보이게
-        if (rows.isEmpty()) rows else fillFromPositions(repo, c, rows, d.estimated)
+        rows
     }.distinctBy { it.routeId + "|" + it.cityCode }
     d.rows.value = Load.Ok((main + others).sortedWith(stopRowOrder))
 }
