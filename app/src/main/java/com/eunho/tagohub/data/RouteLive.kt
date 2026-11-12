@@ -227,6 +227,56 @@ object RouteLive {
         }
     }
 
+    /** 목록·배치도가 한 번의 계산으로 함께 쓰는 버스 배치 ([placement] + [motions]) */
+    class Snapshot(
+        val placement: Placement,
+        val motions: List<Motion>,
+    )
+
+    /**
+     * [placement] 와 [motions] 를 정류장 색인 한 번, 버스 한 대당 판정 한 번으로 함께 만든다.
+     * 목록 화면처럼 배치도가 필요 없을 때는 [withMotions] 를 false 로 두어 두 번째 순회를 생략한다.
+     */
+    fun snapshot(
+        buses: List<BusLocation>,
+        stops: List<RouteStop>,
+        since: (BusLocation, Int) -> Long?,
+        travelSec: (Int, Int) -> Double?,
+        withMotions: Boolean = true,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Snapshot {
+        val at = HashMap<Int, MutableList<BusLocation>>()
+        val between = HashMap<Int, MutableList<BusLocation>>()
+        val fractions = ArrayList<Float>(buses.size)
+        val motions = if (withMotions) ArrayList<Motion>(buses.size) else null
+        val index = Index(stops)
+        for (b in buses) {
+            val i = index.of(b)
+            if (i < 0) continue
+            val here = stops[i]
+            val departed = departedAlong(b, here, stops.getOrNull(i + 1))
+            if (departed != null) {
+                between.getOrPut(i) { ArrayList() } += b
+                fractions += i + departed.coerceIn(0.15, 0.85).toFloat()
+                motions?.add(Motion(i, (i + departed).toFloat().coerceIn(i.toFloat(), (i + 1).toFloat()), 0, 0.0))
+                continue
+            }
+            // GPS 없이 순번만 오는 버스만 시간으로 어림한다 (기점·종점은 제외)
+            val start = if (b.state == 1 || i == 0 || i >= stops.lastIndex || !noGps(b, here)) null else since(b, i)
+            val travel = if (start != null) travelSec(i, i + 1) ?: 60.0 else 0.0
+            val timed = timedAlong(start, nowMs, travel)
+            if (timed != null) {
+                between.getOrPut(i) { ArrayList() } += b
+                fractions += i + timed.coerceIn(0.15, 0.85).toFloat()
+            } else {
+                at.getOrPut(i) { ArrayList() } += b
+                fractions += i.toFloat()
+            }
+            motions?.add(if (start == null) Motion(i, 0f, 0, 0.0) else Motion(i, null, start, travel))
+        }
+        return Snapshot(Placement(at, between, fractions), motions.orEmpty())
+    }
+
     /** 위치상 가장 가까운 버스가 도착정보의 첫 버스보다 이만큼(정류장) 이상 더 가까우면 무조건 도착정보에 빠진 버스로 봄 */
     const val NEARER_GAP = 3
 

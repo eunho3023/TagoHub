@@ -2509,11 +2509,20 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // 버스 위치 갱신 주기와 마지막으로 버스 위치를 받은 시각.
+        // 첫 진입이면 정류장 확정 직후 이미 한 번 받았으므로 그 시각부터 센다.
+        val refreshMs = 10_000L
+        var busFetchAt = if (first) System.currentTimeMillis() else 0L
         while (true) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
-            tracked { refreshBusData(repo, d) }
-            pushBuses()
-            delay(10_000)
+            // 첫 진입이면 정류장 확정 직후 위에서 이미 버스 위치를 받았다. 같은 조회를 연달아 하지 않도록
+            // 마지막 조회 뒤 10초가 지났을 때만 새로 받는다 (지도가 오래 가려져 있었으면 바로 갱신).
+            if (System.currentTimeMillis() - busFetchAt >= refreshMs) {
+                tracked { refreshBusData(repo, d) }
+                pushBuses()
+                busFetchAt = System.currentTimeMillis()
+            }
+            delay(refreshMs)
         }
     }
 

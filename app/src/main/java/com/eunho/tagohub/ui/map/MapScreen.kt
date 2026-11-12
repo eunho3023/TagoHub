@@ -1331,13 +1331,8 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
     val numbers = (listOf(d.stop) + others).mapNotNull { it.nodeNo }.distinct()
         .mapIndexed { i, no -> if (i == 0 && direction != null) "$no (${direction} 방면)" else no }
         .joinToString(", ").ifEmpty { null }
-    // 받은 뒤 지난 초 (매초 갱신) → 도착 시간이 실제로 줄어든다
-    val elapsedSec by produceState(0, updated) {
-        while (true) {
-            value = updated?.let { java.time.Duration.between(it, LocalTime.now()).seconds.toInt().coerceIn(0, 600) } ?: 0
-            delay(1000)
-        }
-    }
+    // 받은 뒤 지난 초는 각 도착 행(StopRouteItem)이 자기 안에서 센다.
+    // 패널 상위에서 tick 하면 보이지 않는 행까지 매초 재구성됐다.
     PanelSurface {
         PanelHeader(
             title = d.stop.name.replace(Regex("\\.지하철(\\d+호선)$"), " (\$1)"),   // "당산역.지하철2호선" → "당산역 (2호선)"
@@ -1389,7 +1384,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                             LazyColumn(Modifier.weight(1f)) {
                                 items(hideDuplicateNumbers(list)) { row ->
                                     // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
-                                    StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }, onBoard = true) { vm.showRoute(row) }
+                                    StopRouteItem(row, dirLabel = direction, bellOn = bellOn(row), onBell = { onBell(row) }, onBoard = true, updated = updated) { vm.showRoute(row) }
                                     HorizontalDivider(color = BoardColor.Line)
                                 }
                             }
@@ -1747,36 +1742,26 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
+            // TripPlanner.Line 은 정류장을 거르고 누적 거리를 만든다. 버스마다 새로 만들지 않고 한 번만 만들어 나눠 쓴다.
+            val line = remember(list) { TripPlanner.Line(d.routeId, d.routeNo, list) }
             // 버스 데이터가 바뀔 때만 배치를 계산한다. 배치도는 그 사이를 시간으로 움직이고,
             // 목록의 "정류장 사이" 표시는 다음 버스 갱신 때 새 위치로 옮긴다.
-            val placement = remember(buses, list) {
-                val now = System.currentTimeMillis()
-                com.eunho.tagohub.data.RouteLive.placement(buses, list) { b, i ->
-                    val from = list.getOrNull(i)
-                    val to = list.getOrNull(i + 1)
-                    val since = if (from != null) com.eunho.tagohub.data.BusSeen.since(d.routeId, b.vehicleNo, from.ord) else null
-                    if (from == null || to == null || since == null) null
-                    else {
-                        val line = com.eunho.tagohub.data.TripPlanner.Line(d.routeId, d.routeNo, list)
-                        val sec = com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, from.ord, to.ord) { a, z ->
-                            com.eunho.tagohub.data.TripPlanner.minutesBetween(line, a, z)
-                        }
-                        com.eunho.tagohub.data.RouteLive.timedAlong(since, now, sec)
-                    }
-                }
-            }
-            val motions = remember(buses, list) {
-                val line = com.eunho.tagohub.data.TripPlanner.Line(d.routeId, d.routeNo, list)
-                com.eunho.tagohub.data.RouteLive.motions(
+            // 목록 모드에서는 배치도용 motions 를 만들지 않는다 (색인·판정 두 번째 순회 생략)
+            val snapshot = remember(buses, list, line, diagram) {
+                com.eunho.tagohub.data.RouteLive.snapshot(
                     buses, list,
                     since = { b, i -> com.eunho.tagohub.data.BusSeen.since(d.routeId, b.vehicleNo, list[i].ord) },
                     travelSec = { i, j ->
                         com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, list[i].ord, list[j].ord) { a, z ->
-                            com.eunho.tagohub.data.TripPlanner.minutesBetween(line, a, z)
+                            TripPlanner.minutesBetween(line, a, z)
                         }
                     },
+                    withMotions = diagram,
+                    nowMs = System.currentTimeMillis(),
                 )
             }
+            val placement = snapshot.placement
+            val motions = snapshot.motions
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
             list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {

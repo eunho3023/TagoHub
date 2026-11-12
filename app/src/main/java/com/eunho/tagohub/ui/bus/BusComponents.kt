@@ -66,7 +66,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.eunho.tagohub.core.Fmt
 import com.eunho.tagohub.core.Geo
 import com.eunho.tagohub.core.Load
@@ -153,13 +156,19 @@ internal fun StopRouteItem(
     onBell: (() -> Unit)? = null,
     /** 짙은 남색 실시간 보드 위에 놓을 때 true: 판 전용 글자색·강조색을 쓴다 */
     onBoard: Boolean = false,
+    /**
+     * 도착정보를 받은 시각. 값이 있으면 이 행 안에서만 1초마다 경과 초를 다시 센다
+     * (정류장 패널 전체가 매초 재구성되던 것을 행 단위로 좁힌다).
+     */
+    updated: LocalTime? = null,
     onClick: () -> Unit,
 ) {
+    val elapsed = if (updated != null) rememberElapsedSec(updated) else elapsedSec
     // API 가 "정류장 도착"을 계속 주는 지역(전주 등)은 버스가 떠난 뒤에도 몇 분씩 남는다.
     // 도착 예정 시각이 1분 넘게 지난 "도착"만 화면에서 숨긴다 (값을 새로 만들지는 않음).
     val row = row0.copy(arrivals = row0.arrivals.filterNot { a ->
         val sec = a.arrSeconds
-        a.prevStops == 0 && sec != null && sec + STALE_ARRIVED_SEC < elapsedSec
+        a.prevStops == 0 && sec != null && sec + STALE_ARRIVED_SEC < elapsed
     })
     // 보드(어두운 판) 위에서는 판 전용 색, 흰 카드에서는 테마 색을 그대로 쓴다
     val variant = if (onBoard) BoardColor.Muted else MaterialTheme.colorScheme.onSurfaceVariant
@@ -199,24 +208,24 @@ internal fun StopRouteItem(
             if (first == null) {
                 Text(if (row.ended) "운행종료" else "도착 정보 없음", style = MaterialTheme.typography.bodyLarge, color = variant)
             } else {
-                AnimatedValueText(arrivalLine(first, elapsedSec), label = "bus-stop-first-arrival") { value ->
+                AnimatedValueText(arrivalLine(first, elapsed), label = "bus-stop-first-arrival") { value ->
                     val parts = value.split(" · ")
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             parts.first(),
                             style = MaterialTheme.typography.titleLarge.merge(Tnum),
-                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) strong else soon,
+                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsed > 180) strong else soon,
                             fontWeight = FontWeight.Black,
                             textAlign = androidx.compose.ui.text.style.TextAlign.End,
                         )
                         if (parts.size > 1) Text(parts.drop(1).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = variant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                     }
                 }
-                if (second != null) AnimatedValueText(arrivalLine(second, elapsedSec), label = "bus-stop-second-arrival") { value ->
+                if (second != null) AnimatedValueText(arrivalLine(second, elapsed), label = "bus-stop-second-arrival") { value ->
                     Text(
                         value,
                         style = MaterialTheme.typography.bodyLarge.merge(Tnum),
-                        color = if (second.estimated || (second.arrSeconds ?: 0) - elapsedSec > 180) variant else soon,
+                        color = if (second.estimated || (second.arrSeconds ?: 0) - elapsed > 180) variant else soon,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
                     )
                 }
@@ -237,6 +246,28 @@ internal fun StopRouteItem(
 
 /** 도착 문구: 항상 초까지 + 남은 정류장 + 저상 (TAGO 버스도착정보 필드 그대로) */
 internal fun arrivalLine(a: BusArrival, elapsedSec: Int): String = com.eunho.tagohub.data.ArrivalText.line(a, elapsedSec)
+
+/**
+ * 이 행에서만 1초마다 경과 초를 다시 센다. 화면이 보일 때만 돌고, 목록 밖으로 스크롤되면 멈춘다.
+ * (패널 상위에서 tick 하면 보이지 않는 행까지 매초 재구성됐다.)
+ */
+@Composable
+private fun rememberElapsedSec(since: LocalTime): Int {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val state = remember(since) { mutableIntStateOf(elapsedSecSince(since)) }
+    LaunchedEffect(since, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                state.intValue = elapsedSecSince(since)
+                delay(1000)
+            }
+        }
+    }
+    return state.intValue
+}
+
+private fun elapsedSecSince(since: LocalTime): Int =
+    java.time.Duration.between(since, LocalTime.now()).seconds.toInt().coerceIn(0, 600)
 
 /** 노선 타임라인 왼쪽 여백 너비 (차량번호·회차 알약이 들어감) */
 private val TIMELINE_GUTTER = 108.dp
