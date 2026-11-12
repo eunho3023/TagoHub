@@ -58,6 +58,7 @@ import com.eunho.tagohub.data.UticRoadRiskRepository
 import com.eunho.tagohub.data.UticSafetyPoint
 import com.eunho.tagohub.data.UticSafetyRepository
 import com.eunho.tagohub.ui.bus.BusDest
+import com.eunho.tagohub.ui.bus.RouteBusCache
 import com.eunho.tagohub.ui.bus.StopRouteRow
 import com.eunho.tagohub.ui.bus.loadRouteData
 import com.eunho.tagohub.ui.bus.loadStopBoard
@@ -2434,7 +2435,28 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun runRoute(d: BusDest.Route) {
         val first = d.stops.value.valueOrNull() == null
-        if (first) tracked { loadRouteData(repo, d) }
+        if (first) {
+            // 다시 연 노선이면 마지막 버스 위치를 먼저 보여 주고 새 위치로 곧 고친다.
+            if (d.buses.value.isEmpty()) d.buses.value = RouteBusCache.get(d.routeId)
+            coroutineScope {
+                val load = launch {
+                    try {
+                        tracked { loadRouteData(repo, d) }
+                    } finally {
+                        // 정류장을 못 받았더라도 아래 버스 조회가 영원히 기다리지 않게
+                        d.stopsReady.complete(Unit)
+                    }
+                }
+                // 정류장이 확정되는 즉시 버스 위치를 노선 정보와 병렬로 받는다.
+                val buses = launch {
+                    d.stopsReady.await()
+                    tracked { refreshBusData(repo, d) }
+                    pushBuses()
+                }
+                load.join()
+                buses.join()
+            }
+        }
         if (!d.dirChosen) {
             // 정류장에서 노선을 열었으면 그 정류장을 지나는 방향부터
             d.dirChosen = true

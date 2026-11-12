@@ -74,6 +74,46 @@ object RouteLive {
         val fractions: List<Float>,
     )
 
+    /**
+     * 배치도에서 시간에 따라 움직이는 버스 하나.
+     * GPS 가 있으면 [fixed] 위치에 그대로 두고, GPS 없이 정류장 순번만 오는 버스는
+     * [sinceMs] 에 이 정류장에 처음 보인 뒤 [travelSec] 동안 다음 정류장으로 간다.
+     */
+    class Motion(
+        /** 출발 정류장 번호 (목록 안 index) */
+        val from: Int,
+        private val fixed: Float?,
+        private val sinceMs: Long,
+        private val travelSec: Double,
+    ) {
+        /** 시간에 따라 움직이는 버스인지 (정류장에 서 있거나 GPS 위치가 고정이면 false) */
+        val animated: Boolean get() = fixed == null
+
+        /** [nowMs] 에 배치도에서 그릴 위치: 3.0 = 3번째 정류장, 3.5 = 3~4번째 사이 */
+        fun fraction(nowMs: Long): Float =
+            fixed ?: (from + progress(sinceMs, nowMs, travelSec).toFloat())
+    }
+
+    /** 정류장 목록을 순번·정류장 ID 로 한 번만 찾도록 만든 색인 */
+    private class Index(stops: List<RouteStop>) {
+        val byOrd = HashMap<Int, Int>(stops.size)
+        val byNode = HashMap<String, Int>(stops.size)
+
+        init {
+            stops.forEachIndexed { i, s ->
+                if (!byOrd.containsKey(s.ord)) byOrd[s.ord] = i
+                if (!byNode.containsKey(s.nodeId)) byNode[s.nodeId] = i
+            }
+        }
+
+        fun of(bus: BusLocation): Int {
+            val ord = bus.ord
+            if (ord != null) return byOrd[ord] ?: -1
+            val node = bus.nodeId ?: return -1
+            return byNode[node] ?: -1
+        }
+    }
+
     /** 정류장에 닿은 버스가 문을 열고 닫는 데 걸리는 시간(초). 순번만 아는 버스는 이만큼 지나면 떠난 것으로 봄 */
     const val DWELL_SEC = 25
 
@@ -131,8 +171,9 @@ object RouteLive {
         val at = HashMap<Int, MutableList<BusLocation>>()
         val between = HashMap<Int, MutableList<BusLocation>>()
         val fractions = ArrayList<Float>()
+        val index = Index(stops)
         for (b in buses) {
-            val i = stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }
+            val i = index.of(b)
             if (i < 0) continue
             val t = along(b, stops, i, timed)
             if (t != null) {
@@ -150,12 +191,39 @@ object RouteLive {
     fun positions(buses: List<BusLocation>, stops: List<RouteStop>, timed: (BusLocation, Int) -> Double? = { _, _ -> null }): Positions {
         val at = ArrayList<Int>()
         val left = ArrayList<Int>()
+        val index = Index(stops)
         for (b in buses) {
-            val i = stops.indexOfFirst { s -> if (b.ord != null) b.ord == s.ord else b.nodeId == s.nodeId }
+            val i = index.of(b)
             if (i < 0) continue
             if (along(b, stops, i, timed) != null) left += i else at += i
         }
         return Positions(at, left)
+    }
+
+    /**
+     * 배치도용 버스 위치. GPS 가 없는 버스는 [since] (그 정류장에 처음 보인 시각)와
+     * [travelSec] (다음 정류장까지 평소 걸리는 초)로 정류장 사이를 움직인다.
+     */
+    fun motions(
+        buses: List<BusLocation>,
+        stops: List<RouteStop>,
+        since: (BusLocation, Int) -> Long?,
+        travelSec: (Int, Int) -> Double?,
+    ): List<Motion> {
+        val index = Index(stops)
+        return buses.mapNotNull { b ->
+            val i = index.of(b)
+            if (i < 0) return@mapNotNull null
+            val here = stops[i]
+            departedAlong(b, here, stops.getOrNull(i + 1))?.let { d ->
+                return@mapNotNull Motion(i, d.toFloat().coerceIn(0f, 1f), 0, 0.0)
+            }
+            if (b.state == 1 || i == 0 || i >= stops.lastIndex || !noGps(b, here)) {
+                return@mapNotNull Motion(i, 0f, 0, 0.0)
+            }
+            val start = since(b, i) ?: return@mapNotNull Motion(i, 0f, 0, 0.0)
+            Motion(i, null, start, travelSec(i, i + 1) ?: 60.0)
+        }
     }
 
     /** 위치상 가장 가까운 버스가 도착정보의 첫 버스보다 이만큼(정류장) 이상 더 가까우면 무조건 도착정보에 빠진 버스로 봄 */
