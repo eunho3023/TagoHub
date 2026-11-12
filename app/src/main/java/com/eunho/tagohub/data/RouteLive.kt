@@ -8,10 +8,10 @@ package com.eunho.tagohub.data
 object RouteLive {
     /**
      * [stopIndex] 번째 정류장에 가장 가까이 오는 버스(그 정류장 앞쪽, 같은 방향)까지의 정류장 수. 정차 중이면 0, 오는 버스가 없으면 null.
-     * [busIndexes] 는 각 버스가 있는 정류장의 목록 안 번호.
+     * [at] 은 각 버스가 있는 정류장의 목록 안 번호 ([passed] 와 같은 이름).
      */
-    fun stopsAway(stopIndex: Int, busIndexes: List<Int>, left: List<Int> = emptyList()): Int? =
-        allAway(stopIndex, busIndexes, left).firstOrNull()
+    fun stopsAway(stopIndex: Int, at: List<Int>, left: List<Int> = emptyList()): Int? =
+        allAway(stopIndex, at, left).firstOrNull()
 
     /**
      * 이 정류장을 이미 지나간 버스가 있는지. 있으면 도착정보(API)가 아직 "N정류장 전"으로 와도
@@ -149,8 +149,8 @@ object RouteLive {
     const val NEARER_GAP = 3
 
     /** 정류장 [stopIndex] 앞쪽에 달리는 모든 버스까지의 정류장 수 (가까운 순). 0 = 이미 와 있음 */
-    fun allAway(stopIndex: Int, busIndexes: List<Int>, left: List<Int> = emptyList()): List<Int> =
-        (busIndexes.filter { it in 0..stopIndex } + left.filter { it in 0 until stopIndex }).map { stopIndex - it }.sorted()
+    fun allAway(stopIndex: Int, at: List<Int>, left: List<Int> = emptyList()): List<Int> =
+        (at.filter { it in 0..stopIndex } + left.filter { it in 0 until stopIndex }).map { stopIndex - it }.sorted()
 
     /**
      * 버스 위치([aways], 가까운 순)와 도착정보([apiPrevStops] 정류장 전) 중 어느 쪽을 보일지: 위치가 더 믿을 만한 경우 true.
