@@ -152,8 +152,8 @@ internal fun StopRouteItem(
     onBoard: Boolean = false,
     onClick: () -> Unit,
 ) {
-    // 정류장을 이미 지나간 버스는 바로 지움 (다음 새로고침을 기다리지 않고)
-    val row = row0.copy(arrivals = row0.arrivals.filterNot { com.eunho.tagohub.data.PassedBus.passed(it, elapsedSec) })
+    // 웹과 같게: API 가 준 도착 정보를 화면에서 걸러내지 않는다 (다음 새로고침까지 그대로)
+    val row = row0
     // 보드(어두운 판) 위에서는 판 전용 색, 흰 카드에서는 테마 색을 그대로 쓴다
     val variant = if (onBoard) BoardColor.Muted else MaterialTheme.colorScheme.onSurfaceVariant
     // 곧 도착 강조색: 보드에서는 라임, 흰 카드에서는 테마 오류색 (라이트 진한 빨강 / 다크 밝은 빨강)
@@ -230,26 +230,6 @@ internal fun StopRouteItem(
 
 /** 도착 문구: 항상 초까지 + 남은 정류장 + 저상 (TAGO 버스도착정보 필드 그대로) */
 internal fun arrivalLine(a: BusArrival, elapsedSec: Int): String = com.eunho.tagohub.data.ArrivalText.line(a, elapsedSec)
-
-@Composable
-internal fun RouteInfoCard(r: BusRoute) {
-    Surface(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            if (r.startName != null || r.endName != null) {
-                Text("${r.startName ?: "?"} → ${r.endName ?: "?"}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            }
-            r.interval?.let {
-                Text("배차 ${it}분", style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
 
 /** 노선 타임라인 왼쪽 여백 너비 (차량번호·회차 알약이 들어감) */
 private val TIMELINE_GUTTER = 108.dp

@@ -162,7 +162,6 @@ import com.eunho.tagohub.ui.common.LoadView
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.eunho.tagohub.data.RouteStop
-import com.eunho.tagohub.ui.bus.RouteInfoCard
 import com.eunho.tagohub.ui.bus.RouteListRow
 import com.eunho.tagohub.ui.bus.StopListRow
 import com.eunho.tagohub.ui.bus.TimelineRow
@@ -1715,9 +1714,6 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
         )
         // 목록일 땐 정보 카드·첫차·막차 알림이 정류장 목록과 함께 스크롤됨 (고정이면 목록이 들어갈 자리가 없어짐). 배치도에서만 위에 고정
         var diagram by rememberSaveable { mutableStateOf(false) }
-        if (diagram) {
-            r?.let { RouteInfoCard(it) }
-        }
         val dir by d.dir.collectAsStateWithLifecycle()
         LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없어요.") { all ->
             // 상·하행 "○○ 방면" 버튼: 목록은 그 방향만, 지도는 그 방향 선이 진하게
@@ -1780,8 +1776,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
                 val target = list.indexOfFirst { it.nodeId == d.focusNodeId }.takeIf { it >= 0 }
                     ?: placement.at.keys.minOrNull()
-                // 맨 앞에 정보 카드 한 칸이 있어서 정류장은 한 칸씩 뒤 (누른 정류장 위로 두 칸이 보이게)
-                if (target != null) listState.scrollToItem((target - 1).coerceAtLeast(0))
+                if (target != null) listState.scrollToItem(target)
             }
             if (diagram) {
                 RouteDiagramView(
@@ -1794,9 +1789,6 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     modifier = Modifier.fillMaxSize(),
                 )
             } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                item {
-                    r?.let { RouteInfoCard(it) }
-                }
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)
                     TimelineRow(
