@@ -1692,37 +1692,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val info by d.info.collectAsStateWithLifecycle()
     val stops by d.stops.collectAsStateWithLifecycle()
     val buses by d.buses.collectAsStateWithLifecycle()
-    val updated by d.updated.collectAsStateWithLifecycle()
     val r = info.valueOrNull()
     val color = busRouteColor(d.routeType ?: r?.routeType)
-    // 운수회사 (서울·경기 노선만 알 수 있음): 차량번호 아래에 표시
-    val company by produceState(r?.company, d.routeId, r?.company) { value = r?.company ?: com.eunho.tagohub.ui.bus.routeCompany(d.routeId) }
-    // 정류장에서 들어왔으면 그 정류장의 도착정보(정류장 화면과 같은 값)를 목록에도 그대로 보여 줌
-    val selectedStop by vm.selected.collectAsStateWithLifecycle()
-    val noRows = remember { kotlinx.coroutines.flow.MutableStateFlow<com.eunho.tagohub.core.Load<List<com.eunho.tagohub.ui.bus.StopRouteRow>>>(com.eunho.tagohub.core.Load.Idle) }
-    val stopRows by (selectedStop?.rows ?: noRows).collectAsStateWithLifecycle()
-    val noUpdated = remember { kotlinx.coroutines.flow.MutableStateFlow<java.time.LocalTime?>(null) }
-    val stopUpdated by (selectedStop?.updated ?: noUpdated).collectAsStateWithLifecycle()
-    val focusElapsedSec by produceState(arrivalAgeSeconds(stopUpdated), stopUpdated) {
-        val initialElapsed = arrivalAgeSeconds(stopUpdated)
-        val startedAt = android.os.SystemClock.elapsedRealtime()
-        while (true) {
-            value = (initialElapsed + ((android.os.SystemClock.elapsedRealtime() - startedAt) / 1_000L).toInt()).coerceIn(0, 1_200)
-            delay(1_000L)
-        }
-    }
-    val focusArr = remember(stopRows, d.routeId, d.focusNodeId, selectedStop) {
-        if (selectedStop?.stop?.nodeId != d.focusNodeId) null
-        else stopRows.valueOrNull()?.firstOrNull { it.routeId == d.routeId }?.arrivals?.firstOrNull()
-    }
-    // 첫차·막차 알림 기준 정류장 (정류장에서 열었을 때): 그 정류장과 기점에서 걸리는 분
-    val alertStop = remember(stops, d.focusNodeId) {
-        val all = stops.valueOrNull().orEmpty()
-        all.firstOrNull { it.nodeId == d.focusNodeId }?.let { s ->
-            s.name to Math.round(TripPlanner.minutesBetween(TripPlanner.Line(d.routeId, d.routeNo, all), all.first().ord, s.ord)).toInt()
-        }
-    }
-    val focusArrival = focusArr?.let { com.eunho.tagohub.data.ArrivalText.line(it, focusElapsedSec) }
     var showTimetableStopPicker by rememberSaveable(d.routeId) { mutableStateOf(false) }
 
     PanelSurface {
@@ -1746,8 +1717,6 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
         var diagram by rememberSaveable { mutableStateOf(false) }
         if (diagram) {
             r?.let { RouteInfoCard(it) }
-            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
-            r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
         }
         val dir by d.dir.collectAsStateWithLifecycle()
         LoadView(stops, isEmpty = { it.isEmpty() }, emptyText = "노선의 정류장 정보가 없어요.") { all ->
@@ -1782,41 +1751,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             val list = remember(all, dir) { vm.routeStopsInDir(d, all) }
             // 회차 정류장 뒤에 표시 (방향을 나눌 수 없는 노선에서만 의미가 있음)
             val turnOrd = remember(all) { if (labels == null) vm.routeTurnOrd(d) else null }
-            val routeLine = remember(all) { TripPlanner.Line(d.routeId, d.routeNo, all) }
             // 웹과 같게: 버스는 알려준 정류장 자리에만 표시한다 (정류장 사이 추정 이동 없음)
             val placement = remember(buses, list) { com.eunho.tagohub.data.RouteLive.placement(buses, list) }
-            // 목록 안 번호로 본 각 버스의 위치 → 정류장마다 가장 가까이 오는 버스까지 몇 정류장인지
-            val busPos = remember(buses, list) { com.eunho.tagohub.data.RouteLive.positions(buses, list) }
-            // 서버에서 같은 위치가 반복되어도 카운트다운은 이어가고, 버스 위치가 바뀌었을 때만 새 기준으로 시작한다.
-            val routeReceivedAt = remember(buses) { updated }
-            val routeElapsedSec by produceState(arrivalAgeSeconds(routeReceivedAt), buses) {
-                val initialElapsed = arrivalAgeSeconds(routeReceivedAt)
-                val startedAt = android.os.SystemClock.elapsedRealtime()
-                while (true) {
-                    value = (initialElapsed + ((android.os.SystemClock.elapsedRealtime() - startedAt) / 1_000L).toInt()).coerceIn(0, 1_200)
-                    delay(1_000L)
-                }
-            }
-            val liveOf = { i: Int, s: RouteStop ->
-                // 도착정보(API)와 버스 위치가 어긋나면 위치를 믿음: 이미 와 있는데 "1정류장 전", 가까이 버스가 보이는데 "7정류장 전"(API 가 그 버스를 빠뜨림)
-                val away = com.eunho.tagohub.data.RouteLive.stopsAway(i, busPos.at, busPos.left)
-                // 버스가 이미 이 정류장을 지나갔는데 도착정보가 늦게 와서 "도착 전"으로 남는 경우 → "지나감"
-                if (away == null && com.eunho.tagohub.data.RouteLive.passed(i, busPos.at, busPos.left)) "지나감"
-                // 고른 정류장은 도착정보가 위치와 맞을 때만 그대로 (어긋나면 앞뒤 정류장처럼 위치로 세서 말이 맞게)
-                else if (s.nodeId == d.focusNodeId && focusArrival != null && com.eunho.tagohub.data.RouteLive.useApiAtFocus(focusArr?.prevStops, com.eunho.tagohub.data.RouteLive.allAway(i, busPos.at, busPos.left))) focusArrival
-                else away?.let { n ->
-                    val from = list[i - n]
-                    val seconds = if (n > 0) {
-                        // 앱이 모은 구간 실측 통행시간(같은 차량이 다음 정류장에 나타난 간격)이 있으면 그것을 먼저
-                        val estimate = com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, from.ord, s.ord) { a, b ->
-                            TripPlanner.minutesBetween(routeLine, a, b)
-                        }
-                        if (estimate.isFinite()) Math.round(estimate).toInt().coerceAtLeast(1) else null
-                    } else null
-                    val remaining = seconds?.let { (it - routeElapsedSec).coerceAtLeast(0) }
-                    com.eunho.tagohub.data.RouteLive.countdownText(n, remaining)
-                }
-            }
             // 목록에서 누른(지도에 표시된) 정류소에서 내리겠다고 알림을 켤 수 있음
             list.firstOrNull { it.nodeId == d.focusNodeId && it.lat != null && it.lng != null }?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1843,7 +1779,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             LaunchedEffect(list) {
                 // 정류소에서 들어왔으면 그 정류소 근처로, 아니면 첫 버스 근처로
                 val target = list.indexOfFirst { it.nodeId == d.focusNodeId }.takeIf { it >= 0 }
-                    ?: (placement.at.keys + placement.between.keys).minOrNull()
+                    ?: placement.at.keys.minOrNull()
                 // 맨 앞에 정보 카드 한 칸이 있어서 정류장은 한 칸씩 뒤 (누른 정류장 위로 두 칸이 보이게)
                 if (target != null) listState.scrollToItem((target - 1).coerceAtLeast(0))
             }
@@ -1860,8 +1796,6 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 item {
                     r?.let { RouteInfoCard(it) }
-                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.firstTime, first = true, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
-                    r?.let { LastBusChips(d.routeId, d.routeNo, d.cityCode, r.startName, r.lastTime, stopName = alertStop?.first, offsetMin = alertStop?.second ?: 0) }
                 }
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)
@@ -1870,11 +1804,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         isFirst = i == 0,
                         isLast = i == list.lastIndex,
                         buses = placement.at[i].orEmpty(),
-                        between = placement.between[i].orEmpty(),
                         focused = s.nodeId == d.focusNodeId,
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
-                        live = liveOf(i, s),
-                        company = company,
                     ) { vm.focusRouteStop(s.nodeId) }
                 }
             }

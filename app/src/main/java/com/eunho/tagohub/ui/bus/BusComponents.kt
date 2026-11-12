@@ -242,17 +242,10 @@ internal fun RouteInfoCard(r: BusRoute) {
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             if (r.startName != null || r.endName != null) {
-                Text("${r.startName ?: "?"} ↔ ${r.endName ?: "?"}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text("${r.startName ?: "?"} → ${r.endName ?: "?"}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             }
-            val parts = listOfNotNull(
-                r.firstTime?.let { "첫차 $it" },
-                r.lastTime?.let { "막차 $it" },
-                r.interval?.let { "배차 ${it}분" },
-                r.intervalSat?.let { "토 ${it}분" },
-                r.intervalSun?.let { "일 ${it}분" },
-            )
-            if (parts.isNotEmpty()) {
-                Text(parts.joinToString("   "), style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            r.interval?.let {
+                Text("배차 ${it}분", style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -279,17 +272,6 @@ internal fun TurnMarker(color: Color) {
     }
 }
 
-/** 차량번호 아래 운수회사 이름 (작게, 잘리면 글자만 줄임) */
-@Composable
-private fun CompanyText(name: String) {
-    FitText(
-        name,
-        Modifier.padding(end = 6.dp, top = 1.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxSizeSp = 10f, minSizeSp = 7f,
-    )
-}
-
 @Composable
 internal fun TimelineRow(
     s: RouteStop,
@@ -297,15 +279,9 @@ internal fun TimelineRow(
     isFirst: Boolean,
     isLast: Boolean,
     buses: List<BusLocation>,
-    /** 이 정류장을 막 떠나 다음 정류장으로 가는 중인 버스 (띠의 아래쪽, 다음 정류장 바로 앞에 그림) */
-    between: List<BusLocation> = emptyList(),
     focused: Boolean,
     /** 이 정류장 첫차·막차 예상 시각 ("07:24 - 23:12") */
     times: String? = null,
-    /** 실시간 도착 (예: "9분 33초 · 7정류장 전" 또는 "3정류장 전 · 약 5분"). 있으면 이름 아래에 빨간 글씨로 */
-    live: String? = null,
-    /** 운수회사 (아는 지역만). 차량번호 알약 아래에 작게 */
-    company: String? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -330,22 +306,6 @@ internal fun TimelineRow(
                         maxSizeSp = 12f, minSizeSp = 8f,
                         fontWeight = FontWeight.Bold,
                     )
-                    company?.let { CompanyText(it) }
-                }
-            }
-            // 이 정류소를 떠나 다음 정류소로 가는 중인 버스: 아래쪽(다음 정류소 바로 앞)에 차량번호
-            between.firstOrNull()?.let { b ->
-                Column(Modifier.align(Alignment.BottomEnd).padding(bottom = 2.dp), horizontalAlignment = Alignment.End) {
-                    FitText(
-                        (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + if (between.size > 1) " 외 ${between.size - 1}" else "",
-                        Modifier
-                            .padding(end = 6.dp)
-                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                        maxSizeSp = 11f, minSizeSp = 8f,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    company?.let { CompanyText(it) }
                 }
             }
         }
@@ -369,21 +329,6 @@ internal fun TimelineRow(
                         .weight(1f)
                         .background(if (isLast) Color.Transparent else color)
                 )
-            }
-            if (between.isNotEmpty()) {
-                // 떠난 버스: 띠 아래쪽에 작은 앰버 원 (정류소 점과 겹치지 않게)
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 2.dp)
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(BoardColor.AmberFill)
-                        .border(2.dp, color, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.DirectionsBus, contentDescription = "이동 중인 버스", tint = BoardColor.OnAmber, modifier = Modifier.size(10.dp))
-                }
             }
             if (buses.isNotEmpty()) {
                 // 버스가 있는 정류소: 앰버 원에 버스 아이콘
@@ -417,14 +362,8 @@ internal fun TimelineRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (focused || buses.isNotEmpty()) FontWeight.Black else FontWeight.Medium,
             )
-            if (live != null) {
-                AnimatedValueText(live, label = "bus-route-stop-arrival") { value ->
-                    Text(value, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold, color = Color(0xFFD92D20))
-                }
-            }
             val sub = listOfNotNull(times, s.nodeNo).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (buses.any { it.lowFloor == true }) Pill("저상", color, filled = false)
         }
     }
 }
