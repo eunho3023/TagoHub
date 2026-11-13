@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TagoHub 노선 모양 편집기</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --bg: #0f1720; --panel: #16212e; --line: #2a3a4d; --text: #e7eef7; --sub: #93a4b8; --on: #2f81f7; --warn: #e3b341; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Noto Sans KR", system-ui, sans-serif; }
+  #map { position: absolute; inset: 0; background: #0b1118; }
+  .panel { position: absolute; z-index: 500; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px #0008; }
+  #top { top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; padding: 8px 10px; flex-wrap: wrap; }
+  #top input { width: 130px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: #0e1720; color: var(--text); font: inherit; }
+  #top input:focus { outline: 2px solid var(--on); outline-offset: 1px; }
+  #name { flex: 1; min-width: 120px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #save { color: var(--sub); font-variant-numeric: tabular-nums; }
+  #tools { left: 10px; bottom: 10px; right: 10px; display: flex; gap: 6px; padding: 8px; flex-wrap: wrap; align-items: center; }
+  button, .file { appearance: none; border: 1px solid var(--line); background: #1b2836; color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover, .file:hover { border-color: #3d5a78; background: #223244; }
+  button.on { background: var(--on); border-color: var(--on); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  .file { position: relative; overflow: hidden; display: inline-flex; align-items: center; }
+  .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  #alphaWrap { display: none; gap: 6px; align-items: center; color: var(--sub); }
+  #alphaWrap.show { display: inline-flex; }
+  #alpha { width: 90px; }
+  #hint { position: absolute; z-index: 500; left: 10px; right: 10px; bottom: 66px; padding: 8px 10px; font-size: 13px; color: #cfe0f3; background: #0e1720e6; border: 1px solid var(--line); border-radius: 10px; pointer-events: none; }
+  #hint:empty { display: none; }
+  .dot { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; border: 3px solid var(--on); box-shadow: 0 1px 4px #000a; }
+  .dot.sel { border-color: var(--warn); background: #ffe9a8; }
+  .stop { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #8aa0b8; border: 1px solid #0b1118; }
+  .stop.first { background: #3fb950; }
+  .stop.last { background: #f85149; }
+  .leaflet-tooltip { background: #0e1720ee; color: #e7eef7; border: 1px solid #2a3a4d; box-shadow: none; font-size: 12px; }
+  @media (max-width: 720px) {
+    #top { top: 6px; left: 6px; right: 6px; padding: 6px; }
+    #tools { left: 6px; right: 6px; bottom: 6px; gap: 4px; padding: 6px; }
+    button, .file { padding: 6px 8px; font-size: 13px; }
+    #hint { bottom: 104px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="top" class="panel">
+  <input id="q" inputmode="numeric" placeholder="노선 번호" aria-label="노선 번호">
+  <button id="find">조회</button>
+  <span id="name">노선 번호를 넣고 조회하세요</span>
+  <span id="save">저장 안 됨</span>
+</div>
+
+<div id="tools" class="panel">
+  <button data-mode="draw" class="on" title="지도를 누르면 점이 붙습니다">점 추가</button>
+  <button data-mode="move" title="점을 끌어 옮깁니다">이동</button>
+  <button id="undo" title="Ctrl+Z">되돌리기</button>
+  <button id="del" title="선택한 점 삭제 (Delete)">점 삭제</button>
+  <button id="clear">비우기</button>
+  <button id="draft" title="정류장을 순서대로 이어 초안을 만듭니다">정류장 초안</button>
+  <label class="file">GPX<input type="file" id="gpx" accept=".gpx,application/gpx+xml"></label>
+  <label class="file">노선 파일<input type="file" id="tsv" accept=".tsv,.txt,.json"></label>
+  <label class="file">이미지<input type="file" id="img" accept="image/*"></label>
+  <span id="alphaWrap">배경 <input type="range" id="alpha" min="0" max="100" value="55"></span>
+  <button id="gps">GPS 기록</button>
+  <button id="tsvSave">TSV 저장</button>
+  <button id="gpxSave">GPX 저장</button>
+</div>
+
+<div id="hint"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="shape-format.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>
