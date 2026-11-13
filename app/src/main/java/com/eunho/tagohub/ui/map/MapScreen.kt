@@ -7,6 +7,9 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.widget.VideoView
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1686,6 +1689,21 @@ private fun arrivalAgeSeconds(updated: java.time.LocalTime?): Int {
 
 @Composable
 private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var layoutRev by remember { mutableIntStateOf(0) }
+    // 배치도 편집기에서 내보낸 좌표 파일을 받아 앱에 저장한다 (assets 좌표를 덮어씀)
+    val layoutPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull()
+            }
+            val n = if (text.isNullOrBlank()) 0 else com.eunho.tagohub.data.RouteDiagram.importText(context, text)
+            layoutRev++
+            Toast.makeText(context, if (n > 0) "배치도 좌표 ${n}개 노선을 가져왔습니다." else "가져올 좌표를 찾지 못했습니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
     val favs by vm.favorites.collectAsStateWithLifecycle()
     val stopTimes by d.stopTimes.collectAsStateWithLifecycle()
     val info by d.info.collectAsStateWithLifecycle()
@@ -1798,6 +1816,11 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     Spacer(Modifier.width(4.dp))
                     Text("정류장 시간표")
                 }
+                if (diagram) {
+                    TextButton(onClick = { layoutPicker.launch(arrayOf("text/*", "application/octet-stream")) }) {
+                        Text("좌표 가져오기")
+                    }
+                }
             }
             val listState = rememberLazyListState()
             LaunchedEffect(list) {
@@ -1815,6 +1838,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     focusedNodeId = d.focusNodeId,
                     onStop = { vm.focusRouteStop(it.nodeId) },
                     modifier = Modifier.fillMaxSize(),
+                    layoutRev = layoutRev,
                 )
             } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(list) { i, s ->

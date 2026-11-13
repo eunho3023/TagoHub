@@ -1,6 +1,7 @@
 package com.eunho.tagohub.data
 
 import android.content.Context
+import java.io.File
 
 /** 앱 안 서울 노선 모양 (assets/bus_route_shapes.tsv, 서울시 TBIS 경유노드). 서울 API 를 부르지 않고 바로 그린다 */
 object RouteShapes {
@@ -93,4 +94,37 @@ object RouteDiagram {
         official ?: synchronized(this) {
             official ?: runCatching { parseOfficial(context.assets.open(FILE).bufferedReader().readText()) }.getOrDefault(emptyMap()).also { official = it }
         }
+
+    private const val OVERRIDE = "route_layouts.tsv"
+    @Volatile private var overrideCache: Map<String, Map<String, Pair<Int, Int>>>? = null
+
+    /** 앱에서 가져온 좌표 (files/route_layouts.tsv). 없으면 빈 map */
+    fun override(context: Context): Map<String, Map<String, Pair<Int, Int>>> =
+        overrideCache ?: synchronized(this) {
+            overrideCache ?: runCatching {
+                val f = File(context.filesDir, OVERRIDE)
+                if (f.exists()) parseOfficial(f.readText()) else emptyMap()
+            }.getOrDefault(emptyMap()).also { overrideCache = it }
+        }
+
+    /** 자산 좌표 위에 가져온 좌표를 덮어쓴다 (같은 노선은 가져온 쪽이 이긴다) */
+    fun layouts(context: Context): Map<String, Map<String, Pair<Int, Int>>> = official(context) + override(context)
+
+    /** 가져온 파일 내용을 기존 좌표에 합쳐 저장한다. 저장한 노선 수를 돌려준다 */
+    fun importText(context: Context, text: String): Int {
+        val added = parseOfficial(text)
+        if (added.isEmpty()) return 0
+        val merged = LinkedHashMap(override(context))
+        merged.putAll(added)
+        val out = buildString {
+            for ((id, m) in merged) {
+                append(id).append('\t')
+                append(m.entries.joinToString(",") { (node, p) -> "$node:${p.first}:${p.second}" })
+                append('\n')
+            }
+        }
+        runCatching { File(context.filesDir, OVERRIDE).writeText(out) }
+        overrideCache = merged
+        return added.size
+    }
 }

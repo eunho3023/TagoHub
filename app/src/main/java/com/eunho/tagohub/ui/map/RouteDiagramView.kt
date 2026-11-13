@@ -43,10 +43,12 @@ fun RouteDiagramView(
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier = Modifier,
+    /** 좌표를 새로 가져오면 이 값을 올려 배치를 다시 계산한다 */
+    layoutRev: Int = 0,
 ) {
     val context = LocalContext.current
-    val cells = remember(routeId, stops) {
-        RouteDiagram.layout(routeId, stops.map { it.nodeId }, RouteDiagram.official(context), PER_ROW)
+    val cells = remember(routeId, stops, layoutRev) {
+        RouteDiagram.layout(routeId, stops.map { it.nodeId }, RouteDiagram.layouts(context), PER_ROW)
     }
     DiagramCanvas(stops, cells, color, busMotions, focusedNodeId, onStop, modifier)
 }
