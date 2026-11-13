@@ -9,6 +9,7 @@ import { recordGps } from "./gps.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
+import { admin } from "./admin.js";
 
 export default {
   // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
@@ -20,6 +21,8 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response("ok");
+    // 관리자 편집기 API·앱 배포용 배치 (자체 쿠키 인증, src/admin.js)
+    if (url.pathname.startsWith("/w/admin") || url.pathname === "/w/layouts.tsv" || url.pathname === "/w/shapes.tsv") return admin(request, url, env);
     if (url.pathname.startsWith("/w/")) return web(request, url, env, ctx);
     if (!env.APP_TOKEN || request.headers.get("X-TagoHub-Token") !== env.APP_TOKEN) {
       return new Response("forbidden", { status: 403 });

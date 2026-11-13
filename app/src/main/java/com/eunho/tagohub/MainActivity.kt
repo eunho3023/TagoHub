@@ -6,11 +6,20 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.eunho.tagohub.data.StopDb
 import com.eunho.tagohub.ui.MainScreen
 import com.eunho.tagohub.ui.theme.TagoTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** 관리자 페이지에서 고친 배치도·노선 선형을 다시 확인하는 간격 (앱이 화면에 보이는 동안) */
+private const val REMOTE_EDITS_REFRESH_MS = 5 * 60_000L
 
 class MainActivity : ComponentActivity() {
     override fun onStart() {
@@ -52,6 +61,20 @@ class MainActivity : ComponentActivity() {
         }
         // 즐겨찾기·설정을 계정에 맞춰 둠 (로그인·네트워크가 안 되면 조용히 건너뜀)
         com.eunho.tagohub.data.CloudSync.start(applicationContext)
+        // 관리자 페이지에서 저장한 배치도·노선 선형: 켤 때 저장본을 바로 읽고, 보이는 동안 주기적으로 새것 확인
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                com.eunho.tagohub.data.RemoteLayouts.init(applicationContext)
+                com.eunho.tagohub.data.RemoteShapes.init(applicationContext)
+            }
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (isActive) {
+                    com.eunho.tagohub.data.RemoteLayouts.refresh(applicationContext)
+                    com.eunho.tagohub.data.RemoteShapes.refresh(applicationContext)
+                    delay(REMOTE_EDITS_REFRESH_MS)
+                }
+            }
+        }
         com.eunho.tagohub.data.TrainStationGeo.init(applicationContext)
         com.eunho.tagohub.data.CoachTerminalGeo.init(applicationContext)
         com.eunho.tagohub.data.StopCompanions.init(applicationContext)

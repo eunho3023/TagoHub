@@ -1242,6 +1242,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private val stopDb: StopDb? get() = StopDb.peek()
 
     init {
+        // 관리자 페이지에서 노선 선형을 고치면 지금 보고 있는 노선에도 바로 반영
+        viewModelScope.launch {
+            com.eunho.tagohub.data.RemoteShapes.shapes.collect { all ->
+                val d = route.value ?: return@collect
+                val line = all[d.routeId.removePrefix("SEB")] ?: return@collect
+                if (line.size >= 2 && d.shape.value != line) {
+                    d.shape.value = line
+                    pushRoute()
+                }
+            }
+        }
         viewModelScope.launch {
             val cachedLayers = withContext(Dispatchers.IO) {
                 ITS_ROAD_OVERLAY_IDS.filterNot(STATIC_ITS_ROAD_LAYERS::contains)
@@ -2478,7 +2489,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 // 노선 선: 카카오 지도 도로를 따라 (카카오 대중교통 경로에서 이 노선 번호 구간).
                 // 카카오가 못 찾은 구간은 지역 공식 모양(서울시·경기·전주시)으로, 그것도 없으면 OSRM.
                 // 저장해 둔 모양도 지금 정류장과 맞을 때만 씀 (예전에 잘못 저장됐거나 노선이 바뀌었으면 새로 만듦)
-                val saved = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
+                // 관리자 페이지에서 직접 그린 선형(/w/shapes.tsv)이 있으면 앱이 만든 캐시보다 먼저 쓴다
+                val adminShape = com.eunho.tagohub.data.RemoteShapes.get(d.routeId)
+                val saved = adminShape ?: withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
                     ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) }
                 val shape = saved ?: run {
                     val official: List<LatLng>? = when {

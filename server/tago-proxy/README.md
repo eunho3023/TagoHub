@@ -94,6 +94,23 @@ npm test
 - 공개 자료라 앱 토큰 없이 받을 수 있고(CORS 허용), 1시간 저장. 조각 규칙은 앱 공용 코드 `WebData` 와 같음.
 - 무료 요금제: 파일 하나 25MB, 2만 개까지. 정적 파일 요청은 하루 10만 요청 한도에 들어가지 않음.
 
+## 관리자 편집기 (배치도·노선 선형)
+
+`/admin.html` 에서 노선을 찾아 두 가지를 고친다. 저장한 값은 D1(`tagohub-log`)에 들어가고, 앱이 켜질 때 받아 간다.
+
+- **배치도**: 정류장을 4칸 격자에 놓는 위치. `layouts` 표, `노선ID \t 정류장ID:x:y,…`
+- **노선 선형**: 지도에서 노선이 지나는 길. 점을 끌어 옮기고, 선을 누르면 점이 늘고, 점을 오른쪽 클릭하면 준다.
+  기본값은 웹 지도와 같은 `data/shapes` 의 노선 모양이고, 없으면 정류장을 이은 선. `route_shapes` 표,
+  `노선ID \t 첫점(위도,경도) \t 변화량(1e-5도),…` (앱의 `bus_route_shapes.tsv` 와 같은 형식)
+
+- 로그인은 서버 비밀 값 `ADMIN_TOKEN` (`npx wrangler secret put ADMIN_TOKEN`). 쿠키(HMAC)로 30일 기억하고, 토큰 자체는 쿠키에 담지 않는다.
+- 표는 처음 저장할 때 서버가 만든다 (`CREATE TABLE IF NOT EXISTS`). D1 연결이 없으면 관리자 API 만 503.
+- 앱이 읽는 공개 주소: `GET /w/layouts.tsv`, `GET /w/shapes.tsv`.
+  `ETag`(=`updated_at` 최댓값 + 줄 수)를 붙여, 앱이 `If-None-Match` 로 물으면 바뀐 것이 없을 때 본문 없이 `304` 만 준다.
+  버전은 `X-Layout-Version`·`X-Shape-Version` 헤더로도 볼 수 있다. `Cache-Control: public, max-age=60`.
+- 앱(안드로이드)은 켤 때 저장본을 바로 읽어 기본 자료 위에 덮어쓰고, 화면이 보이는 동안 5분마다 새것이 있는지 확인한다
+  (`RemoteLayouts`·`RemoteShapes`, `MainActivity`). 관리자에서 저장하면 1분 안에 반영된다.
+
 ## 웹 버전 (화면 + 토큰 없는 실시간 통로)
 
 웹 버전 화면은 HTML·자바스크립트(`site/`, 빌드 없이 브라우저가 바로 실행, 시스템 글꼴)이고 `deploy.ps1` 이 그대로 `public/` 에 복사한다.
