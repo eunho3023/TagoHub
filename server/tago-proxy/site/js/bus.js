@@ -6,6 +6,7 @@ import { MapView } from "./map.js";
 import { Favorites, Recent } from "./store.js";
 import * as B from "./busdata.js";
 import { Alight } from "./alight.js";
+import * as Edits from "./edits.js";
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
@@ -154,7 +155,7 @@ export function stopScreen(root, p) {
       back: true,
       star: { on: Favorites.hasStop(stop), toggle: () => { Favorites.toggleStop(stop); draw(); } },
       action: isWide() ? null : { label: "위치", run: () => go("map", stop.id, { lat: stop.lat, lng: stop.lng }) },
-    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><button class="link pad" ${act(() => go("stoptable", stop.id, stopParams(stop)))}>🕘 정류장 시간표</button><div class="list">${rows.map((r, i) => {
+    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><button class="link pad" ${act(() => go("stoptable", stop.id, stopParams(stop)))}>🕘 정류장 시간표</button>${Edits.isAdmin() ? `<button class="link pad" ${act(() => go("fix", stop.id, { kind: "stop", lat: stop.lat, lng: stop.lng, name: stop.name }))}>📍 위치 고치기</button>` : ""}<div class="list">${rows.map((r, i) => {
       const ends = endsOf(r);
       return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
         <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
@@ -474,7 +475,7 @@ export function routeScreen(root, p, ctx) {
     if (!alive) return;
     if (!r) { root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요"); return; }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
-      `<div class="map-slot"></div><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button><div id="stops" class="list"></div>`;
+      `<div class="map-slot"></div><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button>${Edits.isAdmin() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="stops" class="list"></div>`;
     root.querySelector("#rrefresh")?.addEventListener("click", () => tick());
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();

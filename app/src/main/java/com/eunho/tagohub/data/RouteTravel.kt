@@ -49,6 +49,37 @@ object RouteTravel {
         }
     }
 
+    /**
+     * 정류장 시간표용 소요시간: 웹 버전(site/js/busdata.js offsetMinutes)과 똑같은 어림 —
+     * 이웃 정류장 사이 직선거리 ÷ 300m/분(둘 다 좌표가 있을 때) + 정류장마다 0.3분.
+     * 폰마다 다른 실측 구간 시간은 섞지 않아 앱과 웹의 시간표 시각이 같게 나온다.
+     */
+    fun timetableFn(stops: List<RouteStop>): (Int, Int) -> Double {
+        val index = HashMap<Int, Int>(stops.size * 2)
+        stops.forEachIndexed { i, s -> index.putIfAbsent(s.ord, i) }
+        val cum = DoubleArray(stops.size)
+        for (k in 1 until stops.size) {
+            val a = stops[k - 1]
+            val b = stops[k]
+            val la = a.lat; val lo = a.lng; val lb = b.lat; val gb = b.lng
+            val m = if (la != null && lo != null && lb != null && gb != null) webMeters(la, lo, lb, gb) / TIMETABLE_M_PER_MIN else 0.0
+            cum[k] = cum[k - 1] + m + TIMETABLE_STOP_MIN
+        }
+        return { from, to ->
+            val i = index[from]
+            val j = index[to]
+            if (i == null || j == null || j < i) 0.0 else cum[j] - cum[i]
+        }
+    }
+    /** 웹 site/js/core.js meters 와 같은 식 (반올림 경계에서 1분씩 갈리지 않게) */
+    fun webMeters(la1: Double, lo1: Double, la2: Double, lo2: Double): Double {
+        val dy = (la2 - la1) * 111000
+        val dx = (lo2 - lo1) * 111000 * Math.cos(la1 * Math.PI / 180)
+        return Math.sqrt(dx * dx + dy * dy)
+    }
+    const val TIMETABLE_M_PER_MIN = 300.0
+    const val TIMETABLE_STOP_MIN = 0.3
+
     /** [fromOrd] → [toOrd] 사이 구간 중 실측 시간이 쓰인 곳이 있는지 (시간표에 "실측 반영"을 보여 줄 때) */
     fun usesMeasured(routeId: String, stops: List<RouteStop>, fromOrd: Int, toOrd: Int): Boolean {
         val i = stops.indexOfFirst { it.ord == fromOrd }

@@ -9,6 +9,7 @@ import { recordGps } from "./gps.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
+import { handleEdits } from "./edits.js";
 
 export default {
   // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
@@ -35,7 +36,7 @@ export default {
   },
 };
 
-const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type" };
+const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type, X-TagoHub-Admin" };
 
 /** 웹 버전: 토큰 없이 실시간 버스 도착·위치만 (proxy.js webRequest), 주소(IP)마다 분당 요청 수 제한 */
 async function web(request, url, env, ctx) {
@@ -47,6 +48,14 @@ async function web(request, url, env, ctx) {
       if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
     }
     return handleReport(request, env, ctx);
+  }
+  // 지도 고치기 (노선 모양·정류장·역 위치, src/edits.js). 저장(POST)은 주소마다 분당 제한
+  if (url.pathname === "/w/edits" || url.pathname === "/w/edits/check") {
+    if ((request.method === "POST" || url.pathname === "/w/edits/check") && env.WEB_LIMIT) {
+      const { success } = await env.WEB_LIMIT.limit({ key: "edit:" + (request.headers.get("CF-Connecting-IP") || "unknown") });
+      if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+    }
+    return handleEdits(request, env, ctx, url.pathname);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
   if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/"))) {

@@ -113,12 +113,13 @@ object JeonjuTimetable {
     fun fromInterval(first: Int, last: Int, interval: Int?, startSeq: Int = 1): List<CourseStart> {
         var end = last
         if (end < first) end += 1440
-        if (interval == null || interval <= 0) {
+        // 웹 버전(site/js/busdata.js plannedTimes)과 같은 규칙: 배차 3~180분만 믿고, 막차는 마지막 계산 시각과 2분 이상 차이 날 때만 더함
+        if (interval == null || interval !in 3..180) {
             return listOf(first, end).distinct().map { CourseStart(it, startSeq) }
         }
         return generateSequence(first) { it + interval }.takeWhile { it <= end }.take(1440)
             .map { CourseStart(it, startSeq) }.toList()
-            .let { l -> if (l.last().minute != end && end - l.last().minute < interval) l + CourseStart(end, startSeq) else l }
+            .let { l -> if (l.last().minute != end && end - l.last().minute >= 2) l + CourseStart(end, startSeq) else l }
     }
 
     /** 요일별 배차간격: 토요일 → 없으면 평일, 일요일·공휴일 → 없으면 토요일 → 평일 */

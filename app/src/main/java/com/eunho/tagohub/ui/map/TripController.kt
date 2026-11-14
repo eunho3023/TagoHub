@@ -659,11 +659,16 @@ class TripController(
 
     /** 버스 구간 선: 전주시 노선 모양을 탄 정류장~내린 정류장 사이만 잘라서. 실패하면 정류장끼리 직선 */
     private suspend fun legPath(leg: TripLeg, db: StopDb?): List<LatLng> {
-        leg.path?.takeIf { it.size >= 2 }?.let { return it } // 카카오 길찾기: 실제 경로
         val straight = listOfNotNull(
             leg.boardLat?.let { la -> leg.boardLng?.let { LatLng(la, it) } },
             leg.alightLat?.let { la -> leg.alightLng?.let { LatLng(la, it) } },
         )
+        // 지도에서 손으로 고친 노선 모양이 있으면 타는 곳~내리는 곳만 잘라 씀 (지하철은 노선 이름, 버스는 노선 id)
+        if (straight.size == 2) {
+            val fixed = if (leg.subway) com.eunho.tagohub.data.MapEdits.railShape(com.eunho.tagohub.data.SubwayRegion.of(straight[0].lat, straight[0].lng), leg.routeNo) else com.eunho.tagohub.data.MapEdits.busShape(leg.routeId)
+            if (fixed != null) (Shapes.slice(fixed, straight[0], straight[1], 300.0) ?: Shapes.slice(fixed.reversed(), straight[0], straight[1], 300.0))?.let { return it }
+        }
+        leg.path?.takeIf { it.size >= 2 }?.let { return it } // 카카오 길찾기: 실제 경로
         if (leg.subway) return straight // 지하철 구간 (서울시 경로검색): 타는 역 → 내리는 역
         val city = routeCity[leg.routeId] ?: if (com.eunho.tagohub.data.SeoulBus.isSeoul(leg.routeId)) "11" else "35010"
         val stops = com.eunho.tagohub.ui.bus.routeStopsFor(repo, leg.routeId, city).filter { it.lat != null && it.lng != null }

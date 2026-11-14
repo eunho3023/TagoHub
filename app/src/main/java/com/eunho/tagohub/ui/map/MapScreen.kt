@@ -460,8 +460,10 @@ fun MapScreen(
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .imePadding(),
         ) {
-            pickedPlace?.let { PickCard(vm, it) }
-            when (panel) {
+            val editing by vm.mapEdit.collectAsStateWithLifecycle()
+            editing?.let { MapEditBar(vm, it) }
+            if (editing == null) pickedPlace?.let { PickCard(vm, it) }
+            if (editing == null) when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
                 MapPanel.Route -> route?.let { RoutePanel(vm, it, hasStop = selected != null) }
                 MapPanel.Station -> station?.let { d ->
@@ -483,6 +485,9 @@ fun MapScreen(
                             onRailJump = railName?.let { rn -> { asOrigin -> vm.jumpToTrain(rn, asOrigin) } },
                         )
                         }
+                        val admin by com.eunho.tagohub.data.MapEdits.admin.collectAsStateWithLifecycle()
+                        if (admin) MapEditLinks(listOf<Pair<String, () -> Unit>>("역 위치 고치기" to { vm.startStationEdit() }) +
+                            d.group.displayLines.map { line -> "$line 모양 고치기" to { vm.startRailEdit(line) } })
                     }
                 }
                 MapPanel.Train -> trainView?.let { TrainPanel(vm, it, hasStation = station != null) }
@@ -1368,6 +1373,8 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp))
             Text("방문 장소로 저장", Modifier.padding(start = 8.dp))
         }
+        val admin by com.eunho.tagohub.data.MapEdits.admin.collectAsStateWithLifecycle()
+        if (admin && d.stop.lat != null) MapEditLinks(listOf("정류장 위치 고치기" to { vm.startStopEdit() }))
         liveNote?.let {
             Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }
@@ -1717,6 +1724,8 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             onFavorite = { vm.toggleFavorite(vm.routeFavorite(d)) },
             onRefresh = vm::refreshNow,
         )
+        val admin by com.eunho.tagohub.data.MapEdits.admin.collectAsStateWithLifecycle()
+        if (admin) MapEditLinks(listOf("노선 모양 고치기" to { vm.startRouteShapeEdit() }))
         // 목록일 땐 정보 카드·첫차·막차 알림이 정류장 목록과 함께 스크롤됨 (고정이면 목록이 들어갈 자리가 없어짐). 배치도에서만 위에 고정
         var diagram by rememberSaveable { mutableStateOf(false) }
         val dir by d.dir.collectAsStateWithLifecycle()

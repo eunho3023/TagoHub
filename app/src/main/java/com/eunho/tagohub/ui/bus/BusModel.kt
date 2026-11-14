@@ -295,6 +295,8 @@ private suspend fun routeInfoFetch(repo: TagoRepository, routeId: String, cityCo
 internal suspend fun routeStopsFor(repo: TagoRepository, routeId: String, cityCode: String): List<RouteStop> =
     StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.routeStops(routeId) } }?.takeIf { it.isNotEmpty() }
         ?: cachedStops(routeId) { routeStopsFetch(repo, routeId, cityCode) }.orEmpty()
+            // 지도에서 손으로 고친 정류장 위치 ([com.eunho.tagohub.data.MapEdits]; 앱 안 DB 것은 StopDb 가 이미 반영)
+            .map { s -> com.eunho.tagohub.data.MapEdits.stop(s.nodeId)?.let { f -> s.copy(lat = f.lat, lng = f.lng) } ?: s }
 
 private suspend fun routeStopsFetch(repo: TagoRepository, routeId: String, cityCode: String): List<RouteStop>? = when {
     Jeju.isJeju(routeId) -> (Graph.jeju.routeStops(routeId) as? TagoResult.Success)?.data

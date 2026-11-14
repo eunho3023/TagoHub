@@ -175,9 +175,10 @@ object SeoulLines {
 
 // ───────────────────────── 역 색인 ─────────────────────────
 
-class StationIndex(rawStations: List<MetroStation>) {
-    /** 표준데이터의 알려진 좌표 오류를 고친 역 목록 */
+class StationIndex(val rawStations: List<MetroStation>) {
+    /** 표준데이터의 알려진 좌표 오류를 고친 역 목록 (지도에서 손으로 고친 역 위치 [MapEdits] 가 있으면 그것) */
     val stations: List<MetroStation> = rawStations.map(StationDataFixes::apply)
+        .map { s -> MapEdits.station(MapEdits.stationKey(s))?.let { f -> s.copy(lat = f.lat, lng = f.lng) } ?: s }
 
 
     /** (서울 노선ID, 정규화 역명) → 역. 같은 역이 두 번 실린 경우(용산 경부선/경원선) 첫 행 사용 */

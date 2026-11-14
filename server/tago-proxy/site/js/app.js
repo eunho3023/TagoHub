@@ -11,6 +11,7 @@ import * as more from "./more.js";
 import { Alight } from "./alight.js";
 import * as subway from "./subway.js";
 import * as air from "./air.js";
+import { fixScreen } from "./fix.js";
 import "./modes.js";
 
 const TABS = [
@@ -35,6 +36,7 @@ const SCREENS = {
   subwaymap: subway.subwayMap,
   airport: air.airportScreen,
   report: more.reportScreen,
+  fix: fixScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */
 export function addScreen(name, fn) { SCREENS[name] = fn; }
