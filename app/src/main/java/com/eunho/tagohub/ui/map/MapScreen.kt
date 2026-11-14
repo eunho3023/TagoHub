@@ -3047,7 +3047,7 @@ private fun ObservedTimetable(routeId: String, nodeId: String, color: Color) {
     val table = remember(hits, nodeId, day) { com.eunho.tagohub.data.ArrivalLog.table(hits, nodeId, day) }
     Column(Modifier.fillMaxSize()) {
         Text(
-            "TagoHub 사용자들이 본 실제 도착 시각으로 만든 예상 시간표예요. 실제 상황과 다를 수 있어요.",
+            "모두의 지도 사용자들이 본 실제 도착 시각으로 만든 예상 시간표예요. 실제 상황과 다를 수 있어요.",
             Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

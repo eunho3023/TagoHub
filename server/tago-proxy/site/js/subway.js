@@ -126,7 +126,7 @@ const stLine = (s) => `<button class="row" ${act(() => go("subway", s.id, { name
   <span class="badge" style="background:${subwayColor(s.line)}">${esc(s.line.replace(/^(서울|수도권)\s*/, "").slice(0, 6))}</span><b class="grow">${esc(s.name)}</b></button>`;
 
 export function subwaySearch(root, chipsHtml) {
-  root.innerHTML = header("TagoHub", "지하철 시간표") + chipsHtml +
+  root.innerHTML = header("모두의 지도", "지하철 시간표") + chipsHtml +
     `<div class="searchbox"><input id="q" type="search" placeholder="지하철역 이름" value="${esc(search.q)}" autocomplete="off"></div>
      <button class="link pad" ${act(() => go("subwaymap"))}>서울 지하철 노선도 보기</button><div id="out"></div>`;
   const out = root.querySelector("#out");

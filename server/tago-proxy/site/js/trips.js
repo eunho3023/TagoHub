@@ -85,7 +85,7 @@ export function trainScreen(root, chipsHtml) {
   };
   function draw() {
     if (!alive) return;
-    let h = header("TagoHub", "기차 시간표") + chipsHtml + `<div class="searchtop">${boxes(train, train.dep, train.arr, () => { if (!train.editing) load(); else draw(); })}${dayRow(train, load)}</div>`;
+    let h = header("모두의 지도", "기차 시간표") + chipsHtml + `<div class="searchtop">${boxes(train, train.dep, train.arr, () => { if (!train.editing) load(); else draw(); })}${dayRow(train, load)}</div>`;
     if (train.editing) {
       const q = norm(train.q);
       const shown = stations.filter((s) => !q || norm(s.name).includes(q)).sort((a, b) => (norm(a.name).startsWith(q) ? 0 : 1) - (norm(b.name).startsWith(q) ? 0 : 1) || a.name.length - b.name.length).slice(0, 80);
@@ -149,7 +149,7 @@ export function coachScreen(root, chipsHtml) {
   };
   function draw() {
     if (!alive) return;
-    let h = header("TagoHub", "고속·시외버스 시간표") + chipsHtml + `<div class="searchtop">${boxes(coach, coach.dep?.name || "터미널 고르기", coach.arr?.name || "터미널 고르기", () => { if (!coach.editing) load(); else draw(); })}${dayRow(coach, load)}</div>`;
+    let h = header("모두의 지도", "고속·시외버스 시간표") + chipsHtml + `<div class="searchtop">${boxes(coach, coach.dep?.name || "터미널 고르기", coach.arr?.name || "터미널 고르기", () => { if (!coach.editing) load(); else draw(); })}${dayRow(coach, load)}</div>`;
     if (coach.editing) {
       const q = coach.q.replace(/ /g, ""), other = coach.editing === "arr" ? coach.dep : coach.arr, seen = new Set();
       const shown = [...list, ...extra].filter((x) => !seen.has(x.id) && seen.add(x.id))

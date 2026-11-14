@@ -117,7 +117,7 @@ export function roadScreen(root, chipsHtml, ctx) {
     if (!alive) return;
     stopSig();
     offIdle?.(); offIdle = null;
-    const h = header("TagoHub", "고속도로 돌발·정체·주유 가격·신호등", { action: { label: "새로", run: () => { road.incidents = road.jams = road.gas = null; spotsP = null; [0, 1, 2].forEach(load); draw(); } } }) + chipsHtml +
+    const h = header("모두의 지도", "고속도로 돌발·정체·주유 가격·신호등", { action: { label: "새로", run: () => { road.incidents = road.jams = road.gas = null; spotsP = null; [0, 1, 2].forEach(load); draw(); } } }) + chipsHtml +
       `<div class="segs">${tabs.map((l, i) => `<button class="${road.tab === i ? "on" : ""}" ${act(() => { road.tab = i; road.picked = null; draw(); })}>${l}</button>`).join("")}</div>`;
     if (road.tab === 2) {
       MapView.clear();

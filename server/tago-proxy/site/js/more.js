@@ -20,7 +20,7 @@ export function transit(root, p, ctx) {
   if (mode === "bus") return busSearch(root, chipsHtml);
   const fn = modeScreens[mode];
   if (fn) return fn(root, chipsHtml, ctx);
-  root.innerHTML = header("TagoHub", MODES.find(([k]) => k === mode)[1]) + chipsHtml + note("준비 중이에요");
+  root.innerHTML = header("모두의 지도", MODES.find(([k]) => k === mode)[1]) + chipsHtml + note("준비 중이에요");
   return null;
 }
 

@@ -24,7 +24,7 @@ function stopLine(s, sub) {
 // ── 정류장 찾기 (대중교통 → 버스) ──
 const search = { q: "", result: [] };
 export function busSearch(root, chipsHtml) {
-  root.innerHTML = header("TagoHub", "버스 정류장 실시간 도착", { action: { label: "지도", run: () => go("map") } }) + chipsHtml +
+  root.innerHTML = header("모두의 지도", "버스 정류장 실시간 도착", { action: { label: "지도", run: () => go("map") } }) + chipsHtml +
     `<div class="searchbox"><input id="q" type="search" placeholder="정류장 이름" value="${esc(search.q)}" autocomplete="off"></div><div id="out"></div>`;
   const out = root.querySelector("#out");
   let seq = 0;
