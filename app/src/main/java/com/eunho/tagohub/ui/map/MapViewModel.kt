@@ -2467,7 +2467,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 정류장에서 노선을 열었으면 그 정류장을 지나는 방향부터
             d.dirChosen = true
             val l = located(d)
-            d.dir.value = RouteDirections.dirOf(l, RouteDirections.turnIndex(l), d.focusNodeId)
+            d.dir.value = RouteDirections.dirOf(l, RouteDirections.splitIndex(l, d.routeNo), d.focusNodeId)
         }
         pushRoute()
         // 노선 검색에서 열었을 때만 노선 전체가 보이게. 정류장에서 노선을 누른 경우는 지도 그대로
@@ -2484,13 +2484,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 // 노선 선: 카카오 지도 도로를 따라 (카카오 대중교통 경로에서 이 노선 번호 구간).
                 // 카카오가 못 찾은 구간은 지역 공식 모양(서울시·경기·전주시)으로, 그것도 없으면 OSRM.
                 // 저장해 둔 모양도 지금 정류장과 맞을 때만 씀 (예전에 잘못 저장됐거나 노선이 바뀌었으면 새로 만듦)
-                // 지도에서 손으로 고친 모양이 있으면 그것 (웹과 같이 씀, MapEdits; 5분 지났으면 새로 받음)
+                // 1) 바로 그림: 손으로 고친 모양(받아 둔 것) 또는 폰에 저장된 모양 — 서버를 기다리지 않음 (노선을 열 때마다 늦던 문제)
+                val fixedNow = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
+                val saved = if (fixedNow == null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
+                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) } else null
+                (fixedNow ?: saved)?.let { quick ->
+                    if (route.value === d) { d.shape.value = quick; pushRoute(); pushBuses() }
+                }
+                // 2) 뒤에서 확인: 지도에서 손으로 고친 모양(웹과 같이 씀, MapEdits), 앱이 만들어 서버에 올린 모양(AppShapes) → 다르면 바꿔 그림
                 com.eunho.tagohub.data.MapEdits.refresh()
                 val fixed = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
-                // 앱이 만들어 서버에 올린 모양(다른 폰이 먼저 만든 것 포함) → 앱과 웹이 같은 선 (AppShapes)
                 val shared = if (fixed == null) com.eunho.tagohub.data.AppShapes.fetch(d.routeId) else null
-                val saved = if (fixed == null && shared == null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
-                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) } else null
                 val shape = fixed ?: shared ?: saved ?: run {
                     val official: List<LatLng>? = when {
                         com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) ->
@@ -2512,10 +2516,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     RoadShapeClient.shape(d.routeId, pts, d.routeNo, official)
                 }
-                if (fixed == null && saved == null && shape != null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
+                // 폰에 저장: 다음에 열 때 바로 보이게 (서버 모양이 폰 것과 다르면 서버 것으로 바꿔 저장)
+                if (fixed == null && shape != null && shape != saved) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
                 // 이 폰이 가진(만든·저장한) 모양을 서버에 올려 웹·다른 폰도 같은 선을 쓰게 (서버에 이미 있으면 그대로)
                 if (fixed == null && shared == null && shape != null) com.eunho.tagohub.data.AppShapes.upload(d.routeId, shape)
-                if (shape != null && route.value === d) {
+                if (shape != null && shape != d.shape.value && route.value === d) {
                     d.shape.value = shape
                     pushRoute()
                     pushBuses()
@@ -2979,14 +2984,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 방향 버튼 이름 ("○○ 방면" 의 ○○ = 그 방향 마지막 정류장). 나눌 수 없는 노선은 null */
     fun routeDirLabels(d: BusDest.Route): List<String>? {
         val l = located(d)
-        val t = RouteDirections.turnIndex(l) ?: return null
+        val t = RouteDirections.splitIndex(l, d.routeNo) ?: return null
         return listOf(RouteDirections.label(l, t, 0).orEmpty(), RouteDirections.label(l, t, 1).orEmpty())
     }
 
     /** 패널 정류장 목록: 지금 방향만 (나눌 수 없으면 전체) */
     fun routeStopsInDir(d: BusDest.Route, list: List<RouteStop>): List<RouteStop> {
         val l = located(d)
-        val t = RouteDirections.turnIndex(l) ?: return list
+        val t = RouteDirections.splitIndex(l, d.routeNo) ?: return list
         val r = RouteDirections.range(l.size, t, d.dir.value)
         val ords = l[r.first].ord..l[r.last].ord
         return list.filter { it.ord in ords }
@@ -3009,7 +3014,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val all = located(d)
-        val t = RouteDirections.turnIndex(all)
+        val t = RouteDirections.splitIndex(all, d.routeNo)
         val base = d.shape.value?.takeIf { it.size >= 2 } ?: all.map { LatLng(it.lat!!, it.lng!!) }
         val parts = if (t != null && base.size >= 2) {
             val idx = Shapes.stopIndices(base, all.map { LatLng(it.lat!!, it.lng!!) })
