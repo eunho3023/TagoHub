@@ -4,6 +4,7 @@
 
 import { encodeKey } from "./proxy.js";
 import { gpsShape, gpsPoints, markGps, nextGpsRoute } from "./gps.js";
+import { appShape } from "./appshape.js";
 
 export const OSRM = "https://router.project-osrm.org/route/v1/driving/";
 export const CHUNK = 25;
@@ -455,6 +456,11 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const id = decodeURIComponent(url.pathname.slice("/w/shape/".length));
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
+  // 앱(폰)이 만들어 올린 모양이 있으면 그것 (앱과 웹의 노선 선이 같게, src/appshape.js). 저장해 둔 서버 모양보다 먼저
+  const fromApp = env.DB ? await appShape(env.DB, id).catch(() => null) : null;
+  if (fromApp) return new Response(JSON.stringify({ poly: fromApp, src: "app" }), { headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
+  // ?only=app: 앱 모양만 물음 (없으면 만들지 않고 404 → 웹은 앱 안 공식 모양을 먼저 봄)
+  if (url.searchParams.get("only") === "app") return new Response("no app shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
   const cache = caches.default;
   const city = url.searchParams.get("city");
   // 노선 번호가 있으면 카카오 경로(앱과 같은 방법)를 먼저 씀 (자료 조각 노선은 조각의 번호)

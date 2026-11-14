@@ -10,6 +10,7 @@ import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
+import { handleAppShape } from "./appshape.js";
 
 export default {
   // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
@@ -26,6 +27,8 @@ export default {
       return new Response("forbidden", { status: 403 });
     }
     if (url.pathname.startsWith("/log/")) return handleLog(request, url, env, ctx);
+    // 앱이 만든 노선 모양 나눠 쓰기 (src/appshape.js)
+    if (url.pathname.startsWith("/appshape/")) return handleAppShape(request, url, env);
     if (request.method !== "GET") return new Response("GET only", { status: 405 });
     if (url.pathname.startsWith("/h/")) return relay(request, url, env, ctx);
     const path = upstreamPath(url.pathname);

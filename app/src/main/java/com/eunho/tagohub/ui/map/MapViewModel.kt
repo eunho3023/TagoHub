@@ -2487,9 +2487,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 // 지도에서 손으로 고친 모양이 있으면 그것 (웹과 같이 씀, MapEdits; 5분 지났으면 새로 받음)
                 com.eunho.tagohub.data.MapEdits.refresh()
                 val fixed = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
-                val saved = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
-                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) }
-                val shape = fixed ?: saved ?: run {
+                // 앱이 만들어 서버에 올린 모양(다른 폰이 먼저 만든 것 포함) → 앱과 웹이 같은 선 (AppShapes)
+                val shared = if (fixed == null) com.eunho.tagohub.data.AppShapes.fetch(d.routeId) else null
+                val saved = if (fixed == null && shared == null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
+                    ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) } else null
+                val shape = fixed ?: shared ?: saved ?: run {
                     val official: List<LatLng>? = when {
                         com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) ->
                             // 앱 안 노선 모양(서울시 TBIS). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (아니면 서울 API)
@@ -2511,6 +2513,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     RoadShapeClient.shape(d.routeId, pts, d.routeNo, official)
                 }
                 if (fixed == null && saved == null && shape != null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
+                // 이 폰이 가진(만든·저장한) 모양을 서버에 올려 웹·다른 폰도 같은 선을 쓰게 (서버에 이미 있으면 그대로)
+                if (fixed == null && shared == null && shape != null) com.eunho.tagohub.data.AppShapes.upload(d.routeId, shape)
                 if (shape != null && route.value === d) {
                     d.shape.value = shape
                     pushRoute()
