@@ -99,6 +99,13 @@ export function insertNear(pts, p, maxM = 80) {
   pts.push(p); return pts.length - 1;
 }
 
+/** 누른 곳에서 maxM 안의 가장 가까운 정류장 자리 [위도,경도] (없으면 null) — 선을 정류장에 딱 붙이기 */
+export function nearestStop(stops, p, maxM) {
+  let best = null, bd = maxM;
+  for (const s of stops) { if (s.lat == null) continue; const d = dist(p, [s.lat, s.lng]); if (d <= bd) { bd = d; best = [s.lat, s.lng]; } }
+  return best;
+}
+
 /** [[위도,경도]] → 폴리라인 글자 (정밀도 5) */
 export function encodePolyline(pts) {
   let out = "", pl = 0, pg = 0;

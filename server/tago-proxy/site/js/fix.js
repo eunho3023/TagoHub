@@ -14,7 +14,7 @@ export function fixScreen(root, p, ctx) {
   let alive = true, pts = [], orig = [], sel = -1, color = "#2563eb", title = kind === "bus" ? "노선 모양 고치기" : "정류장 위치 고치기", hasEdit = false, busy = false, msg = "";
   let stops = [];
   const help = kind === "bus"
-    ? "점을 누르고 → 지도에서 옮길 곳을 누르면 옮겨져요. 아무 점도 고르지 않고 선 가까이를 누르면 점이 새로 생겨요."
+    ? "점을 누르고 → 지도에서 옮길 곳을 누르면 옮겨져요. 아무 점도 고르지 않고 선 가까이를 누르면 점이 새로 생겨요. 회색 정류장 점을 누르면(또는 그 가까이를 누르면) 선이 정류장에 딱 붙어요."
     : "지도에서 정류장이 실제로 있는 곳을 누르세요.";
   const drawMap = () => {
     if (!alive) return;
@@ -24,9 +24,15 @@ export function fixScreen(root, p, ctx) {
       const inView = b ? pts.map((q, i) => [q, i]).filter(([q]) => q[0] >= b.s && q[0] <= b.n && q[1] >= b.w && q[1] <= b.e) : [];
       const dots = [];
       // 정류장 자리(회색)를 같이 보여 줘서 선이 정류장을 지나게 맞추기 쉽게
-      if (MapView.zoom() >= 15) for (const s of stops) if (s.lat != null) dots.push({ id: "s", lat: s.lat, lng: s.lng, color: "#9aa3b2", ring: "#fff", r: 4 });
+      // 정류장 점을 누르면 그 자리에 선을 연결 (화면 안 정류장이 많지 않을 때)
+      const stopsIn = b ? stops.filter((s) => s.lat != null && s.lat >= b.s && s.lat <= b.n && s.lng >= b.w && s.lng <= b.e) : [];
+      if (MapView.zoom() >= 14 || stopsIn.length <= 120) stopsIn.forEach((s) => dots.push({ id: "s:" + stops.indexOf(s), lat: s.lat, lng: s.lng, color: "#9aa3b2", ring: "#fff", r: 6 }));
       if (inView.length <= MAX_DOTS) for (const [q, i] of inView) dots.push({ id: "v:" + i, lat: q[0], lng: q[1], color: i === sel ? "#D7262E" : "#fff", ring: i === sel ? "#fff" : color, r: i === sel ? 8 : 5 });
-      MapView.dots(dots, (d) => { if (!d.id.startsWith("v:")) return; const i = +d.id.slice(2); sel = sel === i ? -1 : i; drawAll(); });
+      MapView.dots(dots, (d) => {
+        if (d.id.startsWith("s:")) { const s = stops[+d.id.slice(2)]; if (s) tapAt([s.lat, s.lng], true); return; }
+        if (!d.id.startsWith("v:")) return;
+        const i = +d.id.slice(2); sel = sel === i ? -1 : i; drawAll();
+      });
     } else {
       const lines = orig.length && pts.length && E.dist(orig[0], pts[0]) > 1 ? [{ pts: [orig[0], pts[0]], color: "#9aa3b2", width: 2, dash: true }] : [];
       MapView.lines(lines);
@@ -70,13 +76,19 @@ export function fixScreen(root, p, ctx) {
   root.innerHTML = header(title, p.name || p.no || null, { back: true }) + `<div class="map-slot full"></div><div id="fixbar"></div>`;
   ctx.useMap(root.querySelector(".map-slot"));
   root.querySelector("#fixbar").innerHTML = note("불러오는 중...");
-  MapView.onTap((ll) => {
+  /** 누른 곳에 점 옮기기·넣기. 정류장 가까이(손가락 크기)면 정류장 자리에 딱 붙임 */
+  function tapAt(ll, onStop = false) {
     if (!ll || busy) return;
     if (kind === "stop") { pts = [ll]; msg = ""; drawAll(); return; }
-    if (sel >= 0) { pts[sel] = ll; sel = -1; }
-    else E.insertNear(pts, ll, 80);
-    msg = ""; drawAll();
-  });
+    const b = MapView.bounds();
+    const finger = b ? Math.max(5, Math.min(60, E.dist([b.s, b.w], [b.s, b.e]) * 0.03)) : 15;
+    const snap = onStop ? ll : E.nearestStop(stops, ll, finger);
+    const q = snap || ll;
+    if (sel >= 0) { pts[sel] = q; sel = -1; }
+    else E.insertNear(pts, q, snap ? 600 : 80);   // 정류장은 선에서 좀 떨어져 있어도 가까운 구간 사이에 넣음
+    msg = snap ? "정류장에 연결했어요" : ""; drawAll();
+  }
+  MapView.onTap((ll) => tapAt(ll));
   const offIdle = MapView.onIdle(drawMap);
   (async () => {
     const all = await E.ready(true);

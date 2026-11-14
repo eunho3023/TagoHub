@@ -2582,6 +2582,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val msg: String? = null,
         /** 역: 묶음 안 역마다 (고침 id, 지금 좌표) — 같이 옮김 */
         val group: List<Pair<String, LatLng>> = emptyList(),
+        /** 선 고치기: 이 노선의 정류장(지하철은 역) 자리. 누르거나 가까이 누르면 선을 그 자리에 딱 붙임 */
+        val stops: List<LatLng> = emptyList(),
     ) {
         val isLine: Boolean get() = kind == com.eunho.tagohub.data.MapEdits.Kind.Bus || kind == com.eunho.tagohub.data.MapEdits.Kind.Rail
     }
@@ -2625,6 +2627,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             startEdit(MapEditState(
                 com.eunho.tagohub.data.MapEdits.Kind.Bus, listOf(d.routeId), "${d.routeNo} 노선 모양 고치기",
                 edited ?: com.eunho.tagohub.data.EditPath.simplify(auto, 6.0), auto, busRouteColor(d.routeType).toArgb(), hasEdit = edited != null,
+                stops = stopsLine,
             ))
         }
     }
@@ -2667,6 +2670,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         startEdit(MapEditState(
             com.eunho.tagohub.data.MapEdits.Kind.Rail, listOf(key), "$lineName 노선 모양 고치기", edited ?: chain, chain,
             subwayLineColor(lineName).toArgb(), hasEdit = edited != null,
+            stops = list.map { LatLng(it.lat, it.lng) },
         ))
     }
 
@@ -2700,20 +2704,35 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val box = lastBox
         // 손가락 크기만큼(화면 폭의 약 4%) 안의 점은 고르기
         val near = if (box != null) ((box[3] - box[1]) * 88_000.0 * 0.04).coerceIn(4.0, 400.0) else 20.0
+        val stop = com.eunho.tagohub.data.EditPath.nearestStop(s.stops, p, near)
         mapEdit.value = when {
-            s.sel >= 0 -> s.copy(points = s.points.toMutableList().also { it[s.sel] = p }, sel = -1, msg = null)
+            s.sel >= 0 -> s.copy(points = s.points.toMutableList().also { it[s.sel] = stop ?: p }, sel = -1, msg = if (stop != null) "정류장에 연결했어요" else null)
             else -> {
                 val v = com.eunho.tagohub.data.EditPath.nearestVertex(s.points, p, near)
-                if (v >= 0) s.copy(sel = v, msg = null)
-                else s.copy(points = com.eunho.tagohub.data.EditPath.insertNear(s.points, p, 80.0).first, msg = null)
+                when {
+                    v >= 0 -> s.copy(sel = v, msg = null)
+                    // 정류장은 선에서 좀 떨어져 있어도 가까운 구간 사이에 넣음
+                    stop != null -> s.copy(points = com.eunho.tagohub.data.EditPath.insertNear(s.points, stop, 600.0).first, msg = "정류장에 연결했어요")
+                    else -> s.copy(points = com.eunho.tagohub.data.EditPath.insertNear(s.points, p, 80.0).first, msg = null)
+                }
             }
         }
+        pushEdit()
+    }
+
+    /** 정류장 표시를 누름: 고른 점을 그 정류장으로 옮기거나, 고른 점이 없으면 그 정류장에 새 점 */
+    private fun editStopTap(i: Int) {
+        val s = mapEdit.value ?: return
+        val q = s.stops.getOrNull(i) ?: return
+        mapEdit.value = if (s.sel >= 0) s.copy(points = s.points.toMutableList().also { it[s.sel] = q }, sel = -1, msg = "정류장에 연결했어요")
+        else s.copy(points = com.eunho.tagohub.data.EditPath.insertNear(s.points, q, 600.0).first, msg = "정류장에 연결했어요")
         pushEdit()
     }
 
     /** 지도에서 고칠 점 표시를 누름 (key "e:번호") */
     fun editMarkClick(key: String) {
         val s = mapEdit.value ?: return
+        if (key.startsWith("s:")) { key.removePrefix("s:").toIntOrNull()?.let(::editStopTap); return }
         val i = key.removePrefix("e:").toIntOrNull() ?: return
         if (!s.isLine) return
         mapEdit.value = s.copy(sel = if (s.sel == i) -1 else i, msg = null)
@@ -2782,6 +2801,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (s.isLine) {
             segs += TripSegment(s.points, s.color, false)
             val box = lastBox
+            val stopsIn = s.stops.withIndex().filter { (_, q) -> box == null || (q.lat in box[0]..box[2] && q.lng in box[1]..box[3]) }
+            if (stopsIn.size <= 200) stopsIn.forEach { (i, q) -> marks += TripMark(q.lat, q.lng, "정", 0xFF9AA3B2.toInt(), key = "s:$i") }
             val shown = s.points.withIndex().filter { (_, q) -> box == null || (q.lat in box[0]..box[2] && q.lng in box[1]..box[3]) }
             if (shown.size <= 250) shown.forEach { (i, q) ->
                 marks += TripMark(q.lat, q.lng, if (i == s.sel) "●" else "", if (i == s.sel) 0xFFD7262E.toInt() else s.color, key = "e:$i")
