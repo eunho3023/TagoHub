@@ -220,13 +220,19 @@ export async function shape(routeId, city, stops, no, { noEdit = false } = {}) {
     const fixed = Edits.busFix(routeId) || Edits.busFix(legacyId(routeId));
     if (fixed) { const pts = decodePolyline(String(fixed), 5); if (pts.length >= 2) return pts; }
   }
-  // 앱과 같은 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력)가 있으면 그것 (자료 조각 shapes/).
-  // 단 정류장과 잘 맞을 때만 (90% 가 선에서 30m 안): 경기 자료는 노선 일부만 덮은 것도 있어서
+  // 앱(폰)이 만들어 서버에 올린 모양이 있으면 그것 → 앱과 웹의 노선 선이 같음 (서버 src/appshape.js)
+  try {
+    const got = await getJson("w/shape/" + legacyId(routeId), { only: "app" });
+    const pts = got && got.poly ? decodePolyline(String(got.poly), 5) : [];
+    if (pts.length >= 2) return pts;
+  } catch (e) { /* 아직 앱 모양 없음 */ }
+  // 앱 안에 든 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력, 자료 조각 shapes/).
+  // 정류장과 맞을 때만: 앱과 같은 기준 (정류장 90% 가 선에서 100m 안, 앱 Shapes.fitsStops)
   try {
     const legacy = legacyId(routeId);
     const poly = (await cached(`data/shapes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
     const pts = poly ? decodePolyline(String(poly), 5) : [];
-    if (pts.length >= 2 && (!stops || fitsStops(pts, stops))) return pts;
+    if (pts.length >= 2 && (!stops || fitsStops(pts, stops, 100, 0.9))) return pts;
   } catch (e) { /* 서버에서 */ }
   try {
     // v=5: 노선 번호를 주면 서버가 카카오 경로(앱과 같은 방법)로. 골목으로 돌아 들어가지 않게 다시 만든 모양 (브라우저에 저장된 예전 모양을 쓰지 않게)
