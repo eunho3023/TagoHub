@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 앱 아이콘 앞면 (적응형 아이콘): 세 번 접힌 지도 + 길 + 위치 핀. 가운데 66dp 안에 들어가게 그림 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M30,42L45,37L45,73L30,78z" />
+    <path android:fillColor="#CFDDFF" android:pathData="M45,37L63,42L63,78L45,73z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M63,42L78,37L78,73L63,78z" />
+    <path android:strokeColor="#2FC4A3" android:strokeWidth="3.2" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M33,68C40,63 47,68 54,63S68,57 75,52" />
+    <path android:fillColor="#FF5A6E" android:pathData="M54,64C48,56 44,52 44,45.5A10,10 0,1 1,64 45.5C64,52 60,56 54,64z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M54,45.5m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+</vector>
