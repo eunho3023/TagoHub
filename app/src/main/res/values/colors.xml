@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 앱 아이콘 바탕 (강조색과 같은 파랑) -->
+    <color name="ic_launcher_background">#2563EB</color>
+</resources>
