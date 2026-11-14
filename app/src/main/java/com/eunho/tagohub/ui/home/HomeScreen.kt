@@ -97,23 +97,23 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
             Row(Modifier.fillMaxWidth().height(70.dp)) {
                 AppTab.entries.forEach { tab ->
                     val on = tab == active
-                    val tint = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    val tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     Column(
                         Modifier.weight(1f).fillMaxSize().clickable(role = Role.Tab) { onSelect(tab) },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        // 고른 탭은 아이콘 뒤에 잉크색 알약 (다크에서는 밝은 알약)
+                        // 고른 탭은 아이콘 뒤에 옅은 파란 알약
                         Box(
                             Modifier
                                 .size(width = 54.dp, height = 30.dp)
-                                .background(if (on) MaterialTheme.colorScheme.onSurface else Color.Transparent, RoundedCornerShape(15.dp)),
+                                .background(if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent, RoundedCornerShape(15.dp)),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 tab.icon,
                                 contentDescription = null,
-                                tint = if (on) MaterialTheme.colorScheme.surface else tint,
+                                tint = tint,
                                 modifier = Modifier.size(21.dp),
                             )
                         }
@@ -178,7 +178,7 @@ fun HomeScreen(
             // 위 카드: 앱 이름 + 검색 (검색어를 쓰면 결과가 이 안에 나오고 카드가 화면을 채움)
             Surface(
                 color = MaterialTheme.colorScheme.surface,
-                shape = if (blank) RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp) else androidx.compose.ui.graphics.RectangleShape,
+                shape = if (blank) RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp) else androidx.compose.ui.graphics.RectangleShape,
                 shadowElevation = if (blank) 6.dp else 0.dp,
                 modifier = Modifier.fillMaxWidth().then(if (blank) Modifier else Modifier.weight(1f)),
             ) {
@@ -204,8 +204,7 @@ fun HomeScreen(
                     Surface(
                         onClick = { sheetExpanded = !sheetExpanded },
                         shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        color = com.eunho.tagohub.ui.theme.glassColor(),
                         shadowElevation = 6.dp,
                         modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 14.dp),
                     ) {
@@ -227,7 +226,7 @@ fun HomeScreen(
                 // 아래 시트: 빠른 이동은 기본 노출, 주변·즐겨찾기·최근은 필요할 때 펼쳐 봄
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                    shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
                     shadowElevation = 14.dp,
                     modifier = Modifier.fillMaxWidth().heightIn(
                         max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.74f
@@ -407,17 +406,17 @@ private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpen
         Triple("최근", Icons.Outlined.History, onRecent),
     )
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.forEach { (label, icon, click) ->
+        items.forEachIndexed { i, (label, icon, click) ->
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                // 칸마다 다른 파스텔 바탕 + 같은 계열 아이콘
                 Surface(
                     onClick = click,
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    shape = RoundedCornerShape(18.dp),
+                    color = com.eunho.tagohub.ui.theme.Pastel.bg(i),
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(26.dp))
+                        Icon(icon, contentDescription = label, tint = com.eunho.tagohub.ui.theme.Pastel.icon(i), modifier = Modifier.size(26.dp))
                     }
                 }
                 com.eunho.tagohub.ui.common.FitText(label, Modifier.padding(top = 6.dp), maxSizeSp = 12f, minSizeSp = 9f, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
