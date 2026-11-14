@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eunho.tagohub.ui.coach.CoachScreen
 import com.eunho.tagohub.ui.home.AppTab
-import com.eunho.tagohub.ui.home.HomeScreen
 import com.eunho.tagohub.ui.home.BusTab
 import com.eunho.tagohub.ui.home.TransitMode
 import com.eunho.tagohub.ui.home.TransitScreen
@@ -57,7 +56,7 @@ import com.eunho.tagohub.ui.timetable.TrainScreen
 
 /** 앱의 큰 화면들: 홈, 대중교통(버스·지하철·기차·고속시외·항공), 지도, 내비게이션, 도로교통, 설정 */
 /** Bus: 지도 없이 따로 열리는 정류장·노선 화면 */
-enum class Dest { Home, Map, Transit, Navi, Road, Settings, Bus }
+enum class Dest { Home, Transit, Navi, Road, Settings, Bus }
 
 /** 지도 등에서 기차·고속시외·항공·도로교통을 열라는 요청이 오면 어느 화면(과 대중교통 갈래)인지 */
 private fun ModeJump.Kind.dest(): Dest = if (this == ModeJump.Kind.Road) Dest.Road else Dest.Transit
@@ -70,8 +69,8 @@ private fun ModeJump.Kind.transitMode(): TransitMode? = when (this) {
 }
 
 /**
- * 첫 화면은 "어디로 가시나요?" 홈. 지도는 늘 뒤에 만들어 두고(상태·위치 유지) 홈·기차 같은 화면이 그 위를 덮는다.
- * 지도 화면에서 뒤로 가면 홈, 지도에서 기차역·터미널·공항을 눌러 열린 화면에서 뒤로 가면 지도로 돌아온다.
+ * 첫 화면은 홈 = 지도. 지도 위에 앱 이름·검색 카드와 끌어 올리는 홈 시트가 뜬다.
+ * 대중교통·길찾기·설정 같은 화면은 지도 위를 덮고, 뒤로 가면 온 곳(대개 홈 지도)으로 돌아온다.
  */
 @Composable
 fun MainScreen() {
@@ -84,19 +83,18 @@ fun MainScreen() {
     var showHistory by rememberSaveable { mutableStateOf(false) }
     var askExit by rememberSaveable { mutableStateOf(false) }
     val mapVm = viewModel<MapViewModel>(key = "transitMap")
-    // 지도 화면(카카오맵 시작·타일·GPS)은 처음 지도를 열 때 만들고, 그 뒤로는 계속 유지(상태·위치 보존).
-    // 홈이 첫 화면인데 뒤에서 미리 띄우면 앱 여는 시간이 길어짐. 안내 중이면 바로 만듦.
+    // 지도 화면(카카오맵 시작·타일·GPS)은 홈이 곧 지도라 바로 만들고, 그 뒤로는 계속 유지(상태·위치 보존).
     val guiding by com.eunho.tagohub.guidance.DriveGuidance.active.collectAsStateWithLifecycle()
     val freeDriving by com.eunho.tagohub.guidance.FreeDriveSession.active.collectAsStateWithLifecycle()
     var mapStarted by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(dest, guiding) { if (dest == Dest.Map || dest == Dest.Road || guiding) mapStarted = true }
-    // 지도가 맨 앞에 보일 때만 도착정보·버스 위치를 주기적으로 받음 (홈이 덮고 있거나 앱을 내려놓으면 멈춤)
-    LaunchedEffect(dest) { com.eunho.tagohub.core.AppState.mapVisible.value = dest == Dest.Map || dest == Dest.Bus }
+    LaunchedEffect(dest, guiding) { if (dest == Dest.Home || dest == Dest.Road || guiding) mapStarted = true }
+    // 지도가 맨 앞에 보일 때만 도착정보·버스 위치를 주기적으로 받음 (다른 화면이 덮고 있거나 앱을 내려놓으면 멈춤)
+    LaunchedEffect(dest) { com.eunho.tagohub.core.AppState.mapVisible.value = dest == Dest.Home || dest == Dest.Bus }
     val activity = androidx.activity.compose.LocalActivity.current
 
     /** 다른 화면을 열 때 어디로 돌아올지 기억 (지도에서 열었으면 지도) */
     fun open(next: Dest) {
-        if (dest == Dest.Map || dest == Dest.Home) returnTo = dest
+        if (dest == Dest.Home) returnTo = dest
         dest = next
     }
     fun openKind(k: ModeJump.Kind) {
@@ -107,15 +105,14 @@ fun MainScreen() {
         transitMode = mode
         open(Dest.Transit)
     }
-    fun openMap(mode: MapMode) { mapMode = mode; dest = Dest.Map }
+    fun openMap(mode: MapMode) { mapMode = mode; dest = Dest.Home }
     /** 정류장·노선을 지도 없이 따로 열기. 뒤로 가면 지금 보던 화면으로 */
     fun openBus() { if (dest != Dest.Bus) returnTo = dest; dest = Dest.Bus }
     fun onTab(tab: AppTab) {
         if (tab != AppTab.Home) returnTo = Dest.Home
         dest = when (tab) {
-            AppTab.Home -> Dest.Home
+            AppTab.Home -> { mapMode = MapMode.Transit; Dest.Home }
             AppTab.Transit -> Dest.Transit
-            AppTab.Map -> { mapMode = MapMode.Transit; Dest.Map }
             AppTab.Navi -> Dest.Navi
             AppTab.Settings -> Dest.Settings
         }
@@ -145,10 +142,9 @@ fun MainScreen() {
         ModeJump.open.collect { k -> if (k != null) { openKind(k); ModeJump.open.value = null } }
     }
 
-    // 뒤로 가기: 지도 위 창은 지도 화면이 먼저 닫고(안쪽 핸들러가 우선), 그 뒤 지도→홈, 다른 화면→온 곳, 홈→종료 확인
+    // 뒤로 가기: 지도 위 창은 지도 화면이 먼저 닫고(안쪽 핸들러가 우선), 그 뒤 다른 화면→온 곳, 홈→종료 확인
     BackHandler(enabled = dest == Dest.Home) { askExit = true }
-    BackHandler(enabled = dest == Dest.Map) { dest = Dest.Home }
-    BackHandler(enabled = dest != Dest.Home && dest != Dest.Map && dest != Dest.Bus) { dest = returnTo }
+    BackHandler(enabled = dest != Dest.Home && dest != Dest.Bus) { dest = returnTo }
 
     if (askExit) {
         androidx.compose.material3.AlertDialog(
@@ -171,15 +167,26 @@ fun MainScreen() {
                     .weight(1f)
                     .consumeWindowInsets(androidx.compose.foundation.layout.PaddingValues(bottom = with(density) { bottomNavPx.toDp() })),
             ) {
-                if (mapStarted) MapScreen(mapVm, mapMode, onMapModeChange = { mapMode = it })
+                val onFavorite = { f: com.eunho.tagohub.data.Favorite -> mapVm.openFavorite(f); if (f.kind == com.eunho.tagohub.data.Favorite.Kind.Station) openMap(MapMode.Subway) else openBus() }
+                val onGoTo = { place: com.eunho.tagohub.data.SavedPlace ->
+                    openMap(MapMode.Transit)
+                    mapVm.openPlanner()
+                    mapVm.trip.goTo(place)
+                }
+                val home = dest == Dest.Home
+                if (mapStarted) MapScreen(
+                    mapVm, mapMode, onMapModeChange = { mapMode = it },
+                    homeTop = if (home) { { com.eunho.tagohub.ui.home.HomeTopCard() } } else null,
+                    homeSheet = if (home) { { h -> com.eunho.tagohub.ui.home.HomeSheet(mapVm, searchActions, ::openMap, ::onTab, onGoTo, onFavorite, h) } } else null,
+                )
             }
-            if (dest == Dest.Map && !guiding && !freeDriving) {
-                Box(Modifier.onSizeChanged { bottomNavPx = it.height }) { com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Map, ::onTab) }
+            if (dest == Dest.Home && !guiding && !freeDriving) {
+                Box(Modifier.onSizeChanged { bottomNavPx = it.height }) { com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Home, ::onTab) }
             } else if (bottomNavPx != 0) {
                 LaunchedEffect(Unit) { bottomNavPx = 0 }
             }
         }
-        if (dest != Dest.Map) {
+        if (dest != Dest.Home) {
             // 지도 위를 덮는 화면: 뒤의 지도가 터치를 받지 않게 막음
             Box(
                 Modifier
@@ -188,25 +195,6 @@ fun MainScreen() {
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
             ) {
                 when (dest) {
-                    Dest.Home -> Column(Modifier.fillMaxSize()) {
-                        Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
-                            HomeScreen(
-                                vm = mapVm,
-                                search = searchActions,
-                                onOpenMap = ::openMap,
-                                onOpenTab = ::onTab,
-                                onOpenTransit = ::openTransit,
-                                onOpenPage = ::openKind,
-                                onGoTo = { place ->
-                                    openMap(MapMode.Transit)
-                                    mapVm.openPlanner()
-                                    mapVm.trip.goTo(place)
-                                },
-                                onFavorite = { f -> mapVm.openFavorite(f); if (f.kind == com.eunho.tagohub.data.Favorite.Kind.Station) openMap(MapMode.Subway) else openBus() },
-                            )
-                        }
-                        com.eunho.tagohub.ui.home.AppBottomNav(AppTab.Home, ::onTab)
-                    }
                     Dest.Transit -> TabScaffold("대중교통", com.eunho.tagohub.ui.theme.headerColor(), AppTab.Transit, ::onTab) {
                         TransitScreen(
                             mode = transitMode,
@@ -244,7 +232,7 @@ fun MainScreen() {
                         onShowMap = { openMap(MapMode.Bus) },
                         onLeave = { dest = returnTo },
                     )
-                    Dest.Map -> Unit
+                    Dest.Home -> Unit
                 }
             }
         }
