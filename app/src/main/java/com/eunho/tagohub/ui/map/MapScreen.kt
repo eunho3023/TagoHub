@@ -207,6 +207,9 @@ fun MapScreen(
     vm: MapViewModel = viewModel(),
     mapMode: MapMode = MapMode.Bus,
     onMapModeChange: ((MapMode) -> Unit)? = null,
+    // 홈: 검색창 자리에 앱 이름 카드, 아무 것도 고르지 않았을 때 아래에 홈 시트
+    homeTop: (@Composable () -> Unit)? = null,
+    homeSheet: (@Composable (androidx.compose.ui.unit.Dp) -> Unit)? = null,
 ) {
     LaunchedEffect(mapMode) { vm.configure(mapMode) }
     val context = LocalContext.current
@@ -385,7 +388,8 @@ fun MapScreen(
                 .padding(start = 12.dp, end = 64.dp, top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            when (mapMode) {
+            if (homeTop != null) homeTop()
+            else when (mapMode) {
                 MapMode.Subway -> StationSearch(vm)
                 MapMode.Bus -> BusSearchBar(vm)
                 MapMode.Transit -> BusSearchBar(vm, withStations = true)
@@ -448,6 +452,7 @@ fun MapScreen(
         val pickedPlace by vm.picked.collectAsStateWithLifecycle()
         // 태블릿·폴더블·가로 화면처럼 폭이 넓으면 패널이 화면 전체 폭으로 퍼지지 않게 왼쪽에 폭을 제한해 붙임
         val wideScreen = maxWidth >= 600.dp
+        val screenH = maxHeight
         if (!driving) Column(
             Modifier
                 .align(if (wideScreen) Alignment.BottomStart else Alignment.BottomCenter)
@@ -482,7 +487,7 @@ fun MapScreen(
                 }
                 MapPanel.Train -> trainView?.let { TrainPanel(vm, it, hasStation = station != null) }
                 MapPanel.Plan -> PlannerPanel(vm)
-                MapPanel.None -> Unit
+                MapPanel.None -> if (pickedPlace == null) homeSheet?.invoke(screenH)
             }
         }
       }

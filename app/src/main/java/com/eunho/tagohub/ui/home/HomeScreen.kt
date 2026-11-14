@@ -57,6 +57,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -81,11 +83,10 @@ import com.eunho.tagohub.ui.theme.busRouteColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 아래 탭: 홈·대중교통(버스·지하철·기차·고속시외·항공)·지도·내비게이션·설정 */
+/** 아래 탭: 홈(지도)·대중교통(버스·지하철·기차·고속시외·항공)·내비게이션·설정 */
 enum class AppTab(val label: String, val icon: ImageVector) {
     Home("홈", Icons.Outlined.Home),
     Transit("대중교통", Icons.Outlined.DirectionsTransit),
-    Map("지도", Icons.Outlined.Map),
     Navi("길찾기", Icons.Outlined.Directions),
     Settings("설정", Icons.Outlined.Settings),
 }
@@ -136,152 +137,142 @@ fun AppBottomNav(active: AppTab, onSelect: (AppTab) -> Unit, modifier: Modifier 
 
 private class Tile(val label: String, val icon: ImageVector, val light: Color, val dark: Color, val onClick: () -> Unit)
 
+/** 홈 위쪽 카드: 앱 이름 + 검색 (누르면 전체 화면 검색). 지도 위에 떠 있음 */
+@Composable
+fun HomeTopCard(modifier: Modifier = Modifier) {
+    Surface(
+        modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = com.eunho.tagohub.ui.theme.glassColor(),
+        shadowElevation = 6.dp,
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp).padding(bottom = 12.dp)) {
+            BrandHeader(Modifier.riseIn(0))
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.riseIn(2)) { SearchBarButton() }
+        }
+    }
+}
+
 /**
- * 첫 화면: "어디로 가시나요?" 검색(결과도 이 화면 안에), 교통수단 타일(대중교통 · 자동차), 집·회사, 자주 가는 곳(즐겨찾기 정류장의 실시간 도착).
- * 검색어를 쓰면 타일 대신 결과를 보여 주고, 결과를 눌러야 지도가 열린다.
+ * 홈 아래 시트: 지도 위에 떠 있고 손으로 끌어 올리고 내린다.
+ * 끝까지 내리면 손잡이와 제목만 남아 지도가 거의 다 보이고, 올리면 실시간 도착·바로가기·즐겨찾기·최근이 펼쳐진다.
+ * 목록을 맨 위에서 더 내리면 시트가 내려가고, 위로 밀면 시트가 먼저 올라간 뒤 목록이 움직인다.
  */
 @Composable
-fun HomeScreen(
+fun HomeSheet(
     vm: MapViewModel,
     search: SearchActions,
     onOpenMap: (MapMode) -> Unit,
     onOpenTab: (AppTab) -> Unit,
-    onOpenTransit: (TransitMode) -> Unit,
-    onOpenPage: (ModeJump.Kind) -> Unit,
     onGoTo: (SavedPlace) -> Unit,
     onFavorite: (Favorite) -> Unit,
-    modifier: Modifier = Modifier,
+    maxHeight: androidx.compose.ui.unit.Dp,
 ) {
-    val dark = LocalDarkTheme.current
-    val unusedTiles = listOf(
-        Tile("버스", Icons.Outlined.DirectionsBus, Color(0xFF1F7A4A), Color(0xFF1F7A4A)) { onOpenTransit(TransitMode.Bus) },
-        Tile("지하철", Icons.Outlined.DirectionsSubway, Color(0xFF4B5563), Color(0xFF556070)) { onOpenTransit(TransitMode.Subway) },
-        Tile("기차", Icons.Outlined.Train, Color(0xFF1B3E8A), Color(0xFF2F55B5)) { onOpenTransit(TransitMode.Train) },
-        Tile("고속·시외", Icons.Outlined.AirportShuttle, Color(0xFF0A7E8C), Color(0xFF0A7E8C)) { onOpenTransit(TransitMode.Coach) },
-        Tile("항공", Icons.Outlined.Flight, Color(0xFFA85F0E), Color(0xFFA85F0E)) { onOpenTransit(TransitMode.Air) },
-    )
-    val road = listOf(
-        Tile("길찾기", Icons.Outlined.Directions, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Navi) },
-        Tile(ModeJump.Kind.Road.label, Icons.Outlined.Traffic, Color(0xFF8A4B1F), Color(0xFF8A4B1F)) { onOpenPage(ModeJump.Kind.Road) },
-        Tile("지도", Icons.Outlined.Map, Color(0xFF294653), Color(0xFF3A6073)) { onOpenTab(AppTab.Map) },
-    )
-    // 검색은 전체 화면 검색에서 하므로 홈 카드는 늘 접힌 모양
-    val blank = true
-    // 시트 안에서 「즐겨찾기」「최근」 칸을 누르면 그 구역으로 내려감
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    // 시트 높이(dp): 접힘 · 중간 · 펼침
+    val peek = 96f
+    val full = (maxHeight.value * 0.86f).coerceAtLeast(peek + 160f)
+    val mid = (maxHeight.value * 0.5f).coerceIn(peek + 80f, full)
+    val snaps = listOf(peek, mid, full)
+    var h by rememberSaveable { androidx.compose.runtime.mutableFloatStateOf(-1f) }
+    if (h < 0f) h = mid
+    h = h.coerceIn(peek, full)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val sheetScroll = rememberScrollState()
-    val sheetScope = androidx.compose.runtime.rememberCoroutineScope()
     var recentY by remember { mutableStateOf(0) }
     var favY by remember { mutableStateOf(0) }
-    var sheetExpanded by rememberSaveable { mutableStateOf(false) }
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            // 위 카드: 앱 이름 + 검색 (검색어를 쓰면 결과가 이 안에 나오고 카드가 화면을 채움)
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                shape = if (blank) RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp) else androidx.compose.ui.graphics.RectangleShape,
-                shadowElevation = if (blank) 6.dp else 0.dp,
-                modifier = Modifier.fillMaxWidth().then(if (blank) Modifier else Modifier.weight(1f)),
+
+    fun settle(velocity: Float) {
+        val target = when {
+            velocity > 900f -> snaps.lastOrNull { it < h - 1f } ?: peek      // 아래로 휙 → 한 단계 내림
+            velocity < -900f -> snaps.firstOrNull { it > h + 1f } ?: full    // 위로 휙 → 한 단계 올림
+            else -> snaps.minBy { kotlin.math.abs(it - h) }
+        }
+        scope.launch { androidx.compose.animation.core.animate(h, target) { v, _ -> h = v } }
+    }
+    fun expandThen(scrollTo: () -> Int) {
+        scope.launch {
+            androidx.compose.animation.core.animate(h, full) { v, _ -> h = v }
+            sheetScroll.animateScrollTo(scrollTo())
+        }
+    }
+    // 목록 스크롤과 시트 끌기를 이어 줌
+    val nested = remember(peek, full) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (available.y >= 0f || h >= full) return androidx.compose.ui.geometry.Offset.Zero
+                val next = (h - available.y / density).coerceAtMost(full)
+                val used = next - h
+                h = next
+                return androidx.compose.ui.geometry.Offset(0f, -used * density)
+            }
+            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (available.y <= 0f || h <= peek) return androidx.compose.ui.geometry.Offset.Zero
+                val next = (h - available.y / density).coerceAtLeast(peek)
+                val used = h - next
+                h = next
+                return androidx.compose.ui.geometry.Offset(0f, used * density)
+            }
+            override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                if (snaps.any { kotlin.math.abs(it - h) < 1f }) return androidx.compose.ui.unit.Velocity.Zero
+                settle(available.y)
+                return available
+            }
+        }
+    }
+    val drag = androidx.compose.foundation.gestures.rememberDraggableState { delta -> h = (h - delta / density).coerceIn(peek, full) }
+
+    Surface(
+        Modifier.fillMaxWidth().height(h.dp),
+        color = com.eunho.tagohub.ui.theme.glassColor(),
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        shadowElevation = 14.dp,
+    ) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // 손잡이 + 제목: 끌어서 올리고 내림, 누르면 접기 ↔ 중간
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .draggable(drag, androidx.compose.foundation.gestures.Orientation.Vertical, onDragStopped = { v -> settle(v) })
+                    .clickable(role = Role.Button) {
+                        val target = if (h > peek + 1f) peek else mid
+                        scope.launch { androidx.compose.animation.core.animate(h, target) { v, _ -> h = v } }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Column(
-                    Modifier.fillMaxWidth().then(if (blank) Modifier else Modifier.verticalScroll(rememberScrollState())),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp, bottom = if (blank) 14.dp else 16.dp)) {
-                        if (blank) {
-                            BrandHeader(Modifier.riseIn(0))
-                            Spacer(Modifier.height(12.dp))
-                        }
-                        // 누르면 전체 화면 검색 (분류·집/회사·최근 기록, 결과도 그 화면에서)
-                        Box(Modifier.riseIn(2)) { SearchBarButton() }
+                Box(Modifier.padding(top = 10.dp, bottom = 10.dp).size(width = 40.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("지금 오는 버스", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("내 주변 정류장 · 즐겨찾기 · 최근 목적지", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-            if (blank) {
-                // 가운데: 내 위치 주변 지도 (누르면 지도 탭). 위치를 모르면 빈 배경
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    HomeMapPreview({ onOpenTab(AppTab.Map) }, Modifier, fill = true)
-                    // 지도 위에 떠 있는 전환 단추: 시트를 접으면 지도가 넓어지고, 펼치면 다시 좁아진다
-                    Surface(
-                        onClick = { sheetExpanded = !sheetExpanded },
-                        shape = RoundedCornerShape(50),
-                        color = com.eunho.tagohub.ui.theme.glassColor(),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 14.dp),
-                    ) {
-                        Row(
-                            Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Outlined.Map, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                if (sheetExpanded) "지도 크게" else "지도 접기",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-                }
-                // 아래 시트: 빠른 이동은 기본 노출, 주변·즐겨찾기·최근은 필요할 때 펼쳐 봄
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-                    shadowElevation = 14.dp,
-                    modifier = Modifier.fillMaxWidth().heightIn(
-                        max = if (sheetExpanded) this@BoxWithConstraints.maxHeight * 0.74f
-                        else (this@BoxWithConstraints.maxHeight * 0.58f).coerceAtLeast(268.dp),
-                    ),
-                ) {
-                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.padding(top = 10.dp, bottom = 12.dp).size(width = 40.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant))
-                        Row(
-                            Modifier.fillMaxWidth().clickable(role = Role.Button) { sheetExpanded = !sheetExpanded }
-                                .padding(horizontal = 20.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("지금 오는 버스", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
-                                Text(
-                                    if (sheetExpanded) "내 주변 정류장 · 즐겨찾기 · 최근 목적지" else "내 주변 정류장의 실시간 도착",
-                                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(if (sheetExpanded) "접기" else "더 보기", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                        Column(
-                            Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(sheetScroll)
-                                .padding(horizontal = 16.dp).padding(bottom = 16.dp),
-                        ) {
-                            // 시트를 열면 가장 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
-                            LiveArrivalsCard(
-                                onStop = search.onStop,
-                                onShowMap = { onOpenMap(MapMode.Bus) },
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                            ShortcutTiles(
-                                vm, onGoTo, onOpenTab,
-                                onFavorites = {
-                                    sheetExpanded = true
-                                    sheetScope.launch { delay(100); sheetScroll.animateScrollTo(favY) }
-                                },
-                                onRecent = {
-                                    sheetExpanded = true
-                                    sheetScope.launch { delay(100); sheetScroll.animateScrollTo(recentY) }
-                                },
-                                modifier = Modifier.padding(top = 12.dp),
-                            )
-                            if (sheetExpanded) {
-                                Spacer(Modifier.height(14.dp))
-                                Column(Modifier.onGloballyPositioned { recentY = it.positionInParent().y.toInt() }) { RecentChips(onGoTo, Modifier) }
-                                Spacer(Modifier.height(10.dp))
-                                Column(Modifier.onGloballyPositioned { favY = it.positionInParent().y.toInt() }) { Favorites(vm, onFavorite) }
-                                Spacer(Modifier.height(16.dp))
-                                NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) })
-                            }
-                        }
-                    }
-                }
+            Column(
+                Modifier.widthIn(max = 720.dp).fillMaxWidth().weight(1f)
+                    .nestedScroll(nested)
+                    .verticalScroll(sheetScroll)
+                    .padding(horizontal = 16.dp).padding(bottom = 16.dp),
+            ) {
+                // 시트를 올리면 가장 먼저 보이는 정보: 가까운 정류장에 지금 오는 버스
+                LiveArrivalsCard(
+                    onStop = search.onStop,
+                    onShowMap = { onOpenMap(MapMode.Bus) },
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                ShortcutTiles(
+                    vm, onGoTo, onOpenTab,
+                    onFavorites = { expandThen { favY } },
+                    onRecent = { expandThen { recentY } },
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Spacer(Modifier.height(14.dp))
+                Column(Modifier.onGloballyPositioned { recentY = it.positionInParent().y.toInt() }) { RecentChips(onGoTo, Modifier) }
+                Spacer(Modifier.height(10.dp))
+                Column(Modifier.onGloballyPositioned { favY = it.positionInParent().y.toInt() }) { Favorites(vm, onFavorite) }
+                Spacer(Modifier.height(16.dp))
+                NearbyStops(search.onStop, onShowMap = { onOpenMap(MapMode.Bus) })
             }
         }
     }
