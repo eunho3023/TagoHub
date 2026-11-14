@@ -176,6 +176,36 @@ object EditPath {
         out.add(p); return out to out.lastIndex
     }
 
+    /**
+     * 선이 정류장(노선 순서대로)을 지나게: 정류장마다 선의 가까운 구간(maxM 안)을 찾아 그 자리에 정류장 좌표 점을 넣음
+     * (가까운 점이 3m 안이면 그 점을 정류장 자리로 옮김). 앞 정류장보다 뒤쪽 구간에서만 찾아 순환 노선도 순서가 꼬이지 않음.
+     * 선에서 너무 먼 정류장은 건너뜀. 웹 site/js/edits.js passStops 와 같음
+     */
+    fun passStops(line: List<LatLng>, stops: List<LatLng>, maxM: Double = 80.0): List<LatLng> {
+        val out = line.toMutableList()
+        if (out.size < 2) return out
+        var cur = 0
+        for (s in stops) {
+            var best = -1
+            var bd = maxM
+            var k = cur
+            while (k < out.size - 1) {
+                val d = toSeg(s, out[k], out[k + 1])
+                if (d <= bd) { bd = d; best = k } else if (best >= 0 && d > bd + 30) break   // 가장 가까운 곳을 지나 멀어지면 그만
+                k++
+            }
+            if (best < 0) continue
+            val a = out[best]
+            val b = out[best + 1]
+            cur = when {
+                dist(a, s) <= 3.0 -> { out[best] = s; best }
+                dist(b, s) <= 3.0 -> { out[best + 1] = s; best + 1 }
+                else -> { out.add(best + 1, s); best + 1 }
+            }
+        }
+        return out
+    }
+
     /** 누른 곳에서 maxM 안의 가장 가까운 정류장 자리 (없으면 null) — 선을 정류장에 딱 붙이기 */
     fun nearestStop(stops: List<LatLng>, p: LatLng, maxM: Double): LatLng? {
         var best: LatLng? = null; var bd = maxM

@@ -99,6 +99,30 @@ export function insertNear(pts, p, maxM = 80) {
   pts.push(p); return pts.length - 1;
 }
 
+/**
+ * 선이 정류장(노선 순서대로)을 지나게: 정류장마다 선의 가까운 구간(maxM 안)에 정류장 좌표 점을 넣음 (가까운 점이 3m 안이면 그 점을 옮김).
+ * 앞 정류장보다 뒤쪽 구간에서만 찾음. 앱 EditPath.passStops 와 같음. 새 목록을 돌려줌
+ */
+export function passStops(line, stops, maxM = 80) {
+  const out = line.slice();
+  if (out.length < 2) return out;
+  let cur = 0;
+  for (const st of stops) {
+    if (st.lat == null) continue;
+    const s = [st.lat, st.lng];
+    let best = -1, bd = maxM;
+    for (let k = cur; k < out.length - 1; k++) {
+      const d = toSeg(s, out[k], out[k + 1]).d;
+      if (d <= bd) { bd = d; best = k; } else if (best >= 0 && d > bd + 30) break;
+    }
+    if (best < 0) continue;
+    if (dist(out[best], s) <= 3) { out[best] = s; cur = best; }
+    else if (dist(out[best + 1], s) <= 3) { out[best + 1] = s; cur = best + 1; }
+    else { out.splice(best + 1, 0, s); cur = best + 1; }
+  }
+  return out;
+}
+
 /** 누른 곳에서 maxM 안의 가장 가까운 정류장 자리 [위도,경도] (없으면 null) — 선을 정류장에 딱 붙이기 */
 export function nearestStop(stops, p, maxM) {
   let best = null, bd = maxM;

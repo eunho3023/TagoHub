@@ -271,6 +271,8 @@ internal fun TimelineRow(
     focused: Boolean,
     /** 이 정류장 첫차·막차 예상 시각 ("07:24 - 23:12") */
     times: String? = null,
+    /** 실시간 도착 ("3정류장 전 · 5분 후"). 있으면 이름 아래에 빨간 글씨로 */
+    live: String? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -380,6 +382,7 @@ internal fun TimelineRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (focused || buses.isNotEmpty()) FontWeight.Black else FontWeight.Medium,
             )
+            if (live != null) Text(live, style = MaterialTheme.typography.bodyMedium.merge(Tnum), fontWeight = FontWeight.ExtraBold, color = Color(0xFFD92D20))
             val sub = listOfNotNull(times, s.nodeNo).joinToString("   ")
             if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Tnum), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

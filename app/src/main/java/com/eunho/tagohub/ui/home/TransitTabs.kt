@@ -87,6 +87,8 @@ fun BusTab(
 @Composable
 internal fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit, onShowMap: (() -> Unit)? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 정류장마다 "○○ 방면" (다음 정류장 이름: 가장 많은 노선이 가는 쪽, 검색 결과의 방면과 같음)
+    var towards by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(emptyMap<String, String>()) }
     val stops by androidx.compose.runtime.produceState<List<Pair<com.eunho.tagohub.data.BusStop, Double>>>(emptyList()) {
         if (!com.eunho.tagohub.ui.bus.hasLocationPermission(context)) return@produceState
         val loc = com.eunho.tagohub.ui.bus.lastKnownLocation(context) ?: com.eunho.tagohub.ui.bus.currentLocation(context) ?: return@produceState
@@ -96,6 +98,9 @@ internal fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit, onSho
                 .filter { it.first.name.isNotBlank() }
                 .distinctBy { it.first.nodeId }
                 .take(3)
+        }
+        towards = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            value.mapNotNull { (s, _) -> db.nextStopName(s.nodeId)?.takeIf { it.isNotBlank() && it != s.name }?.let { s.nodeId to it } }.toMap()
         }
     }
     if (stops.isEmpty()) return
@@ -137,7 +142,9 @@ internal fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit, onSho
                         Text(s.name, Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                         Text(if (meters >= 1000) "%.1fkm".format(meters / 1000.0) else "${meters.toInt()}m", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    s.nodeNo?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    listOfNotNull(s.nodeNo, towards[s.nodeId]?.let { "$it 방면" }).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                        Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     val routes = etas[s.nodeId].orEmpty()
                     if (routes.isNotEmpty()) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
