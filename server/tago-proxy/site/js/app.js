@@ -12,6 +12,7 @@ import { Alight } from "./alight.js";
 import * as subway from "./subway.js";
 import * as air from "./air.js";
 import { fixScreen } from "./fix.js";
+import * as Edits from "./edits.js";
 import "./modes.js";
 
 const TABS = [
@@ -135,9 +136,11 @@ export function stopsMap(host, focus) {
     }, 300);
   };
   const off = MapView.onIdle(load);
+  // 누가 정류장 위치를 고치면 바로 다시 (지도는 그대로)
+  const offEdit = Edits.onChange(load);
   MapView.onTap(() => { picked = null; draw(); });
   MapView.ready.then(load);
-  return () => { alive = false; off(); card.remove(); };
+  return () => { alive = false; off(); offEdit(); card.remove(); };
 }
 
 window.addEventListener("hashchange", show);

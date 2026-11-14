@@ -35,6 +35,7 @@ function fakeDb() {
   function exec(sql, a) {
     if (sql.startsWith("CREATE")) return [];
     if (sql.startsWith("SELECT kind")) return [...edits.values()];
+    if (sql.startsWith("SELECT MAX(seq)")) return [{ v: log.length }];
     if (sql.startsWith("SELECT data")) return edits.has(a[0] + "|" + a[1]) ? [edits.get(a[0] + "|" + a[1])] : [];
     if (sql.startsWith("DELETE")) { edits.delete(a[0] + "|" + a[1]); return []; }
     if (sql.startsWith("INSERT OR REPLACE")) { edits.set(a[0] + "|" + a[1], { kind: a[0], id: a[1], data: a[2], at: a[3] }); return []; }
@@ -62,6 +63,11 @@ test("저장 → 목록에 보임 → 원래대로 지우면 사라지고 기록
   assert.equal((await get()).stop.JJB100, undefined);
   assert.equal(env.DB.log.length, 2);
   assert.equal(env.DB.log[1][3], "[35.18,128.08]"); // 지우기 전 값이 기록에
+  // 판 번호: 가진 번호가 지금과 같으면 204 (바뀐 것 없음), 다르면 목록
+  const v = (await get()).v;
+  assert.equal(v, 2);
+  assert.equal((await handleEdits(new Request("https://x/w/edits?v=2"), env, ctx)).status, 204);
+  assert.equal((await handleEdits(new Request("https://x/w/edits?v=1"), env, ctx)).status, 200);
 });
 
 test("관리자 키: 서버에 키가 없거나 짧으면 아무도 못 고침", () => {

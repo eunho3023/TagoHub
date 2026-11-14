@@ -234,6 +234,8 @@ export const MapView = {
   onTap(f) { tapCb = f; },
   /** 지도를 옮기거나 확대할 때마다 (돌려준 함수로 그만 받기) */
   onIdle(f) { idleCbs.push(f); return () => { idleCbs = idleCbs.filter((x) => x !== f); }; },
+  /** 지도를 옮기지 않고 그림을 다시 (고친 정류장 위치를 바로 보이게) */
+  redraw() { idleCbs.forEach((f) => f()); },
   bounds() { return impl ? impl.bounds() : null; },
   zoom() { return impl ? impl.zoom() : 0; },
 };
