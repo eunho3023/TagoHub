@@ -953,6 +953,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 카카오 지도의 POI 를 누름: 정류장이면 정류장, 지하철역이면 역, 아니면 출발·도착 고르기 */
     fun onMapPoi(name: String, lat: Double, lng: Double) {
+        if (mapEdit.value != null) { editTap(lat, lng); return }
         viewModelScope.launch {
             val selectingEndpoint = panel.value == MapPanel.Plan && trip.editing.value != null
             // 1) 버스 정류장: POI 와 내장 정류소 좌표가 어긋난 경우도 매칭
@@ -1027,6 +1028,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 지도 바닥을 꾹 누름: 그 자리를 출발·도착으로 (이름은 카카오 좌표→주소로) */
     fun onMapLongPress(lat: Double, lng: Double) {
+        if (mapEdit.value != null) { editTap(lat, lng); return }
         if (panel.value == MapPanel.Plan && trip.editing.value != null) {
             trip.pick(PlanPoint("선택한 위치", null, lat, lng))
             return
@@ -1045,6 +1047,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      * 패널이 열려 있거나(정류장·노선·길찾기…) 주행 안내 중이면 실수로 누른 것일 수 있어 아무것도 안 함.
      */
     fun onMapTap(lat: Double, lng: Double) {
+        if (mapEdit.value != null) { editTap(lat, lng); return }
         // 길찾기에서 출발·도착을 고르는 중이면 눌러서 바로 고름
         if (panel.value == MapPanel.Plan && trip.editing.value != null) {
             onMapLongPress(lat, lng)
@@ -1512,6 +1515,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         saveView(lat, lng, zoom)
         lastLevel = level
         lastBox = doubleArrayOf(s, w, n, e)
+        // 지도 고치기 중이면 화면 안의 고칠 점을 다시 (점이 많은 노선은 화면 안 것만 보임)
+        if (mapEdit.value != null) pushEdit()
         pushItsRoadFeatures()
         pushTrafficLights()
         pushLiveSignals()
@@ -2215,11 +2220,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     val line = TripPlanner.Line(id, routes[id]?.first ?: id, stops)
                     val seqs = stops.filter { it.nodeId == d.stop.nodeId }.map { it.ord }
                     val starts = JeonjuTimetable.startsFor(day, courses, schedule)
-                    // 이 정류장까지 오는 시간도 앱이 모은 실측 구간 시간을 먼저 쓴다
-                    val mins = RouteTravel.minutesFn(id, stops) { a, b -> TripPlanner.minutesBetween(line, a, b) }
+                    // 이 정류장까지 오는 시간: 웹 버전과 같은 거리 어림 (앱·웹 시간표 시각을 같게)
+                    val mins = RouteTravel.timetableFn(stops)
                     val times = JeonjuTimetable.stopTimes(starts, seqs, mins)
-                    val measured = stops.isNotEmpty() && seqs.isNotEmpty() &&
-                        RouteTravel.usesMeasured(id, stops, stops.first().ord, seqs.min())
+                    val measured = false
                     RouteTimes(
                         id, routes[id]?.first ?: id, routes[id]?.second, times, ends[id]?.first, ends[id]?.second,
                         cityCode = "35010", measured = measured,
@@ -2254,21 +2258,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun estimateTimes(d: BusDest.Stop, item: RouteTimes, day: DayKind): RouteTimes {
         val raw = item.cityCode ?: d.stop.cityCode
         val city = if (raw.startsWith("TS")) stopDb?.let { db -> withContext(Dispatchers.IO) { db.tagoCity(raw) } } ?: raw else raw
-        val (info, stops) = coroutineScope {
+        val (live, stops) = coroutineScope {
             val i = async { routeInfoFor(repo, item.routeId, city) }
             val st = async { routeStopsFor(repo, item.routeId, city) }
             i.await() to st.await()
         }
+        // 첫차·막차·배차: 웹 버전과 같은 출처(앱 안 노선 자료 route_info)를 먼저, 없을 때만 실시간 노선 정보
+        val fileInfo = stopDb?.let { db -> withContext(Dispatchers.IO) { runCatching { db.routeById(item.routeId) }.getOrNull() } }
+            ?.takeIf { JeonjuTimetable.parseClock(it.firstTime) != null }
+        val info = if (fileInfo != null) fileInfo.copy(endName = fileInfo.endName ?: live?.endName) else live
         val first = JeonjuTimetable.parseClock(info?.firstTime)
         val last = JeonjuTimetable.parseClock(info?.lastTime)
         val ids = setOf(d.stop.nodeId) + d.others.value.map { it.nodeId }
         val seqs = stops.filter { it.nodeId in ids }.map { it.ord }
         if (seqs.isEmpty()) return item.copy(loaded = true)
-        // 정류장 사이 소요시간: 앱이 실제로 본 구간 통행시간(같은 차량이 다음 정류장에 나타난 간격)이 있으면 그것,
-        // 없으면 노선 정류장 거리로 어림. 운행(출발 시각)마다 같은 구간을 다시 묻기 때문에 한 번만 계산한다
-        val line = TripPlanner.Line(item.routeId, item.routeNo, stops)
-        val mins = RouteTravel.minutesFn(item.routeId, stops) { a, b -> TripPlanner.minutesBetween(line, a, b) }
-        val measured = RouteTravel.usesMeasured(item.routeId, stops, stops.first().ord, seqs.minOrNull() ?: stops.first().ord)
+        // 정류장 사이 소요시간: 웹 버전과 같은 거리 어림 (폰마다 다른 실측 구간 시간은 시간표에 섞지 않음 → 앱·웹 시각이 같음)
+        val mins = RouteTravel.timetableFn(stops)
+        val measured = false
         // 지자체 버스정보시스템 공식 배차시간표 (울산·천안·창원·대구·제주·진주·구미, 중계 서버) — 있으면 그것을 먼저
         com.eunho.tagohub.data.CityTimetable.fetch(item.routeId, item.routeNo)?.let { deps ->
             val times = com.eunho.tagohub.data.CityTimetable.stopTimes(deps, day, stops, seqs, info?.endName ?: item.endName, mins)
@@ -2478,9 +2484,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 // 노선 선: 카카오 지도 도로를 따라 (카카오 대중교통 경로에서 이 노선 번호 구간).
                 // 카카오가 못 찾은 구간은 지역 공식 모양(서울시·경기·전주시)으로, 그것도 없으면 OSRM.
                 // 저장해 둔 모양도 지금 정류장과 맞을 때만 씀 (예전에 잘못 저장됐거나 노선이 바뀌었으면 새로 만듦)
+                // 지도에서 손으로 고친 모양이 있으면 그것 (웹과 같이 씀, MapEdits; 5분 지났으면 새로 받음)
+                com.eunho.tagohub.data.MapEdits.refresh()
+                val fixed = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
                 val saved = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
                     ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) }
-                val shape = saved ?: run {
+                val shape = fixed ?: saved ?: run {
                     val official: List<LatLng>? = when {
                         com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) ->
                             // 앱 안 노선 모양(서울시 TBIS). 지금 노선 정류장 90% 가 100m 안을 지나야 씀 (아니면 서울 API)
@@ -2501,7 +2510,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     RoadShapeClient.shape(d.routeId, pts, d.routeNo, official)
                 }
-                if (saved == null && shape != null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
+                if (fixed == null && saved == null && shape != null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
                 if (shape != null && route.value === d) {
                     d.shape.value = shape
                     pushRoute()
@@ -2554,6 +2563,243 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 delay(30_000)
             }
         }
+    }
+
+    // ───────────────────────── 지도 고치기 (노선 모양·정류장·역 위치) ─────────────────────────
+    // 고친 것은 서버(/w/edits)에 저장돼 웹 버전과 같이 씀 ([com.eunho.tagohub.data.MapEdits])
+
+    /** 고치는 중인 것. points: 선(버스·지하철 노선)이면 점 목록, 위치(정류장·역)면 점 하나 */
+    data class MapEditState(
+        val kind: com.eunho.tagohub.data.MapEdits.Kind,
+        val ids: List<String>,
+        val title: String,
+        val points: List<LatLng>,
+        val orig: List<LatLng>,
+        val color: Int,
+        val sel: Int = -1,
+        val hasEdit: Boolean = false,
+        val busy: Boolean = false,
+        val msg: String? = null,
+        /** 역: 묶음 안 역마다 (고침 id, 지금 좌표) — 같이 옮김 */
+        val group: List<Pair<String, LatLng>> = emptyList(),
+    ) {
+        val isLine: Boolean get() = kind == com.eunho.tagohub.data.MapEdits.Kind.Bus || kind == com.eunho.tagohub.data.MapEdits.Kind.Rail
+    }
+    val mapEdit = MutableStateFlow<MapEditState?>(null)
+
+    init {
+        // 앱을 열 때 고친 것 목록을 받고, 바뀌면(다른 기기·웹에서 고침) 다시 그림
+        viewModelScope.launch {
+            var seen = com.eunho.tagohub.data.MapEdits.version.value
+            launch { com.eunho.tagohub.data.MapEdits.refresh() }
+            com.eunho.tagohub.data.MapEdits.version.collect { v -> if (v != seen) { seen = v; if (mapEdit.value == null) applyEdits() } }
+        }
+    }
+
+    private fun startEdit(s: MapEditState) {
+        if (!com.eunho.tagohub.data.MapEdits.admin.value) return // 관리자만 (설정의 관리자 키)
+        mapEdit.value = s
+        canvas?.setRoute(null, emptyList(), null)
+        canvas?.setBuses(emptyList())
+        if (s.points.size >= 2) canvas?.fitTo(s.points) else s.points.firstOrNull()?.let { canvas?.moveTo(it.lat, it.lng, 18.0) }
+        pushEdit()
+    }
+
+    /** 노선 패널에서: 이 노선 모양 고치기 */
+    fun startRouteShapeEdit() {
+        val d = route.value ?: return
+        val stopsLine = located(d).map { LatLng(it.lat!!, it.lng!!) }
+        val edited = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
+        viewModelScope.launch {
+            // 처음 모양: 자동으로 만든 모양(휴대폰에 저장된 것), 없으면 정류장을 이은 선
+            val auto = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }?.takeIf { it.size >= 2 }
+                ?: d.shape.value?.takeIf { it.size >= 2 && edited == null } ?: stopsLine
+            if (auto.size < 2 && edited == null) { banner.value = "노선 정류장 위치가 없어 고칠 수 없어요"; return@launch }
+            startEdit(MapEditState(
+                com.eunho.tagohub.data.MapEdits.Kind.Bus, listOf(d.routeId), "${d.routeNo} 노선 모양 고치기",
+                edited ?: com.eunho.tagohub.data.EditPath.simplify(auto, 6.0), auto, busRouteColor(d.routeType).toArgb(), hasEdit = edited != null,
+            ))
+        }
+    }
+
+    /** 정류장 패널에서: 정류장 위치 고치기 */
+    fun startStopEdit() {
+        val s = selected.value?.stop ?: return
+        val la = s.lat ?: return
+        val lo = s.lng ?: return
+        val here = LatLng(la, lo)
+        startEdit(MapEditState(
+            com.eunho.tagohub.data.MapEdits.Kind.Stop, listOf(s.nodeId), "${s.name} 위치 고치기", listOf(here), listOf(here),
+            busRouteColor(null).toArgb(), hasEdit = com.eunho.tagohub.data.MapEdits.stop(s.nodeId) != null,
+        ))
+    }
+
+    /** 역 패널에서: 역 위치 고치기 (환승역은 노선별 역을 같은 만큼 같이 옮김) */
+    fun startStationEdit() {
+        val g = station.value?.group ?: return
+        val keys = g.stations.map { com.eunho.tagohub.data.MapEdits.stationKey(it) to LatLng(it.lat, it.lng) }
+        val here = LatLng(g.lat, g.lng)
+        startEdit(MapEditState(
+            com.eunho.tagohub.data.MapEdits.Kind.Station, keys.map { it.first }, "${g.name}역 위치 고치기", listOf(here), listOf(here),
+            subwayLineColor(g.displayLines.firstOrNull() ?: "").toArgb(),
+            hasEdit = keys.any { com.eunho.tagohub.data.MapEdits.has(com.eunho.tagohub.data.MapEdits.Kind.Station, it.first) }, group = keys,
+        ))
+    }
+
+    /** 역 패널에서: 이 지하철 노선 모양 고치기 (처음 모양은 같은 권역의 역을 이은 선) */
+    fun startRailEdit(lineName: String) {
+        val idx = index ?: return
+        val g = station.value?.group
+        val region = g?.let { com.eunho.tagohub.data.SubwayRegion.of(it.lat, it.lng) }
+        val list = idx.stations.filter { it.displayLine == lineName && (region == null || com.eunho.tagohub.data.SubwayRegion.of(it.lat, it.lng) == region) }
+            .distinctBy { it.norm }
+        val chain = railChain(list)
+        val key = com.eunho.tagohub.data.MapEdits.railKey(region, lineName)
+        val edited = com.eunho.tagohub.data.MapEdits.railShape(region, lineName)
+        if (chain.size < 2 && edited == null) return
+        startEdit(MapEditState(
+            com.eunho.tagohub.data.MapEdits.Kind.Rail, listOf(key), "$lineName 노선 모양 고치기", edited ?: chain, chain,
+            subwayLineColor(lineName).toArgb(), hasEdit = edited != null,
+        ))
+    }
+
+    /** 역들을 잇는 나무([com.eunho.tagohub.data.SubwayMap.tree])를 한쪽 끝에서 깊이 우선으로 따라간 선 (갈래는 돌아 나옴) */
+    private fun railChain(list: List<com.eunho.tagohub.data.MetroStation>): List<LatLng> {
+        if (list.size < 2) return list.map { LatLng(it.lat, it.lng) }
+        val edges = com.eunho.tagohub.data.SubwayMap.tree(list)
+        val adj = HashMap<com.eunho.tagohub.data.MetroStation, MutableList<com.eunho.tagohub.data.MetroStation>>()
+        edges.forEach { (a, b) -> adj.getOrPut(a) { ArrayList() } += b; adj.getOrPut(b) { ArrayList() } += a }
+        val start = list.firstOrNull { (adj[it]?.size ?: 0) == 1 } ?: list.first()
+        val out = ArrayList<LatLng>()
+        val seen = HashSet<com.eunho.tagohub.data.MetroStation>()
+        fun walk(s: com.eunho.tagohub.data.MetroStation) {
+            seen += s
+            val here = LatLng(s.lat, s.lng)
+            out += here
+            adj[s].orEmpty().filter { it !in seen }.forEach { n -> walk(n); if (out.last() != here) out += here }
+        }
+        walk(start)
+        // 마지막 갈래에서 돌아 나온 꼬리는 지움
+        while (out.size > 2 && out[out.size - 1] == out[out.size - 3]) { out.removeAt(out.lastIndex); out.removeAt(out.lastIndex) }
+        return out
+    }
+
+    /** 고치는 중 지도를 누름 */
+    fun editTap(lat: Double, lng: Double) {
+        val s = mapEdit.value ?: return
+        if (s.busy) return
+        val p = LatLng(lat, lng)
+        if (!s.isLine) { mapEdit.value = s.copy(points = listOf(p), msg = null); pushEdit(); return }
+        val box = lastBox
+        // 손가락 크기만큼(화면 폭의 약 4%) 안의 점은 고르기
+        val near = if (box != null) ((box[3] - box[1]) * 88_000.0 * 0.04).coerceIn(4.0, 400.0) else 20.0
+        mapEdit.value = when {
+            s.sel >= 0 -> s.copy(points = s.points.toMutableList().also { it[s.sel] = p }, sel = -1, msg = null)
+            else -> {
+                val v = com.eunho.tagohub.data.EditPath.nearestVertex(s.points, p, near)
+                if (v >= 0) s.copy(sel = v, msg = null)
+                else s.copy(points = com.eunho.tagohub.data.EditPath.insertNear(s.points, p, 80.0).first, msg = null)
+            }
+        }
+        pushEdit()
+    }
+
+    /** 지도에서 고칠 점 표시를 누름 (key "e:번호") */
+    fun editMarkClick(key: String) {
+        val s = mapEdit.value ?: return
+        val i = key.removePrefix("e:").toIntOrNull() ?: return
+        if (!s.isLine) return
+        mapEdit.value = s.copy(sel = if (s.sel == i) -1 else i, msg = null)
+        pushEdit()
+    }
+
+    fun editDeleteSelected() {
+        val s = mapEdit.value ?: return
+        if (s.sel < 0 || s.points.size <= 2) return
+        mapEdit.value = s.copy(points = s.points.filterIndexed { i, _ -> i != s.sel }, sel = -1)
+        pushEdit()
+    }
+
+    /** 자동으로 만든 처음 모양으로 (저장해야 반영) */
+    fun editRestart() {
+        val s = mapEdit.value ?: return
+        mapEdit.value = s.copy(points = if (s.isLine) com.eunho.tagohub.data.EditPath.simplify(s.orig, 6.0) else s.orig, sel = -1, msg = "처음 모양으로 돌렸어요 (저장해야 반영돼요)")
+        pushEdit()
+    }
+
+    fun editSave() = editWrite(remove = false)
+    /** 고친 것을 지우고 원래 자료로 */
+    fun editReset() = editWrite(remove = true)
+
+    private fun editWrite(remove: Boolean) {
+        val s = mapEdit.value ?: return
+        if (s.busy) return
+        mapEdit.value = s.copy(busy = true, msg = null)
+        viewModelScope.launch {
+            var err: String? = null
+            if (s.kind == com.eunho.tagohub.data.MapEdits.Kind.Station) {
+                // 환승역: 노선별 역을 같은 만큼 옮김
+                val to = s.points.first()
+                val dLat = to.lat - s.orig.first().lat
+                val dLng = to.lng - s.orig.first().lng
+                for ((key, at) in s.group) {
+                    err = com.eunho.tagohub.data.MapEdits.save(s.kind, key, if (remove) null else listOf(LatLng(at.lat + dLat, at.lng + dLng)))
+                    if (err != null) break
+                }
+            } else {
+                err = com.eunho.tagohub.data.MapEdits.save(s.kind, s.ids.first(), if (remove) null else s.points)
+            }
+            val cur = mapEdit.value ?: return@launch
+            mapEdit.value = if (err != null) cur.copy(busy = false, msg = err)
+            else cur.copy(
+                busy = false, hasEdit = !remove, sel = -1,
+                msg = if (remove) "고친 것을 지웠어요. 원래 자료로 보여요." else "저장했어요. 앱과 웹에서 모두 이렇게 보여요.",
+                points = if (remove) (if (cur.isLine) com.eunho.tagohub.data.EditPath.simplify(cur.orig, 6.0) else cur.orig) else cur.points,
+            )
+            pushEdit()
+        }
+    }
+
+    /** 고치기 끝 (저장한 것은 이미 반영됨) */
+    fun editClose() {
+        mapEdit.value = null
+        canvas?.setTrip(emptyList(), emptyList())
+        applyEdits()
+    }
+
+    private fun pushEdit() {
+        val c = canvas ?: return
+        val s = mapEdit.value ?: return
+        val marks = ArrayList<TripMark>()
+        val segs = ArrayList<TripSegment>()
+        if (s.isLine) {
+            segs += TripSegment(s.points, s.color, false)
+            val box = lastBox
+            val shown = s.points.withIndex().filter { (_, q) -> box == null || (q.lat in box[0]..box[2] && q.lng in box[1]..box[3]) }
+            if (shown.size <= 250) shown.forEach { (i, q) ->
+                marks += TripMark(q.lat, q.lng, if (i == s.sel) "●" else "", if (i == s.sel) 0xFFD7262E.toInt() else s.color, key = "e:$i")
+            }
+        } else {
+            val o = s.orig.first()
+            val p = s.points.first()
+            if (com.eunho.tagohub.data.EditPath.dist(o, p) > 1) {
+                segs += TripSegment(listOf(o, p), 0xFF9AA3B2.toInt(), true)
+                marks += TripMark(o.lat, o.lng, "원", 0xFF9AA3B2.toInt())
+            }
+            marks += TripMark(p.lat, p.lng, "여", 0xFFD7262E.toInt())
+        }
+        c.setTrip(segs, marks)
+    }
+
+    /** 고친 것이 바뀜(저장·서버에서 새로 받음): 역 목록·지금 노선 모양·정류장을 다시 */
+    private fun applyEdits() {
+        index?.let { old -> index = StationIndex(old.rawStations); pushStations() }
+        route.value?.let { d ->
+            com.eunho.tagohub.data.MapEdits.busShape(d.routeId)?.let { d.shape.value = it }
+            pushRoute(); pushBuses()
+        }
+        stops.clear()
+        lastBox?.let { box -> if (lastLevel >= 2 && busLayer) loadStopsInView(box, immediate = true) }
     }
 
     // ───────────────────────── 지도에 그리기 ─────────────────────────
@@ -2699,6 +2945,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /** 노선을 그리기만 함 (지도 이동·축소 없음). 상·하행은 나란히 띄워 그리도록 방향별 선으로 나눠 넘긴다 */
     private fun pushRoute() {
         val c = canvas ?: return
+        if (mapEdit.value != null) return // 지도 고치기 중엔 고치는 선만
         val d = route.value
         if (d == null || d.stops.value.valueOrNull() == null) {
             c.setRoute(null, emptyList(), null)
@@ -2729,6 +2976,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
      * GPS 버스는 노선 선 위로 붙인 위치를, 직전 위치 → 새 위치로 노선을 따라 이동 (그대로면 멈춤, 뒤로는 안 감).
      */
     private fun pushBuses() {
+        if (mapEdit.value != null) return // 지도 고치기 중엔 고치는 선만
         val d = route.value
         if (d == null) {
             canvas?.setBuses(emptyList())

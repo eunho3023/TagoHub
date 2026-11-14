@@ -4,6 +4,7 @@ import { act, header, chips, note, sectionHead } from "./ui.js";
 import { go } from "./nav.js";
 import { Theme } from "./store.js";
 import { busSearch } from "./bus.js";
+import * as Edits from "./edits.js";
 import { directionsScreen } from "./places.js";
 
 // ── 대중교통 탭: 버스·지하철·기차·고속시외·항공·도로 ──
@@ -29,12 +30,24 @@ export function navi(root, p, ctx) { return directionsScreen(root, p, ctx); }
 // ── 설정 ──
 const ISSUES = "https://github.com/eunho3023/TagoHub/issues/new?title=" + encodeURIComponent("[웹 제보] ");
 export function settings(root) {
+  let adminMsg = "", checking = false;
+  // 관리자 키: 맞는 키를 넣은 브라우저에서만 노선 모양·정류장 위치 고치기 단추가 보임 (키는 배포한 컴퓨터의 local.properties EDIT_ADMIN_KEY)
+  const adminHtml = () => sectionHead("관리자") + (Edits.isAdmin()
+    ? `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장 화면에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 모드를 껐어요"; draw(); })}>끄기</button></div></div>`
+    : `<div class="searchbox"><input id="adminkey" type="password" autocomplete="off" placeholder="관리자 키"><div class="flexrow"><small class="grow">지도 고치기는 관리자만 할 수 있어요</small><button class="btn" ${checking ? "disabled" : ""} ${act(async () => {
+        const v = root.querySelector("#adminkey")?.value || "";
+        if (!v.trim()) return;
+        checking = true; adminMsg = ""; draw();
+        const ok = await Edits.setAdminKey(v);
+        checking = false; adminMsg = ok ? "관리자 모드를 켰어요" : "키가 맞지 않아요"; draw();
+      })}>${checking ? "확인 중..." : "확인"}</button></div></div>`) + (adminMsg ? note(adminMsg) : "");
   const draw = () => {
     root.innerHTML = header("설정") + sectionHead("화면 모드") +
       `<div class="seg">${[["auto", "기기 설정"], ["light", "밝게"], ["dark", "어둡게"]].map(([m, l]) => `<button class="${Theme.mode === m ? "on" : ""}" ${act(() => { Theme.set(m); draw(); })}>${l}</button>`).join("")}</div>` +
       sectionHead("정보") +
       `<div class="list"><button class="row" ${act(() => go("notices"))}><b class="grow">공지사항</b></button>
        <button class="row" ${act(() => go("report"))}><span class="grow"><b>앱 제보</b><small>불편한 점이나 틀린 정보를 알려 주세요</small></span></button></div>` +
+      adminHtml() +
       sectionHead("약관 및 정책") +
       `<div class="list">${[["legal/terms.html", "이용약관"], ["legal/privacy.html", "개인정보 처리방침"], ["legal/sources.html", "정보 제공처", "교통 자료·지도를 제공하는 기관"], ["legal/licenses.html", "오픈소스 라이선스"]]
         .map(([h, t, s]) => `<a class="row" href="${h}"><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span></a>`).join("")}</div>` +

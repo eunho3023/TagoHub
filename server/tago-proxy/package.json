@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/proxy.test.js test/log.test.js test/shape.test.js test/report.test.js test/gps.test.js test/poll.test.js test/timetable.test.js",
+    "test": "node --test test/proxy.test.js test/log.test.js test/shape.test.js test/report.test.js test/gps.test.js test/poll.test.js test/timetable.test.js test/edits.test.js",
     "deploy": "npx wrangler@4.45.0 deploy"
   }
 }

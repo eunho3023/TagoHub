@@ -83,7 +83,7 @@ async function kakaoImpl() {
   });
   map.addControl(new K.ZoomControl(), K.ControlPosition.RIGHT);
   K.event.addListener(map, "idle", () => idleCbs.forEach((f) => f()));
-  K.event.addListener(map, "click", () => tapCb && tapCb());
+  K.event.addListener(map, "click", (e) => tapCb && tapCb(e && e.latLng ? [e.latLng.getLat(), e.latLng.getLng()] : null));
   let lineObjs = [], dotObjs = [], meObj = null, meRing = null;
   const lv = (z) => Math.min(14, Math.max(1, 20 - z));
   return {
@@ -126,7 +126,7 @@ async function leafletImpl() {
   const map = L.map(el, { zoomControl: true }).setView([START[0], START[1]], 16);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
   map.on("moveend", () => idleCbs.forEach((f) => f()));
-  map.on("click", () => tapCb && tapCb());
+  map.on("click", (e) => tapCb && tapCb(e && e.latlng ? [e.latlng.lat, e.latlng.lng] : null));
   const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map), meLayer = L.layerGroup().addTo(map);
   let meMark = null, meCircle = null;
   return {

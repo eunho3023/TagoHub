@@ -173,14 +173,16 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
            FROM route_stops r LEFT JOIN stops s ON s.id = r.stop_id WHERE r.route_id = ? ORDER BY r.seq""",
         arrayOf(TagoIds.legacy(routeId)),
     ) {
+        // 지도에서 손으로 고친 정류장 위치가 있으면 그것 ([MapEdits])
+        val fix = if (it.isNull(0)) null else MapEdits.stop(it.getString(0))
         RouteStop(
             nodeId = if (it.isNull(0)) "x:" + routeId + ":" + it.getInt(2) else TagoIds.current(it.getString(0)),
             name = it.getString(1),
             nodeNo = if (it.isNull(6)) null else it.getString(6),
             ord = it.getInt(2),
             upDown = if (it.isNull(3)) null else it.getString(3),
-            lat = if (it.isNull(4)) null else it.getDouble(4),
-            lng = if (it.isNull(5)) null else it.getDouble(5),
+            lat = fix?.lat ?: if (it.isNull(4)) null else it.getDouble(4),
+            lng = fix?.lng ?: if (it.isNull(5)) null else it.getDouble(5),
         )
     }
 
@@ -284,7 +286,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
             query(
                 "SELECT id, lat, lng FROM stops WHERE id IN (${part.joinToString(",") { "?" }})",
                 asked.keys.toTypedArray(),
-            ) { it.getString(0) to LatLng(it.getDouble(1), it.getDouble(2)) }.forEach { (k, v) -> out[asked[k] ?: k] = v }
+            ) { it.getString(0) to (MapEdits.stop(it.getString(0)) ?: LatLng(it.getDouble(1), it.getDouble(2))) }.forEach { (k, v) -> out[asked[k] ?: k] = v }
         }
         return out
     }
@@ -295,14 +297,18 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
     fun cityNames(): Map<String, String> =
         query("SELECT code, name FROM cities", emptyArray()) { it.getString(0) to it.getString(1) }.toMap()
 
-    private fun Cursor.toStop() = BusStop(
-        cityCode = getString(5),
-        nodeId = TagoIds.current(getString(0)),
-        name = getString(1),
-        nodeNo = if (isNull(4)) null else getString(4),
-        lat = getDouble(2),
-        lng = getDouble(3),
-    )
+    private fun Cursor.toStop(): BusStop {
+        // 지도에서 손으로 고친 정류장 위치가 있으면 그것 ([MapEdits])
+        val fix = MapEdits.stop(getString(0))
+        return BusStop(
+            cityCode = getString(5),
+            nodeId = TagoIds.current(getString(0)),
+            name = getString(1),
+            nodeNo = if (isNull(4)) null else getString(4),
+            lat = fix?.lat ?: getDouble(2),
+            lng = fix?.lng ?: getDouble(3),
+        )
+    }
 
     /** 새 데이터로 바뀌어 이 DB 가 이미 닫혔으면(옛 참조를 들고 있던 곳) 지금 열린 DB 로 다시 물음 */
     private fun <T> query(sql: String, args: Array<String>, map: (Cursor) -> T): List<T> = try {

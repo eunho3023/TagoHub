@@ -1,6 +1,7 @@
 // 버스 자료 (Compose 웹 WebRepo.kt·MetroBus.kt 와 같은 규칙).
 // 정류장 찾기는 서버 이름 조각(/data/names), 도착은 웹 통로(/w/dg/1613000 TAGO, /w/bus/seoul|gg 서울·경기).
 import { cached, getText, getJson, xmlRows, findRows, num, int, str, meters } from "./core.js";
+import * as Edits from "./edits.js";
 
 // ── 자료 조각 주소 (pipeline/build_web_data.py 와 같게) ──
 function bucket(id) {
@@ -28,13 +29,16 @@ export function legacyId(id) {
 /** 조각 한 줄 → 정류장 {id, name, lat, lng, no, city, routes} */
 function stopOf(a) {
   if (!Array.isArray(a) || a[0] == null) return null;
-  const lat = num(a[2]), lng = num(a[3]);
+  let lat = num(a[2]), lng = num(a[3]);
+  // 지도에서 손으로 고친 위치가 있으면 그것 (edits.js)
+  const fix = Edits.stopFix(String(a[0]));
+  if (fix) { lat = fix[0]; lng = fix[1]; }
   if (lat == null || lng == null) return null;
   return { id: String(a[0]), name: String(a[1] ?? ""), lat, lng, no: str(a[4]) && a[4] !== "null" ? String(a[4]) : null, city: String(a[5] ?? ""), routes: (a[6] || []).map(String) };
 }
 const parseStops = (rows) => (Array.isArray(rows) ? rows.map(stopOf).filter(Boolean) : []);
 
-async function tile(name) { try { return parseStops(await cached(`data/tiles/${name}.json`)); } catch (e) { return []; } }
+async function tile(name) { try { const rows = await cached(`data/tiles/${name}.json`); await Edits.ready(); return parseStops(rows); } catch (e) { return []; } }
 
 const SAME_SPOT_M = 30, SAME_NO_M = 500, BORROW_M = 120;
 export function sameStop(a, b) {
@@ -56,6 +60,7 @@ function mergeSameSpot(stops) {
 export async function searchStops(query, limit = 60) {
   const q = query.trim();
   if (!q) return [];
+  await Edits.ready();
   const rows = parseStops(await cached(`data/names/${q.codePointAt(0).toString(16)}.json`).catch(() => []));
   const key = q.replace(/ /g, "");
   return mergeSameSpot(rows.filter((s) => s.name.replace(/ /g, "").includes(key)))
@@ -72,6 +77,16 @@ export async function stopsIn(s, w, n, e, limit = 400) {
     (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("JEB") || x.id.startsWith("JUB")))).slice(0, limit);
 }
 
+/** 자료 조각의 원래 좌표 (손으로 고친 것 적용 전). 못 찾으면 null */
+export async function rawStopPos(id, lat, lng) {
+  const legacy = legacyId(id);
+  for (const name of new Set([tileName(lat, lng), ...tileNames(lat - 0.01, lng - 0.01, lat + 0.01, lng + 0.01)])) {
+    const rows = await cached(`data/tiles/${name}.json`).catch(() => []);
+    const a = Array.isArray(rows) ? rows.find((x) => Array.isArray(x) && (String(x[0]) === legacy || String(x[0]) === id)) : null;
+    if (a && num(a[2]) != null) return [num(a[2]), num(a[3])];
+  }
+  return null;
+}
 export async function stopAt(id, lat, lng) {
   const legacy = legacyId(id);
   return (await tile(tileName(lat, lng))).find((s) => s.id === legacy || s.id === id) || null;
@@ -105,6 +120,12 @@ export async function routeSums(ids) {
 /** 노선 전체 (정류장 순서·좌표·시간표). 파일의 예전 id 로 찾고 지금 id 로 돌려줌.
  * 파일에 없는 노선(전주·제주·교통안전공단 등)은 [city](TAGO 도시코드)로 TAGO 노선 정류장 목록을 물음 */
 export async function route(id, city) {
+  const [r] = await Promise.all([routeRaw(id, city), Edits.ready()]);
+  // 지도에서 손으로 고친 정류장 위치 (edits.js)
+  if (r) for (const s of r.stops || []) { const f = s.id && (Edits.stopFix(s.id) || Edits.stopFix(legacyId(s.id))); if (f) { s.lat = f[0]; s.lng = f[1]; } }
+  return r;
+}
+async function routeRaw(id, city) {
   const legacy = legacyId(id);
   const m = (await cached(`data/routes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
   if (!m || m.no == null) return ggId(id) ? ggRoute(id) : city && /^\d+$/.test(city) ? tagoRoute(id, city) : null;
@@ -192,7 +213,13 @@ async function liveStopRoutes(stop, same) {
 }
 
 /** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */
-export async function shape(routeId, city, stops, no) {
+export async function shape(routeId, city, stops, no, { noEdit = false } = {}) {
+  // 지도에서 손으로 고친 노선 모양이 있으면 그것 (edits.js)
+  if (!noEdit) {
+    await Edits.ready();
+    const fixed = Edits.busFix(routeId) || Edits.busFix(legacyId(routeId));
+    if (fixed) { const pts = decodePolyline(String(fixed), 5); if (pts.length >= 2) return pts; }
+  }
   // 앱과 같은 실제 경로 자료(서울 TBIS·경기 GBIS 경로이력)가 있으면 그것 (자료 조각 shapes/).
   // 단 정류장과 잘 맞을 때만 (90% 가 선에서 30m 안): 경기 자료는 노선 일부만 덮은 것도 있어서
   try {
@@ -492,7 +519,13 @@ export function plannedTimes(sum, offset, day, downOffset = null) {
   if (!sum) return [];
   // 지자체 공식 배차시간표(기점 출발 시각 전체)가 있으면 그것을 씀. 종점에서도 출발하는 노선은 돌아오는 쪽 정류장에 그 버스도 더함
   if (sum.deps) {
-    const pick = (k) => { const d = sum.deps; const l = day === 6 ? d[k.replace("weekday", "sat")] : day === 7 ? d[k.replace("weekday", "holi")] : d[k]; return Array.isArray(l) ? l : []; };
+    // 토·일 시각이 비면 토 → 평일 순으로 (앱 CityTimetable.parse 와 같음). 종점 출발은 그 요일 것만
+    const arr = (l) => (Array.isArray(l) ? l : []);
+    const pick = (k) => {
+      const d = sum.deps, wd = arr(d[k]), sat = arr(d[k.replace("weekday", "sat")]), holi = arr(d[k.replace("weekday", "holi")]);
+      if (k !== "weekday") return day === 6 ? sat : day === 7 ? holi : wd;
+      return day === 6 ? (sat.length ? sat : wd) : day === 7 ? (holi.length ? holi : sat.length ? sat : wd) : wd;
+    };
     const off = Math.max(0, Math.round(offset || 0));
     const out = pick("weekday").map((m) => m + off);
     if (downOffset != null) for (const m of pick("weekdayDown")) out.push(m + Math.max(0, Math.round(downOffset)));
@@ -597,8 +630,9 @@ export async function plannedFor(stop, rt) {
   // 종점에서도 출발하는 노선: 종점(회차) 정류장 뒤쪽이면 종점 출발 버스는 회차점부터 걸리는 시간
   let downOffset = null;
   if (sum.deps && Array.isArray(sum.deps.weekdayDown) && sum.deps.weekdayDown.length) {
-    const endName = String(r.end || sum.end || "").replace(/\s/g, "");
-    const turn = endName ? r.stops.findIndex((s, k) => k > 0 && String(s.name).replace(/\s/g, "") === endName) : -1;
+    // 회차점 찾기는 앱 CityTimetable.stopTimes 와 같게 (이름 다듬어 맞춤)
+    const endName = normName(r.end || sum.end || "");
+    const turn = endName ? r.stops.findIndex((s, k) => k > 0 && sameName(normName(s.name), endName)) : -1;
     if (turn > 0) downOffset = offsetMinutes(r.stops, ids, turn);
   }
   return { sum, offset, downOffset };

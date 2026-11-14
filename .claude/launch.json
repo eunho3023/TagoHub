@@ -4,14 +4,39 @@
     {
       "name": "tagohub-server",
       "runtimeExecutable": "py",
-      "runtimeArgs": ["web/server.py", "--no-browser", "--port", "8000"],
+      "runtimeArgs": [
+        "web/server.py",
+        "--no-browser",
+        "--port",
+        "8000"
+      ],
       "port": 8000
     },
     {
       "name": "tagohub-expo-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "mobile", "run", "web", "--", "--port", "8081"],
+      "runtimeArgs": [
+        "--prefix",
+        "mobile",
+        "run",
+        "web",
+        "--",
+        "--port",
+        "8081"
+      ],
       "port": 8081
+    },
+    {
+      "name": "tagohub-site",
+      "runtimeExecutable": "py",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8090",
+        "--directory",
+        "server/tago-proxy/site"
+      ],
+      "port": 8090
     }
   ]
 }

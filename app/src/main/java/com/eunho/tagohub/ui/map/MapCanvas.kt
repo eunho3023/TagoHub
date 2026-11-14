@@ -40,7 +40,7 @@ data class TripSegment(val points: List<LatLng>, val color: Int, val dashed: Boo
 
 /** 길찾기 표시점 (출발·환승·도착) */
 /** 길찾기 표시점. [tag] 면 점 대신 노선 이름표(알약: 예 "146", "2호선")를 선 위에 그림 */
-data class TripMark(val lat: Double, val lng: Double, val label: String, val color: Int, val tag: Boolean = false)
+data class TripMark(val lat: Double, val lng: Double, val label: String, val color: Int, val tag: Boolean = false, val key: String? = null)
 
 interface MapCanvas {
     /** 지도 겹쳐 보기: 카카오 오버레이 id ("traffic_info" 교통정보, "bicycle_road" 자전거도로, "hill_shading" 지형도) */

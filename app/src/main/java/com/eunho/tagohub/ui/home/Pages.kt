@@ -184,6 +184,11 @@ fun MorePage(
                     }
                 }
 
+                // 관리자: 맞는 키를 넣은 기기에서만 지도 고치기(노선 모양·정류장·역 위치) 단추가 보임
+                com.eunho.tagohub.ui.common.SettingsGroup("관리자", "지도 고치기는 관리자만") {
+                    com.eunho.tagohub.ui.map.AdminKeyRow()
+                }
+
                 // 정보·계정: 계정 연결, 공지, 제보, 약관
                 com.eunho.tagohub.ui.common.SettingsGroup("정보·계정", "계정 연결과 문서") {
                     AccountRow()

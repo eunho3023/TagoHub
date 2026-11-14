@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.VisitLog.load(applicationContext)
         com.eunho.tagohub.data.NightSettings.load(applicationContext)
         com.eunho.tagohub.data.VehicleSettings.load(applicationContext)
+        com.eunho.tagohub.data.MapEdits.loadAdmin(applicationContext)
         takeEmailLink(intent)
         setContent { TagoTheme { MainScreen() } }
     }

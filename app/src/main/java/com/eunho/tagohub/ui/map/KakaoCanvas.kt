@@ -198,6 +198,12 @@ class KakaoCanvas(
         km.setOnCameraMoveStartListener { _, gesture -> if (gesture != com.kakao.vectormap.GestureType.Unknown) main.post { vm.onUserMovedMap() } }
         km.setOnLabelClickListener { _, layer, label ->
             val id = label.tag as? String
+            // 지도 고치기 중: 고칠 점을 누르면 고르기, 다른 표시를 누르면 그 자리를 누른 것으로
+            if (vm.mapEdit.value != null) {
+                val at = label.position
+                main.post { if (layer.layerId == TRIP_LAYER && id != null) vm.editMarkClick(id) else vm.editTap(at.latitude, at.longitude) }
+                return@setOnLabelClickListener true
+            }
             if (id != null) main.post {
                 when (layer.layerId) {
                     STOP_LAYER, ROUTE_PIN_LAYER -> vm.onStopClick(id)
@@ -683,7 +689,7 @@ class KakaoCanvas(
                 continue
             }
             val st = styles("tm${m.color}") { LabelStyles.from(withText(icon(icons.tripMark(m.color), 0.5f, 0.5f), 12f)) }
-            l.addLabel(LabelOptions.from(KLatLng.from(m.lat, m.lng)).setStyles(st).setTexts(text(m.label)))?.let { tripLabels += it }
+            l.addLabel(LabelOptions.from(KLatLng.from(m.lat, m.lng)).setStyles(st).setTexts(text(m.label)).also { o -> m.key?.let { o.setTag(it) } })?.let { tripLabels += it }
         }
     }
 

@@ -123,6 +123,18 @@ foreach ($name in @('TAGO_SERVICE_KEY', 'KLID_BUS_KEY', 'KAC_API_KEY', 'KRIC_SUB
     }
 }
 
+# 지도 고치기 관리자 키 (노선 모양·정류장·역 위치를 고칠 수 있는 사람만 아는 값). local.properties 의 EDIT_ADMIN_KEY,
+# 없으면 새로 만들어 local.properties 에 적음 (화면에는 안 보임 → 앱·웹 설정의 "관리자 키"에 local.properties 의 값을 붙여 넣음)
+$adminKey = Prop 'EDIT_ADMIN_KEY'
+if (-not $adminKey) {
+    $adminKey = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
+    # 마지막 줄 끝에 줄바꿈이 없어도 붙지 않게 줄 목록으로 다시 씀
+    @(Get-Content $props -Encoding UTF8) + "EDIT_ADMIN_KEY=$adminKey" | Set-Content $props -Encoding UTF8
+    Write-Host '  지도 고치기 관리자 키를 새로 만들어 local.properties 의 EDIT_ADMIN_KEY 에 적었어요'
+}
+$adminKey | & npx --yes wrangler@4.45.0 secret put EDIT_ADMIN_KEY | Out-Null
+Write-Host '  지도 고치기 관리자 키 넣음'
+
 # 웹 버전 앱 제보 → 폰 앱과 같은 Firebase(Firestore reports). app/google-services.json 에서 (값은 화면에 쓰지 않음)
 $gs = Join-Path $PSScriptRoot '..\..\app\google-services.json'
 if (Test-Path $gs) {
