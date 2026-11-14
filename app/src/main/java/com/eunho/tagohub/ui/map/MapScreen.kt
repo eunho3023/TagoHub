@@ -1196,16 +1196,13 @@ private fun PanelHeader(
     onRefresh: (() -> Unit)? = null,
 ) {
     // 정류소·노선 패널 머리: 큰 굵은 이름, 오른쪽에 회색 원 안의 닫기(X) — 색 띠 없이 깔끔하게
+    // 이름은 한 줄(길면 글자를 줄이고, 그래도 넘치면 옆으로 흐름). 번호·방면은 버튼 아래 전체 폭에 잘리지 않게 다 보여 줌
     val full = LocalFullScreen.current
-    Row(Modifier.padding(start = if (full) 6.dp else 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.padding(start = if (full) 6.dp else 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         if (full) IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
         leading()
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-            if (!subtitle.isNullOrBlank()) {
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
+        OneLineText(title, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold), Modifier.weight(1f), minSp = 16f)
         if (switchLabel != null) TextButton(onClick = onSwitch) { Text(switchLabel, fontWeight = FontWeight.Bold) }
         onRefresh?.let { r -> RefreshButton(r) }
         if (favorite != null) {
@@ -1220,6 +1217,15 @@ private fun PanelHeader(
         if (!LocalFullScreen.current) Surface(onClick = onClose, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp)) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, contentDescription = "닫기") }
         }
+    }
+    if (!subtitle.isNullOrBlank()) {
+        Text(
+            subtitle,
+            Modifier.padding(start = if (full) 48.dp else 0.dp, end = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     }
 }
 
