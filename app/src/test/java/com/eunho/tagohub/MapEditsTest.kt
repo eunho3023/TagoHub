@@ -32,6 +32,12 @@ class MapEditsTest {
         assertEquals(-1, EditPath.nearestVertex(listOf(a, b, c), LatLng(35.8050, 127.1050), 30.0))
     }
 
+    @Test fun snapsToNearbyStop() {
+        val stops = listOf(LatLng(35.8001, 127.1001), LatLng(35.8100, 127.1100))
+        assertEquals(stops[0], EditPath.nearestStop(stops, LatLng(35.8000, 127.1000), 30.0))   // 약 14m → 정류장에 붙음
+        assertEquals(null, EditPath.nearestStop(stops, LatLng(35.8050, 127.1050), 30.0))       // 멀면 그대로
+    }
+
     /** 정류장 시간표 소요시간이 웹(busdata.js offsetMinutes)과 같은 식: 거리 ÷ 300m/분 + 정류장마다 0.3분 (좌표 없는 정류장도 0.3분) */
     @Test fun timetableTravelMatchesWeb() {
         val stops = listOf(

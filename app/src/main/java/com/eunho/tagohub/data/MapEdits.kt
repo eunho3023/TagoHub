@@ -176,6 +176,13 @@ object EditPath {
         out.add(p); return out to out.lastIndex
     }
 
+    /** 누른 곳에서 maxM 안의 가장 가까운 정류장 자리 (없으면 null) — 선을 정류장에 딱 붙이기 */
+    fun nearestStop(stops: List<LatLng>, p: LatLng, maxM: Double): LatLng? {
+        var best: LatLng? = null; var bd = maxM
+        for (s in stops) { val d = dist(p, s); if (d <= bd) { bd = d; best = s } }
+        return best
+    }
+
     /** 누른 곳에서 maxM 안의 가장 가까운 점 번호 (없으면 -1) */
     fun nearestVertex(pts: List<LatLng>, p: LatLng, maxM: Double): Int {
         var best = -1; var bd = maxM

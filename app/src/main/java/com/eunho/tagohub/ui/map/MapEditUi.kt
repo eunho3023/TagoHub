@@ -41,7 +41,7 @@ internal fun MapEditBar(vm: MapViewModel, s: MapViewModel.MapEditState) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(s.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                if (s.isLine) "점을 누르고 옮길 곳을 누르면 옮겨져요. 점을 고르지 않고 선 가까이를 누르면 점이 새로 생겨요."
+                if (s.isLine) "점을 누르고 옮길 곳을 누르면 옮겨져요. 점을 고르지 않고 선 가까이를 누르면 점이 새로 생겨요. 회색 \"정\" 점(정류장·역)을 누르면 선이 그 자리에 딱 붙어요."
                 else "지도에서 실제 위치를 누르세요.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
