@@ -2591,7 +2591,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         // 앱을 열 때 고친 것 목록을 받고, 바뀌면(다른 기기·웹에서 고침) 다시 그림
         viewModelScope.launch {
             var seen = com.eunho.tagohub.data.MapEdits.version.value
-            launch { com.eunho.tagohub.data.MapEdits.refresh() }
+            // 지도가 보이는 동안 15초마다 확인 (안 바뀌었으면 서버가 목록 없이 답함) → 누가 고치면 바로 보임
+            launch {
+                while (true) {
+                    com.eunho.tagohub.core.AppState.awaitMapVisible()
+                    com.eunho.tagohub.data.MapEdits.refresh()
+                    delay(com.eunho.tagohub.data.MapEdits.POLL_MS)
+                }
+            }
             com.eunho.tagohub.data.MapEdits.version.collect { v -> if (v != seen) { seen = v; if (mapEdit.value == null) applyEdits() } }
         }
     }
@@ -2795,7 +2802,15 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private fun applyEdits() {
         index?.let { old -> index = StationIndex(old.rawStations); pushStations() }
         route.value?.let { d ->
-            com.eunho.tagohub.data.MapEdits.busShape(d.routeId)?.let { d.shape.value = it }
+            // 열린 노선: 정류장 좌표와 모양을 고친 것으로 (고친 것을 지웠으면 자동 모양으로)
+            (d.stops.value as? Load.Ok)?.let { ok ->
+                d.stops.value = Load.Ok(ok.value.map { s -> com.eunho.tagohub.data.MapEdits.stop(s.nodeId)?.let { f -> s.copy(lat = f.lat, lng = f.lng) } ?: s })
+            }
+            val fixed = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
+            if (fixed != null) d.shape.value = fixed
+            else viewModelScope.launch {
+                withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }?.let { if (route.value === d) { d.shape.value = it; pushRoute() } }
+            }
             pushRoute(); pushBuses()
         }
         stops.clear()

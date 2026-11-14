@@ -23,6 +23,10 @@ object MapEdits {
     private val lines = ConcurrentHashMap<String, List<LatLng>>()   // "bus|id", "rail|노선"
     private val points = ConcurrentHashMap<String, LatLng>()        // "stop|id", "station|id"
     @Volatile private var loadedAt = 0L
+    /** 서버 판 번호 (고친 기록 마지막 번호). 같으면 서버가 204 로 짧게 답함 */
+    @Volatile private var serverV: Long = -1
+    /** 이만큼 지나면 다시 확인 (고치면 바로 보이게 짧게, 안 바뀌었으면 서버가 목록 없이 답함) */
+    const val POLL_MS = 15_000L
 
     // ── 관리자 키: 고치기는 관리자만 (서버 비밀 값 EDIT_ADMIN_KEY 와 같아야 저장됨). 이 기기에만 저장 ──
     private const val PREFS = "ui"
@@ -73,16 +77,22 @@ object MapEdits {
 
     private fun base(): String? = DataProxy.current?.url?.trimEnd('/')
 
-    /** 서버에서 고친 것 목록 받기 (5분 안에 받았으면 그대로). 실패하면 가진 것 유지 */
+    /** 서버에서 고친 것 목록 받기 (15초 안에 확인했으면 그대로, 판 번호가 같으면 그대로). 실패하면 가진 것 유지 */
     suspend fun refresh(force: Boolean = false) {
-        if (!force && System.currentTimeMillis() - loadedAt < 5 * 60_000L) return
+        if (!force && System.currentTimeMillis() - loadedAt < POLL_MS) return
         val b = base() ?: return
+        val q = if (serverV >= 0) "?v=$serverV" else ""
         val body = withContext(Dispatchers.IO) {
             runCatching {
-                client.newCall(Request.Builder().url("$b/w/edits").build()).execute().use { r -> if (r.isSuccessful) r.body.string() else null }
+                client.newCall(Request.Builder().url("$b/w/edits$q").header("Cache-Control", "no-cache").build()).execute().use { r ->
+                    when { r.code == 204 -> ""; r.isSuccessful -> r.body.string(); else -> null }
+                }
             }.getOrNull()
         } ?: return
+        loadedAt = System.currentTimeMillis()
+        if (body.isEmpty()) return // 바뀐 것 없음
         val o = runCatching { JSONObject(body) }.getOrNull() ?: return
+        serverV = o.optLong("v", -1)
         val newLines = HashMap<String, List<LatLng>>()
         val newPoints = HashMap<String, LatLng>()
         for (k in listOf(Kind.Bus, Kind.Rail)) o.optJSONObject(k.key)?.let { m ->
@@ -109,7 +119,11 @@ object MapEdits {
         val json = JSONObject().put("kind", kind.key).put("id", id).put("data", data).toString()
         val code = withContext(Dispatchers.IO) {
             runCatching {
-                client.newCall(Request.Builder().url("$b/w/edits").header(ADMIN_HEADER, adminKey).post(json.toRequestBody("application/json".toMediaType())).build()).execute().use { it.code }
+                client.newCall(Request.Builder().url("$b/w/edits").header(ADMIN_HEADER, adminKey).post(json.toRequestBody("application/json".toMediaType())).build()).execute().use { r ->
+                    // 서버 판 번호를 맞춰 둠 (내가 고친 것을 다시 받지 않게)
+                    if (r.code == 200) runCatching { JSONObject(r.body.string()).optLong("v", -1) }.getOrNull()?.takeIf { it >= 0 }?.let { serverV = it }
+                    r.code
+                }
             }.getOrDefault(-1)
         }
         if (code != 200) return when (code) { 429 -> "잠시 뒤에 다시 저장해 주세요"; 403 -> "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요"; -1 -> "인터넷 연결을 확인해 주세요"; else -> "저장하지 못했어요 ($code)" }

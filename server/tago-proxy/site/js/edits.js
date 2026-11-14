@@ -1,6 +1,7 @@
 // 지도 고치기: 사람이 손으로 고친 버스 노선 모양·정류장 위치 (서버 /w/edits, src/edits.js). 폰 앱(MapEdits.kt)과 같은 자료.
-// 화면을 열 때 한 번 받아 두고(1분 기억), 노선 모양·정류장 좌표를 그릴 때 고친 것이 있으면 그것을 씀.
-import { BASE, getJson } from "./core.js";
+// 화면을 열 때 받아 두고, 페이지가 보이는 동안 15초마다 판 번호로 바뀌었는지 확인(안 바뀌면 서버가 204 로 짧게).
+// 바뀌면 바로 다시 받아 열린 화면이 다시 그림 (onChange). 노선 모양·정류장 좌표를 그릴 때 고친 것이 있으면 그것을 씀.
+import { BASE } from "./core.js";
 
 let data = null, at = 0, loading = null;
 
@@ -20,14 +21,31 @@ export async function setAdminKey(k) {
 }
 const EMPTY = { v: 0, bus: {}, rail: {}, stop: {}, station: {} };
 
-/** 고친 것 목록 (1분 기억, 못 받으면 빈 목록) */
+const POLL_MS = 15000;
+const listeners = new Set();
+/** 고친 것이 바뀌면 부름 (돌려준 함수로 그만 받기) */
+export function onChange(f) { listeners.add(f); return () => listeners.delete(f); }
+const notify = () => listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+
+/** 고친 것 목록 (15초 안에 확인했으면 그대로, 못 받으면 가진 것·빈 목록). 판 번호가 같으면 서버가 204 → 그대로 */
 export function ready(force = false) {
-  if (!force && data && Date.now() - at < 60000) return Promise.resolve(data);
-  if (!force && loading) return loading;
-  loading = getJson("w/edits").then((d) => ({ ...EMPTY, ...d })).catch(() => data || EMPTY)
-    .then((d) => { data = d; at = Date.now(); loading = null; return d; });
+  if (!force && data && Date.now() - at < POLL_MS) return Promise.resolve(data);
+  if (loading) return loading;
+  const q = data ? "?v=" + encodeURIComponent(data.v) : "";
+  loading = fetch(BASE + "w/edits" + q, { cache: "no-store" })
+    .then(async (r) => (r.status === 204 ? data : r.ok ? { ...EMPTY, ...(await r.json()) } : data || EMPTY))
+    .catch(() => data || EMPTY)
+    .then((d) => {
+      const changed = data != null && d !== data && d.v !== data.v;
+      data = d; at = Date.now(); loading = null;
+      if (changed) notify();
+      return d;
+    });
   return loading;
 }
+// 페이지가 보이는 동안 15초마다, 다시 볼 때 바로 확인 (다른 사람·기기가 고친 것도 바로)
+setInterval(() => { if (document.visibilityState === "visible" && data) ready(true); }, POLL_MS);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && data) ready(true); });
 
 /** 받아 둔 목록에서 바로 (없으면 null) */
 export function stopFix(id) { return (data && id && (data.stop[id] || null)) || null; }
@@ -37,11 +55,14 @@ export function busFix(id) { return (data && id && data.bus[id]) || null; }
 export async function save(kind, id, payload) {
   const r = await fetch(BASE + "w/edits", { method: "POST", headers: { "Content-Type": "application/json", "X-TagoHub-Admin": adminKey() }, body: JSON.stringify({ kind, id, data: payload }) });
   if (!r.ok) throw new Error(r.status === 429 ? "잠시 뒤에 다시 저장해 주세요" : r.status === 403 ? "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요" : "저장하지 못했어요 (" + r.status + ")");
-  // 서버 목록은 30초 저장돼서 방금 고친 것을 바로 반영
+  // 방금 고친 것을 이 화면에 바로 반영 (서버 판 번호도 맞춰 다시 받지 않게)
+  const res = await r.json().catch(() => ({}));
   if (data) {
     if (kind === "bus" || kind === "rail") { if (payload) data[kind][id] = encodePolyline(payload); else delete data[kind][id]; }
     else if (payload) data[kind][id] = payload; else delete data[kind][id];
+    if (res.v != null) data.v = res.v;
   }
+  notify();
   return true;
 }
 

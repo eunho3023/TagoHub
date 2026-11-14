@@ -482,6 +482,16 @@ export function routeScreen(root, p, ctx) {
     B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no).then((s) => { road = s; drawMap(); });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
+    // 누가 노선 모양·정류장 위치를 고치면 바로 다시 그림
+    const offEdit = Edits.onChange(async () => {
+      if (!alive) return;
+      const r2 = await B.route(p.id, p.city).catch(() => null);
+      if (r2 && alive) r.stops = r2.stops;
+      const s2 = await B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no).catch(() => null);
+      if (!alive) return;
+      road = s2; snapped = null; linesOf = null; drawList(); drawMap();
+    });
+    timers.push(() => offEdit());
     async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }
     tick();
     // 버스 위치는 10초마다 받고, 그 사이에는 2초마다 도로를 따라 앞으로 움직여 그림
