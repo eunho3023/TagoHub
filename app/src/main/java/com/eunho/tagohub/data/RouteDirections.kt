@@ -45,6 +45,20 @@ object RouteDirections {
         return null // 회차 표시 없음 → 전체
     }
 
+    /**
+     * 방면으로 나눌 회차점: [turnIndex] 가 있어도 방면 이름을 말할 수 없으면 나누지 않음 (null → 방면 버튼 없이 전체)
+     * - 두 방면 이름(각 방향 마지막 정류장)이 비었거나 같음
+     * - 순환 노선 (노선 번호·이름에 "순환")
+     */
+    fun splitIndex(stops: List<RouteStop>, routeNo: String? = null): Int? {
+        val t = turnIndex(stops) ?: return null
+        if (routeNo != null && routeNo.contains("순환")) return null
+        val a = label(stops, t, 0)?.trim().orEmpty()
+        val b = label(stops, t, 1)?.trim().orEmpty()
+        if (a.isEmpty() || b.isEmpty() || a.replace(" ", "") == b.replace(" ", "")) return null
+        return t
+    }
+
     /** dir 0 = 기점 → 회차점, 1 = 회차점 → 끝 */
     fun range(n: Int, turn: Int?, dir: Int): IntRange = when {
         turn == null -> 0 until n
