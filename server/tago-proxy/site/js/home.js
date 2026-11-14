@@ -8,6 +8,7 @@ import { remember } from "./bus.js";
 import { startDirections } from "./places.js";
 import { latestNotice } from "./more.js";
 import { locate, geoMessage } from "./geo.js";
+import { stopsMap } from "./app.js";
 
 const st = {
   q: "",
@@ -18,14 +19,16 @@ const st = {
   live: { state: "idle", rows: null, at: 0, note: null },
 };
 
-export function render(root) {
+export function render(root, _p, ctx) {
   let alive = true;
   root.innerHTML = `<div class="homecard">
-      <div class="brand">${logo()}<div class="grow"><b>TagoHub</b><small>한 번에 연결되는 교통 정보</small></div>
-        <button class="outline" ${act(() => go("map"))}>${icon("pin", 16)} 지도</button></div>
+      <div class="brand">${logo()}<div class="grow"><b>모두의 지도</b><small>원하는 곳 어디든지!</small></div></div>
       <label class="bigsearch">${icon("pin", 20)}<input id="q" type="search" placeholder="정류장 이름으로 찾기" value="${esc(st.q)}" autocomplete="off"></label>
-    </div><div id="body"></div>`;
+    </div>${ctx && !ctx.wide ? `<div class="map-slot home-map"></div>` : ""}<div id="body"></div>`;
   const body = root.querySelector("#body");
+  const mapSlot = root.querySelector(".home-map");
+  let stopMap = null;
+  if (mapSlot) { ctx.useMap(mapSlot); stopMap = stopsMap(mapSlot, null); }
   let seq = 0;
 
   const draw = async () => {
@@ -202,6 +205,7 @@ export function render(root) {
   draw();
   return () => {
     alive = false;
+    if (stopMap) stopMap();
     clearInterval(t); clearInterval(tk);
     stopPoll();
     document.removeEventListener("visibilitychange", onVis);
@@ -210,7 +214,5 @@ export function render(root) {
 }
 
 function logo() {
-  return `<svg width="34" height="34" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 11h14v14h15M24 25v13" stroke="var(--primary)" stroke-width="6"/>
-    <circle cx="10" cy="11" r="4.5" fill="#13887E"/><circle cx="39" cy="25" r="4.5" fill="#F0A33A"/><circle cx="24" cy="38" r="4.5" fill="var(--primary)"/></svg>`;
+  return `<svg width="34" height="34" viewBox="10 10 88 88"><path fill="#2563EB" d="M32 10h44a22 22 0 0 1 22 22v44a22 22 0 0 1-22 22H32a22 22 0 0 1-22-22V32a22 22 0 0 1 22-22z"/><path fill="#fff" d="M26 40l18-6v42l-18 6z"/><path fill="#CFDDFF" d="M44 34l20 6v42l-20-6z"/><path fill="#fff" d="M64 40l18-6v42l-18 6z"/><path d="M30 70c8-6 16 0 24-6s16-6 24-12" fill="none" stroke="#2FC4A3" stroke-width="3.5" stroke-linecap="round"/><path fill="#FF5A6E" d="M54 66c-7-9-12-14-12-21.5a12 12 0 1 1 24 0C66 52 61 57 54 66z"/><circle cx="54" cy="44.5" r="4.8" fill="#fff"/></svg>`;
 }

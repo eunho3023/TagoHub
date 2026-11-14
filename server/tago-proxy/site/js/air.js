@@ -132,7 +132,7 @@ export function airScreen(root, chipsHtml) {
   };
   function draw() {
     if (!alive) return;
-    let h = header("TagoHub", "국내선 항공 시간표") + chipsHtml;
+    let h = header("모두의 지도", "국내선 항공 시간표") + chipsHtml;
     if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
     if (!data) { root.innerHTML = h + note("시간표를 불러오는 중..."); return; }
     const t = air.tomorrow ? addDays(seoulNow(), 1) : seoulNow();

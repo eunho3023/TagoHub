@@ -1,4 +1,5 @@
 // 틀: 주소(#…)로 화면 바꾸기(브라우저 뒤로 가기도 됨), 아래 탭, 넓은 화면은 왼쪽 목록 + 오른쪽 지도.
+// 지도 탭은 없음: 홈에 지도가 바로 보임 (좁으면 홈 안, 넓으면 오른쪽)
 import { MapView } from "./map.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
@@ -15,7 +16,6 @@ import "./modes.js";
 const TABS = [
   { id: "", label: "홈", icon: "home" },
   { id: "transit", label: "대중교통", icon: "bus" },
-  { id: "map", label: "지도", icon: "map" },
   { id: "navi", label: "길찾기", icon: "route" },
   { id: "settings", label: "설정", icon: "gear" },
 ];

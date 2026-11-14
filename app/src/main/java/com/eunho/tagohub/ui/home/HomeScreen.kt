@@ -57,6 +57,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
@@ -278,27 +279,22 @@ fun HomeSheet(
     }
 }
 
-/** 위쪽 로고: 환승 경로 마크 + 앱 이름 */
+/** 위쪽 로고: 앱 아이콘(접힌 지도 + 위치 핀) + 앱 이름 */
 @Composable
 internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
-    val accent = MaterialTheme.colorScheme.primary
     Row(modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        androidx.compose.foundation.Canvas(Modifier.size(34.dp)) {
-            val u = size.width / 48f
-            val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
-            val path = androidx.compose.ui.graphics.Path().apply {
-                moveTo(10f * u, 11f * u); lineTo(24f * u, 11f * u); lineTo(24f * u, 25f * u); lineTo(39f * u, 25f * u)
-                moveTo(24f * u, 25f * u); lineTo(24f * u, 38f * u)
-            }
-            drawPath(path, accent, style = stroke)
-            drawCircle(Color(0xFF13887E), 4.5f * u, androidx.compose.ui.geometry.Offset(10f * u, 11f * u))
-            drawCircle(Color(0xFFF0A33A), 4.5f * u, androidx.compose.ui.geometry.Offset(39f * u, 25f * u))
-            drawCircle(accent, 4.5f * u, androidx.compose.ui.geometry.Offset(24f * u, 38f * u))
+        // 아이콘 그림은 둘레에 여백이 있어 조금 크게 그리고 잘라 냄
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(com.eunho.tagohub.R.drawable.ic_launcher),
+                contentDescription = null,
+                modifier = Modifier.requiredSize(42.dp),
+            )
         }
         Spacer(Modifier.width(10.dp))
         Column {
-            Text("TagoHub", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
-            Text("한 번에 연결되는 교통 정보", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("모두의 지도", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("원하는 곳 어디든지!", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (action != null) {
             Spacer(Modifier.weight(1f))
