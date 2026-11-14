@@ -61,6 +61,25 @@ class KakaoCanvas(
     private var map: KakaoMap? = null
     private var lastZoom = -1
 
+    // 나침반 윗변 (지도 맨 위에서 px). 화면이 버튼 밑 위치를 알려 주기 전에는 상태 표시줄 + 버튼 자리 어림값
+    private var compassTop: Float? = null
+
+    private fun placeCompass() {
+        val top = compassTop ?: run {
+            val res = android.content.res.Resources.getSystem()
+            val statusBar = res.getIdentifier("status_bar_height", "dimen", "android")
+                .takeIf { id -> id > 0 }?.let { id -> res.getDimension(id) } ?: (24 * density)
+            statusBar + 176 * density
+        }
+        runCatching { map?.compass?.setPosition(com.kakao.vectormap.MapGravity.TOP or com.kakao.vectormap.MapGravity.RIGHT, 12 * density, top) }
+    }
+
+    override fun setCompassTop(px: Float) {
+        if (compassTop?.let { kotlin.math.abs(it - px) < 1f } == true) return
+        compassTop = px
+        placeCompass()
+    }
+
     // ── 지도가 준비되기 전에 받은 내용 (준비되면 한꺼번에 그림) ──
     private var stops: List<StopPin> = emptyList()
     private var stations: List<StationPin> = emptyList()
@@ -232,14 +251,10 @@ class KakaoCanvas(
         km.setOnTerrainLongClickListener { _, position, _ ->
             main.post { vm.onMapTouched(); vm.onMapLongPress(position.latitude, position.longitude) }
         }
-        // 나침반: 오른쪽 위 버튼들(내 위치 · 지도 설정) 바로 밑으로 (지도를 돌리면 방위가 보임, 누르면 북쪽으로)
+        // 나침반: 오른쪽 위, 검색창 아래 버튼들(내 위치 · 지도 설정) 바로 밑으로 (지도를 돌리면 방위가 보임, 누르면 북쪽으로)
         km.compass?.let {
             it.setBackToNorthOnClick(true)
-            val res = android.content.res.Resources.getSystem()
-            val statusBar = res.getIdentifier("status_bar_height", "dimen", "android")
-                .takeIf { id -> id > 0 }?.let { id -> res.getDimension(id) } ?: (24 * density)
-            // 버튼 열: 위 12dp · 버튼 40dp 두 개 · 사이 8dp 두 번 → 108dp 아래
-            it.setPosition(com.kakao.vectormap.MapGravity.TOP or com.kakao.vectormap.MapGravity.RIGHT, 12 * density, statusBar + 112 * density)
+            placeCompass()
             it.hide()   // 북쪽이면 숨김, 돌리면 보임 (카메라 이동 끝에서)
         }
         km.scaleBar?.let { it.setAutoHide(true); it.show() }

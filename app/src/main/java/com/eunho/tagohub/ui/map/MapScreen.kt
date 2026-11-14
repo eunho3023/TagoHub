@@ -33,6 +33,10 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.CompositionLocalProvider
@@ -379,13 +383,38 @@ fun MapScreen(
             Box(Modifier.fillMaxSize().background(Color(0xFF050A14).copy(alpha = com.eunho.tagohub.data.NightSettings.DIM_ALPHA)))
         }
 
-        // ── 상단 안내 ──
+        // ── 지도 버튼 (내 위치 · 지도 설정) ──
+        // 평소엔 검색창 바로 아래 오른쪽, 안내 중에는 화면 아래쪽 (파란 배너·소통 막대를 가리지 않게)
+        val mapButtons: @Composable (Modifier) -> Unit = { m ->
+            Column(m, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (mapFailed) {
+                    SmallFloatingActionButton(onClick = { mapAttempt++ }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "지도 다시 시도")
+                    }
+                }
+                SmallFloatingActionButton(onClick = {
+                    if (driving && vm.recenterGuidance()) Unit
+                    else if (hasLocationPermission(context)) locate()
+                    else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                }) { Icon(Icons.Filled.MyLocation, contentDescription = "내 위치") }
+                // 기차·고속시외·항공·제보·공지사항은 왼쪽 메뉴(☰)로
+                // 지하철 실시간 열차는 늘 표시 (버튼 없앰)
+                // 지도 종류: 카카오맵 기본·위성
+                if (mode == "kakao") {
+                    SmallFloatingActionButton(onClick = { baseMenu = true }) {
+                        Icon(Icons.Filled.Layers, contentDescription = "지도 종류와 레이어")
+                    }
+                }
+            }
+        }
+
+        // ── 상단 안내 ── (검색창은 화면 폭을 다 씀, 버튼은 그 아래로)
         if (!driving) Column(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 12.dp, end = 64.dp, top = 12.dp),
+                .padding(start = 12.dp, end = 12.dp, top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (homeTop != null) homeTop()
@@ -394,6 +423,13 @@ fun MapScreen(
                 MapMode.Bus -> BusSearchBar(vm)
                 MapMode.Transit -> BusSearchBar(vm, withStations = true)
             }
+            // 나침반은 이 버튼들 바로 밑에 오게 지도에 위치를 알려 줌
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            mapButtons(
+                Modifier
+                    .align(Alignment.End)
+                    .onGloballyPositioned { c -> osm.setCompassTop(c.boundsInRoot().bottom + with(density) { 8.dp.toPx() }) },
+            )
             // 지도를 아예 못 띄울 때의 안내만 보임 (부가 기능의 경고·'확대하면 …' 안내는 지움)
             mapFailure?.let { Banner(it) { vm.mapFailure.value = null } }
             // 숨은 조작(지도 길게 누르기)은 처음 한 번만 짧게 알려 줌
@@ -417,32 +453,13 @@ fun MapScreen(
             if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth(), color = if (mapMode == MapMode.Bus) ModeColor.Bus else ModeColor.Subway)
         }
 
-        // ── 오른쪽 버튼 ── (안내 중에는 아래쪽으로 내려 파란 배너·소통 막대를 가리지 않게)
-        Column(
+        // ── 안내 중 버튼 ── (아래쪽으로 내려 파란 배너·소통 막대를 가리지 않게)
+        if (driving) mapButtons(
             Modifier
-                .align(if (driving) Alignment.BottomEnd else Alignment.TopEnd)
-                .then(if (driving) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 96.dp, end = 30.dp) else Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(top = 12.dp, end = 12.dp)),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (mapFailed) {
-                SmallFloatingActionButton(onClick = { mapAttempt++ }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "지도 다시 시도")
-                }
-            }
-            SmallFloatingActionButton(onClick = {
-                if (driving && vm.recenterGuidance()) Unit
-                else if (hasLocationPermission(context)) locate()
-                else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-            }) { Icon(Icons.Filled.MyLocation, contentDescription = "내 위치") }
-            // 기차·고속시외·항공·제보·공지사항은 왼쪽 메뉴(☰)로
-            // 지하철 실시간 열차는 늘 표시 (버튼 없앰)
-            // 지도 종류: 카카오맵 기본·위성
-            if (mode == "kakao") {
-                SmallFloatingActionButton(onClick = { baseMenu = true }) {
-                    Icon(Icons.Filled.Layers, contentDescription = "지도 종류와 레이어")
-                }
-            }
-        }
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 96.dp, end = 30.dp),
+        )
 
         // ── 경로 안내 중 화면 (배너·소통 막대·도착 시각 바) ──
         DriveGuidanceOverlay(vm)
@@ -956,14 +973,17 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
 /** 지도에서 고른 곳: 여기서 출발 / 여기로 도착 */
 @Composable
 private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
+    // 주변 목록·가까운 정류장이 길어져도 지도가 보이게 화면의 60%까지만, 넘치면 카드 안에서 스크롤
+    val maxH = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.6f).dp
     Surface(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .heightIn(max = maxH),
         shape = RoundedCornerShape(16.dp),
         shadowElevation = 8.dp,
     ) {
-        Column(Modifier.padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Place, contentDescription = null, tint = Color(0xFFE53935))
                 Spacer(Modifier.width(8.dp))
@@ -991,7 +1011,24 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Work) }) { Text("회사로 저장") }
             }
-            // 가까운 정류장·역: 주소만 있는 장소를 눌렀을 때도 여기서 바로 정류장·역으로 넘어갈 수 있게
+            // 주변 찾기 (카카오 카테고리로 장소 검색)
+            androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->
+                    AssistChip(onClick = { vm.findNearby(code, label) }, label = { Text("주변 $label") })
+                }
+            }
+            val near by vm.nearby.collectAsStateWithLifecycle()
+            near?.let { (label, list) ->
+                Text(if (list.isEmpty()) "1.5km 안에 $label 없음" else "가까운 $label", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+                list.take(6).forEach { pl ->
+                    Row(Modifier.fillMaxWidth().clickable { vm.pickPlace(pl) }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(pl.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        pl.distance?.let { Text(if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it}m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
+            // 가까운 정류장·역: "주변 OO" 목록처럼 카드 아래쪽에. 주소만 있는 장소를 눌렀을 때도 여기서 바로 정류장·역으로 넘어갈 수 있게
             val transit by vm.nearbyTransit.collectAsStateWithLifecycle()
             transit?.let { t ->
                 Text(
@@ -1070,23 +1107,6 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                     }
                 }
             }
-            // 주변 찾기 (카카오 카테고리로 장소 검색)
-            androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->
-                    AssistChip(onClick = { vm.findNearby(code, label) }, label = { Text("주변 $label") })
-                }
-            }
-            val near by vm.nearby.collectAsStateWithLifecycle()
-            near?.let { (label, list) ->
-                Text(if (list.isEmpty()) "1.5km 안에 $label 없음" else "가까운 $label", style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
-                list.take(6).forEach { pl ->
-                    Row(Modifier.fillMaxWidth().clickable { vm.pickPlace(pl) }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(pl.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        pl.distance?.let { Text(if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it}m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                }
-            }
             // 기차역·터미널·공항: 그 시간표의 출발지·도착지로
             p.kind?.let { k ->
                 Row(Modifier.padding(top = 4.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1127,6 +1147,12 @@ private val LocalFullScreen = compositionLocalOf { false }
 private val LocalShowMap = compositionLocalOf<(() -> Unit)?> { null }
 
 private val SNAPS = listOf(0.22f, 0.45f, 0.7f, 0.88f, 1.0f)   // 1.0 = 맨 위까지 끌면 전체화면
+
+/** 정류장 시간표를 열 때 시트 높이 (SNAPS 중 하나) */
+private const val TIMETABLE_SHEET_FRAC = 0.88f
+
+/** 시간표 한 줄 높이 (낮게 해서 한 화면에 시각이 여러 개 보이게) */
+private val TIMETABLE_ROW = 42.dp
 
 /** 위쪽 손잡이를 위아래로 끌면 높이가 바뀌고, 놓으면 가까운 높이(작게·중간·크게)에 맞춰진다. 손잡이를 누르면 중간↔크게 */
 @Composable
@@ -1457,11 +1483,14 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
     val day by vm.timetableDay.collectAsStateWithLifecycle()
     val preferredRouteId by vm.timetablePreferredRouteId.collectAsStateWithLifecycle()
     var pick by remember(preferredRouteId) { mutableStateOf(preferredRouteId) }
+    // 시간표를 열면 지도 위 시트를 높여 시각이 여러 줄 보이게 (사용자가 더 높여 둔 건 그대로)
+    val sheet = LocalSheet.current
+    LaunchedEffect(Unit) { sheet?.let { if (it.frac.floatValue < TIMETABLE_SHEET_FRAC) it.frac.floatValue = TIMETABLE_SHEET_FRAC } }
     Column(Modifier.fillMaxSize()) {
         Text(
-            "첫차·막차·배차간격에 정류장 사이 소요시간을 더해 계산한 예상 시간표입니다. 실제 상황과 다를 수 있습니다.",
-            Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
-            style = MaterialTheme.typography.bodyMedium,
+            "첫차·막차·배차간격에 정류장 사이 소요시간을 더해 계산한 예상 시간표예요. 실제와 다를 수 있어요.",
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         // 요일: 고른 것은 굵은 테두리, 나머지는 회색 알약
@@ -1587,7 +1616,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                 ) {
                     Column(Modifier.fillMaxSize()) {
                         TimetableRow(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), line, 52.dp,
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), line, TIMETABLE_ROW,
                             { TimetableHead("예상 시간표") },
                             { TimetableHead("이전 차와 간격") },
                             { TimetableHead(if (today) "남은 시간" else "순서") },
@@ -1598,7 +1627,7 @@ private fun StopTimetable(vm: MapViewModel, state: Load<List<RouteTimes>>, nodeI
                                 val isPast = today && m < now
                                 val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                                 TimetableRow(
-                                    if (isNext) routeColor.copy(alpha = 0.10f) else Color.Transparent, line, 52.dp,
+                                    if (isNext) routeColor.copy(alpha = 0.10f) else Color.Transparent, line, TIMETABLE_ROW,
                                     {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             if (i == 0) TimetableBadge("첫", routeColor)
@@ -3057,11 +3086,31 @@ private fun RouteTitle(r: RouteTimes, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(8.dp))
         }
         val ends = listOfNotNull(r.startName, r.endName).joinToString("-")
+        // 아파트 이름·방면이 길어도 두 줄·"…" 없이 한 줄에 다 보이게
+        OneLineText(r.routeNo + if (ends.isNotEmpty()) "($ends)" else "", MaterialTheme.typography.bodyLarge, Modifier.weight(1f))
+    }
+}
+
+/**
+ * 한 줄에 다 보이는 글자: 자리가 모자라면 글자를 [minSp] 까지 줄이고, 그래도 넘치면 옆으로 천천히 흘려 끝까지 보여 줌.
+ */
+@Composable
+private fun OneLineText(text: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, minSp: Float = 12f) {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    BoxWithConstraints(modifier) {
+        val maxW = constraints.maxWidth
+        val base = if (style.fontSize.isSpecified) style.fontSize.value else 16f
+        val size = remember(text, maxW, base) {
+            var sp = base
+            while (sp > minSp && measurer.measure(text, style.copy(fontSize = sp.sp), maxLines = 1, softWrap = false).size.width > maxW) sp -= 0.5f
+            sp
+        }
         Text(
-            r.routeNo + if (ends.isNotEmpty()) "($ends)" else "",
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            text,
+            Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500),
+            style = style.copy(fontSize = size.sp),
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
