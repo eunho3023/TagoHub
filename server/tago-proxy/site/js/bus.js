@@ -448,7 +448,18 @@ export function routeScreen(root, p, ctx) {
     const s = r.sum;
     const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, isoDay()) > 0 && "배차 " + B.intervalOn(s, isoDay()) + "분"].filter(Boolean).join(" · ") : "";
     const list = root.querySelector("#stops");
-    root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${plan ? `<small>${esc(plan)}</small>` : ""}`;
+    // 들어온 정류장까지 오는 버스: "3정류장 전 · 5분 후" (앞 두 대, 걸리는 시간은 정류장 시간표와 같은 거리 어림)
+    let come = "";
+    const fi = p.from ? r.stops.findIndex((st) => st.id && B.legacyId(st.id) === B.legacyId(p.from)) : -1;
+    if (fi >= 0 && pos && pos.buses) {
+      const ids = new Set([r.stops[fi].id]);
+      const near = pos.buses.map((b) => stopIdx(b)).filter((i) => i >= 0 && i <= fi)
+        .map((i) => ({ n: fi - i, m: i === fi ? 0 : B.offsetMinutes(r.stops, ids, i) ?? 0 }))
+        .sort((x, y) => x.m - y.m).slice(0, 2);
+      const txt = (a) => (a.n === 0 ? "도착" : `${a.n}정류장 전 · ${a.m < 1 ? "곧 도착" : Math.ceil(a.m) + "분 후"}`);
+      come = `${r.stops[fi].name}까지 · ` + (near.length ? near.map((a, k) => (k ? "다음 " : "") + txt(a)).join(" / ") : "오는 버스 없음");
+    }
+    root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${come ? `<small><b>${esc(come)}</b></small>` : ""}${plan ? `<small>${esc(plan)}</small>` : ""}`;
     list.innerHTML = r.stops.map((st, i) => {
       const turn = i > 0 && st.upDown && r.stops[i - 1].upDown && st.upDown !== r.stops[i - 1].upDown ? `<div class="turn">회차</div>` : "";
       const here = p.from && st.id && B.legacyId(st.id) === B.legacyId(p.from);

@@ -43,12 +43,14 @@ fun RouteDiagramView(
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier = Modifier,
+    /** k 번째 → k+1 번째 정류장 사이 걸리는 초: 고른 정류장으로 오는 버스 옆에 "몇 정류장 전 · 몇 분" (null 이면 안 씀) */
+    segSec: ((Int) -> Double)? = null,
 ) {
     val context = LocalContext.current
     val cells = remember(routeId, stops) {
         RouteDiagram.layout(routeId, stops.map { it.nodeId }, RouteDiagram.official(context), PER_ROW)
     }
-    DiagramCanvas(stops, cells, color, busMotions, focusedNodeId, onStop, modifier)
+    DiagramCanvas(stops, cells, color, busMotions, focusedNodeId, onStop, modifier, segSec)
 }
 
 private const val PER_ROW = 4
@@ -62,18 +64,26 @@ private fun DiagramCanvas(
     focusedNodeId: String?,
     onStop: (RouteStop) -> Unit,
     modifier: Modifier,
+    segSec: ((Int) -> Double)?,
 ) {
     val measurer = rememberTextMeasurer()
+    val focusIdx = stops.indexOfFirst { it.nodeId == focusedNodeId }
     val line = MaterialTheme.colorScheme.outlineVariant
     val ink = MaterialTheme.colorScheme.onSurface
     val rows = ((cells.maxOfOrNull { it.y } ?: 0f).toInt() + 1)
     val rowH = 92.dp
     // 배치도만 30fps 로 다시 그린다 (화면 전체 재구성 없이 Canvas draw 만 무효화)
     val now = remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(busMotions) {
+    LaunchedEffect(busMotions, focusIdx) {
         if (busMotions.any { it.animated }) {
             while (true) {
                 delay(33)
+                now.longValue = System.currentTimeMillis()
+            }
+        } else if (focusIdx >= 0 && segSec != null) {
+            // 버스가 멈춰 그려져도 남은 분은 줄어들게 1초마다
+            while (true) {
+                delay(1000)
                 now.longValue = System.currentTimeMillis()
             }
         }
@@ -148,6 +158,27 @@ private fun DiagramCanvas(
                     val at = if (kotlin.math.abs(from.y - to.y) > 1f) from else Offset(from.x + (to.x - from.x) * t, from.y)
                     drawCircle(Color.White, radius = 9.dp.toPx(), center = at)
                     drawCircle(Color(0xFFFFB300), radius = 7.dp.toPx(), center = at)
+                    // 고른 정류장으로 오는 버스: 위에 "3정류장 전 · 5분"
+                    if (focusIdx >= 0 && segSec != null) {
+                        RouteLive.approach(f, focusIdx, segSec)?.let { a ->
+                            val t = measurer.measure(
+                                RouteLive.approachText(a, short = true),
+                                TextStyle(fontSize = 10.sp, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                            )
+                            val pad = 3.dp.toPx()
+                            val tl = Offset(
+                                (at.x - t.size.width / 2f).coerceIn(0f, (size.width - t.size.width).coerceAtLeast(0f)),
+                                at.y - 12.dp.toPx() - t.size.height - pad,
+                            )
+                            drawRoundRect(
+                                Color(0xFF263238),
+                                topLeft = Offset(tl.x - pad, tl.y - pad / 2),
+                                size = androidx.compose.ui.geometry.Size(t.size.width + pad * 2, t.size.height + pad),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                            )
+                            drawText(t, topLeft = tl)
+                        }
+                    }
                 }
             }
         }

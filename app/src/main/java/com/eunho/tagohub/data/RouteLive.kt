@@ -28,6 +28,31 @@ object RouteLive {
         val left: List<Int>,
     )
 
+    /** 고른 정류장까지: 몇 정류장 전인지와 걸리는 초 */
+    data class Approach(val stops: Int, val sec: Double)
+
+    /**
+     * 배치도 위치 [fraction](3.0 = 3번째 정류장, 3.5 = 3~4번째 사이)에 있는 버스가 [focus] 번째 정류장까지 몇 정류장·몇 초 남았는지.
+     * [segSec] 는 k 번째 → k+1 번째 정류장 사이 걸리는 초 (배치도 버스를 움직이는 것과 같은 값). 이미 지나간 버스는 null.
+     */
+    fun approach(fraction: Float, focus: Int, segSec: (Int) -> Double): Approach? {
+        if (fraction > focus + 0.001f) return null
+        val i = kotlin.math.floor(fraction.toDouble()).toInt().coerceAtLeast(0)
+        val t = (fraction - i).toDouble().coerceIn(0.0, 1.0)
+        var sec = 0.0
+        for (k in i until focus) sec += segSec(k)
+        if (i < focus) sec -= t * segSec(i)
+        return Approach(focus - i, sec.coerceAtLeast(0.0))
+    }
+
+    /** "3정류장 전 · 5분 후" / "1정류장 전 · 곧 도착" / "도착" */
+    fun approachText(a: Approach, short: Boolean = false): String {
+        if (a.stops <= 0) return "도착"
+        val min = Math.ceil(a.sec / 60.0).toInt()
+        val time = if (a.sec < 60) "곧 도착" else if (short) "${min}분" else "${min}분 후"
+        return "${a.stops}정류장 전 · $time"
+    }
+
     /** 이 정류장 반경 안은 정차 중으로 봄 */
     const val AT_STOP_M = 60.0
 
