@@ -1820,15 +1820,51 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     ?: (placement.at.keys + placement.between.keys).minOrNull()
                 if (target != null) listState.scrollToItem(target)
             }
+            // 고른 정류장까지 몇 정류장·몇 분: 배치도 버스를 움직이는 것과 같은 구간 시간 (실측이 있으면 실측)
+            val segSec = remember(list) {
+                val line = com.eunho.tagohub.data.TripPlanner.Line(d.routeId, d.routeNo, list)
+                val f: (Int) -> Double = { k ->
+                    if (k + 1 > list.lastIndex) 0.0
+                    else com.eunho.tagohub.data.RouteTravel.travelSec(d.routeId, list[k].ord, list[k + 1].ord) { a, z ->
+                        com.eunho.tagohub.data.TripPlanner.minutesBetween(line, a, z)
+                    }
+                }
+                f
+            }
+            // 몇 정류장·몇 분을 셀 정류장: 들어온 정류장, 배치도에서 누르면 그 정류장 (한 번 더 누르면 정류장 열기)
+            var pick by rememberSaveable(d.routeId) { mutableStateOf(d.focusNodeId) }
+            val focusIdx = list.indexOfFirst { it.nodeId == pick }
+            if (focusIdx >= 0) {
+                val tick by produceState(System.currentTimeMillis(), motions) { while (true) { delay(5000); value = System.currentTimeMillis() } }
+                val coming = remember(motions, focusIdx, tick) {
+                    motions.mapNotNull { m -> com.eunho.tagohub.data.RouteLive.approach(m.fraction(tick), focusIdx, segSec) }.sortedBy { it.sec }.take(2)
+                }
+                Text(
+                    "${list[focusIdx].name}까지 · " + if (coming.isEmpty()) "오는 버스 없음"
+                    else coming.mapIndexed { i, a -> (if (i == 0) "" else "다음 ") + com.eunho.tagohub.data.RouteLive.approachText(a) }.joinToString(" / "),
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
+            } else if (diagram) {
+                Text(
+                    "정류장을 누르면 그 정류장까지 몇 정류장·몇 분 남았는지 보여요 (한 번 더 누르면 정류장 열기)",
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (diagram) {
                 RouteDiagramView(
                     routeId = d.routeId,
                     stops = list,
                     color = color,
                     busMotions = motions,
-                    focusedNodeId = d.focusNodeId,
-                    onStop = { vm.focusRouteStop(it.nodeId) },
+                    focusedNodeId = pick,
+                    onStop = { if (pick == it.nodeId) vm.focusRouteStop(it.nodeId) else pick = it.nodeId },
                     modifier = Modifier.fillMaxSize(),
+                    segSec = segSec,
                 )
             } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(list) { i, s ->
