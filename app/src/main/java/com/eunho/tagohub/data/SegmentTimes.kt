@@ -30,6 +30,9 @@ object SegmentTimes {
 
     fun init(root: File) {
         dir = File(root, "seg_times").apply { mkdirs() }
+        // 저장 위치가 바뀌면 이전 위치에서 읽은 표본·차량 기록은 버린다
+        cache.clear()
+        last.clear()
     }
 
     /** 버스 위치를 받을 때마다 호출: 같은 차량이 다음 정류장으로 넘어간 것을 보면 구간 시간을 남긴다 */

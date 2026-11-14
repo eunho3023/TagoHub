@@ -100,7 +100,8 @@ class TrackingTest {
     @Test
     fun farFromStop_isLiveImmediately() {
         assertEquals(true, GpsTracker.next(null, at(450.0), 1, geom, 0).live)   // 정류장 S0(0m)에서 450m
-        assertEquals(false, GpsTracker.next(null, at(5.0), 1, geom, 0).live)    // 정류장 위 = 아직 모름
+        assertEquals(false, GpsTracker.next(null, at(0.0), 1, geom, 0).live)    // 정류장 점과 똑같음 = 정류장 좌표를 주는 API, 아직 모름
+        assertEquals(true, GpsTracker.next(null, at(5.0), 1, geom, 0).live)     // 정류장에서 5m 어긋남 = 정차 중인 실제 GPS
     }
 
     /** 정류장 순번이 줄어든 옛 응답은 직전 위치 유지, 3번 연속이면 받아들임 */
