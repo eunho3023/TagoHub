@@ -1141,9 +1141,9 @@ private fun PanelSurface(content: @Composable ColumnScope.() -> Unit) {
         Modifier
             .fillMaxWidth()
             .height(heightDp),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         shadowElevation = 10.dp,
-        color = MaterialTheme.colorScheme.surface,
+        color = com.eunho.tagohub.ui.theme.glassColor(),
     ) {
         Column {
             Box(
@@ -1890,7 +1890,7 @@ private fun StationSearch(vm: MapViewModel) {
         query = ""
         focus.clearFocus()
     }
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
+    Surface(shape = RoundedCornerShape(24.dp), color = com.eunho.tagohub.ui.theme.glassColor(), shadowElevation = 6.dp) {
         Column {
             SearchBox(query, { query = it }, "검색하기", onSearch = { results.firstOrNull()?.let { pick(it) } })
             results.forEach { g ->
@@ -1936,7 +1936,7 @@ private fun BusSearchBar(vm: MapViewModel, withStations: Boolean = false) {
         if (!query.any(Char::isDigit)) vm.searchBus(query)
     }
 
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
+    Surface(shape = RoundedCornerShape(24.dp), color = com.eunho.tagohub.ui.theme.glassColor(), shadowElevation = 6.dp) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // 누르면 전체 화면 검색 (분류·집/회사·최근 기록). 고른 결과는 이 지도에서 열림

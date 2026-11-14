@@ -67,42 +67,43 @@ object BoardColor {
     val OnLive = Color(0xFF0B1220)
 }
 
+// 디자인: 1(맑은 파랑) + 5(말랑 파스텔) + 9(유리 지도). 파란 강조 하나, 크게 둥근 모서리, 지도 위 반투명 카드
 private val Light = lightColorScheme(
-    primary = Color(0xFF2B59FF),
+    primary = Color(0xFF2563EB),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE9EEFF),
+    primaryContainer = Color(0xFFE6EEFF),
     onPrimaryContainer = Color(0xFF0F2A6B),
-    secondary = Color(0xFF2B59FF),
+    secondary = Color(0xFF2563EB),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE9EEFF),
+    secondaryContainer = Color(0xFFE6EEFF),
     onSecondaryContainer = Color(0xFF0F2A6B),
-    background = Color(0xFFF3F5F8),
-    onBackground = Color(0xFF0B1220),
+    background = Color(0xFFEEF3FA),
+    onBackground = Color(0xFF0F172A),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF0B1220),
-    surfaceVariant = Color(0xFFEDF1F6),
-    onSurfaceVariant = Color(0xFF5C6A7D),
+    onSurface = Color(0xFF0F172A),
+    surfaceVariant = Color(0xFFEEF2F8),
+    onSurfaceVariant = Color(0xFF5B6577),
     outline = Color(0xFF7C8A9C),
-    outlineVariant = Color(0xFFE4E9F0),
+    outlineVariant = Color(0xFFE3E9F2),
 )
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFF7C9BFF),
+    primary = Color(0xFF6EA0FF),
     onPrimary = Color(0xFF0B1220),
-    primaryContainer = Color(0xFF1B2742),
+    primaryContainer = Color(0xFF1A2A4A),
     onPrimaryContainer = Color(0xFFDCE6FF),
-    secondary = Color(0xFF7C9BFF),
+    secondary = Color(0xFF6EA0FF),
     onSecondary = Color(0xFF0B1220),
-    secondaryContainer = Color(0xFF1B2742),
+    secondaryContainer = Color(0xFF1A2A4A),
     onSecondaryContainer = Color(0xFFDCE6FF),
     background = Color(0xFF0B1220),
     onBackground = Color(0xFFF2F6FB),
-    surface = Color(0xFF121C2B),
-    onSurface = Color(0xFFF2F6FB),
-    surfaceVariant = Color(0xFF1B2739),
-    onSurfaceVariant = Color(0xFFA7B4C6),
+    surface = Color(0xFF141C2E),
+    onSurface = Color(0xFFEAF0FF),
+    surfaceVariant = Color(0xFF1C2640),
+    onSurfaceVariant = Color(0xFF9AA6BF),
     outline = Color(0xFF74849A),
-    outlineVariant = Color(0xFF243247),
+    outlineVariant = Color(0xFF243049),
 )
 
 /** 읽기 쉬운 글자 크기: 본문 15~16, 보조 설명 14, 작은 레이블도 13sp 이상. 숫자·제목은 굵게 */
@@ -127,10 +128,29 @@ private val AppTypography = Typography().let { d ->
 fun headerColor(): Color = if (LocalDarkTheme.current) Color(0xFF101B2B) else Color(0xFF0B1220)
 
 private val AppShapes = Shapes().copy(
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(24.dp),
+    large = RoundedCornerShape(30.dp),
+    extraLarge = RoundedCornerShape(30.dp),
 )
+
+/** 바로가기 칸마다 다른 파스텔 (파랑 · 민트 · 보라 · 살구). 아이콘은 같은 계열의 진한 색 */
+object Pastel {
+    private val lightBg = listOf(Color(0xFFE6EEFF), Color(0xFFDDF6EF), Color(0xFFECE6FF), Color(0xFFFFEDE2))
+    private val darkBg = listOf(Color(0x2E6EA0FF), Color(0x2E2FC4A3), Color(0x33A78BFA), Color(0x2EFFAA78))
+    private val lightIcon = listOf(Color(0xFF2563EB), Color(0xFF119C80), Color(0xFF7C5CFF), Color(0xFFE07A3F))
+    private val darkIcon = listOf(Color(0xFF6EA0FF), Color(0xFF2FC4A3), Color(0xFFA78BFA), Color(0xFFFFAA78))
+
+    @Composable
+    fun bg(i: Int): Color = (if (LocalDarkTheme.current) darkBg else lightBg)[i % 4]
+
+    @Composable
+    fun icon(i: Int): Color = (if (LocalDarkTheme.current) darkIcon else lightIcon)[i % 4]
+}
+
+/** 지도 위에 뜨는 카드·시트 바탕: 살짝 비치는 유리 느낌 (뒤 지도가 은은하게 보임) */
+@Composable
+fun glassColor(): Color = MaterialTheme.colorScheme.surface.copy(alpha = if (LocalDarkTheme.current) 0.90f else 0.92f)
 
 @Composable
 fun TagoTheme(content: @Composable () -> Unit) {
