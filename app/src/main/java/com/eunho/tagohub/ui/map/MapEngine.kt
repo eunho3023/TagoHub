@@ -8,4 +8,6 @@ interface MapEngine : MapCanvas {
     fun resume()
     fun pause()
     fun release()
+    /** 나침반 윗변 위치(지도 맨 위에서 px). 화면이 지도 버튼 바로 밑을 알려 줌 */
+    fun setCompassTop(px: Float) {}
 }
