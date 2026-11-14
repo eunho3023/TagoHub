@@ -970,6 +970,9 @@ private fun ItsCctvDialog(cctv: com.eunho.tagohub.data.ItsCctv, onDismiss: () ->
     }
 }
 
+/** 장소 카드 "주변 버스정류장" 버튼 (카카오 카테고리 코드와 겹치지 않는 이름) */
+private const val BUS_CHIP = "BUS"
+
 /** 지도에서 고른 곳: 여기서 출발 / 여기로 도착 */
 @Composable
 private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
@@ -1011,99 +1014,58 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Work) }) { Text("회사로 저장") }
             }
-            // 주변 찾기 (카카오 카테고리로 장소 검색)
+            // 주변 찾기: 카카오 카테고리 버튼 + "주변 지하철역" 바로 뒤에 "주변 버스정류장" 버튼 (앱 정류장 자료로 찾음)
+            var busOpen by remember(p) { mutableStateOf(false) }
+            val chips = remember {
+                com.eunho.tagohub.data.KakaoLocal.CATEGORIES.flatMap { c -> if (c.first == "SW8") listOf(c, BUS_CHIP to "버스정류장") else listOf(c) }
+            }
             androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(com.eunho.tagohub.data.KakaoLocal.CATEGORIES) { (code, label) ->
-                    AssistChip(onClick = { vm.findNearby(code, label) }, label = { Text("주변 $label") })
+                items(chips) { (code, label) ->
+                    AssistChip(
+                        onClick = {
+                            if (code == BUS_CHIP) { busOpen = true; vm.nearby.value = null }
+                            else { busOpen = false; vm.findNearby(code, label) }
+                        },
+                        label = { Text("주변 $label") },
+                    )
                 }
             }
             val near by vm.nearby.collectAsStateWithLifecycle()
-            near?.let { (label, list) ->
+            val transit by vm.nearbyTransit.collectAsStateWithLifecycle()
+            if (busOpen) {
+                // 주변 버스정류장: 다른 "주변 OO" 목록과 같은 모양. 누르면 그 정류장 패널 (도착 정보)
+                val stops = transit?.stops
+                Text(
+                    when {
+                        stops == null -> "버스정류장 찾는 중"
+                        stops.isEmpty() -> "400m 안에 버스정류장 없음"
+                        else -> "가까운 버스정류장"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp),
+                )
+                stops.orEmpty().forEach { (m, d) ->
+                    val st = m.main
+                    Row(Modifier.fillMaxWidth().clickable { vm.openNearbyStop(st.nodeId) }.padding(vertical = 5.dp).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(st.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            // 타 시·군이 같이 서는 정류장은 번호를 모두 모아 한 줄로 (예: "정류장 30690 · 3110313")
+                            val sub = listOfNotNull(
+                                m.numbers.ifBlank { null }?.let { "정류장 $it" },
+                                m.others.takeIf { it.isNotEmpty() }?.let { "타 시·군 ${it.size}곳" },
+                            ).joinToString(" · ")
+                            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Text(if (d >= 1000) "%.1fkm".format(d / 1000) else "${d.toInt()}m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            } else near?.let { (label, list) ->
                 Text(if (list.isEmpty()) "1.5km 안에 $label 없음" else "가까운 $label", style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
                 list.take(6).forEach { pl ->
                     Row(Modifier.fillMaxWidth().clickable { vm.pickPlace(pl) }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(pl.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         pl.distance?.let { Text(if (it >= 1000) "%.1fkm".format(it / 1000.0) else "${it}m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                }
-            }
-            // 가까운 정류장·역: "주변 OO" 목록처럼 카드 아래쪽에. 주소만 있는 장소를 눌렀을 때도 여기서 바로 정류장·역으로 넘어갈 수 있게
-            val transit by vm.nearbyTransit.collectAsStateWithLifecycle()
-            transit?.let { t ->
-                Text(
-                    "가까운 정류장·역",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, end = 10.dp),
-                )
-                if (t.stops.isEmpty() && t.stations.isEmpty()) {
-                    Text(
-                        "반경 800m 안에 정류장·역이 없어요",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, end = 10.dp),
-                    )
-                }
-                if (t.stops.isNotEmpty() || t.stations.isNotEmpty()) {
-                    val distText = { d: Double -> if (d >= 1000) "%.1fkm".format(d / 1000) else "${d.toInt()}m" }
-                    t.stations.forEach { (g, d) ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { vm.openNearbyStation(g) }.padding(top = 6.dp, end = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Filled.DirectionsSubway, contentDescription = null, tint = ModeColor.Subway, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    if (g.name.endsWith("역")) g.name else "${g.name}역",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                if (g.displayLines.isNotEmpty()) Text(
-                                    g.displayLines.joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    t.stops.forEach { (m, d) ->
-                        val s = m.main
-                        Row(
-                            Modifier.fillMaxWidth().clickable { vm.openNearbyStop(s.nodeId) }.padding(top = 6.dp, end = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Filled.DirectionsBus, contentDescription = null, tint = ModeColor.Bus, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    s.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    // 타 시·군이 같이 서는 정류장은 번호를 모두 모아 한 줄로 (예: "정류장 30690 · 3110313")
-                                    listOfNotNull(
-                                        m.numbers.ifBlank { null }?.let { "정류장 $it" },
-                                        "도보 ${(d / 67.0).toInt() + 1}분",
-                                        m.others.takeIf { it.isNotEmpty() }?.let { "타 시·군 ${it.size}곳" },
-                                    ).joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Text(distText(d), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
                     }
                 }
             }
