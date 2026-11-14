@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TagoHub 관리자 · 노선 편집</title>
+<style>
+  :root { --bg:#0f1720; --panel:#16212e; --line:#2a3a4d; --text:#e7eef7; --sub:#93a4b8; --on:#2f81f7; --chip:#1f3b5c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 "Noto Sans KR", system-ui, sans-serif; }
+  header { position:sticky; top:0; z-index:5; display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px; background:#0f1720f2; border-bottom:1px solid var(--line); }
+  select, input { padding:7px 9px; border-radius:8px; border:1px solid var(--line); background:#0e1720; color:var(--text); font:inherit; }
+  #q { width:120px; }
+  button { border:1px solid var(--line); background:#1b2836; color:var(--text); border-radius:8px; padding:7px 10px; font:inherit; cursor:pointer; white-space:nowrap; }
+  button:hover { border-color:#3d5a78; background:#223244; }
+  button.on { background:var(--on); border-color:var(--on); color:#fff; }
+  #name { flex:1; min-width:140px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #modes { display:flex; gap:4px; }
+  #modes button { padding:6px 10px; }
+  main { padding:10px; display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:10px; align-items:start; }
+  main.shape { grid-template-columns:minmax(0,1fr); }
+  main.shape aside { display:none; }
+  @media (max-width:820px){ main { grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; }
+  #grid { display:grid; grid-template-columns:repeat(4, minmax(70px,1fr)); gap:6px; }
+  .cell { min-height:70px; border:1px dashed #2f4459; border-radius:10px; background:#111c27; padding:4px; display:flex; flex-direction:column; gap:3px; cursor:pointer; position:relative; }
+  .cell:hover { border-color:var(--on); background:#16283c; }
+  .axis { position:absolute; right:4px; top:2px; font-size:10px; color:#4d6a86; }
+  .chip { display:flex; gap:5px; align-items:center; border:1px solid #2d4b6b; background:var(--chip); border-radius:7px; padding:3px 5px; font-size:12px; cursor:pointer; overflow:hidden; }
+  .chip b { color:#9fc3ea; font-variant-numeric:tabular-nums; }
+  .chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip.sel { outline:2px solid #e3b341; outline-offset:1px; }
+  #tray { display:flex; flex-direction:column; gap:4px; max-height:460px; overflow:auto; }
+  #tray .chip { background:#22303f; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  .label { color:var(--sub); font-size:12px; }
+  [hidden] { display:none !important; }
+  #map { height:min(64vh, 620px); border-radius:10px; background:#0b1118; }
+  .shp-dot { width:14px; height:14px; border-radius:50%; background:#ffb300; border:2px solid #fff; box-shadow:0 0 0 1px #0007; }
+  .leaflet-container { font:inherit; }
+  #hint { position:fixed; left:10px; right:10px; bottom:10px; padding:8px 10px; font-size:13px; background:#0e1720ee; border:1px solid var(--line); border-radius:10px; color:#cfe0f3; pointer-events:none; }
+  #hint:empty { display:none; }
+  #pick { position:fixed; top:58px; left:10px; z-index:8; width:min(560px, calc(100vw - 20px)); padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 40px #000a; }
+  .pick-head { display:flex; gap:8px; align-items:center; padding:2px 4px 8px; color:var(--sub); font-size:12px; }
+  .pick-head b { color:var(--text); font-size:13px; }
+  .pick-head button { margin-left:auto; padding:3px 8px; font-size:12px; }
+  #pickList { display:flex; flex-direction:column; gap:4px; max-height:min(46vh,360px); overflow:auto; }
+  .pickRow { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; text-align:left; padding:7px 8px; }
+  .pickRow .where { color:#9fc3ea; font-size:12px; border:1px solid #2d4b6b; background:var(--chip); border-radius:999px; padding:1px 8px; white-space:nowrap; }
+  .pickRow .what { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #login { position:fixed; inset:0; z-index:20; display:grid; place-items:center; background:#0b1118e6; }
+  #login form { display:flex; flex-direction:column; gap:10px; width:min(340px, calc(100vw - 40px)); padding:18px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+  #login h1 { margin:0; font-size:16px; }
+</style>
+</head>
+<body>
+<div id="login">
+  <form id="loginForm">
+    <h1>관리자 로그인</h1>
+    <div class="label">서버에 설정한 ADMIN_TOKEN 을 넣으세요. 이 브라우저에 30일 동안 기억합니다.</div>
+    <input id="token" type="password" placeholder="관리자 암호" autocomplete="current-password">
+    <button type="submit">들어가기</button>
+    <div class="label" id="loginMsg"></div>
+  </form>
+</div>
+
+<header>
+  <select id="city" aria-label="지역"><option value="">전국</option></select>
+  <input id="q" inputmode="numeric" placeholder="노선 번호">
+  <button id="find">조회</button>
+  <span id="name">노선 번호를 넣고 조회하세요</span>
+  <div id="modes">
+    <button id="modeLayout" type="button" class="on">배치도</button>
+    <button id="modeShape" type="button">노선 선형</button>
+  </div>
+  <button id="logout">로그아웃</button>
+</header>
+
+<div id="pick" hidden>
+  <div class="pick-head"><b id="pickTitle"></b><span id="pickSub"></span><button id="pickClose" type="button">닫기</button></div>
+  <div id="pickList"></div>
+</div>
+
+<main id="main">
+  <section class="panel">
+    <div id="grid"></div>
+    <div id="mapWrap" hidden><div id="map"></div></div>
+    <div class="row" id="layoutBar">
+      <button id="auto">자동 배치(ㄹ자)</button>
+      <button id="addRow">행 추가</button>
+      <button id="clear">비우기</button>
+      <button id="save">서버에 저장</button>
+      <button id="download">TSV 내려받기</button>
+      <span id="status" class="label"></span>
+    </div>
+    <div class="row" id="shapeBar" hidden>
+      <button id="defaultShape">기본 선형 불러오기</button>
+      <button id="stopLine">정류장 순서로 잇기</button>
+      <button id="shapeSave">서버에 저장</button>
+      <button id="shapeDownload">TSV 내려받기</button>
+      <span id="shapeStatus" class="label"></span>
+    </div>
+    <div class="row"><span class="label" id="tip">정류장을 누른 뒤 칸을 누르면 옮겨집니다. 고친 뒤에는 반드시 "서버에 저장" 을 누르세요.</span></div>
+  </section>
+  <aside class="panel" id="aside">
+    <div class="label" style="margin-bottom:6px">배치 안 된 정류장</div>
+    <div id="tray"></div>
+  </aside>
+</main>
+
+<div id="hint"></div>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const COLS = 4;
+  const S = {
+    route: null, stops: [], cells: {}, sel: null, rows: 4, byNo: null, cities: {},
+    mode: 'layout', layoutFor: null, shapeFor: null,
+    shape: [], shapeDirty: false, map: null, layer: null, poly: null,
+  };
+
+  const hint = (msg, ms = 5000) => {
+    const el = $('#hint');
+    el.textContent = msg || '';
+    clearTimeout(hint.t);
+    if (msg && ms) hint.t = setTimeout(() => { el.textContent = ''; }, ms);
+  };
+
+  const api = async (path, opt = {}) => {
+    const r = await fetch(path, { credentials: 'same-origin', ...opt });
+    const text = await r.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+    if (r.status === 401) { $('#login').hidden = false; throw new Error('로그인이 필요합니다.'); }
+    if (!r.ok) throw new Error((body && body.error) || ('HTTP ' + r.status));
+    return body;
+  };
+
+  const bucket = (id) => {
+    let h = 0x811c9dc5;
+    for (const b of new TextEncoder().encode(id)) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
+    return h % 1024;
+  };
+
+  async function ensureData() {
+    if (!S.byNo) {
+      const [byNo, cities] = await Promise.all([
+        fetch('data/routes_by_no.json').then((r) => r.json()),
+        fetch('data/cities.json').then((r) => r.json()).catch(() => ({ names: {} })),
+      ]);
+      S.byNo = byNo || {};
+      S.cities = (cities && cities.names) || {};
+      const sel = $('#city');
+      Object.entries(S.cities)
+        .sort((a, b) => a[1].localeCompare(b[1], 'ko'))
+        .forEach(([code, name]) => {
+          const o = document.createElement('option');
+          o.value = code; o.textContent = name;
+          sel.appendChild(o);
+        });
+    }
+  }
+
+  async function find() {
+    const no = $('#q').value.trim();
+    if (!no) return hint('노선 번호를 넣으세요.');
+    hint('노선을 찾는 중…', 0);
+    try {
+      await ensureData();
+      const want = $('#city').value;
+      const hits = [];
+      for (const [code, map] of Object.entries(S.byNo)) {
+        if (want && code !== want) continue;
+        for (const id of (map[no] || [])) hits.push({ id, code, city: S.cities[code] || code });
+      }
+      if (!hits.length) return hint('그 번호의 노선이 없습니다.');
+      hint('', 0);
+      if (hits.length === 1) return open(hits[0]);
+      showPick(hits, no);
+    } catch (e) { hint(e.message); }
+  }
+
+  function showPick(hits, no) {
+    const list = $('#pickList');
+    list.innerHTML = '';
+    $('#pickTitle').textContent = no + '번 노선';
+    $('#pickSub').textContent = hits.length + '개 지역 · 열 지역을 고르세요';
+    hits.forEach((h) => {
+      const b = document.createElement('button');
+      b.className = 'pickRow';
+      b.type = 'button';
+      const w = document.createElement('span');
+      w.className = 'where'; w.textContent = h.city;
+      const t = document.createElement('span');
+      t.className = 'what'; t.textContent = h.id;
+      b.append(w, t);
+      b.addEventListener('click', () => { closePick(); open(h); });
+      list.appendChild(b);
+    });
+    $('#pick').hidden = false;
+    const first = list.querySelector('button');
+    if (first) first.focus();
+  }
+
+  const closePick = () => { $('#pick').hidden = true; };
+
+  async function open(hit) {
+    hint('노선 정보를 불러오는 중…', 0);
+    try {
+      const all = await fetch('data/routes/' + bucket(hit.id) + '.json').then((r) => r.json());
+      const r = all[hit.id];
+      if (!r) throw new Error('노선 자료를 찾지 못했습니다.');
+      S.route = { id: hit.id, no: r.no, city: r.city || hit.city, start: r.start, end: r.end };
+      S.stops = (r.stops || []).map((s) => ({ seq: s[0], id: String(s[1]), name: s[2] || '', lat: Number(s[3]), lng: Number(s[4]) }))
+        .sort((a, b) => (a.seq || 0) - (b.seq || 0));
+      S.cells = {}; S.sel = null; S.rows = 4;
+      S.layoutFor = null; S.shapeFor = null; S.shape = []; S.shapeDirty = false;
+      $('#name').textContent = `${S.route.no} · ${S.route.city} · ${S.route.start || '?'} ↔ ${S.route.end || '?'} · 정류장 ${S.stops.length}`;
+      $('#name').title = $('#name').textContent;
+      if (S.mode === 'shape') await ensureShape(true);
+      else await ensureLayout(true);
+      hint('노선을 열었습니다. 고친 뒤에는 반드시 "서버에 저장" 을 누르세요.');
+    } catch (e) { hint(e.message); }
+  }
+
+  // ── 배치도 ──────────────────────────────────────────────
+  function parseTsv(text) {
+    const out = {};
+    const line = String(text || '').split(/\r?\n/)[0] || '';
+    const cells = line.split('\t')[1] || '';
+    for (const part of cells.split(',')) {
+      const p = part.split(':');
+      if (p.length !== 3) continue;
+      const x = Number(p[1]), y = Number(p[2]);
+      if (Number.isFinite(x) && Number.isFinite(y)) out[p[0]] = [Math.round(x), Math.round(y)];
+    }
+    return out;
+  }
+
+  function toTsv() {
+    const body = S.stops.filter((s) => S.cells[s.id])
+      .map((s) => `${s.id}:${S.cells[s.id][0]}:${S.cells[s.id][1]}`).join(',');
+    if (!body) return '';
+    return `${S.route.id.replace(/^SEB/, '')}\t${body}`;
+  }
+
+  const maxY = () => Object.values(S.cells).reduce((m, p) => Math.max(m, p[1]), 0);
+
+  async function ensureLayout(force = false) {
+    if (!S.route) return;
+    if (!force && S.layoutFor === S.route.id) return;
+    let saved = null;
+    try { saved = (await api('/w/admin/layouts/' + encodeURIComponent(S.route.id))).tsv; } catch (e) { saved = null; }
+    S.cells = saved ? parseTsv(saved) : {};
+    S.layoutFor = S.route.id;
+    render();
+    if (force) hint(saved ? '저장된 배치를 불러왔습니다.' : '자동 배치로 초안을 만들고 칸을 옮겨 보세요.');
+  }
+
+  function render() {
+    const rows = Math.max(S.rows, maxY() + 2, 3);
+    const grid = $('#grid');
+    grid.innerHTML = '';
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < COLS; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.x = x; cell.dataset.y = y;
+        const ax = document.createElement('i');
+        ax.className = 'axis'; ax.textContent = `${x},${y}`;
+        cell.appendChild(ax);
+        S.stops.forEach((s, i) => {
+          const p = S.cells[s.id];
+          if (!p || p[0] !== x || p[1] !== y) return;
+          const chip = document.createElement('button');
+          chip.className = 'chip' + (S.sel === s.id ? ' sel' : '');
+          chip.dataset.node = s.id;
+          chip.innerHTML = `<b>${i + 1}</b><span></span>`;
+          chip.querySelector('span').textContent = s.name || s.id;
+          chip.title = `${i + 1}. ${s.name} (${x},${y})`;
+          cell.appendChild(chip);
+        });
+        grid.appendChild(cell);
+      }
+    }
+    const tray = $('#tray');
+    tray.innerHTML = '';
+    S.stops.forEach((s, i) => {
+      if (S.cells[s.id]) return;
+      const chip = document.createElement('button');
+      chip.className = 'chip' + (S.sel === s.id ? ' sel' : '');
+      chip.dataset.node = s.id;
+      chip.innerHTML = `<b>${i + 1}</b><span></span>`;
+      chip.querySelector('span').textContent = s.name || s.id;
+      tray.appendChild(chip);
+    });
+    if (!tray.children.length) tray.innerHTML = '<div class="label">모두 배치했습니다.</div>';
+    const placed = Object.keys(S.cells).length;
+    $('#status').textContent = `${placed}/${S.stops.length}칸 배치`;
+  }
+
+  function autoLayout() {
+    if (!S.stops.length) return hint('먼저 노선을 조회하세요.');
+    S.cells = {};
+    S.stops.forEach((s, i) => {
+      const row = Math.floor(i / COLS), col = i % COLS;
+      S.cells[s.id] = [row % 2 === 0 ? col : COLS - 1 - col, row];
+    });
+    S.sel = null;
+    render();
+  }
+
+  // ── 노선 선형 ───────────────────────────────────────────
+  let leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve(window.L);
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((res, rej) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = () => res(window.L);
+      s.onerror = () => { leafletPromise = null; rej(new Error('지도를 불러오지 못했습니다 (인터넷 확인)')); };
+      document.head.appendChild(s);
+    });
+    return leafletPromise;
+  }
+
+  async function ensureMap() {
+    if (S.map) return S.map;
+    const L = await loadLeaflet();
+    const map = L.map($('#map'), { zoomControl: true }).setView([36.35, 127.38], 11);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    S.map = map;
+    S.layer = L.layerGroup().addTo(map);
+    // 선이 아직 없으면 지도를 눌러 첫 점부터 찍을 수 있게
+    map.on('click', (e) => { if (S.mode === 'shape' && S.shape.length < 2) insertPoint(e.latlng); });
+    return map;
+  }
+
+  /** Google polyline (정밀도 5) → [[위도,경도],…] */
+  function decodePolyline(str, precision = 5) {
+    const factor = Math.pow(10, precision);
+    const out = [];
+    let i = 0, lat = 0, lng = 0;
+    while (i < str.length) {
+      let b, shift = 0, result = 0;
+      do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+      shift = 0; result = 0;
+      do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+      out.push([lat / factor, lng / factor]);
+    }
+    return out;
+  }
+
+  const stopPts = () => S.stops
+    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
+    .map((s) => [s.lat, s.lng]);
+
+  /** 앱에 들어 있는 기본 선형 (웹 노선 지도와 같은 data/shapes). 없으면 정류장을 이은 선 */
+  async function defaultShape(id) {
+    const raw = id.replace(/^SEB/, '');
+    for (const key of ['SEB' + raw, raw]) {
+      try {
+        const all = await fetch('data/shapes/' + bucket(key) + '.json').then((r) => r.json());
+        if (all && all[key]) {
+          const pts = decodePolyline(all[key]);
+          if (pts.length >= 2) return pts;
+        }
+      } catch (e) { /* 이 묶음에 없음 */ }
+    }
+    return stopPts();
+  }
+
+  async function ensureShape(force = false) {
+    if (!S.route) return;
+    if (!force && S.shapeFor === S.route.id) return;
+    hint('노선 선형을 불러오는 중…', 0);
+    let saved = null;
+    try { saved = (await api('/w/admin/shapes/' + encodeURIComponent(S.route.id))).tsv; } catch (e) { saved = null; }
+    if (saved) {
+      S.shape = decodeShape(saved);
+    } else {
+      S.shape = await defaultShape(S.route.id);
+    }
+    S.shapeFor = S.route.id;
+    S.shapeDirty = false;
+    await ensureMap();
+    S.map.invalidateSize();
+    drawShape();
+    fitShape();
+    hint(saved ? '저장된 선형을 불러왔습니다. 점을 끌거나 선을 눌러 고치세요.' : '기본 선형입니다. 점을 끌거나 선을 눌러 고치세요.');
+  }
+
+  /** 앱과 같은 형식: 노선ID \t 위도,경도 \t 변화량(1e-5도)… */
+  function encodeShape(id, pts) {
+    const la0 = Math.round(pts[0][0] * 1e5), ln0 = Math.round(pts[0][1] * 1e5);
+    const d = [];
+    let la = la0, ln = ln0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = Math.round(pts[i][0] * 1e5), n = Math.round(pts[i][1] * 1e5);
+      d.push(a - la, n - ln);
+      la = a; ln = n;
+    }
+    return `${id.replace(/^SEB/, '')}\t${(la0 / 1e5).toFixed(5)},${(ln0 / 1e5).toFixed(5)}\t${d.join(',')}`;
+  }
+
+  function decodeShape(tsv) {
+    const c = String(tsv || '').split(/\r?\n/)[0].split('\t');
+    if (c.length < 3) return [];
+    const first = c[1].split(',').map(Number);
+    if (first.length !== 2 || !first.every(Number.isFinite)) return [];
+    let la = Math.round(first[0] * 1e5), ln = Math.round(first[1] * 1e5);
+    const d = c[2].split(',').map(Number);
+    const pts = [[la / 1e5, ln / 1e5]];
+    for (let i = 0; i + 1 < d.length; i += 2) {
+      if (!Number.isFinite(d[i]) || !Number.isFinite(d[i + 1])) continue;
+      la += d[i]; ln += d[i + 1];
+      pts.push([la / 1e5, ln / 1e5]);
+    }
+    return pts;
+  }
+
+  function drawShape() {
+    const L = window.L;
+    if (!L || !S.map) return;
+    S.layer.clearLayers();
+    S.stops.forEach((s, i) => {
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng)) return;
+      L.circleMarker([s.lat, s.lng], { radius: 4, color: '#5b7896', weight: 1, fillColor: '#c7d6e6', fillOpacity: 0.9 })
+        .addTo(S.layer)
+        .bindTooltip(`${i + 1}. ${s.name || s.id}`, { direction: 'top' });
+    });
+    if (S.shape.length >= 2) {
+      L.polyline(S.shape, { color: '#ffffff', weight: 7, opacity: 0.85 }).addTo(S.layer);
+      S.poly = L.polyline(S.shape, { color: '#2f81f7', weight: 4, opacity: 0.95 }).addTo(S.layer);
+      S.poly.on('click', (e) => { L.DomEvent.stop(e); insertPoint(e.latlng); });
+    }
+    S.shape.forEach((p, i) => {
+      const m = L.marker(p, { draggable: true, icon: L.divIcon({ className: 'shp-dot', iconSize: [14, 14] }) }).addTo(S.layer);
+      m.on('dragend', () => {
+        const q = m.getLatLng();
+        S.shape[i] = [q.lat, q.lng];
+        S.shapeDirty = true;
+        drawShape();
+      });
+      m.on('contextmenu', (e) => {
+        L.DomEvent.stop(e);
+        if (S.shape.length <= 2) return hint('점은 두 개 이상이어야 합니다.');
+        S.shape.splice(i, 1);
+        S.shapeDirty = true;
+        drawShape();
+      });
+    });
+    $('#shapeStatus').textContent = `점 ${S.shape.length}개${S.shapeDirty ? ' · 저장 안 됨' : ''}`;
+  }
+
+  function fitShape() {
+    const pts = S.shape.length >= 2 ? S.shape : stopPts();
+    if (pts.length && S.map) S.map.fitBounds(pts, { padding: [30, 30] });
+  }
+
+  /** 화면에서 누른 자리와 가장 가까운 선분을 찾아 그 뒤에 점을 넣음 */
+  function insertPoint(latlng) {
+    const p = [latlng.lat, latlng.lng];
+    if (S.shape.length < 2) {
+      S.shape.push(p);
+    } else {
+      let best = 0, bestD = Infinity;
+      for (let i = 0; i < S.shape.length - 1; i++) {
+        const d = segDist(p, S.shape[i], S.shape[i + 1]);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      S.shape.splice(best + 1, 0, p);
+    }
+    S.shapeDirty = true;
+    drawShape();
+  }
+
+  /** 점 p 에서 선분 a-b 까지의 거리 (위도 1도 ≈ 111km 로 맞춰 비교) */
+  function segDist(p, a, b) {
+    const k = Math.cos((p[0] * Math.PI) / 180);
+    const px = p[1] * k, py = p[0], ax = a[1] * k, ay = a[0], bx = b[1] * k, by = b[0];
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  // ── 저장·내려받기 ───────────────────────────────────────
+  async function save() {
+    if (!S.route) return hint('먼저 노선을 조회하세요.');
+    try {
+      if (S.mode === 'shape') {
+        if (S.shape.length < 2) return hint('점이 두 개 이상이어야 합니다.');
+        await api('/w/admin/shapes/' + encodeURIComponent(S.route.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tsv: encodeShape(S.route.id, S.shape) }),
+        });
+        S.shapeDirty = false;
+        drawShape();
+        hint('서버에 저장했습니다. 앱은 1분 안에 새 선형을 받습니다.');
+      } else {
+        const tsv = toTsv();
+        if (!tsv) return hint('배치한 칸이 없습니다.');
+        await api('/w/admin/layouts/' + encodeURIComponent(S.route.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tsv }),
+        });
+        hint('서버에 저장했습니다. 앱은 1분 안에 새 배치를 받습니다.');
+      }
+    } catch (e) { hint(e.message); }
+  }
+
+  function download() {
+    if (!S.route) return hint('먼저 노선을 조회하세요.');
+    const shape = S.mode === 'shape';
+    const tsv = shape ? (S.shape.length >= 2 ? encodeShape(S.route.id, S.shape) : '') : toTsv();
+    if (!tsv) return hint(shape ? '점이 두 개 이상이어야 합니다.' : '배치한 칸이 없습니다.');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([tsv + '\n'], { type: 'text/plain;charset=utf-8' }));
+    a.download = S.route.id.replace(/^SEB/, '') + (shape ? '.shape' : '') + '.tsv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  // ── 화면 모드 ───────────────────────────────────────────
+  async function setMode(mode) {
+    S.mode = mode;
+    const shape = mode === 'shape';
+    $('#modeLayout').classList.toggle('on', !shape);
+    $('#modeShape').classList.toggle('on', shape);
+    $('#main').classList.toggle('shape', shape);
+    $('#grid').hidden = shape;
+    $('#mapWrap').hidden = !shape;
+    $('#layoutBar').hidden = shape;
+    $('#shapeBar').hidden = !shape;
+    $('#aside').hidden = shape;
+    $('#tip').textContent = shape
+      ? '선을 누르면 점이 추가됩니다. 점을 끌어 옮기고, 점을 오른쪽 클릭하면 지웁니다.'
+      : '정류장을 누른 뒤 칸을 누르면 옮겨집니다. 고친 뒤에는 반드시 "서버에 저장" 을 누르세요.';
+    if (!S.route) return;
+    if (shape) await ensureShape(false);
+    else await ensureLayout(false);
+  }
+
+  function bind() {
+    $('#loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('#loginMsg').textContent = '확인 중…';
+      try {
+        await api('/w/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: $('#token').value }),
+        });
+        $('#login').hidden = true;
+        $('#loginMsg').textContent = '';
+        hint('로그인했습니다.');
+      } catch (err) { $('#loginMsg').textContent = err.message; }
+    });
+    $('#logout').addEventListener('click', async () => {
+      await fetch('/w/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      $('#login').hidden = false;
+    });
+    $('#find').addEventListener('click', find);
+    $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') find(); });
+    $('#pickClose').addEventListener('click', closePick);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePick(); });
+    document.addEventListener('mousedown', (e) => {
+      const p = $('#pick');
+      if (p.hidden || p.contains(e.target) || e.target.closest('header')) return;
+      closePick();
+    });
+    $('#modeLayout').addEventListener('click', () => setMode('layout'));
+    $('#modeShape').addEventListener('click', () => setMode('shape'));
+    $('#auto').addEventListener('click', autoLayout);
+    $('#addRow').addEventListener('click', () => { S.rows = maxY() + 3; render(); });
+    $('#clear').addEventListener('click', () => {
+      if (!Object.keys(S.cells).length || !confirm('배치를 모두 지울까요?')) return;
+      S.cells = {}; S.sel = null; render();
+    });
+    $('#save').addEventListener('click', save);
+    $('#download').addEventListener('click', download);
+    $('#grid').addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (chip) { S.sel = S.sel === chip.dataset.node ? null : chip.dataset.node; render(); return; }
+      const cell = e.target.closest('.cell');
+      if (!cell) return;
+      if (!S.sel) return hint('먼저 정류장을 누르세요.');
+      S.cells[S.sel] = [Number(cell.dataset.x), Number(cell.dataset.y)];
+      render();
+    });
+    $('#tray').addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      S.sel = S.sel === chip.dataset.node ? null : chip.dataset.node;
+      render();
+    });
+    $('#defaultShape').addEventListener('click', async () => {
+      if (!S.route) return hint('먼저 노선을 조회하세요.');
+      S.shape = await defaultShape(S.route.id);
+      S.shapeDirty = true;
+      drawShape();
+      fitShape();
+      hint('기본 선형으로 되돌렸습니다. 저장해야 앱에 반영됩니다.');
+    });
+    $('#stopLine').addEventListener('click', () => {
+      if (!S.route) return hint('먼저 노선을 조회하세요.');
+      S.shape = stopPts();
+      S.shapeDirty = true;
+      drawShape();
+      fitShape();
+    });
+    $('#shapeSave').addEventListener('click', save);
+    $('#shapeDownload').addEventListener('click', download);
+  }
+
+  bind();
+  render();
+  api('/w/admin/session').then(() => { $('#login').hidden = true; }).catch(() => { $('#login').hidden = false; });
+})();
+</script>
+</body>
+</html>

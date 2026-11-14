@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -27,12 +28,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.eunho.tagohub.data.RemoteLayouts
 import com.eunho.tagohub.data.RouteDiagram
 import com.eunho.tagohub.data.RouteLive
 import com.eunho.tagohub.data.RouteStop
 import kotlinx.coroutines.delay
 
-/** 노선 배치도: 정류장을 줄 세워 한눈에 보는 그림 (서울시 배치 좌표가 있는 노선은 그대로, 나머지는 ㄹ자). 정류장을 누르면 그 정류장으로 */
+/**
+ * 노선 배치도: 정류장을 줄 세워 한눈에 보는 그림.
+ * 앱에 들어 있는 기본 배치 위에 관리자 페이지에서 저장한 배치(/w/layouts.tsv)를 덮어써서 그린다.
+ * 정류장을 누르면 그 정류장으로.
+ */
 @Composable
 fun RouteDiagramView(
     routeId: String,
@@ -45,8 +52,17 @@ fun RouteDiagramView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val cells = remember(routeId, stops) {
-        RouteDiagram.layout(routeId, stops.map { it.nodeId }, RouteDiagram.official(context), PER_ROW)
+    // 서버 배치가 늦게 도착하면 값이 바뀌므로, 그때 다시 계산해 바로 반영한다
+    val remote by RemoteLayouts.layouts.collectAsStateWithLifecycle()
+    val cells = remember(routeId, stops, remote) {
+        val merged = RemoteLayouts.overlay(RouteDiagram.official(context), remote)
+        RouteDiagram.layout(
+            routeId,
+            stops.map { it.nodeId },
+            merged,
+            PER_ROW,
+            acceptPartial = remote.containsKey(routeId.removePrefix("SEB")),
+        )
     }
     DiagramCanvas(stops, cells, color, busMotions, focusedNodeId, onStop, modifier)
 }
