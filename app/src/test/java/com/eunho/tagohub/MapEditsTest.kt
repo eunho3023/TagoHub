@@ -32,6 +32,15 @@ class MapEditsTest {
         assertEquals(-1, EditPath.nearestVertex(listOf(a, b, c), LatLng(35.8050, 127.1050), 30.0))
     }
 
+    /** 정차하는 정류장은 선 위의 점으로 들어감 (가까운 구간 사이에, 3m 안의 점은 그 자리로 옮김) */
+    @Test fun passStopsPutsStopsOnLine() {
+        val s1 = LatLng(35.8002, 127.1030)   // a-b 사이 옆 약 22m
+        val s2 = LatLng(35.80001, 127.1100)  // b 바로 옆 (1m) → b 를 옮김
+        val far = LatLng(35.9000, 127.2000)  // 선에서 멀어 건너뜀
+        val out = EditPath.passStops(listOf(a, b, c), listOf(s1, s2, far), 80.0)
+        assertEquals(listOf(a, s1, s2, c), out)
+    }
+
     @Test fun snapsToNearbyStop() {
         val stops = listOf(LatLng(35.8001, 127.1001), LatLng(35.8100, 127.1100))
         assertEquals(stops[0], EditPath.nearestStop(stops, LatLng(35.8000, 127.1000), 30.0))   // 약 14m → 정류장에 붙음

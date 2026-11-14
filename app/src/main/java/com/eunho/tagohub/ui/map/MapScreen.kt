@@ -1834,6 +1834,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             // 몇 정류장·몇 분을 셀 정류장: 들어온 정류장, 배치도에서 누르면 그 정류장 (한 번 더 누르면 정류장 열기)
             var pick by rememberSaveable(d.routeId) { mutableStateOf(d.focusNodeId) }
             val focusIdx = list.indexOfFirst { it.nodeId == pick }
+            val liveTick by produceState(System.currentTimeMillis(), motions) { while (true) { value = System.currentTimeMillis(); delay(1000) } }
             if (focusIdx >= 0) {
                 val tick by produceState(System.currentTimeMillis(), motions) { while (true) { delay(5000); value = System.currentTimeMillis() } }
                 val coming = remember(motions, focusIdx, tick) {
@@ -1867,6 +1868,11 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                     segSec = segSec,
                 )
             } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                // 정류장마다 가장 먼저 오는 버스: "3정류장 전 · 5분 후" (배치도와 같은 구간 시간, 1초마다 줄어듦)
+                val liveOf = { i: Int ->
+                    motions.mapNotNull { m -> com.eunho.tagohub.data.RouteLive.approach(m.fraction(liveTick), i, segSec) }
+                        .minByOrNull { it.sec }?.let { com.eunho.tagohub.data.RouteLive.approachText(it) }
+                }
                 itemsIndexed(list) { i, s ->
                     if (i > 0 && list[i - 1].ord == turnOrd) TurnMarker(color)
                     TimelineRow(
@@ -1877,6 +1883,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
                         between = placement.between[i].orEmpty(),
                         focused = s.nodeId == d.focusNodeId,
                         times = stopTimes[s.ord]?.let { (a, b) -> "${JeonjuTimetable.clock(a)} - ${JeonjuTimetable.clock(b)}" },
+                        live = liveOf(i),
                     ) { vm.focusRouteStop(s.nodeId) }
                 }
             }

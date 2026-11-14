@@ -7,14 +7,17 @@ import { MapView } from "./map.js";
 import * as B from "./busdata.js";
 import * as E from "./edits.js";
 
-const MAX_DOTS = 350;
+const MAX_DOTS = 700;
+/** 점 줄이기 기준(m): 작을수록 점이 많고 섬세함 (앱 EDIT_TOL_M 과 같음) */
+const TOL_M = 2;
+const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
 
 export function fixScreen(root, p, ctx) {
   const kind = p.kind === "stop" ? "stop" : "bus";
   let alive = true, pts = [], orig = [], sel = -1, color = "#2563eb", title = kind === "bus" ? "노선 모양 고치기" : "정류장 위치 고치기", hasEdit = false, busy = false, msg = "";
   let stops = [];
   const help = kind === "bus"
-    ? "점을 누르고 → 지도에서 옮길 곳을 누르면 옮겨져요. 아무 점도 고르지 않고 선 가까이를 누르면 점이 새로 생겨요. 회색 정류장 점을 누르면(또는 그 가까이를 누르면) 선이 정류장에 딱 붙어요."
+    ? "정차하는 정류장은 처음부터 선 위의 점(노선 색)으로 들어가 있어요. 점을 누르고 → 옮길 곳을 누르면 옮겨지고, 점을 고르지 않고 선 가까이를 누르면 점이 새로 생겨요. 회색 정류장 점을 누르면 선이 정류장에 딱 붙어요. 크게 확대할수록 섬세하게 고칠 수 있어요."
     : "지도에서 정류장이 실제로 있는 곳을 누르세요.";
   const drawMap = () => {
     if (!alive) return;
@@ -25,9 +28,16 @@ export function fixScreen(root, p, ctx) {
       const dots = [];
       // 정류장 자리(회색)를 같이 보여 줘서 선이 정류장을 지나게 맞추기 쉽게
       // 정류장 점을 누르면 그 자리에 선을 연결 (화면 안 정류장이 많지 않을 때)
-      const stopsIn = b ? stops.filter((s) => s.lat != null && s.lat >= b.s && s.lat <= b.n && s.lng >= b.w && s.lng <= b.e) : [];
+      // 선에 아직 안 붙은 정류장만 회색 (누르면 연결)
+      const onLine = (s) => pts.some((q) => same(q, [s.lat, s.lng]));
+      const stopsIn = b ? stops.filter((s) => s.lat != null && s.lat >= b.s && s.lat <= b.n && s.lng >= b.w && s.lng <= b.e && !onLine(s)) : [];
       if (MapView.zoom() >= 14 || stopsIn.length <= 120) stopsIn.forEach((s) => dots.push({ id: "s:" + stops.indexOf(s), lat: s.lat, lng: s.lng, color: "#9aa3b2", ring: "#fff", r: 6 }));
-      if (inView.length <= MAX_DOTS) for (const [q, i] of inView) dots.push({ id: "v:" + i, lat: q[0], lng: q[1], color: i === sel ? "#D7262E" : "#fff", ring: i === sel ? "#fff" : color, r: i === sel ? 8 : 5 });
+      // 선 위 점: 정류장 자리 점은 노선 색으로 크게, 고른 점은 빨강
+      const isStop = (q) => stops.some((s) => s.lat != null && same(q, [s.lat, s.lng]));
+      if (inView.length <= MAX_DOTS) for (const [q, i] of inView) {
+        const st = isStop(q);
+        dots.push({ id: "v:" + i, lat: q[0], lng: q[1], color: i === sel ? "#D7262E" : st ? color : "#fff", ring: i === sel ? "#fff" : st ? "#fff" : color, r: i === sel ? 8 : st ? 7 : 5 });
+      }
       MapView.dots(dots, (d) => {
         if (d.id.startsWith("s:")) { const s = stops[+d.id.slice(2)]; if (s) tapAt([s.lat, s.lng], true); return; }
         if (!d.id.startsWith("v:")) return;
@@ -49,7 +59,7 @@ export function fixScreen(root, p, ctx) {
     box.innerHTML = `${note(help)}${msg ? `<p class="note"><b>${esc(msg)}</b></p>` : ""}
       <div class="toolrow">
         ${kind === "bus" && sel >= 0 ? `<button class="link" ${act(() => { if (pts.length > 2) { pts.splice(sel, 1); sel = -1; drawAll(); } })}>고른 점 지우기</button>` : ""}
-        ${kind === "bus" ? `<button class="link" ${act(() => { pts = E.simplify(orig, 6); sel = -1; msg = "자동으로 만든 모양으로 돌렸어요 (저장해야 반영돼요)"; drawAll(); })}>처음 모양으로</button>` : ""}
+        ${kind === "bus" ? `<button class="link" ${act(() => { pts = E.passStops(E.simplify(orig, TOL_M), stops); sel = -1; msg = "자동으로 만든 모양으로 돌렸어요 (저장해야 반영돼요)"; drawAll(); })}>처음 모양으로</button>` : ""}
         ${hasEdit ? `<button class="link" ${act(() => reset())}>고친 것 지우기</button>` : ""}
         <button class="link" ${act(() => history.back())}>취소</button>
         <button class="bar-act" ${act(() => save())} ${busy ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button>
@@ -68,7 +78,7 @@ export function fixScreen(root, p, ctx) {
   async function reset() {
     if (busy) return;
     busy = true; drawBar();
-    try { await E.save(kind, p.id, null); hasEdit = false; pts = kind === "bus" ? E.simplify(orig, 6) : orig.slice(); sel = -1; msg = "고친 것을 지웠어요. 원래 자료로 보여요."; }
+    try { await E.save(kind, p.id, null); hasEdit = false; pts = kind === "bus" ? E.passStops(E.simplify(orig, TOL_M), stops) : orig.slice(); sel = -1; msg = "고친 것을 지웠어요. 원래 자료로 보여요."; }
     catch (e) { msg = e.message || "지우지 못했어요"; }
     busy = false; drawAll();
   }
@@ -81,7 +91,7 @@ export function fixScreen(root, p, ctx) {
     if (!ll || busy) return;
     if (kind === "stop") { pts = [ll]; msg = ""; drawAll(); return; }
     const b = MapView.bounds();
-    const finger = b ? Math.max(5, Math.min(60, E.dist([b.s, b.w], [b.s, b.e]) * 0.03)) : 15;
+    const finger = b ? Math.max(2, Math.min(60, E.dist([b.s, b.w], [b.s, b.e]) * 0.02)) : 10;
     const snap = onStop ? ll : E.nearestStop(stops, ll, finger);
     const q = snap || ll;
     if (sel >= 0) { pts[sel] = q; sel = -1; }
@@ -115,7 +125,8 @@ export function fixScreen(root, p, ctx) {
     orig = auto && auto.length >= 2 ? auto : r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]);
     const fix = all.bus[r.id] || all.bus[B.legacyId(r.id)];
     hasEdit = !!fix;
-    pts = fix ? B.decodePolyline(String(fix), 5) : E.simplify(orig, 6);
+    // 정차하는 정류장은 처음부터 선 위의 점으로
+    pts = E.passStops(fix ? B.decodePolyline(String(fix), 5) : E.simplify(orig, TOL_M), stops);
     if (pts.length) MapView.fit(pts);
     drawAll();
   })();
