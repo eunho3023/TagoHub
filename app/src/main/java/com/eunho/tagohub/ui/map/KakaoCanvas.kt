@@ -208,7 +208,8 @@ class KakaoCanvas(
                 goodCenter = position.position
                 if (z != lastZoom) {
                     lastZoom = z
-                    if ((routeArgs?.parts?.size ?: 0) >= 2) drawRoute() // 배율이 바뀌면 상·하행 간격과 그 선 위의 점 다시
+                    // 배율이 바뀌면 오른쪽으로 비키는 간격(화면 dp → 실제 m)과 그 선 위의 점 다시
+                    if (routeArgs?.let { (it.parts?.size ?: 0) >= 2 || (it.shape?.size ?: 0) >= 2 } == true) drawRoute()
                 }
                 report()
             }
@@ -632,7 +633,10 @@ class KakaoCanvas(
         }
     }
 
-    /** 노선 선: 상·하행이면 각자 오른쪽으로 4dp(지금 배율의 실제 거리)씩 띄우고, 고른 방향은 진하게 */
+    /**
+     * 노선 선: 오른쪽 통행이라 진행 방향 오른쪽으로 띄워 그림 (지금 배율의 실제 거리).
+     * 상·하행이면 각자 오른쪽으로 → 나란히 두 줄, 고른 방향은 진하게. 한 줄(순환 등)이어도 도로 선이면 오른쪽으로
+     */
     private fun drawRouteLines(): List<List<LatLng>> {
         val km = map ?: return emptyList()
         val layer = km.routeLineManager?.getLayer(ROUTE_LAYER) ?: return emptyList()
@@ -641,11 +645,13 @@ class KakaoCanvas(
         val a = routeArgs ?: return emptyList()
         val color = a.color ?: return emptyList()
         val roadShape = (a.shape?.size ?: 0) >= 2
+        val d = ROUTE_LINE_WIDTH_DP * 0.9 * density * metersPerPx()  // 상·하행 두 줄이 굵어진 만큼 더 띄움
         val lines: List<Pair<List<LatLng>, Boolean>> = if ((a.parts?.size ?: 0) >= 2) {
-            val d = ROUTE_LINE_WIDTH_DP * 0.9 * density * metersPerPx()  // 상·하행 두 줄이 굵어진 만큼 더 띄움
             a.parts!!.mapIndexed { i, p -> PathMath.offsetMeters(p, d) to (a.strong == null || a.strong == i) }
+        } else if (roadShape) {
+            listOf(PathMath.offsetMeters(a.shape!!, d) to true)
         } else {
-            listOf((a.shape?.takeIf { it.size >= 2 } ?: a.stops.map { LatLng(it.lat, it.lng) }) to true)
+            listOf(a.stops.map { LatLng(it.lat, it.lng) } to true)
         }
         for ((pts, strong) in lines) {
             if (pts.size < 2) continue

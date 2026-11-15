@@ -302,17 +302,82 @@ export async function buildKakao(stops, routeNo, key, fetcher, st = {}) {
   return got * 2 >= parts.length ? out : null;
 }
 
+// ── 성긴 모양을 도로에 붙이기 ──
+// 지역 공식 노선 그림(특히 전주시)은 꼭짓점이 듬성듬성해 긴 조각이 건물·블록을 비스듬히 가로지름.
+// 80m 넘는 조각만 골라 그 두 끝을 OSRM 도로 길로 이음 (한 번에 25점, 요청 10번까지). 돌아가는 길(직선의 1.5배 + 60m 넘음)이면 그 조각은 그대로
+export const GAP_M = 80, GAP_WP = 25, GAP_REQ = 10;
+/** OSRM 길 (경유점 차례대로) → 구간마다 길 [[위도, 경도]...] (못 받으면 null) */
+async function osrmLegs(points, fetcher) {
+  try {
+    const url = OSRM + points.map(([la, lo]) => `${lo.toFixed(6)},${la.toFixed(6)}`).join(";") + "?overview=false&steps=true&geometries=polyline6&continue_straight=true";
+    const r = await fetcher(url, { headers: { "User-Agent": "TagoHub-proxy" } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const legs = j.code === "Ok" && j.routes && j.routes[0] && j.routes[0].legs;
+    if (!Array.isArray(legs) || legs.length !== points.length - 1) return null;
+    return legs.map((leg) => {
+      const out = [];
+      for (const st of leg.steps || []) for (const q of st.geometry ? decode(st.geometry, 6) : []) {
+        const l = out[out.length - 1];
+        if (!l || l[0] !== q[0] || l[1] !== q[1]) out.push(q);
+      }
+      return out;
+    });
+  } catch (_) { return null; }
+}
+/** 긴 조각(GAP_M 넘음)을 도로 길로 채운 모양 (채울 것이 없거나 못 받으면 그대로) */
+export async function fillGaps(shape, fetcher, maxReq = GAP_REQ) {
+  if (!shape || shape.length < 2) return shape;
+  const wp = [];
+  for (let i = 0; i < shape.length - 1; i++) {
+    if (meters(shape[i], shape[i + 1]) < GAP_M) continue;
+    if (wp[wp.length - 1] !== i) wp.push(i);
+    wp.push(i + 1);
+  }
+  if (!wp.length) return shape;
+  const fill = new Map();
+  let req = 0;
+  for (let s = 0; s < wp.length - 1 && req < maxReq; s += GAP_WP - 1) {
+    const part = wp.slice(s, s + GAP_WP);
+    if (part.length < 2) break;
+    req++;
+    const legs = await osrmLegs(part.map((i) => shape[i]), fetcher);
+    if (!legs) continue;
+    for (let k = 0; k < part.length - 1; k++) {
+      const i = part[k];
+      if (part[k + 1] !== i + 1) continue; // 긴 조각 사이를 잇는 구간 (원래 모양 그대로)
+      const leg = legs[k], a = shape[i], b = shape[i + 1];
+      if (!leg || leg.length < 2) continue;
+      if (meters(leg[0], a) > 30 || meters(leg[leg.length - 1], b) > 30) continue;
+      if (length(leg) > meters(a, b) * 1.5 + 60) continue;
+      fill.set(i, leg);
+    }
+  }
+  if (!fill.size) return shape;
+  const out = [shape[0]];
+  for (let i = 0; i < shape.length - 1; i++) {
+    const leg = fill.get(i);
+    if (leg) out.push(...leg.slice(1, -1));
+    out.push(shape[i + 1]);
+  }
+  return out;
+}
+
 /** 정류장의 85% 가 선에서 100m 안 (앱 Shapes.fitsStops 와 같은 기준) */
 export function fitsStops(path, stops, maxM = 100, ratio = 0.85) {
   if (!path || path.length < 2) return false;
   return stops.filter((s) => distToPath(s, path) <= maxM).length >= stops.length * ratio;
 }
 
+/** 지역 공식 노선 모양이 있는 노선 (서울·경기·전주) */
+export const OFFICIAL_RE = /^(SEB|GGB|JUB)/;
+/** 모양 만드는 방식의 판 (v8: 공식 모양의 긴 조각을 도로 길로 채움 → 서울·경기·전주 노선만 다시 만듦) */
+export const sigVer = (id) => (id && OFFICIAL_RE.test(id) ? "v8" : "v7");
 /** 정류장 목록이 바뀌면 다시 만들게 하는 표시 */
-export function signature(stops) {
+export function signature(stops, id = null) {
   const f = stops[0], l = stops[stops.length - 1];
   // v7: 서울·경기·전주는 지역 공식 노선 모양 먼저 (예전 모양은 다시 만듦)
-  return `v7:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
+  return `${sigVer(id)}:${stops.length}:${f[0].toFixed(4)},${f[1].toFixed(4)}:${l[0].toFixed(4)},${l[1].toFixed(4)}`;
 }
 
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -422,7 +487,7 @@ async function makeShape(id, stops, routeNo, env, fetcher) {
   const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
   // 1) 지역이 공개한 실제 노선 모양 (서울·경기·전주, 앱과 같은 자료). 정류장 80% 가 120m 안을 지나야 씀
   const official = await officialShape(env, id, limited);
-  if (official && fitsStops(official, stops, 120, 0.8)) return { shape: official, partial: false, official: true };
+  if (official && fitsStops(official, stops, 120, 0.8)) return { shape: await fillGaps(official, limited), partial: false, official: true };
   const st = {};
   const kakaoKey = (env.KAKAO_REST_KEY || "").trim();
   let shape = null;
@@ -466,13 +531,13 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 노선 번호가 있으면 카카오 경로(앱과 같은 방법)를 먼저 씀 (자료 조각 노선은 조각의 번호)
   const routeNo = cleanNo(url.searchParams.get("no")) || (await dataRouteNo(env, id));
   const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
-  const key = new Request(`https://cache.tagohub/shape/v7${useKakao ? "k" : ""}/${id}`);
+  const key = new Request(`https://cache.tagohub/shape/${sigVer(id)}${useKakao ? "k" : ""}/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
   const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
-  const sig = signature(stops) + (useKakao ? ":k" : "");
+  const sig = signature(stops, id) + (useKakao ? ":k" : "");
   let poly = null, partial = false;
   if (env.DB) {
     await ensureTable(env.DB);
@@ -518,7 +583,7 @@ async function gpsCron(env, fetcher) {
   const id = job.route_id;
   const stops = (await routeStops(env, id)) || (await tagoRouteStops(env, id, job.city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) { await markGps(env.DB, id, job.cells, false); return { id, gps: "no stops" }; }
-  const sig = signature(stops);
+  const sig = signature(stops, id);
   const row = await env.DB.prepare("SELECT poly FROM shapes WHERE route_id = ?").bind(id).first();
   const base = row?.poly ? decode(row.poly, 5) : stops.map((s) => [s[0], s[1]]);
   let used = 0;
@@ -538,6 +603,8 @@ async function gpsCron(env, fetcher) {
 // ── 예약 작업: 노선 모양을 미리 만들어 저장 (1분마다 노선 하나) ──
 // 사람들이 연 노선(직선이 섞였던 것)이 먼저, 그다음 자료 조각의 모든 노선을 묶음 차례로 줄에 넣음
 const MAX_TRIES = 5;
+/** 모양 만드는 방식의 판 (바뀌면 예약 작업이 모든 노선 묶음을 다시 훑음) */
+const SHAPE_VER = "8";
 export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (!env.DB) return null;
   await ensureTable(env.DB);
@@ -546,6 +613,12 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (Math.floor(now / 60000) % 5 === 0) {
     const g = await gpsCron(env, fetcher).catch(() => null);
     if (g) return g;
+  }
+  // 모양 만드는 방식이 바뀌면(SHAPE_VER) 노선 묶음을 처음부터 다시 훑어 예전 방식 모양을 줄에 넣음
+  const ver = (await env.DB.prepare("SELECT v FROM shape_meta WHERE k = 'ver'").first())?.v;
+  if (ver !== SHAPE_VER) {
+    await env.DB.prepare("INSERT OR REPLACE INTO shape_meta (k, v) VALUES ('bucket', ?)").bind("0").run();
+    await env.DB.prepare("INSERT OR REPLACE INTO shape_meta (k, v) VALUES ('ver', ?)").bind(SHAPE_VER).run();
   }
   let job = await env.DB.prepare("SELECT route_id, city, no, tries FROM shape_queue ORDER BY prio DESC, tries ASC, at ASC LIMIT 1").first();
   if (!job) {
@@ -564,7 +637,7 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
     for (const [rid, rt] of Object.entries(routes)) {
       const has = saved.has(rid) ? { sig: saved.get(rid) } : null;
       // 아직 없거나, 예전 방식이거나, 긴 노선을 임시(OSRM)로 만든 것
-      if (!has || !String(has.sig).startsWith("v7:") || String(has.sig).endsWith(":o")) await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
+      if (!has || !String(has.sig).startsWith(sigVer(rid) + ":") || String(has.sig).endsWith(":o")) await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
     }
     await env.DB.prepare("INSERT OR REPLACE INTO shape_meta (k, v) VALUES ('bucket', ?)").bind(String(cur + 1)).run();
     return { bucket: cur };
@@ -577,7 +650,7 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   }
   const routeNo = cleanNo(job.no) || (await dataRouteNo(env, id));
   const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
-  const sig = signature(stops) + (useKakao ? ":k" : "");
+  const sig = signature(stops, id) + (useKakao ? ":k" : "");
   const have = await storedShape(env.DB, id, sig);
   if (have && !have.interim) {
     await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
@@ -591,7 +664,7 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
     const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
     if (!have) {
       const official = await officialShape(env, id, limited);
-      if (official && fitsStops(official, stops, 120, 0.8)) { await save(encode(official, 5), sig); await dequeue(); return { id, saved: true, official: true }; }
+      if (official && fitsStops(official, stops, 120, 0.8)) { await save(encode(await fillGaps(official, limited), 5), sig); await dequeue(); return { id, saved: true, official: true }; }
     }
     const step = await kakaoStep(env.DB, id, sig, stops, routeNo, (env.KAKAO_REST_KEY || "").trim(), limited);
     if (!step.done) return { id, step: step.next, of: step.of };
