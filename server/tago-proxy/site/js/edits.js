@@ -62,6 +62,8 @@ setInterval(() => { if (document.visibilityState === "visible" && data) ready(tr
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && data) ready(true); });
 
 /** 받아 둔 목록에서 바로 (없으면 null) */
+/** 고친 것 목록의 판 번호 (누가 고치면 올라감, 모르면 0) */
+export function version() { return (data && data.v) || 0; }
 export function stopFix(id) { return (data && id && (data.stop[id] || null)) || null; }
 export function busFix(id) { return (data && id && data.bus[id]) || null; }
 /** 손으로 묶은 같은 자리 정류장 {정류장 id: [함께 묶을 id...]} (빈 목록 = 따로 떼기) */
