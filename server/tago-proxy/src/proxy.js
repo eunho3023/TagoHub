@@ -271,9 +271,15 @@ export function signalWebRequest(pathname) {
  * 서울 도착은 정류장 번호(arsId 5자리), 경기 도착은 정류소 ID(9자리), 위치는 노선 ID. → { url(키 자리 KEY), cacheKey, ttl }
  */
 export function busWebRequest(pathname) {
-  const m = /^\/w\/bus\/(seoul|gg|jeonju)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
+  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
+  // 제주 노선 정류장 차례 (제주 버스정보 bus.jeju.go.kr, 키 없음, 앱과 같은 자료, 하루 저장).
+  // TAGO 노선정보 하루 한도가 찼을 때 웹이 제주 노선을 여는 데 씀
+  if (area === "jeju") {
+    if (op !== "stops" || !/^\d{9}$/.test(id)) return null;
+    return { area, url: `https://bus.jeju.go.kr/api/searchBusRouteStationList.do?route_id=${id}`, cacheKey: `bus/jeju/stops/${id}`, ttl: 86400 };
+  }
   // 전주 정류장을 지나는 노선 (전주시 버스정보, 하루 저장). TAGO 는 전주 정류장 경유 노선을 주지 않음
   if (area === "jeonju") {
     if (!/^\d{9}$/.test(id)) return null;

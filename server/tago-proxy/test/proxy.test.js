@@ -229,3 +229,12 @@ test("전주 노선 정류장 차례: 전주시 버스정보 노선별 버스 �
   assert.equal(r.ttl, 86400);
   assert.equal(busWebRequest("/w/bus/jeonju/stops/12"), null);
 });
+
+test("제주 노선 정류장 차례: 제주 버스정보 (키 없음, 하루 저장, TAGO 한도가 찼을 때 웹이 씀)", () => {
+  const r = busWebRequest("/w/bus/jeju/stops/405130002");
+  assert.equal(r.url, "https://bus.jeju.go.kr/api/searchBusRouteStationList.do?route_id=405130002");
+  assert.equal(r.cacheKey, "bus/jeju/stops/405130002");
+  assert.equal(r.ttl, 86400);
+  assert.equal(busWebRequest("/w/bus/jeju/arrival/405130002"), null);
+  assert.equal(busWebRequest("/w/bus/jeju/stops/12"), null);
+});

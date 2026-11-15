@@ -265,8 +265,10 @@ async function busWeb(request, url, env, ctx) {
   const raw = env.DATA_GO_KR_KEY;
   const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b)
     : r.area === "jeonju" ? (b) => /<code[^>]*>000</.test(b)
+    : r.area === "jeju" ? (b) => /"STATION_ID"/.test(b)
     : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
-  return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, raw ? r.url.replace("KEY", encodeKey(raw)) : null, r.ttl, ok,
+  const upstream = !r.url.includes("KEY") ? r.url : raw ? r.url.replace("KEY", encodeKey(raw)) : null;
+  return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, upstream, r.ttl, ok,
     r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju");
 }
 
