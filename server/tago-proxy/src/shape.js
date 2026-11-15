@@ -2,7 +2,8 @@
 // 폰 앱 RoadShapeClient·Shapes(OSRM 구간 요청, 정류장 사이 블록을 한 바퀴 도는 구간은 직선)와 같은 방법.
 // GET /w/shape/<노선 id> → {"poly": "<인코딩 폴리라인, 정밀도 5>"} (못 만들면 404)
 
-import { encodeKey } from "./proxy.js";
+import { encodeKey, cacheable } from "./proxy.js";
+import { storeKey, getStored, putStored, DAY_MS } from "./tagostore.js";
 import { gpsShape, gpsPoints, markGps, nextGpsRoute } from "./gps.js";
 import { appShape } from "./appshape.js";
 
@@ -385,16 +386,25 @@ async function ggRouteStops(env, routeId, fetcher) {
   } catch (_) { return null; }
 }
 
-/** 서버 노선 조각에 없는 노선(전주·제주·교통안전공단 등): TAGO 노선 정류장 목록으로 (도시코드가 있어야 함) */
+/**
+ * 서버 노선 조각에 없는 노선(전주·제주·교통안전공단 등): TAGO 노선 정류장 목록으로 (도시코드가 있어야 함).
+ * D1 에 사흘 안에 받아 둔 것이 있으면 다시 묻지 않음 (예약 작업이 매번 물어 하루 한도를 다 썼었음, src/tagostore.js).
+ * 공공데이터가 실패하면 30일 안의 지난 목록
+ */
 async function tagoRouteStops(env, routeId, city, fetcher) {
   if (!/^\d{1,6}$/.test(city || "") || !env.DATA_GO_KR_KEY) return null;
+  const sk = storeKey("/1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList", `cityCode=${city}&routeId=${encodeURIComponent(routeId)}`);
+  const parse = (xml) => { const s = xml ? tagoStops(xml) : []; return s.length >= 2 ? s : null; };
+  const saved = parse(await getStored(env.DB, sk, 3 * DAY_MS));
+  if (saved) return saved;
   const q = `serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}&cityCode=${city}&routeId=${encodeURIComponent(routeId)}&numOfRows=1000&pageNo=1&_type=xml`;
   try {
     const r = await fetcher(`https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList?${q}`);
-    if (!r.ok) return null;
-    const stops = tagoStops(await r.text());
-    return stops.length >= 2 ? stops : null;
-  } catch (_) { return null; }
+    const body = r.ok ? await r.text() : "";
+    const stops = cacheable(r.status ?? (r.ok ? 200 : 0), body) ? parse(body) : null;
+    if (stops) { await putStored(env.DB, sk, body); return stops; }
+  } catch (_) { /* 아래에서 지난 목록 */ }
+  return parse(await getStored(env.DB, sk, 30 * DAY_MS));
 }
 
 /** 노선 번호 확인 (카카오 경로용) */

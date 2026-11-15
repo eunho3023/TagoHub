@@ -6,6 +6,7 @@ import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPat
 import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps, gpsInfo } from "./gps.js";
+import { storeKey, getStored, putStored, DAY_MS } from "./tagostore.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
@@ -103,6 +104,17 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     return r;
   }
 
+  // TAGO 노선 정보는 D1 에 저장해 둔 것(하루 안)을 먼저: 하루 요청 한도를 아낌 (src/tagostore.js)
+  const sk = env.DB ? storeKey(path, search) : null;
+  const fresh = sk ? await getStored(env.DB, sk, DAY_MS) : null;
+  if (fresh) {
+    const stored = new Response(fresh, { status: 200, headers: { "Content-Type": "application/xml; charset=utf-8", "X-Cache": "STORE", "Cache-Control": `public, max-age=${ttlFor(path)}` } });
+    ctx.waitUntil(cache.put(key, stored.clone()));
+    const out = new Response(stored.body, stored);
+    for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);
+    return out;
+  }
+
   const upstream = await fetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
     headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
   });
@@ -115,6 +127,7 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     const ttl = ttlFor(path);
     const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": `public, max-age=${ttl}` } });
     ctx.waitUntil(cache.put(key, stored.clone()));
+    if (sk) ctx.waitUntil(putStored(env.DB, sk, body));
     // 노선별 버스 위치(GPS)는 노선 모양 자료로 모음 (src/gps.js, 차량 번호·시각은 저장하지 않음)
     if (env.DB && /getRouteAcctoBusLcList/.test(path)) {
       const q = new URLSearchParams(search);
@@ -128,6 +141,9 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);
     return out;
   }
+  // 공공데이터가 한도 초과 등으로 실패: 저장해 둔 지난 응답(30일 안)이 있으면 그것 (노선 정류장은 거의 안 바뀜)
+  const stale = sk ? await getStored(env.DB, sk, 30 * DAY_MS) : null;
+  if (stale) return new Response(stale, { status: 200, headers: { "Content-Type": "application/xml; charset=utf-8", "X-Cache": "STALE", "Cache-Control": "public, max-age=600", ...extra } });
   return new Response(body, { status: upstream.status, headers: { ...headers, ...extra } });
 }
 
