@@ -221,3 +221,11 @@ test("웹 경기 노선 정류장 목록 (하루 저장), 서울은 없음", () 
   assert.equal(r.ttl, 86400);
   assert.equal(busWebRequest("/w/bus/seoul/stops/100100118"), null);
 });
+
+test("전주 노선 정류장 차례: 전주시 버스정보 노선별 버스 위치 (하루 저장, TAGO 한도가 찼을 때 웹이 씀)", () => {
+  const r = busWebRequest("/w/bus/jeonju/stops/305001818");
+  assert.match(r.url, /4641000\/realtime\/bus_location_bus_position_common\?brtStdid=305001818&serviceKey=KEY/);
+  assert.equal(r.cacheKey, "bus/jeonju/stops/305001818");
+  assert.equal(r.ttl, 86400);
+  assert.equal(busWebRequest("/w/bus/jeonju/stops/12"), null);
+});
