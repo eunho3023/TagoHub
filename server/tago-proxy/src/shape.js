@@ -551,8 +551,8 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (!env.DB) return null;
   await ensureTable(env.DB);
   await ensureQueue(env.DB);
-  // 5분에 한 번: 실제 버스 GPS 가 충분히 쌓인 노선 하나를 그 길로 다시 만듦
-  if (Math.floor(now / 60000) % 5 === 0) {
+  // 2분에 한 번: 실제 버스 GPS 가 충분히 쌓인 노선 하나(사람들이 보는 노선 먼저)를 그 길로 다시 만듦
+  if (Math.floor(now / 60000) % 2 === 0) {
     const g = await gpsCron(env, fetcher).catch(() => null);
     if (g) return g;
   }
