@@ -978,8 +978,8 @@ class KakaoCanvas(
         // 안드로이드 공식 MapOverlay: 로드뷰 라인·지형·자전거도로·스카이뷰 하이브리드 (교통정보는 카카오와 협의해야 쓸 수 있음)
         val OVERLAY_IDS = listOf("bicycle_road" to com.kakao.vectormap.MapOverlay.BICYCLE_ROAD, "hill_shading" to com.kakao.vectormap.MapOverlay.HILLSHADING)
         private const val ROUTE_LAYER = "routeLines"
-        /** 노선도 선 굵기 (dp). 예전 5 → 8 */
-        private const val ROUTE_LINE_WIDTH_DP = 8f
+        /** 노선도 선 굵기 (dp). 예전 5 → 8 → 10 (조금 더 굵게) */
+        private const val ROUTE_LINE_WIDTH_DP = 10f
         /** 라벨 층 순서 (숫자가 클수록 위) */
         private val LAYERS = listOf(STATION_LAYER to 100, STOP_LAYER to 200, ROUTE_PIN_LAYER to 300, TRIP_LAYER to 350,
             BUS_LAYER to 400, KLID_BUS_LAYER to 420, TRAIN_LAYER to 450, TRAFFIC_LIGHT_LAYER to 460, LIVE_SIGNAL_LAYER to 465, UTIC_INCIDENT_LAYER to 470, UTIC_ROAD_RISK_LAYER to 475,
