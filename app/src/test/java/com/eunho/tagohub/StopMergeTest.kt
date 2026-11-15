@@ -61,4 +61,25 @@ class StopMergeTest {
         assertEquals(2, StopMerge.merge(listOf(x, z)).size)
         assertEquals(listOf("T1"), StopMerge.companions(x, listOf(y, z)).map { it.nodeId })
     }
+
+    /** 관리자가 손으로 묶은 것·따로 뗀 것 (지도 고치기 → 묶기) */
+    @Test
+    fun manualJoinAndSplit() {
+        val far = BusStop("35320", "JAB1", "모래재", "9", 35.8010, 127.1000)   // 약 110m, 이름 다름 → 자동으론 안 묶임
+        val x = BusStop("35010", "J1", "신흥리", "1", 35.8000, 127.1000)
+        val y = BusStop("TS312", "T1", "신흥리", "2", 35.8004, 127.1000)
+        try {
+            StopMerge.manual = StopMerge.Manual(mapOf("J1" to listOf("JAB1")))
+            val g = StopMerge.merge(listOf(x, y, far), preferCity = "35010")
+            assertEquals(1, g.size)
+            assertEquals(setOf("T1", "JAB1"), g.single().others.map { it.nodeId }.toSet())
+            assertEquals(setOf("J1"), StopMerge.manual.joinedWith("JAB1"))
+
+            // 따로 떼기: 자동으로 묶이던 T1 이 혼자
+            StopMerge.manual = StopMerge.Manual(mapOf("T1" to emptyList()))
+            assertEquals(2, StopMerge.merge(listOf(x, y)).size)
+        } finally {
+            StopMerge.manual = StopMerge.Manual()
+        }
+    }
 }

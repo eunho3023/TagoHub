@@ -66,17 +66,34 @@ internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text("지도 고치기 · 정류장 위치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                s.sel?.let { "「${it.name}」 고름 → 지도에서 새 위치를 누르면 옮겨져요." }
+                if (s.joining) "「${s.sel?.name}」과(와) 한 정류장으로 묶을 정류장을 지도에서 누르세요 (다시 누르면 빠져요)."
+                else s.sel?.let { "「${it.name}」 고름 → 지도에서 새 위치를 누르면 옮겨져요." }
                     ?: "지도를 확대하면 정류장이 모두 보여요. 정류장을 누르고 → 새 위치를 누르면 옮겨지고, 여러 곳을 옮긴 뒤 한 번에 저장해요.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             s.msg?.let { Text(it, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold) }
+            if (s.sel != null && s.together.isNotEmpty() && !s.joining) {
+                Text("같이 묶인 정류장: " + s.together.joinToString(" · ") { listOfNotNull(it.name, it.nodeNo).joinToString(" ") }, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodySmall)
+            }
+            if (s.joining) {
+                FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = vm::stopFixJoinCancel, enabled = !s.busy) { Text("취소") }
+                    Button(onClick = vm::stopFixJoinSave, enabled = !s.busy && s.joinPick.isNotEmpty()) {
+                        Text(if (s.busy) "저장 중…" else "묶기 저장 (${s.joinPick.size}곳)")
+                    }
+                }
+                return@Column
+            }
             if (s.sel != null) {
                 Text("노선 모양은 정류장 화면 → 노선 → \"노선 모양 고치기\"에서 고쳐요.", Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 s.sel?.let { sel ->
+                    TextButton(onClick = vm::stopFixJoinStart, enabled = !s.busy) { Text("다른 정류장과 묶기") }
+                    val manual = com.eunho.tagohub.data.MapEdits.group(sel.nodeId)
+                    if (s.together.isNotEmpty() && manual?.isEmpty() != true) TextButton(onClick = vm::stopFixSplit, enabled = !s.busy) { Text("따로 떼기") }
+                    if (manual != null) TextButton(onClick = vm::stopFixGroupReset, enabled = !s.busy) { Text("손으로 묶은 것 지우기") }
                     if (s.moves.containsKey(sel.nodeId)) TextButton(onClick = vm::stopFixUndo, enabled = !s.busy) { Text("이 정류장 되돌리기") }
                     if (com.eunho.tagohub.data.MapEdits.stop(sel.nodeId) != null) TextButton(onClick = vm::stopFixReset, enabled = !s.busy) { Text("고친 위치 지우기") }
                     TextButton(onClick = vm::stopFixUnpick, enabled = !s.busy) { Text("고르기 취소") }

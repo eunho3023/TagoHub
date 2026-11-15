@@ -7,7 +7,10 @@
 
 import { decode, encode } from "./shape.js";
 
-export const KINDS = ["bus", "rail", "stop", "station"];
+// group: 같은 자리 정류장 손으로 묶기. id 정류장과 data 의 정류장들을 한 점으로. data 가 [] 이면 그 정류장은 자동으로 묶지 않음(따로 떼기)
+export const KINDS = ["bus", "rail", "stop", "station", "group"];
+const MAX_GROUP = 8;
+const ID_RE = /^[0-9A-Za-z가-힣_().,·:\- ]{1,40}$/;
 const LINE_KINDS = new Set(["bus", "rail"]);
 const MAX_POINTS = 3000;
 const HEAD = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type, X-TagoHub-Admin" };
@@ -41,8 +44,12 @@ export function inKorea(lat, lng) {
 /** 받은 고침을 검사해 저장할 글자로. 틀리면 null. data 가 null 이면 "" (지우기) */
 export function clean(kind, id, data) {
   if (!KINDS.includes(kind)) return null;
-  if (typeof id !== "string" || !/^[0-9A-Za-z가-힣_().,·:\- ]{1,40}$/.test(id)) return null;
+  if (typeof id !== "string" || !ID_RE.test(id)) return null;
   if (data === null) return "";
+  if (kind === "group") {
+    if (!Array.isArray(data) || data.length > MAX_GROUP || !data.every((x) => typeof x === "string" && ID_RE.test(x) && x !== id)) return null;
+    return JSON.stringify([...new Set(data)]);
+  }
   if (LINE_KINDS.has(kind)) {
     if (!Array.isArray(data) || data.length < 2 || data.length > MAX_POINTS) return null;
     const pts = [];
@@ -58,7 +65,7 @@ export function clean(kind, id, data) {
 
 /** 저장된 줄들 → 내보낼 모양 */
 export function bundle(rows) {
-  const out = { v: 0, bus: {}, rail: {}, stop: {}, station: {} };
+  const out = { v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {} };
   for (const r of rows) {
     if (!out[r.kind]) continue;
     out[r.kind][r.id] = LINE_KINDS.has(r.kind) ? r.data : JSON.parse(r.data);

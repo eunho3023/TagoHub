@@ -1567,7 +1567,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             stops.clear()
             groups.forEach { g ->
                 stops[g.main.nodeId] = g.main
-                if (g.others.isNotEmpty()) merged[g.main.nodeId] = g
+                if (g.others.isNotEmpty()) merged[g.main.nodeId] = g else merged.remove(g.main.nodeId)
             }
             pushStops()
         }
@@ -2876,15 +2876,22 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val names: Map<String, String> = emptyMap(),
         val busy: Boolean = false,
         val msg: String? = null,
+        /** 고른 정류장과 지금 한 점으로 묶여 있는 다른 정류장 */
+        val together: List<BusStop> = emptyList(),
+        /** 묶기 중: 고른 정류장과 함께 묶을 정류장을 누르는 중 */
+        val joining: Boolean = false,
+        val joinPick: List<BusStop> = emptyList(),
     )
     val stopFix = MutableStateFlow<StopFixState?>(null)
+
+    private fun togetherOf(stop: BusStop?): List<BusStop> = stop?.let { merged[it.nodeId]?.others }.orEmpty()
 
     /** 지도 고치기 창 열기 (관리자). [pre] 를 주면 그 정류장을 골라 둠 */
     fun startStopFixMode(pre: BusStop? = null) {
         if (!com.eunho.tagohub.data.MapEdits.admin.value) return
         mapEdit.value = null
         closePanel()
-        stopFix.value = StopFixState(sel = pre)
+        stopFix.value = StopFixState(sel = pre, together = togetherOf(pre))
         pre?.lat?.let { la -> pre.lng?.let { lo -> canvas?.moveTo(la, lo, 18.0) } }
         pushStopFix()
     }
@@ -2894,15 +2901,70 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val s = stopFix.value ?: return
         if (s.busy) return
         val stop = stops[id] ?: stopDb?.byId(id) ?: return
-        stopFix.value = s.copy(sel = if (s.sel?.nodeId == stop.nodeId) null else stop, msg = null)
+        if (s.joining) {
+            // 묶기 중: 누른 정류장을 함께 묶을 목록에 넣고 빼기
+            if (stop.nodeId == s.sel?.nodeId) return
+            val has = s.joinPick.any { it.nodeId == stop.nodeId }
+            stopFix.value = s.copy(joinPick = if (has) s.joinPick.filter { it.nodeId != stop.nodeId } else s.joinPick + stop, msg = null)
+            pushStopFix()
+            return
+        }
+        val sel = if (s.sel?.nodeId == stop.nodeId) null else stop
+        stopFix.value = s.copy(sel = sel, together = togetherOf(sel), msg = null)
         pushStopFix()
+    }
+
+    // ── 같은 자리 정류장 손으로 묶기·따로 떼기 (앱·웹 모두에 보임, 서버 /w/edits 의 group) ──
+
+    /** 묶기 시작: 고른 정류장과 함께 묶을 정류장을 지도에서 누름 */
+    fun stopFixJoinStart() {
+        val s = stopFix.value ?: return
+        if (s.sel == null || s.busy) return
+        stopFix.value = s.copy(joining = true, joinPick = emptyList(), msg = null)
+        pushStopFix()
+    }
+
+    fun stopFixJoinCancel() { stopFix.value = stopFix.value?.copy(joining = false, joinPick = emptyList()); pushStopFix() }
+
+    /** 고른 정류장 + 누른 정류장들을 한 점으로 저장 */
+    fun stopFixJoinSave() {
+        val s = stopFix.value ?: return
+        val sel = s.sel ?: return
+        if (s.busy || s.joinPick.isEmpty()) return
+        val before = com.eunho.tagohub.data.MapEdits.group(sel.nodeId).orEmpty()
+        val ids = (before + s.joinPick.map { it.nodeId }).distinct().take(8)
+        saveGroup(sel.nodeId, ids, "「${sel.name}」과(와) ${s.joinPick.size}곳을 한 정류장으로 묶었어요.")
+    }
+
+    /** 고른 정류장을 자동 묶음에서 떼어 따로 보이게 */
+    fun stopFixSplit() {
+        val sel = stopFix.value?.sel ?: return
+        saveGroup(sel.nodeId, emptyList(), "「${sel.name}」을(를) 따로 떼었어요.")
+    }
+
+    /** 손으로 묶은 것·따로 뗀 것 지우기 (자동 규칙대로) */
+    fun stopFixGroupReset() {
+        val sel = stopFix.value?.sel ?: return
+        saveGroup(sel.nodeId, null, "손으로 고친 묶음을 지웠어요. 자동 규칙대로 보여요.")
+    }
+
+    private fun saveGroup(id: String, ids: List<String>?, ok: String) {
+        val s = stopFix.value ?: return
+        if (s.busy) return
+        stopFix.value = s.copy(busy = true, msg = null)
+        viewModelScope.launch {
+            val err = com.eunho.tagohub.data.MapEdits.saveGroup(id, ids)
+            stopFix.value = stopFix.value?.copy(busy = false, joining = false, joinPick = emptyList(), sel = null, together = emptyList(), msg = err ?: ok)
+            applyEdits()
+            pushStopFix()
+        }
     }
 
     /** 지도를 누름: 고른 정류장을 그 자리로 (저장 전) */
     private fun stopFixTap(lat: Double, lng: Double) {
         val s = stopFix.value ?: return
         val sel = s.sel ?: return
-        if (s.busy) return
+        if (s.busy || s.joining) return
         val orig = s.moves[sel.nodeId]?.first ?: LatLng(sel.lat ?: lat, sel.lng ?: lng)
         stopFix.value = s.copy(
             sel = null, moves = s.moves + (sel.nodeId to (orig to LatLng(lat, lng))), names = s.names + (sel.nodeId to sel.name),
@@ -2911,7 +2973,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushStopFix()
     }
 
-    fun stopFixUnpick() { stopFix.value = stopFix.value?.copy(sel = null); pushStopFix() }
+    fun stopFixUnpick() { stopFix.value = stopFix.value?.copy(sel = null, together = emptyList(), joining = false, joinPick = emptyList()); pushStopFix() }
 
     /** 고른 정류장의 옮김 되돌리기 */
     fun stopFixUndo() {
@@ -2974,6 +3036,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             marks += TripMark(m.second.lat, m.second.lng, "새", 0xFFE08A00.toInt())
         }
         s.sel?.let { st -> st.lat?.let { la -> st.lng?.let { lo -> marks += TripMark(la, lo, "●", 0xFFD7262E.toInt()) } } }
+        // 묶기 중: 함께 묶을 정류장은 초록 "+"
+        s.joinPick.forEach { st -> st.lat?.let { la -> st.lng?.let { lo -> marks += TripMark(la, lo, "+", 0xFF16A34A.toInt()) } } }
         c.setTrip(segs, marks)
     }
 

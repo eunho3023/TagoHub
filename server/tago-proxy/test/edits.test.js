@@ -9,6 +9,13 @@ test("고침 검사: 종류·id·좌표 범위", () => {
   assert.equal(clean("hack", "x", [35.8, 127.1]), null);                      // 없는 종류
   assert.equal(clean("stop", "a;drop", [35.8, 127.1]), null);                  // 이상한 id
   assert.equal(clean("stop", "JJB1", [35.8123456, 127.1]), "[35.812346,127.1]");
+  // 같은 자리 정류장 묶기: 다른 정류장 id 목록 (빈 목록 = 따로 떼기)
+  assert.equal(clean("group", "JUB1", ["TSB2", "TSB2", "JAB3"]), '["TSB2","JAB3"]');
+  assert.equal(clean("group", "JUB1", []), "[]");
+  assert.equal(clean("group", "JUB1", ["JUB1"]), null);          // 자기 자신
+  assert.equal(clean("group", "JUB1", ["a;drop"]), null);
+  assert.equal(clean("group", "JUB1", [35.8, 127.1]), null);
+  assert.equal(clean("group", "JUB1", Array.from({ length: 9 }, (_, i) => "S" + i)), null);
   assert.equal(clean("station", "2호선 강남", null), "");                      // 원래대로
   assert.equal(clean("rail", "2호선", [[37.5, 127.0], [37.51, 127.03]]) != null, true);
 });

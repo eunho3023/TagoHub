@@ -19,7 +19,7 @@ export async function setAdminKey(k) {
   try { localStorage.setItem(ADMIN_KEY, k); } catch (e) { /* 못 씀 */ }
   return true;
 }
-const EMPTY = { v: 0, bus: {}, rail: {}, stop: {}, station: {} };
+const EMPTY = { v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {} };
 
 const POLL_MS = 15000;
 const listeners = new Set();
@@ -50,6 +50,10 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 /** 받아 둔 목록에서 바로 (없으면 null) */
 export function stopFix(id) { return (data && id && (data.stop[id] || null)) || null; }
 export function busFix(id) { return (data && id && data.bus[id]) || null; }
+/** 손으로 묶은 같은 자리 정류장 {정류장 id: [함께 묶을 id...]} (빈 목록 = 따로 떼기) */
+export function groupEdits() { return (data && data.group) || {}; }
+/** 이 정류장에 손으로 고친 묶음 (없으면 null, 따로 뗀 것이면 []) */
+export function groupFix(id) { const g = groupEdits(); return (id && Array.isArray(g[id]) && g[id]) || null; }
 
 /** 저장 (data 가 null 이면 원래대로). 성공하면 목록을 다시 받음 */
 export async function save(kind, id, payload) {
@@ -59,7 +63,7 @@ export async function save(kind, id, payload) {
   const res = await r.json().catch(() => ({}));
   if (data) {
     if (kind === "bus" || kind === "rail") { if (payload) data[kind][id] = encodePolyline(payload); else delete data[kind][id]; }
-    else if (payload) data[kind][id] = payload; else delete data[kind][id];
+    else if (payload) (data[kind] ||= {})[id] = payload; else if (data[kind]) delete data[kind][id];
     if (res.v != null) data.v = res.v;
   }
   notify();
