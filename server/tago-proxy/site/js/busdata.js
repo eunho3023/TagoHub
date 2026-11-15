@@ -244,9 +244,13 @@ async function ggRoute(id) {
 // 전주시 정류장처럼 자료에 노선 목록이 없는 곳은 서버에 물어야 해서 처음엔 몇 초 걸림
 const STOP_ROUTES_KEEP_MS = 24 * 3600 * 1000;
 const stopRoutesMemo = new Map();
+// 누가 지도를 고치면(정류장 묶기·떼기·옮기기) 묶음이 달라지므로 다시 물음
+Edits.onChange(() => stopRoutesMemo.clear());
 /** 정류장에 서는 노선 요약 (같은 자리 정류장 것까지). 저장해 둔 것이 있으면 바로 */
 export async function stopRoutes(stop, { onNewer = null } = {}) {
-  const key = "stoproutes:" + legacyId(stop.id);
+  // 저장 열쇠에 지도 고치기 판 번호: 정류장을 합치거나 떼면 예전 목록을 쓰지 않음
+  await Edits.ready();
+  const key = "stoproutes:" + legacyId(stop.id) + ":" + Edits.version();
   // 같은 화면에서 여러 곳이 물어도(지도 카드 방면·정류장 화면) 한 번만
   let m = stopRoutesMemo.get(key);
   if (!m || Date.now() - m.at > 60000) {
