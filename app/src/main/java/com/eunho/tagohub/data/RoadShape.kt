@@ -180,6 +180,25 @@ object Shapes {
     private fun strayStop(p: List<LatLng>, i: Int, j: Int, stops: List<Pair<LatLng, String?>>): Boolean =
         stops.any { (s, _) -> toSeg(s, p[i], p[j]) <= 70 && (i until j).any { k -> toSeg(s, p[k], p[k + 1]) <= 30 } }
 
+    /**
+     * 노선 정류장 차례로 보면 i~j 에서 회차함: 길 30m 곁에 바로 이어지는 두 정류장이 80m 안에 마주 보거나(길 건너 같은 정류장),
+     * 앞뒤 정류장이 거의 같은 자리인 회차 정류장이 있음 (웹 roadline.js turnStop 과 같음)
+     */
+    private fun turnStop(p: List<LatLng>, i: Int, j: Int, stops: List<Pair<LatLng, String?>>): Boolean {
+        val near = { s: LatLng -> (i until j).any { k -> toSeg(s, p[k], p[k + 1]) <= 30 } }
+        for (k in stops.indices) {
+            val s = stops[k].first
+            val n = stops.getOrNull(k + 1)?.first
+            if (n != null && m(s, n) <= 80 && near(s) && near(n)) return true
+            val pr = stops.getOrNull(k - 1)?.first
+            if (pr != null && n != null) {
+                val ab = m(pr, s); val bc = m(s, n)
+                if (ab >= 150 && bc >= 150 && m(pr, n) <= 0.3 * minOf(ab, bc) && near(s)) return true
+            }
+        }
+        return false
+    }
+
     /** 버스가 실제로 큰길에서 들어가 들르는 정류장 이름 (터미널·차고지·종점·회차지) */
     private val VISIT_RE = Regex("터미널|터미날|차고|종점|회차")
 
@@ -222,7 +241,7 @@ object Shapes {
                 if (m(pts[j], after) < 5) break   // 노선 끝
                 val hout = bearing(pts[j], after)
                 if (d <= 25 && far >= d + 10 && walked >= d * 2.5 + 20 && walked <= 300) {
-                    if (angleBetween(hin, hout) >= Math.toRadians(135.0) || roundabout(pts, i, j)) turn = j
+                    if (angleBetween(hin, hout) >= Math.toRadians(135.0) || roundabout(pts, i, j) || turnStop(pts, i, j, stops)) turn = j
                     else if (!servesStop(pts, i, j, stops)) cut = j
                 } else if (d >= 40 && walked >= d * 1.3 + 30) {
                     val ch = bearing(pts[i], pts[j])

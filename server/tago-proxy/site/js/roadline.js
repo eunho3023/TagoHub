@@ -68,6 +68,25 @@ function strayStop(line, i, j, stops) {
   }
   return false;
 }
+/**
+ * 노선 정류장 차례로 보면 i~j 에서 회차함: 길 30m 곁에
+ *  - 바로 이어지는 두 정류장이 80m 안에 마주 봄 (예: 기린대로 병무청 → 길 건너 기린대로 병무청: 그 사이에서 돌아옴), 또는
+ *  - 앞뒤 정류장이 거의 같은 자리인 회차 정류장 (예: 입석 → 용운입구 → 입석)
+ * [stops] 는 노선 차례대로
+ */
+function turnStop(line, i, j, stops) {
+  const near = (s) => { for (let k = i; k < j; k++) if (toSeg(s, line[k], line[k + 1]) <= 30) return true; return false; };
+  for (let k = 0; k < stops.length; k++) {
+    const s = stops[k], n = stops[k + 1];
+    if (n && meters(s, n) <= 80 && near(s) && near(n)) return true;
+    const p = stops[k - 1];
+    if (p && n) {
+      const ab = meters(p, s), bc = meters(s, n);
+      if (ab >= 150 && bc >= 150 && meters(p, n) <= 0.3 * Math.min(ab, bc) && near(s)) return true;
+    }
+  }
+  return false;
+}
 /** 버스가 실제로 큰길에서 들어가 들르는 정류장 이름 (터미널·차고지·종점·회차지) */
 const VISIT_RE = /터미널|터미날|차고|종점|회차/;
 /** i~j 길 30m 곁에 실제로 들르는 정류장(터미널 등)이 있음 → 곧게 펴지 않음 */
@@ -85,7 +104,8 @@ function servesStop(line, i, j, stops) {
  *  - 곧은 큰길에서 옆으로 빠졌다(80m 안) 같은 큰길로 같은 방향으로 다시 들어오는 짧은 우회 (길 400m 안, 교차로처럼 꺾이는 곳이 있고,
  *    큰길 70m 안에 찍힌 정류장 곁을 지남 — 정류장 없이 그냥 굽은 길·다리로 돌아가는 길은 그대로)
  * 를 곧게. 남기는 것:
- *  - 회차: 들어온 방향(30m 앞)과 나가는 방향(30m 뒤)이 135도 넘게 반대 → 크기와 상관없이 그 안도 건드리지 않음
+ *  - 회차: 들어온 방향(30m 앞)과 나가는 방향(30m 뒤)이 135도 넘게 반대, 또는 노선 정류장 차례가 그 안에서 되돌아감
+ *    (길 건너 같은 정류장에 이어 섬·회차 정류장) → 크기와 상관없이 그 안도 건드리지 않음
  *  - 회전교차로를 도는 길 (한쪽으로 고르게 180도 넘게 돎)
  *  - 실제로 들르는 곳: 이름에 터미널·차고지·종점·회차가 든 정류장 30m 곁을 지나는 길 — [stops] [[위도, 경도, 이름]...] 를 주면
  *    (큰길 옆에 찍힌 보통 정류장 때문에 생긴 골목 들르기는 정류장이 있어도 곧게: 버스는 큰길에서 섬)
@@ -113,7 +133,7 @@ export function despike(line, stops = []) {
       if (meters(pts[j], after) < 5) break; // 노선 끝
       const hout = bearing(pts[j], after);
       if (d <= 25 && far >= d + 10 && walked >= d * 2.5 + 20 && walked <= 300) {
-        if (angleBetween(hin, hout) >= (135 * Math.PI) / 180 || roundabout(pts, i, j)) turn = j;
+        if (angleBetween(hin, hout) >= (135 * Math.PI) / 180 || roundabout(pts, i, j) || turnStop(pts, i, j, st)) turn = j;
         else if (!servesStop(pts, i, j, st)) cut = j;
       } else if (d >= 40 && walked >= d * 1.3 + 30) {
         const ch = bearing(pts[i], pts[j]);
