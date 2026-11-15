@@ -200,15 +200,50 @@ async function routeRaw(id, city) {
 const ROUTE_KEEP_MS = 24 * 3600 * 1000;
 async function savedRoute(id, city) {
   const key = "route:" + legacyId(id) + ":" + (city || "");
-  const net = () => (ggId(id) ? ggRoute(id) : tagoRoute(id, city)).then((r) => {
-    if (r && r.stops && r.stops.length) cachePut(key, { at: Date.now(), r });
-    return r;
-  });
+  const net = () => (ggId(id) ? ggRoute(id) : tagoRoute(id, city))
+    // 전주 노선은 TAGO 가 실패하면(하루 한도 초과 등) 전주시 버스정보로
+    .catch((e) => { if (/^JUB\d{9}$/.test(legacyId(id))) return null; throw e; })
+    .then((r) => (r && r.stops && r.stops.length) || !/^JUB\d{9}$/.test(legacyId(id)) ? r : jeonjuRoute(legacyId(id)))
+    .then((r) => {
+      if (r && r.stops && r.stops.length) cachePut(key, { at: Date.now(), r });
+      return r;
+    });
   const saved = await cacheGet(key);
   if (!saved || !saved.r || Date.now() - saved.at > ROUTE_KEEP_MS) return net();
   net().catch(() => {});
   // 정류장 고친 위치는 route() 가 덧씌우므로 저장본은 그대로 복사해서 줌
   return JSON.parse(JSON.stringify(saved.r));
+}
+
+/**
+ * 전주 노선 정류장 차례를 전주시 버스정보(노선별 버스 위치 응답 = 노선 전체 정류장, 앱과 같은 자료)로.
+ * 좌표는 이 응답에 없어 정류장 이름 자료(data/names, 이름 첫 글자별)에서 정류장 id 로 찾음
+ */
+async function jeonjuRoute(id) {
+  const x = await getText("w/bus/jeonju/stops/" + id.slice(3));
+  const rows = [...new DOMParser().parseFromString(x, "text/xml").getElementsByTagName("list")].map((el) => {
+    const r = {};
+    for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
+    return r;
+  });
+  const seen = new Set();
+  const raw = rows.map((r) => ({ seq: int(r.brsseqno ?? r.brnseqno) || 0, id: r.stopstandardid ? "JUB" + r.stopstandardid : null, name: r.stopkname || "", no: str(r.stopid) }))
+    .filter((s) => s.id && !seen.has(s.seq) && seen.add(s.seq))
+    .sort((a, b) => a.seq - b.seq);
+  if (raw.length < 2) return null;
+  const files = new Map();
+  for (const s of raw) {
+    const ch = s.name.codePointAt(0)?.toString(16);
+    if (ch && !files.has(ch)) files.set(ch, cached(`data/names/${ch}.json`).then(parseStops).catch(() => []));
+  }
+  const at = new Map();
+  for (const f of files.values()) for (const s of await f) at.set(legacyId(s.id), s);
+  const stops = raw.map((s) => {
+    const k = at.get(s.id);
+    return { seq: s.seq, id: s.id, name: s.name, lat: k ? k.lat : null, lng: k ? k.lng : null, upDown: null, no: s.no || (k && k.no) || null };
+  });
+  if (stops.filter((s) => s.lat != null).length < 2) return null;
+  return { id, no: "노선", start: stops[0].name, end: stops[stops.length - 1].name, city: "35010", region: null, type: null, sum: null, stops };
 }
 
 /** TAGO 노선 정류장 목록·기본 정보로 노선 만들기 (서버 웹 통로, 하루 저장) */
