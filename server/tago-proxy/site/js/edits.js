@@ -27,8 +27,21 @@ const listeners = new Set();
 export function onChange(f) { listeners.add(f); return () => listeners.delete(f); }
 const notify = () => listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
 
-/** 고친 것 목록 (15초 안에 확인했으면 그대로, 못 받으면 가진 것·빈 목록). 판 번호가 같으면 서버가 204 → 그대로 */
+// 받은 목록을 이 브라우저에 저장해 두고, 다음에 열 때는 그것으로 바로 그림 (서버 확인은 뒤에서, 바뀌었으면 다시 그림)
+const SAVED = "tagohub.edits";
+function loadSaved() {
+  try { const s = JSON.parse(localStorage.getItem(SAVED) || "null"); return s && typeof s === "object" && s.v != null ? { ...EMPTY, ...s } : null; } catch (e) { return null; }
+}
+function persist(d) { try { localStorage.setItem(SAVED, JSON.stringify(d)); } catch (e) { /* 저장 공간 없음 */ } }
+
+/** 고친 것 목록 (15초 안에 확인했으면 그대로, 못 받으면 가진 것·빈 목록). 판 번호가 같으면 서버가 204 → 그대로.
+ *  처음 부를 때 저장해 둔 목록이 있으면 그것을 바로 주고 서버 확인은 뒤에서 (force 면 기다림) */
 export function ready(force = false) {
+  if (!data && !force) {
+    const s = loadSaved();
+    // at 을 지금으로: 다른 곳에서 부르면 저장본을 바로 받고, 서버 확인(뒤에서)을 기다리지 않음
+    if (s) { data = s; at = Date.now(); ready(true); return Promise.resolve(data); }
+  }
   if (!force && data && Date.now() - at < POLL_MS) return Promise.resolve(data);
   if (loading) return loading;
   const q = data ? "?v=" + encodeURIComponent(data.v) : "";
@@ -37,6 +50,7 @@ export function ready(force = false) {
     .catch(() => data || EMPTY)
     .then((d) => {
       const changed = data != null && d !== data && d.v !== data.v;
+      if (d !== data && d !== EMPTY) persist(d);
       data = d; at = Date.now(); loading = null;
       if (changed) notify();
       return d;
@@ -65,6 +79,7 @@ export async function save(kind, id, payload) {
     if (kind === "bus" || kind === "rail") { if (payload) data[kind][id] = encodePolyline(payload); else delete data[kind][id]; }
     else if (payload) (data[kind] ||= {})[id] = payload; else if (data[kind]) delete data[kind][id];
     if (res.v != null) data.v = res.v;
+    persist(data);
   }
   notify();
   return true;
