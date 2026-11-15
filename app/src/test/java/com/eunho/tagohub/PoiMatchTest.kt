@@ -90,4 +90,14 @@ class PoiMatchTest {
         assertEquals(null, index.matchPoi("근처 카페", 37.0045, 127.0))
         assertEquals(null, index.matchPoi("샘플역", 37.02, 127.0))
     }
+
+    /** 카카오 정류장 아이콘 "삼례터미널": 이름이 똑같은 정류장이 60m 안에 있으면 그 정류장 (터미널 건물 "삼례공용터미널"은 아님) */
+    @Test
+    fun terminalNamedStopIcon() {
+        val stops = listOf("삼례터미널" to (35.909923 to 127.074904), "삼례공용 앞" to (35.9100 to 127.0750))
+        val near = { n: String, la: Double, ln: Double -> PoiMatch.sameNameNear(n, la, ln, stops, { it.first }, { it.second }, 60.0)?.first }
+        assertEquals("삼례터미널", near("삼례터미널", 35.9100, 127.0752))
+        assertEquals(null, near("삼례공용터미널", 35.9100, 127.0752))
+        assertEquals(null, near("삼례터미널", 35.9150, 127.0752))   // 500m 넘게 떨어지면 아님
+    }
 }

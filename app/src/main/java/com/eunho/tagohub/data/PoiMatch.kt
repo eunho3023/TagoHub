@@ -53,6 +53,18 @@ object PoiMatch {
     }
 
     /**
+     * 이름이 정확히 같은 정류장이 [maxM] 안에 있으면 그것 (가장 가까운 것).
+     * 카카오 지도의 버스 정류장 아이콘은 이름이 "삼례터미널"처럼 '터미널'로 끝나기도 해서, 터미널 장소로 보기 전에 확인한다.
+     */
+    fun <T> sameNameNear(name: String, lat: Double, lng: Double, cands: List<T>, nameOf: (T) -> String, posOf: (T) -> Pair<Double, Double>?, maxM: Double): T? {
+        val n = norm(name)
+        if (n.isEmpty()) return null
+        return cands.mapNotNull { c -> posOf(c)?.let { (la, ln) -> c to Geo.meters(lat, lng, la, ln) } }
+            .filter { it.second <= maxM && norm(nameOf(it.first)) == n }
+            .minByOrNull { it.second }?.first
+    }
+
+    /**
      * 전국 정류소 좌표(내장 DB)로 지도 POI 를 정류장에 맞춘다. 좌표는 이름 확인용으로 함께 쓴다.
      * 1) 이름이 **정확히** 같은 후보 중 가장 가까운 것 (이름이 같으면 300m 안이면 인정)
      * 2) 이름이 비슷한 후보 중 가장 가까운 것
