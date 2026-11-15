@@ -101,6 +101,63 @@ object Osrm {
 
 /** 노선 선형 계산: 정류소 ↔ 도로 선형 대응, 구간 자르기, 경로 위 위치 */
 object Shapes {
+    private fun bearing(a: LatLng, b: LatLng): Double =
+        Math.atan2((b.lng - a.lng) * Math.cos(Math.toRadians(a.lat)), b.lat - a.lat)
+
+    private fun turnAt(a: LatLng, b: LatLng, c: LatLng): Double {
+        val t = Math.abs(bearing(a, b) - bearing(b, c))
+        return if (t > Math.PI) 2 * Math.PI - t else t
+    }
+
+    private fun m(a: LatLng, b: LatLng): Double = Geo.meters(a.lat, a.lng, b.lat, b.lng)
+
+    /**
+     * 가시·작은 고리 없애기 (웹 site/js/roadline.js despike 와 같음). 노선 모양은 정류장 몇 개씩 끊어 받은 도로 길을 이어 붙여서,
+     * 조각 끝이 큰길 옆 정류장에 닿는 곳에 큰길 → 정류장 → 큰길로 되돌아오는 가시나 교차로 안 작은 고리가 생김.
+     *  1) 거의 되돌아가는(150도 넘게 꺾이는) 꼭짓점을, 양쪽 조각 중 하나가 [maxLeg] m 안이면 뺌 (빼고 또 생기면 이어서)
+     *  2) 길을 따라 60m 안에 시작점 12m 곁으로, 또는 150m 안에 같은 점(2m)으로 되돌아오는 작은 고리를 곧게
+     * 마을을 한 바퀴 돌아 나오는 회차 고리(250m 안팎)·회전교차로는 남음
+     */
+    fun despike(path: List<LatLng>, maxLeg: Double = 80.0): List<LatLng> {
+        if (path.size < 3) return path
+        // 작은 고리 먼저 (가시를 먼저 빼면 고리가 같은 점으로 돌아오는 것이 안 보임)
+        val out = ArrayList<LatLng>(path.size)
+        for (q in cutSmallLoops(path)) {
+            if (out.isNotEmpty() && m(out.last(), q) < 0.5) continue
+            out += q
+            while (out.size >= 3) {
+                val a = out[out.size - 3]; val b = out[out.size - 2]; val c = out[out.size - 1]
+                if (turnAt(a, b, c) > Math.toRadians(150.0) && minOf(m(a, b), m(b, c)) <= maxLeg) {
+                    out.removeAt(out.size - 2)
+                    if (m(out[out.size - 2], out.last()) < 0.5) out.removeAt(out.size - 1)   // 가시 앞뒤가 같은 점
+                } else break
+            }
+        }
+        return out
+    }
+
+    /** 길을 따라 60m 안에 시작점 12m 곁으로, 또는 150m 안에 같은 점(2m)으로 되돌아오는 작은 고리를 곧게 */
+    private fun cutSmallLoops(out: List<LatLng>): List<LatLng> {
+        val res = ArrayList<LatLng>(out.size)
+        var i = 0
+        while (i < out.size) {
+            res += out[i]
+            var walked = 0.0
+            var far = 0.0
+            var best = -1
+            for (j in i + 1 until out.size) {
+                walked += m(out[j - 1], out[j])
+                if (walked > 150.0) break
+                val d = m(out[i], out[j])
+                far = maxOf(far, d)
+                if (far < d + 10 || walked < d * 2.5 + 20) continue
+                if ((walked <= 60.0 && d <= 12.0) || d <= 2.0) best = j
+            }
+            i = if (best > 0) best else i + 1
+        }
+        return res
+    }
+
     fun length(path: List<LatLng>): Double {
         var d = 0.0
         for (i in 1 until path.size) d += Geo.meters(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng)
