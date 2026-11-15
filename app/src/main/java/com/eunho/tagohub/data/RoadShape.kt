@@ -125,40 +125,103 @@ object Shapes {
         return if (step > 0) path.last() else path.first()
     }
 
-    /** i 로 들어온 방향(30m 앞에서)과 j 에서 나가는 방향(30m 뒤까지)이 60도 안 = 가던 방향으로 계속 감 (노선 처음·끝이라 모르면 false) */
-    private fun goesOn(path: List<LatLng>, i: Int, j: Int): Boolean {
-        val before = pointAlong(path, i, 30.0, -1)
-        val after = pointAlong(path, j, 30.0, 1)
-        if (m(before, path[i]) < 5 || m(path[j], after) < 5) return false
-        return angleBetween(bearing(before, path[i]), bearing(path[j], after)) <= Math.PI / 3
+    /** 점 p 에서 선분 a-b 까지 거리(m) */
+    private fun toSeg(p: LatLng, a: LatLng, b: LatLng): Double {
+        val kx = 111_320.0 * Math.cos(Math.toRadians(p.lat)); val ky = 110_540.0
+        val ax = (a.lng - p.lng) * kx; val ay = (a.lat - p.lat) * ky; val bx = (b.lng - p.lng) * kx; val by = (b.lat - p.lat) * ky
+        val dx = bx - ax; val dy = by - ay; val l = dx * dx + dy * dy
+        val t = if (l > 0) (-(ax * dx + ay * dy) / l).coerceIn(0.0, 1.0) else 0.0
+        return Math.hypot(ax + t * dx, ay + t * dy)
     }
 
+    /** i~j 안에 교차로처럼 한 꼭짓점에서 70도 넘게 꺾이는 곳이 있음 (산길 굽이·회전교차로는 여러 꼭짓점에 걸쳐 완만하게 돎) */
+    private fun hasSharpTurn(p: List<LatLng>, i: Int, j: Int): Boolean {
+        for (k in maxOf(1, i)..minOf(j, p.size - 2)) {
+            if (m(p[k - 1], p[k]) < 3 || m(p[k], p[k + 1]) < 3) continue
+            if (turnAt(p[k - 1], p[k], p[k + 1]) >= Math.toRadians(70.0)) return true
+        }
+        return false
+    }
+
+    /** i~j 에 회전교차로를 도는 길이 있음: 같은 쪽으로 꼭짓점마다 60도 안씩 이어서 돌아 모두 180도 넘게 돎 (들어가고 나오는 곳은 크게 꺾여도 됨) */
+    private fun roundabout(p: List<LatLng>, i: Int, j: Int): Boolean {
+        var run = 0.0
+        var prev: Double? = null
+        for (k in i until j) {
+            if (m(p[k], p[k + 1]) < 1) continue
+            val b = bearing(p[k], p[k + 1])
+            if (prev != null) {
+                var t = b - prev
+                while (t > Math.PI) t -= 2 * Math.PI
+                while (t < -Math.PI) t += 2 * Math.PI
+                run = if (Math.abs(t) > Math.PI / 3) 0.0
+                    else if (run != 0.0 && Math.signum(t) != Math.signum(run) && Math.abs(t) > 0.05) t
+                    else run + t
+                if (Math.abs(run) >= Math.PI) return true
+            }
+            prev = b
+        }
+        return false
+    }
+
+    /** i~j 우회가 큰길 옆에 찍힌 정류장 때문에 생김: 그 길 30m 곁에, 곧게 편 큰길에서 70m 안인 정류장이 있음 */
+    private fun strayStop(p: List<LatLng>, i: Int, j: Int, stops: List<Pair<LatLng, String?>>): Boolean =
+        stops.any { (s, _) -> toSeg(s, p[i], p[j]) <= 70 && (i until j).any { k -> toSeg(s, p[k], p[k + 1]) <= 30 } }
+
+    /** 버스가 실제로 큰길에서 들어가 들르는 정류장 이름 (터미널·차고지·종점·회차지) */
+    private val VISIT_RE = Regex("터미널|터미날|차고|종점|회차")
+
+    /** i~j 길 30m 곁에 실제로 들르는 정류장(터미널 등)이 있음 → 곧게 펴지 않음 */
+    private fun servesStop(p: List<LatLng>, i: Int, j: Int, stops: List<Pair<LatLng, String?>>): Boolean =
+        stops.any { (s, name) -> name != null && VISIT_RE.containsMatchIn(name) && (i until j).any { k -> toSeg(s, p[k], p[k + 1]) <= 30 } }
+
     /**
-     * 골목 들르기만 없애기, 회차는 남김 (웹 site/js/roadline.js despike 와 같음).
-     * 큰길로 오다가 옆 골목 정류장까지 들어갔다 같은 자리(15m 안)로 나와서 원래 가던 방향으로 계속 가면 골목 들르기 → 곧게
-     * (노선 모양을 정류장 몇 개씩 끊어 받아 이어 붙인 곳에 생기는 가시·블록 고리).
-     * 고리를 돌거나 막다른 길 끝까지 갔다 나온 뒤 왔던 쪽으로 되돌아가면 회차 → 크기와 상관없이 그대로.
-     * 들어간 길 150m 넘는 것도 그대로 (실제로 마을을 돌아 나오는 노선)
+     * 골목 들르기만 없애기, 회차·회전교차로·실제로 들르는 곳은 남김 (웹 site/js/roadline.js despike 와 같은 규칙).
+     * 노선 모양을 정류장 몇 개씩 끊어 받아 이어 붙인 곳에서, 큰길 옆에 찍힌 정류장 때문에 선이 옆 골목으로 빠짐:
+     *  - 들렀다 같은 자리(25m 안, 반대 차로 포함)로 돌아오는 가시·고리 (길 300m 안)
+     *  - 곧은 큰길에서 옆으로 빠졌다(80m 안) 같은 큰길로 같은 방향으로 다시 들어오는 짧은 우회
+     *    (길 400m 안, 교차로처럼 꺾이는 곳이 있고, 큰길 70m 안에 찍힌 정류장 곁을 지남)
+     * 를 곧게. 남기는 것: 회차(들어온·나가는 방향 135도 넘게 반대, 그 안도 그대로), 회전교차로(한쪽으로 고르게 180도 넘게),
+     * 이름에 터미널·차고지·종점·회차가 든 정류장 곁을 지나는 길, 노선 처음·끝이라 방향을 모르는 곳.
+     * [stops]: 노선 정류장 (좌표, 이름)
      */
-    fun despike(path: List<LatLng>): List<LatLng> {
+    fun despike(path: List<LatLng>, stops: List<Pair<LatLng, String?>> = emptyList()): List<LatLng> {
         if (path.size < 3) return path
         val pts = dropJitter(path)
         val out = ArrayList<LatLng>(pts.size)
         var i = 0
+        var keepTo = -1
         while (i < pts.size) {
             if (out.isEmpty() || m(out.last(), pts[i]) >= 0.5) out += pts[i]
+            if (i <= keepTo || i == 0) { i++; continue }
+            val before = pointAlong(pts, i, 30.0, -1)
+            if (m(before, pts[i]) < 5) { i++; continue }
+            val hin = bearing(before, pts[i])
             var walked = 0.0
             var far = 0.0
-            val cand = ArrayList<Int>()
+            var cut = -1
+            var turn = -1
             for (j in i + 1 until pts.size) {
                 walked += m(pts[j - 1], pts[j])
-                if (walked > 150.0) break
+                if (walked > 400.0) break
                 val d = m(pts[i], pts[j])
                 far = maxOf(far, d)
-                if (d <= 15.0 && far >= d + 10 && walked >= d * 2.5 + 20) cand += j
+                val after = pointAlong(pts, j, 30.0, 1)
+                if (m(pts[j], after) < 5) break   // 노선 끝
+                val hout = bearing(pts[j], after)
+                if (d <= 25 && far >= d + 10 && walked >= d * 2.5 + 20 && walked <= 300) {
+                    if (angleBetween(hin, hout) >= Math.toRadians(135.0) || roundabout(pts, i, j)) turn = j
+                    else if (!servesStop(pts, i, j, stops)) cut = j
+                } else if (d >= 40 && walked >= d * 1.3 + 30) {
+                    val ch = bearing(pts[i], pts[j])
+                    if (angleBetween(hin, ch) > 0.44 || angleBetween(hout, ch) > 0.44) continue
+                    var dev = 0.0
+                    for (k in i..j) { dev = maxOf(dev, toSeg(pts[k], pts[i], pts[j])); if (dev > 80) break }
+                    if (dev <= 80 && hasSharpTurn(pts, i, j) && !roundabout(pts, i, j) && strayStop(pts, i, j, stops) && !servesStop(pts, i, j, stops)) cut = j
+                }
             }
-            val j = cand.asReversed().firstOrNull { goesOn(pts, i, it) }
-            i = j ?: (i + 1)
+            if (turn >= 0 && turn >= cut) { keepTo = turn; i++; continue }   // 회차는 통째로 남김
+            i = if (cut >= 0) cut else i + 1
         }
         return out
     }

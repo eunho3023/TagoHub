@@ -24,39 +24,109 @@ function pointAlong(line, i, dist, step) {
   }
   return line[step > 0 ? line.length - 1 : 0];
 }
+/** 점 p 에서 선분 a-b 까지 거리(m) */
+function toSeg(p, a, b) {
+  const kx = 111320 * Math.cos((p[0] * Math.PI) / 180), ky = 110540;
+  const ax = (a[1] - p[1]) * kx, ay = (a[0] - p[0]) * ky, bx = (b[1] - p[1]) * kx, by = (b[0] - p[0]) * ky;
+  const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0;
+  return Math.hypot(ax + t * dx, ay + t * dy);
+}
+/** i~j 안에 교차로처럼 한 꼭짓점에서 70도 넘게 꺾이는 곳이 있음 (산길 굽이·회전교차로는 여러 꼭짓점에 걸쳐 완만하게 돎) */
+function hasSharpTurn(line, i, j) {
+  for (let k = Math.max(1, i); k <= j && k < line.length - 1; k++) {
+    if (meters(line[k - 1], line[k]) < 3 || meters(line[k], line[k + 1]) < 3) continue;
+    if (turnAt(line[k - 1], line[k], line[k + 1]) >= (70 * Math.PI) / 180) return true;
+  }
+  return false;
+}
 /**
- * 골목 들르기만 없애기 (회차는 남김).
- * 큰길로 오다가 옆 골목 정류장까지 들어갔다 같은 자리(15m 안)로 나와서 **원래 가던 방향으로 계속 가면** 골목 들르기 → 곧게.
- * 노선 모양을 정류장 몇 개씩 끊어 받아 이어 붙인 곳에 생김 (큰길 → 골목 정류장 → 큰길로 되돌아오는 가시, 블록을 한 바퀴 도는 고리).
- * 고리를 돌거나 막다른 길 끝까지 갔다 나온 뒤 **왔던 쪽으로 되돌아가면** 회차 → 크기와 상관없이 그대로 둠.
- * 들어간 길 150m 넘는 것도 그대로 (실제로 마을을 돌아 나오는 노선)
+ * i~j 에 회전교차로를 도는 길이 있음: 같은 쪽으로 꼭짓점마다 60도 안씩 이어서 돌아 모두 180도 넘게 돎
+ * (들어가고 나오는 곳은 크게 꺾여도 됨. 골목 블록은 모서리마다 90도로 꺾여 끊기고, 가시는 끝에서 되돌아감)
  */
-export function despike(line) {
+function roundabout(line, i, j) {
+  let run = 0, prev = null;
+  for (let k = i; k < j; k++) {
+    if (meters(line[k], line[k + 1]) < 1) continue;
+    const b = bearing(line[k], line[k + 1]);
+    if (prev != null) {
+      let t = b - prev;
+      while (t > Math.PI) t -= 2 * Math.PI;
+      while (t < -Math.PI) t += 2 * Math.PI;
+      if (Math.abs(t) > Math.PI / 3 || (run !== 0 && Math.sign(t) !== Math.sign(run) && Math.abs(t) > 0.05)) run = Math.abs(t) > Math.PI / 3 ? 0 : t;
+      else run += t;
+      if (Math.abs(run) >= Math.PI) return true;
+    }
+    prev = b;
+  }
+  return false;
+}
+/** i~j 우회가 큰길 옆에 찍힌 정류장 때문에 생김: 그 길 30m 곁에, 곧게 편 큰길에서 70m 안인 정류장이 있음 */
+function strayStop(line, i, j, stops) {
+  for (const s of stops) {
+    if (toSeg(s, line[i], line[j]) > 70) continue;
+    for (let k = i; k < j; k++) if (toSeg(s, line[k], line[k + 1]) <= 30) return true;
+  }
+  return false;
+}
+/** 버스가 실제로 큰길에서 들어가 들르는 정류장 이름 (터미널·차고지·종점·회차지) */
+const VISIT_RE = /터미널|터미날|차고|종점|회차/;
+/** i~j 길 30m 곁에 실제로 들르는 정류장(터미널 등)이 있음 → 곧게 펴지 않음 */
+function servesStop(line, i, j, stops) {
+  for (const s of stops) {
+    if (!VISIT_RE.test(String(s[2] || ""))) continue;
+    for (let k = i; k < j; k++) if (toSeg(s, line[k], line[k + 1]) <= 30) return true;
+  }
+  return false;
+}
+/**
+ * 골목 들르기만 없애기 (회차·실제로 들르는 곳은 남김).
+ * 노선 모양을 정류장 몇 개씩 끊어 받아 이어 붙인 곳에서, 큰길 옆에 찍힌 정류장 때문에 선이 옆 골목으로 빠짐:
+ *  - 들렀다 같은 자리(25m 안, 반대 차로 포함)로 돌아오는 가시·고리 (길 300m 안)
+ *  - 곧은 큰길에서 옆으로 빠졌다(80m 안) 같은 큰길로 같은 방향으로 다시 들어오는 짧은 우회 (길 400m 안, 교차로처럼 꺾이는 곳이 있고,
+ *    큰길 70m 안에 찍힌 정류장 곁을 지남 — 정류장 없이 그냥 굽은 길·다리로 돌아가는 길은 그대로)
+ * 를 곧게. 남기는 것:
+ *  - 회차: 들어온 방향(30m 앞)과 나가는 방향(30m 뒤)이 135도 넘게 반대 → 크기와 상관없이 그 안도 건드리지 않음
+ *  - 회전교차로를 도는 길 (한쪽으로 고르게 180도 넘게 돎)
+ *  - 실제로 들르는 곳: 이름에 터미널·차고지·종점·회차가 든 정류장 30m 곁을 지나는 길 — [stops] [[위도, 경도, 이름]...] 를 주면
+ *    (큰길 옆에 찍힌 보통 정류장 때문에 생긴 골목 들르기는 정류장이 있어도 곧게: 버스는 큰길에서 섬)
+ *  - 노선 처음·끝이라 방향을 모르는 곳
+ */
+export function despike(line, stops = []) {
   if (!line || line.length < 3) return line;
   const pts = dropJitter(line);
+  const st = (stops || []).filter((s) => s && s[0] != null && s[1] != null);
   const out = [];
-  let i = 0;
+  let i = 0, keepTo = -1;
   while (i < pts.length) {
-    if (!out.length || meters(out[out.length - 1], pts[i]) >= 0.5) out.push(pts[i]); // 골목에서 나온 점이 들어간 점과 같으면 한 번만
-    let walked = 0, far = 0;
-    const cand = [];
-    for (let j = i + 1; j < pts.length; j++) {
+    if (!out.length || meters(out[out.length - 1], pts[i]) >= 0.5) out.push(pts[i]); // 나온 점이 들어간 점과 같으면 한 번만
+    if (i <= keepTo || i === 0) { i++; continue; }
+    const before = pointAlong(pts, i, 30, -1);
+    const known = meters(before, pts[i]) >= 5;
+    const hin = bearing(before, pts[i]);
+    let walked = 0, far = 0, cut = -1, turn = -1;
+    for (let j = i + 1; j < pts.length && known; j++) {
       walked += meters(pts[j - 1], pts[j]);
-      if (walked > 150) break;
+      if (walked > 400) break;
       const d = meters(pts[i], pts[j]);
       far = Math.max(far, d);
-      if (d <= 15 && far >= d + 10 && walked >= d * 2.5 + 20) cand.push(j);
+      const after = pointAlong(pts, j, 30, 1);
+      if (meters(pts[j], after) < 5) break; // 노선 끝
+      const hout = bearing(pts[j], after);
+      if (d <= 25 && far >= d + 10 && walked >= d * 2.5 + 20 && walked <= 300) {
+        if (angleBetween(hin, hout) >= (135 * Math.PI) / 180 || roundabout(pts, i, j)) turn = j;
+        else if (!servesStop(pts, i, j, st)) cut = j;
+      } else if (d >= 40 && walked >= d * 1.3 + 30) {
+        const ch = bearing(pts[i], pts[j]);
+        if (angleBetween(hin, ch) > 0.44 || angleBetween(hout, ch) > 0.44) continue;
+        let dev = 0;
+        for (let k = i; k <= j && dev <= 80; k++) dev = Math.max(dev, toSeg(pts[k], pts[i], pts[j]));
+        if (dev <= 80 && hasSharpTurn(pts, i, j) && !roundabout(pts, i, j) && strayStop(pts, i, j, st) && !servesStop(pts, i, j, st)) cut = j;
+      }
     }
-    const j = cand.reverse().find((k) => goesOn(pts, i, k));
-    i = j != null ? j : i + 1;
+    if (turn >= 0 && turn >= cut) { keepTo = turn; i++; continue; } // 회차는 통째로 남김
+    i = cut >= 0 ? cut : i + 1;
   }
   return out;
-}
-/** i 로 들어온 방향(30m 앞에서)과 j 에서 나가는 방향(30m 뒤까지)이 60도 안 = 가던 방향으로 계속 감 (노선 처음·끝이라 모르면 false) */
-function goesOn(line, i, j) {
-  const before = pointAlong(line, i, 30, -1), after = pointAlong(line, j, 30, 1);
-  if (meters(before, line[i]) < 5 || meters(line[j], after) < 5) return false;
-  return angleBetween(bearing(before, line[i]), bearing(line[j], after)) <= Math.PI / 3;
 }
 /** 같은 점(0.5m 안) 겹침과, 5m 안에서 앞뒤로 떨리는 점(150도 넘게 되돌아감)을 뺌 (한 번만, 이어서 빼지 않음) */
 function dropJitter(line) {
@@ -98,7 +168,7 @@ export function roundCorners(line, maxR = 15) {
   return out;
 }
 
-/** 그리기 전 다듬기 (골목 들르기 없애고 모서리 둥글게) */
-export function tidyRoad(line) {
-  return line && line.length >= 2 ? roundCorners(despike(line)) : line;
+/** 그리기 전 다듬기 (골목 들르기 없애고 모서리 둥글게). [stops]: 노선 정류장 [[위도, 경도, 이름]...] (터미널 들르기는 남기려고) */
+export function tidyRoad(line, stops = []) {
+  return line && line.length >= 2 ? roundCorners(despike(line, stops)) : line;
 }

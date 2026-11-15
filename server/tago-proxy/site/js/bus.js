@@ -435,6 +435,8 @@ export function routeScreen(root, p, ctx) {
   // 화면에 그린 노선 선 (도로 선을 진행 방향 오른쪽으로 비킨 것)과 그때의 m/px·비킨 거리(m)
   let drawn = null, drawnMpp = 0, sideM = 0;
   const timers = [];
+  /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
+  const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name]) : []);
   // 버스마다 도로 위 자리(처음부터 m)·그 자리를 받은 시각·속도(m/초): 다음 위치가 올 때까지 도로를 따라 앞으로 움직여 보임
   // (공공데이터 GPS 는 몇십 초 늦게 바뀌어서, 가만히 두면 실제 버스보다 늦어 보임)
   const track = new Map();
@@ -579,8 +581,8 @@ export function routeScreen(root, p, ctx) {
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
     // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림
-    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, { onNewer: (s) => { if (!alive) return; road = tidyRoad(s); snapped = null; linesOf = null; drawList(); drawMap(); } })
-      .then((s) => { if (alive) { road = tidyRoad(s); drawMap(); } });
+    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, { onNewer: (s) => { if (!alive) return; road = tidyRoad(s, stopPts()); snapped = null; linesOf = null; drawList(); drawMap(); } })
+      .then((s) => { if (alive) { road = tidyRoad(s, stopPts()); drawMap(); } });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
     // 누가 노선 모양·정류장 위치를 고치면 바로 다시 그림
@@ -590,7 +592,7 @@ export function routeScreen(root, p, ctx) {
       if (r2 && alive) r.stops = r2.stops;
       const s2 = await B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no).catch(() => null);
       if (!alive) return;
-      road = tidyRoad(s2); snapped = null; linesOf = null; drawList(); drawMap();
+      road = tidyRoad(s2, stopPts()); snapped = null; linesOf = null; drawList(); drawMap();
     });
     timers.push(() => offEdit());
     async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }
