@@ -57,6 +57,9 @@ export async function handleAppShape(request, url, env) {
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   if (!env.DB) return new Response("no db", { status: 503, headers: HEAD });
   if (request.method === "GET") {
+    // 버스가 실제로 지나간 자리로 만든 모양(src/gps.js, shapes 표 sig 끝 ":g")이 있으면 그것을 먼저 → 앱·웹 모두 같은 실제 길
+    const g = await env.DB.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first().catch(() => null);
+    if (g && String(g.sig).endsWith(":g")) return new Response(JSON.stringify({ poly: g.poly, src: "gps" }), { headers: HEAD });
     const poly = await appShape(env.DB, id);
     return poly ? new Response(JSON.stringify({ poly }), { headers: HEAD }) : new Response("none", { status: 404, headers: HEAD });
   }

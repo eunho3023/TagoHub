@@ -5,7 +5,7 @@
 import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
 import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
-import { recordGps } from "./gps.js";
+import { recordGps, gpsInfo } from "./gps.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
@@ -61,13 +61,14 @@ async function web(request, url, env, ctx) {
     return handleEdits(request, env, ctx, url.pathname);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
-  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/"))) {
+  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/") || url.pathname.startsWith("/w/gps/"))) {
     const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
   if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
   // 정류장 지난 운행 기록 (정류장 시간표, src/log.js)
   if (url.pathname === "/w/log/stop") return handleWebLog(url, env);
+  if (url.pathname.startsWith("/w/gps/")) return new Response(JSON.stringify(await gpsInfo(env.DB, decodeURIComponent(url.pathname.slice("/w/gps/".length))).catch(() => null)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (url.pathname === "/w/poll/status") return new Response(JSON.stringify(await pollStatus(env)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);

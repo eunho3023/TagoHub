@@ -12,3 +12,18 @@ test("앱 모양 검사: 정류장을 지나는 선만 받음", () => {
   assert.equal(checkShape("", null), "bad poly");
   assert.equal(checkShape(line, null), null);                                          // 정류장을 모르면 범위만
 });
+
+test("앱이 모양을 물으면 버스가 실제로 지나간 자리로 만든 모양(sig 끝 :g)을 먼저 줌", async () => {
+  const { handleAppShape } = await import("../src/appshape.js");
+  const rows = { shapes: { sig: "v7:3:1,2:3,4:g", poly: "GPS" }, app: { poly: "APP" } };
+  const db = {
+    prepare: (sql) => ({
+      bind: () => ({ first: async () => (sql.includes("FROM shapes") ? rows.shapes : sql.includes("app_shapes") ? rows.app : null), run: async () => ({}) }),
+      run: async () => ({}),
+    }),
+  };
+  const get = async () => (await handleAppShape(new Request("https://x/appshape/JUB305001088"), new URL("https://x/appshape/JUB305001088"), { DB: db })).json();
+  assert.deepEqual(await get(), { poly: "GPS", src: "gps" });
+  rows.shapes = { sig: "v7:3:1,2:3,4:k", poly: "KAKAO" };   // 버스 자리 모양이 아니면 앱이 올린 모양
+  assert.deepEqual(await get(), { poly: "APP" });
+});

@@ -452,10 +452,19 @@ async function storedShape(db, id, sig) {
   return null;
 }
 
+/** 버스 자리로 만든 저장 모양 (없으면 null) */
+async function gpsStored(db, id) {
+  const row = await db.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
+  return row && String(row.sig).endsWith(":g") ? row.poly : null;
+}
+
 export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const id = decodeURIComponent(url.pathname.slice("/w/shape/".length));
   // 노선 id 에 "-" 가 든 지역도 있음 (구미 GMB101-110 등)
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
+  // 버스가 실제로 지나간 자리로 만든 모양(src/gps.js, sig 끝 ":g")이 있으면 그것이 가장 먼저 (실제 길·차로·회전교차로 그대로)
+  const fromGps = env.DB ? await gpsStored(env.DB, id).catch(() => null) : null;
+  if (fromGps) return new Response(JSON.stringify({ poly: fromGps, src: "gps" }), { headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
   // 앱(폰)이 만들어 올린 모양이 있으면 그것 (앱과 웹의 노선 선이 같게, src/appshape.js). 저장해 둔 서버 모양보다 먼저
   const fromApp = env.DB ? await appShape(env.DB, id).catch(() => null) : null;
   if (fromApp) return new Response(JSON.stringify({ poly: fromApp, src: "app" }), { headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
@@ -511,7 +520,7 @@ async function enqueue(db, id, city, no, prio, ensure = true) {
     .bind(id, /^\d{1,6}$/.test(city || "") ? city : null, no || null, prio, Math.floor(Date.now() / 1000)).run();
 }
 
-/** 버스 GPS 로 노선 모양 만들기 (공식 모양이 없는 지역). 정류장 85% 가 60m 안을 지나야 저장 (sig 끝 ":g") */
+/** 버스가 실제로 지나간 자리(GPS 칸)로 노선 모양 만들기 (모든 지역). 정류장 85% 가 60m 안을 지나야 저장 (sig 끝 ":g") */
 async function gpsCron(env, fetcher) {
   const job = await nextGpsRoute(env.DB);
   if (!job) return null;
@@ -521,9 +530,7 @@ async function gpsCron(env, fetcher) {
   const sig = signature(stops);
   const row = await env.DB.prepare("SELECT poly FROM shapes WHERE route_id = ?").bind(id).first();
   const base = row?.poly ? decode(row.poly, 5) : stops.map((s) => [s[0], s[1]]);
-  let used = 0;
-  const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
-  const res = await gpsShape(await gpsPoints(env.DB, id), base, limited);
+  const res = gpsShape(await gpsPoints(env.DB, id), base, stops);
   if (res.shape && fitsStops(res.shape, stops, 60, 0.85)) {
     const routeNo = await dataRouteNo(env, id);
     const k = routeNo && (env.KAKAO_REST_KEY || "").trim() ? ":k" : "";
@@ -584,6 +591,8 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
     await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
     return { id, skipped: true };
   }
+  // 버스 자리로 만든 모양은 덮어쓰지 않음 (gpsCron 이 버스 자리가 늘면 다시 만듦)
+  if (await gpsStored(env.DB, id)) { await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run(); return { id, gps: true }; }
   const routeNo = cleanNo(job.no) || (await dataRouteNo(env, id));
   const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
   const sig = signature(stops) + (useKakao ? ":k" : "");
