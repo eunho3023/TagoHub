@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bucket, build, buildKakao, chunks, decode, encode, fillGaps, fitsStops, handleShape, kakaoRidePath, removeDetours, signature, tagoStops } from "../src/shape.js";
+import { bucket, build, buildKakao, chunks, decode, encode, fitsStops, handleShape, kakaoRidePath, removeDetours, signature, tagoStops } from "../src/shape.js";
 
 test("노선 묶음 번호는 앱·자료 만들기와 같음", () => {
   assert.equal(bucket("BSB5200111000"), 992);
@@ -37,30 +37,6 @@ test("구간 실패는 직선, 전부 실패면 null", async () => {
   assert.ok(shape.length >= 4);
   assert.equal(await build(stops, async () => ({ ok: false })), null);
   assert.equal(signature(stops), "v7:3:36.0000,127.0000:36.0200,127.0000");
-  // 서울·경기·전주(공식 모양을 도로에 붙임)는 v8 → 예전 모양은 다시 만듦
-  assert.equal(signature(stops, "JUB305001088"), "v8:3:36.0000,127.0000:36.0200,127.0000");
-  assert.equal(signature(stops, "JJB306000104"), "v7:3:36.0000,127.0000:36.0200,127.0000");
-});
-
-test("성긴 공식 모양: 블록을 가로지르는 긴 조각만 도로 길로 채움", async () => {
-  // a → b 는 대각선 약 156m (블록 가로지름), b → c 는 짧음(20m 안)
-  const a = [36.0, 127.0], b = [36.001, 127.00124], c = [36.00115, 127.00124];
-  const corner = [36.0, 127.00124]; // 도로는 동쪽으로 갔다가 북쪽으로 (ㄱ자)
-  const asked = [];
-  const leg = (pts) => ({ steps: [{ geometry: encode(pts, 6) }] });
-  const ok = async (u) => { asked.push(u); return { ok: true, json: async () => ({ code: "Ok", routes: [{ legs: [leg([a, corner, b])] }] }) }; };
-  assert.deepEqual(await fillGaps([a, b, c], ok), [a, corner, b, c]);
-  assert.equal(asked.length, 1);
-  assert.ok(asked[0].includes("steps=true"));
-  // 길이 크게 돌아가면(직선의 1.5배 + 60m 넘음) 그 조각은 그대로
-  const far = [36.0, 127.01];
-  const loop = async () => ({ ok: true, json: async () => ({ code: "Ok", routes: [{ legs: [leg([a, far, b])] }] }) });
-  assert.deepEqual(await fillGaps([a, b, c], loop), [a, b, c]);
-  // 못 받으면 그대로, 긴 조각이 없으면 묻지 않음
-  assert.deepEqual(await fillGaps([a, b, c], async () => ({ ok: false })), [a, b, c]);
-  asked.length = 0;
-  assert.deepEqual(await fillGaps([b, c], ok), [b, c]);
-  assert.equal(asked.length, 0);
 });
 
 test("정류장 좌표가 큰길 옆 골목에 찍혀 길이 돌아 들어가면 그 정류장을 빼고 큰길로", async () => {
@@ -197,12 +173,14 @@ test("예약 작업: 노선 묶음을 줄에 넣고, 1분마다 하나씩 만들
   assert.equal(r2.saved, true);
   assert.ok(shapes.get("R1").sig.startsWith("v7:"));
   assert.ok(!queue.has("R1"));
-  assert.equal(meta.get("ver"), "8");
-  // 모양 만드는 방식이 바뀌면(판) 노선 묶음을 처음부터 다시 훑음
-  meta.set("bucket", "1024"); meta.set("ver", "7");
+  assert.equal(meta.get("ver"), "9");
+  // 모양 만드는 방식이 바뀌면(판) 노선 묶음을 처음부터 다시 훑고, 지금 방식이 아닌(v8) 모양은 다시 만듦
+  meta.set("bucket", "1024"); meta.set("ver", "8");
+  shapes.set("R1", { sig: "v8:2:36.0000,127.0000:36.0100,127.0000:k", poly: "x" });
   const r3 = await shapeCron(env, osrm);
   assert.equal(r3.bucket, 0);
-  assert.equal(meta.get("ver"), "8");
+  assert.equal(meta.get("ver"), "9");
+  assert.ok(queue.has("R1"));
 });
 
 test("지역 공식 노선 모양: 서울·경기·전주", async () => {

@@ -329,8 +329,8 @@ async function shapeNet(routeId, city, stops, no, { noEdit = false } = {}) {
     if (pts.length >= 2 && (!stops || fitsStops(pts, stops, 100, 0.9))) return pts;
   } catch (e) { /* 서버에서 */ }
   try {
-    // v=5: 노선 번호를 주면 서버가 카카오 경로(앱과 같은 방법)로. 골목으로 돌아 들어가지 않게 다시 만든 모양 (브라우저에 저장된 예전 모양을 쓰지 않게)
-    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city, v: 7, no: no || undefined } : { v: 7, no: no || undefined })).poly;
+    // v=9(잠깐 배포됐던 v8 모양을 브라우저가 하루 동안 다시 쓰지 않게): 노선 번호를 주면 서버가 카카오 경로(앱과 같은 방법)로. 골목으로 돌아 들어가지 않게 다시 만든 모양 (브라우저에 저장된 예전 모양을 쓰지 않게)
+    const poly = (await getJson("w/shape/" + legacyId(routeId), /^\d+$/.test(city || "") ? { city, v: 9, no: no || undefined } : { v: 9, no: no || undefined })).poly;
     const pts = decodePolyline(String(poly), 5);
     return pts.length >= 2 ? pts : null;
   } catch (e) { return null; }
