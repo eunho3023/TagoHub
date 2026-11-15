@@ -966,9 +966,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val rail = if (poiKind == com.eunho.tagohub.ui.ModeJump.Kind.Train) {
                 withContext(Dispatchers.IO) { com.eunho.tagohub.data.TrainStationGeo.matchNear(name, lat, lng, 400.0) }
             } else null
-            val facility = poiKind != null && (poiKind != com.eunho.tagohub.ui.ModeJump.Kind.Train || rail != null)
             // 전국 정류소 좌표(내장 DB): 반경 300m 후보를 넉넉히 받아 이름·좌표로 맞춘다
             val dbStops = stopDb?.let { db -> withContext(Dispatchers.IO) { db.near(lat, lng, 300.0, 60) } }.orEmpty().map { it.first }
+            // 카카오의 버스 정류장 아이콘 이름이 "삼례터미널"처럼 '터미널'로 끝나면 터미널 장소로 보고 장소 카드가 떴음.
+            // 이름이 똑같은 정류장이 바로 옆(60m)에 있으면 정류장으로 연다 (웹과 같은 우리 정류장 위치·도착 정보)
+            val coachStop = if (poiKind == com.eunho.tagohub.ui.ModeJump.Kind.Coach) {
+                com.eunho.tagohub.data.PoiMatch.sameNameNear(name, lat, lng, dbStops, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, COACH_STOP_M)
+            } else null
+            val facility = coachStop == null && poiKind != null && (poiKind != com.eunho.tagohub.ui.ModeJump.Kind.Train || rail != null)
             val cachedStops = stops.values.filter { stop ->
                 stop.lat != null && stop.lng != null &&
                     com.eunho.tagohub.core.Geo.meters(lat, lng, stop.lat!!, stop.lng!!) <= 300.0
@@ -977,7 +982,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 이름이 맞으면 거리와 무관하게 그 정류장을 고르고(PoiMatch.pick 1·2단계),
             // 이름이 안 맞을 때만 좌표로 고른다. 좌표는 내장 DB 것이 정확하므로 문턱을 좁게 둔다.
             val nearM = if (busPoi) 40.0 else 25.0
-            val stop = if (facility) null else com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, nearM)
+            val stop = if (facility) null else coachStop ?: com.eunho.tagohub.data.PoiMatch.pick(name, lat, lng, near, { it.name }, { s -> s.lat?.let { la -> s.lng?.let { la to it } } }, nearM)
             // 이름 없이 역 아이콘만 눌렀을 때도(이름이 비면 이름 매칭이 안 됨) 바로 앞(80m)에 있는 역이면 그 역
             val nameSaysBus = name.contains("정류") || name.contains("버스")
             val station = if (facility) null else index?.matchPoi(name, lat, lng)
@@ -987,7 +992,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val stationDistance = station?.distanceTo(lat, lng)
             // 이름이 지하철역("강남역", "강남역 2호선")이면 같은 이름의 정류장이 더 가까워도 역을 연다
             val useStop = stop != null && (
-                station == null || busPoi ||
+                station == null || busPoi || coachStop != null ||
                     (!com.eunho.tagohub.data.PoiMatch.looksLikeStation(name) && stopDistance!! <= stationDistance!! && stationDistance > STATION_FIRST_M)
             )
             if (useStop) {
@@ -3288,6 +3293,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
         /** 눌린 곳이 역(노선별 역 위치)에서 이 거리(m) 안이면, 이름이 정류장 같아도(예: "당산역.지하철2호선") 같은 자리의 정류장보다 역을 먼저 엶 */
         const val STATION_FIRST_M = 30.0
+        /** "○○터미널" 카카오 아이콘을 같은 이름 정류장으로 볼 거리 */
+        const val COACH_STOP_M = 60.0
         const val ITS_ROAD_CACHE_MAX_FEATURES = 150
         const val ITS_ROAD_CACHE_TTL_MS = 24L * 60 * 60 * 1_000
         /** 도시철도 평균 속도 (정차 포함) m/s ≈ 40km/h */
