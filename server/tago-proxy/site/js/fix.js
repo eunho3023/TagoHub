@@ -6,6 +6,7 @@ import { act, header, note } from "./ui.js";
 import { MapView } from "./map.js";
 import * as B from "./busdata.js";
 import * as E from "./edits.js";
+import { applySegFixes, despike } from "./roadline.js";
 
 const MAX_DOTS = 700;
 /** 점 줄이기 기준(m): 작을수록 점이 많고 섬세함 (앱 EDIT_TOL_M 과 같음) */
@@ -122,7 +123,9 @@ export function fixScreen(root, p, ctx) {
     root.querySelector(".bar-title b").textContent = (r.no !== "노선" ? r.no : p.no || "노선") + " 노선 모양 고치기";
     const auto = await B.shape(r.id, p.city || r.city, r.stops, r.no !== "노선" ? r.no : p.no, { noEdit: true });
     if (!alive) return;
-    orig = auto && auto.length >= 2 ? auto : r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]);
+    // 지도에 보이는 선과 같게: 정류장 사이 길 고치기(회차 길 등)를 끼우고 골목 들르기를 뺀 선에서 시작 (roadline.js)
+    const stopInfo = r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]);
+    orig = auto && auto.length >= 2 ? despike(applySegFixes(auto, stopInfo), stopInfo) : r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]);
     const fix = all.bus[r.id] || all.bus[B.legacyId(r.id)];
     hasEdit = !!fix;
     // 정차하는 정류장은 처음부터 선 위의 점으로

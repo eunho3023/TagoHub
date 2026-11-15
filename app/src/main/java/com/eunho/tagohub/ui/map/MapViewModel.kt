@@ -2639,7 +2639,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val edited = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
         viewModelScope.launch {
             // 처음 모양: 자동으로 만든 모양(휴대폰에 저장된 것), 없으면 정류장을 이은 선
-            val auto = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }?.takeIf { it.size >= 2 }
+            // 지도에 보이는 선과 같게: 정류장 사이 길 고치기(회차 길 등)를 끼우고 골목 들르기를 뺀 선에서 시작 (tidyShape)
+            val saved = withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }?.takeIf { it.size >= 2 }
+            val auto = saved?.let { tidyShape(d, it) }
                 ?: d.shape.value?.takeIf { it.size >= 2 && edited == null } ?: stopsLine
             if (auto.size < 2 && edited == null) { banner.value = "노선 정류장 위치가 없어 고칠 수 없어요"; return@launch }
             // 정차하는 정류장은 처음부터 선 위의 점으로 (정류장 자리를 지나게), 점은 2m 단순화로 섬세하게
