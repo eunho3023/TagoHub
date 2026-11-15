@@ -203,9 +203,13 @@ const ROUTE_KEEP_MS = 24 * 3600 * 1000;
 async function savedRoute(id, city) {
   const key = "route:" + legacyId(id) + ":" + (city || "");
   const net = () => (ggId(id) ? ggRoute(id) : tagoRoute(id, city))
-    // 전주 노선은 TAGO 가 실패하면(하루 한도 초과 등) 전주시 버스정보로
-    .catch((e) => { if (/^JUB\d{9}$/.test(legacyId(id))) return null; throw e; })
-    .then((r) => (r && r.stops && r.stops.length) || !/^JUB\d{9}$/.test(legacyId(id)) ? r : jeonjuRoute(legacyId(id)))
+    // 전주·제주 노선은 TAGO 가 실패하면(하루 한도 초과 등) 전주시·제주 버스정보로 (앱과 같은 자료)
+    .catch((e) => { if (/^(JUB|JEB)\d{9}$/.test(legacyId(id))) return null; throw e; })
+    .then((r) => {
+      if (r && r.stops && r.stops.length) return r;
+      const l = legacyId(id);
+      return /^JUB\d{9}$/.test(l) ? jeonjuRoute(l) : /^JEB\d{9}$/.test(l) ? jejuRoute(l) : r;
+    })
     .then((r) => {
       if (r && r.stops && r.stops.length) cachePut(key, { at: Date.now(), r });
       return r;
@@ -233,6 +237,23 @@ async function jeonjuRoute(id) {
     .filter((s) => s.id && !seen.has(s.seq) && seen.add(s.seq))
     .sort((a, b) => a.seq - b.seq);
   if (raw.length < 2) return null;
+  return withCoords(id, "35010", "노선", raw);
+}
+
+/** 제주 노선 정류장 차례를 제주 버스정보(bus.jeju.go.kr, 앱과 같은 자료)로. 좌표는 정류장 이름 자료에서 */
+async function jejuRoute(id) {
+  const rows = JSON.parse(await getText("w/bus/jeju/stops/" + id.slice(3)));
+  const seen = new Set();
+  const raw = (Array.isArray(rows) ? rows : []).map((r) => ({ seq: int(r.STATION_ORD) || 0, id: r.STATION_ID != null ? "JEB" + r.STATION_ID : null, name: String(r.STATION_NM || ""), no: null }))
+    .filter((s) => s.id && !seen.has(s.seq) && seen.add(s.seq))
+    .sort((a, b) => a.seq - b.seq);
+  if (raw.length < 2) return null;
+  const no = rows[0] && rows[0].ROUTE_NUM != null ? String(rows[0].ROUTE_NUM) : "노선";
+  return withCoords(id, "39", no, raw);
+}
+
+/** 정류장 차례 [{seq, id, name, no}] 에 좌표를 정류장 이름 자료(data/names, 이름 첫 글자별)에서 정류장 id 로 찾아 붙여 노선으로 */
+async function withCoords(id, city, no, raw) {
   const files = new Map();
   for (const s of raw) {
     const ch = s.name.codePointAt(0)?.toString(16);
@@ -245,7 +266,7 @@ async function jeonjuRoute(id) {
     return { seq: s.seq, id: s.id, name: s.name, lat: k ? k.lat : null, lng: k ? k.lng : null, upDown: null, no: s.no || (k && k.no) || null };
   });
   if (stops.filter((s) => s.lat != null).length < 2) return null;
-  return { id, no: "노선", start: stops[0].name, end: stops[stops.length - 1].name, city: "35010", region: null, type: null, sum: null, stops };
+  return { id, no, start: stops[0].name, end: stops[stops.length - 1].name, city, region: null, type: null, sum: null, stops };
 }
 
 /** TAGO 노선 정류장 목록·기본 정보로 노선 만들기 (서버 웹 통로, 하루 저장) */
