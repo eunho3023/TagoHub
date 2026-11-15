@@ -53,6 +53,10 @@ class ShapeTest {
         assertEquals(detour, Shapes.despike(detour, listOf(LatLng(35.8004, 127.1015) to "강진터미널")))
         val lp = listOf(a, b, l1, l2, l3, b, c)
         assertEquals(lp, Shapes.despike(lp, listOf(LatLng(35.8003, 127.1011) to "임실터미널")))
+        // 노선 정류장 차례가 되돌아가는 곳(길 건너 같은 정류장에 이어 섬)은 꺾어 나가도 회차로 남김
+        val turnOff = listOf(a, b, l1, l2, l3, b, south)
+        val pair = listOf(LatLng(35.79, 127.09) to "앞", LatLng(35.8003, 127.10105) to "기린대로 병무청", LatLng(35.8003, 127.10125) to "기린대로 병무청", LatLng(35.79, 127.11) to "뒤")
+        assertEquals(turnOff, Shapes.despike(turnOff, pair))
     }
 
     private fun fixture(name: String): String =

@@ -59,3 +59,11 @@ test("꺾이는 곳은 모서리 15m 안에서 둥글게, 곧은 길은 그대�
   assert.deepEqual(roundCorners([a, b, c]), [a, b, c]);
   assert.deepEqual(tidyRoad([a, c]), [a, c]);
 });
+
+test("노선 정류장 차례가 되돌아가는 곳(길 건너 같은 정류장에 이어 섬)은 꺾어 나가도 회차로 남김 (기린대로 병무청)", () => {
+  const south = [35.7990, 127.1010];
+  const path = [a, b, l1, l2, l3, b, south];
+  assert.deepEqual(despike(path), [a, b, south]);   // 정류장을 모르면 꺾어 나가는 고리는 뺌
+  const pair = [[35.8003, 127.10105, "기린대로 병무청"], [35.8003, 127.10125, "기린대로 병무청"]];   // 약 18m 마주 봄
+  assert.deepEqual(despike(path, [[35.79, 127.09, "앞"], ...pair, [35.79, 127.11, "뒤"]]), path);
+});
