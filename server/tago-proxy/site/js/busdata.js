@@ -250,8 +250,10 @@ export async function stopRoutes(stop) {
   // 같은 번호라도 본선·지선·분선처럼 기점·종점이 다르면 다른 노선 → 번호가 아니라 노선 ID(없으면 번호+기점+종점)로 구분
   const sig = (s) => [s.no, (s.start || "").replace(/ /g, ""), (s.end || "").replace(/ /g, "")].join("|");
   const seenSig = new Set(out.map(sig));
-  // 자료 조각에 요약이 없는 노선이 있으면 (경기·전주 등) 정류장을 지나는 노선을 서버로 물어 채움 (운행 안 하는 노선도 보이게)
-  if (!ids.length || ids.some((id) => !sums[id])) {
+  // 자료 조각에 요약이 없는 노선이 있거나, 같은 자리 정류장 중 노선 목록이 비어 있는 곳(전주시 정류장 등)이 있으면
+  // 정류장을 지나는 노선을 서버로 물어 채움 (운행 안 하는 노선도 보이게).
+  // 노선 목록이 빈 정류장을 묻지 않으면 그 지역 노선은 실시간 도착이 와야 뒤늦게 따로 나타남
+  if (!ids.length || ids.some((id) => !sums[id]) || [stop, ...same].some((s) => !(s.routes || []).length)) {
     for (const s of await liveStopRoutes(stop, same).catch(() => [])) {
       // 자료 파일 노선과 겹치는지만 번호+기점+종점으로 봄 (받아 온 노선끼리는 ID 가 다르면 경유지만 다른 다른 노선)
       if (seen.has(s.id) || seenSig.has(sig(s))) continue;
@@ -521,12 +523,17 @@ export async function arrivals(stop) {
     // 전주 정류장: 전주시 버스정보 도착 (앱과 같은 자료). 받으면 그 정류장의 TAGO 도착은 쓰지 않음
     const jeonju = [...new Set([stop, ...(await sameSpot(stop))].map((s) => (/^JUB\d{9}$/.test(s.id) ? s.id : null)).filter(Boolean))];
     if (!t.tago.length && !t.metro.length && !jeonju.length) return { state: "unsupported", list: [], at: Date.now() };
-    const ju = await Promise.allSettled(jeonju.map((id) => jeonjuArrivals(id)));
-    const jeonjuOk = new Set(jeonju.filter((_, i) => ju[i].status === "fulfilled"));
-    const res = [...ju, ...(await Promise.allSettled([
-      ...t.tago.filter(([, id]) => !jeonjuOk.has(id)).map(([c, id]) => tagoArrivals(c, id)),
+    // 지역마다 한꺼번에 물음 (차례로 물으면 느린 지역들의 시간을 더한 만큼 늦음).
+    // 전주 정류장의 TAGO 도착은 전주시 도착을 못 받았을 때만 씀
+    const juP = jeonju.map((id) => jeonjuArrivals(id));
+    const res = await Promise.allSettled([
+      ...juP,
+      ...t.tago.map(([c, id]) => {
+        const k = jeonju.indexOf(id);
+        return k < 0 ? tagoArrivals(c, id) : juP[k].then(() => [], () => tagoArrivals(c, id));
+      }),
       ...t.metro.map(async (p) => { const b = await getText(p); return p.includes("/seoul/") ? seoulArrivals(b) : ggArrivals(b); }),
-    ]))];
+    ]);
     if (res.every((r) => r.status === "rejected")) throw res[0].reason;
     const seen1 = new Set(), seen2 = new Set();
     const list = res.flatMap((r) => (r.status === "fulfilled" ? r.value : []))

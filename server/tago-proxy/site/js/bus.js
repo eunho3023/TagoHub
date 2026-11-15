@@ -7,6 +7,7 @@ import { Favorites, Recent } from "./store.js";
 import * as B from "./busdata.js";
 import { Alight } from "./alight.js";
 import * as Edits from "./edits.js";
+import { tidyRoad } from "./roadline.js";
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
@@ -578,8 +579,8 @@ export function routeScreen(root, p, ctx) {
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
     // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림
-    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, { onNewer: (s) => { if (!alive) return; road = s; snapped = null; linesOf = null; drawList(); drawMap(); } })
-      .then((s) => { if (alive) { road = s; drawMap(); } });
+    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, { onNewer: (s) => { if (!alive) return; road = tidyRoad(s); snapped = null; linesOf = null; drawList(); drawMap(); } })
+      .then((s) => { if (alive) { road = tidyRoad(s); drawMap(); } });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
     // 누가 노선 모양·정류장 위치를 고치면 바로 다시 그림
@@ -589,7 +590,7 @@ export function routeScreen(root, p, ctx) {
       if (r2 && alive) r.stops = r2.stops;
       const s2 = await B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no).catch(() => null);
       if (!alive) return;
-      road = s2; snapped = null; linesOf = null; drawList(); drawMap();
+      road = tidyRoad(s2); snapped = null; linesOf = null; drawList(); drawMap();
     });
     timers.push(() => offEdit());
     async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }
