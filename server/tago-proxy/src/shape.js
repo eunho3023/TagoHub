@@ -33,17 +33,27 @@ export function length(path) {
   return d;
 }
 
-/** 앞 구간 끝 정류장을 다음 구간 시작으로 겹쳐서 나눔 */
+/**
+ * k 번째 정류장에서 회차함: 앞뒤 정류장이 거의 같은 자리 (예: 입석 → 용운입구 → 입석).
+ * 길찾기는 경유지에서 U턴을 하지 않아, 회차 정류장을 가운데 두고 한 번에 물으면 멀리 돌아오고 그 뒤 정류장이 모두 직선이 됨
+ */
+export function turnsAt(stops, k) {
+  if (k <= 0 || k >= stops.length - 1) return false;
+  const ab = meters(stops[k - 1], stops[k]), bc = meters(stops[k], stops[k + 1]);
+  return ab >= 150 && bc >= 150 && meters(stops[k - 1], stops[k + 1]) <= 0.3 * Math.min(ab, bc);
+}
+
+/** 앞 구간 끝 정류장을 다음 구간 시작으로 겹쳐서 나눔. 회차 정류장에서는 끊어 가는 길·돌아오는 길을 따로 물음 */
 export function chunks(stops, size = CHUNK) {
-  if (stops.length <= size) return [stops];
   const out = [];
   let start = 0;
   while (start < stops.length - 1) {
-    const end = Math.min(start + size, stops.length);
+    let end = Math.min(start + size, stops.length);
+    for (let k = start + 1; k < end - 1; k++) if (turnsAt(stops, k)) { end = k + 1; break; }
     out.push(stops.slice(start, end));
     start = end - 1;
   }
-  return out;
+  return out.length ? out : [stops];
 }
 
 export function decode(s, precision) {
@@ -104,7 +114,27 @@ export function stopIndices(shape, stops) {
   return out;
 }
 
-/** 정류장 사이에서 블록을 한 바퀴 도는 구간(직선의 1.8배 넘고 250m 넘게 더 김)은 직선으로 */
+/** 길이 같은 자리(30m 안)로 되돌아오는 고리·되돌아 나오기를 잘라냄 (돌아 나간 거리 100m 넘는 것만) */
+export function cutLoops(path) {
+  const out = [];
+  let i = 0;
+  while (i < path.length) {
+    out.push(path[i]);
+    let walked = 0, best = -1;
+    for (let j = i + 1; j < path.length; j++) {
+      walked += meters(path[j - 1], path[j]);
+      if (walked >= 100 && meters(path[i], path[j]) <= 30) best = j;
+    }
+    i = best > 0 ? best : i + 1;
+  }
+  return out;
+}
+
+/**
+ * 정류장 사이 길 다듬기. 직선의 1.8배 넘고 250m 넘게 더 긴 구간은 같은 자리로 되돌아오는 고리(블록 한 바퀴·멀리 가서 U턴)만 잘라내고,
+ * 그래도 직선의 3배 + 300m 넘게 길면 직선으로. 호숫가·산길처럼 원래 굽이굽이 긴 길은 그대로
+ * (예전엔 1.8배만 넘으면 통째로 직선이라 임실 운암 옥정호 길이 호수를 가로지르는 직선이 됐음)
+ */
 export function removeDetours(shape, stops) {
   if (shape.length < 2 || stops.length < 2) return shape;
   const idx = stopIndices(shape, stops);
@@ -112,10 +142,12 @@ export function removeDetours(shape, stops) {
   for (let k = 0; k < stops.length - 1; k++) {
     const a = idx[k], b = idx[k + 1];
     const straight = meters(stops[k], stops[k + 1]);
-    const piece = b > a ? shape.slice(a, b + 1) : [];
-    const road = piece.length >= 2 ? length(piece) : 0;
-    const loop = piece.length >= 2 && road > straight * 1.8 && road > straight + 250;
-    const seg = piece.length < 2 || loop ? [stops[k], stops[k + 1]] : piece;
+    let seg = b > a ? shape.slice(a, b + 1) : [];
+    if (seg.length >= 2 && length(seg) > straight * 1.8 && length(seg) > straight + 250) {
+      seg = cutLoops(seg);
+      if (length(seg) > straight * 3 + 300) seg = [];
+    }
+    if (seg.length < 2) seg = [stops[k], stops[k + 1]];
     out.push(...(out.length ? seg.slice(1) : seg));
   }
   return out;
@@ -475,7 +507,8 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 노선 번호가 있으면 카카오 경로(앱과 같은 방법)를 먼저 씀 (자료 조각 노선은 조각의 번호)
   const routeNo = cleanNo(url.searchParams.get("no")) || (await dataRouteNo(env, id));
   const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
-  const key = new Request(`https://cache.tagohub/shape/v7${useKakao ? "k" : ""}/${id}`);
+  // v7b: 회차에서 끊어 다시 만든 모양을 받게 (예전 응답은 하루 동안 남아 있음)
+  const key = new Request(`https://cache.tagohub/shape/v7b${useKakao ? "k" : ""}/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
@@ -546,7 +579,16 @@ async function gpsCron(env, fetcher) {
 // 사람들이 연 노선(직선이 섞였던 것)이 먼저, 그다음 자료 조각의 모든 노선을 묶음 차례로 줄에 넣음
 const MAX_TRIES = 5;
 /** 모양 만드는 방식의 판 (바뀌면 예약 작업이 모든 노선 묶음을 다시 훑음) */
-const SHAPE_VER = "9";
+const SHAPE_VER = "10";
+/** 자료 조각 노선 정류장([순번, id, 이름, 위도, 경도, …])에 회차가 있고, 저장 모양에 500m 넘는 직선 조각이 있음 */
+export function turnStraight(stops, poly) {
+  const pts = (stops || []).filter((s) => s[3] != null && s[4] != null).map((s) => [s[3], s[4]]);
+  if (!pts.some((_, k) => turnsAt(pts, k))) return false;
+  let line;
+  try { line = decode(String(poly || ""), 5); } catch (_) { return false; }
+  for (let i = 1; i < line.length; i++) if (meters(line[i - 1], line[i]) > 500) return true;
+  return false;
+}
 export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (!env.DB) return null;
   await ensureTable(env.DB);
@@ -574,11 +616,17 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
     const ids = Object.keys(routes);
     const saved = new Map();
     if (ids.length) {
-      const rows = await env.DB.prepare(`SELECT route_id, sig FROM shapes WHERE route_id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
-      for (const x of rows.results || []) saved.set(x.route_id, x.sig);
+      const rows = await env.DB.prepare(`SELECT route_id, sig, poly FROM shapes WHERE route_id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+      for (const x of rows.results || []) saved.set(x.route_id, x);
     }
     for (const [rid, rt] of Object.entries(routes)) {
-      const has = saved.has(rid) ? { sig: saved.get(rid) } : null;
+      const has = saved.get(rid) || null;
+      // 회차 정류장이 있는데 500m 넘는 직선이 든 모양 (예전엔 회차에서 길찾기가 멀리 돌아 그 뒤가 직선이 됐음) → 지우고 다시 만듦
+      if (has && !String(has.sig).endsWith(":g") && turnStraight(rt.stops, has.poly)) {
+        await env.DB.prepare("DELETE FROM shapes WHERE route_id = ?").bind(rid).run();
+        await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
+        continue;
+      }
       // 아직 없거나, 예전 방식이거나, 긴 노선을 임시(OSRM)로 만든 것
       if (!has || !String(has.sig).startsWith("v7:") || String(has.sig).endsWith(":o")) await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
     }

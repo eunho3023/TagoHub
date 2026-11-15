@@ -173,13 +173,13 @@ test("예약 작업: 노선 묶음을 줄에 넣고, 1분마다 하나씩 만들
   assert.equal(r2.saved, true);
   assert.ok(shapes.get("R1").sig.startsWith("v7:"));
   assert.ok(!queue.has("R1"));
-  assert.equal(meta.get("ver"), "9");
+  assert.equal(meta.get("ver"), "10");
   // 모양 만드는 방식이 바뀌면(판) 노선 묶음을 처음부터 다시 훑고, 지금 방식이 아닌(v8) 모양은 다시 만듦
   meta.set("bucket", "1024"); meta.set("ver", "8");
   shapes.set("R1", { sig: "v8:2:36.0000,127.0000:36.0100,127.0000:k", poly: "x" });
   const r3 = await shapeCron(env, osrm);
   assert.equal(r3.bucket, 0);
-  assert.equal(meta.get("ver"), "9");
+  assert.equal(meta.get("ver"), "10");
   assert.ok(queue.has("R1"));
 });
 
@@ -222,4 +222,38 @@ test("긴 노선: 카카오 경로를 여러 번에 나눠 이어 만듦", async
   assert.equal(r2.done, true);
   assert.ok(r2.shape && Math.abs(r2.shape[r2.shape.length - 1][0] - 36.13) < 1e-5);
   assert.ok(!work.has("R9"));
+});
+
+test("회차 정류장에서 조각을 끊어 가는 길·돌아오는 길을 따로 물음 (임실 운암 입석 → 용운입구 → 입석)", async () => {
+  const { turnsAt } = await import("../src/shape.js");
+  const a = [35.6377, 127.1551], turn = [35.6373, 127.1360], b = [35.6378, 127.1550], c = [35.6442, 127.1549], d = [35.6537, 127.1548];
+  const stops = [[35.6300, 127.1550], a, turn, b, c, d];
+  assert.equal(turnsAt(stops, 2), true);
+  assert.equal(turnsAt(stops, 3), false);
+  const parts = chunks(stops, 6);
+  assert.deepEqual(parts.map((p) => p.length), [3, 4]);
+  assert.deepEqual(parts[0][2], turn);
+  assert.deepEqual(parts[1][0], turn);
+});
+
+test("정류장 사이 길: 굽이굽이 긴 산길은 그대로, 같은 자리로 되돌아오는 고리만 잘라냄", async () => {
+  const { cutLoops } = await import("../src/shape.js");
+  const a = [36.0, 127.0], b = [36.0, 127.01];   // 직선 약 900m
+  // 북쪽으로 크게 돌아가는 산길 (직선의 약 2배)
+  const mountain = [a, [36.004, 127.0025], [36.006, 127.005], [36.004, 127.0075], b];
+  assert.deepEqual(removeDetours(mountain, [a, b]), mountain);
+  // 출발하자마자 블록을 한 바퀴 돌아 같은 자리로 온 뒤 곧게
+  const loop = [a, [36.001, 127.0], [36.001, 127.001], [36.0, 127.001], [36.0, 127.00002], b];
+  assert.deepEqual(cutLoops(loop), [a, [36.0, 127.00002], b]);
+});
+
+test("다시 만들 모양: 회차가 있고 500m 넘는 직선이 든 것만", async () => {
+  const { turnStraight } = await import("../src/shape.js");
+  const st = (p) => [0, "x", "n", p[0], p[1], "0"];
+  const turnStops = [[35.6300, 127.1550], [35.6377, 127.1551], [35.6373, 127.1360], [35.6378, 127.1550]].map(st);
+  const straight = encode([[35.6373, 127.1360], [35.6378, 127.1550]], 5);
+  const road = encode(Array.from({ length: 40 }, (_, i) => [35.6373 + i * 0.00001, 127.1360 + i * 0.0005]), 5);
+  assert.equal(turnStraight(turnStops, straight), true);
+  assert.equal(turnStraight(turnStops, road), false);
+  assert.equal(turnStraight([[35.60, 127.15], [35.61, 127.15], [35.62, 127.15]].map(st), straight), false);
 });

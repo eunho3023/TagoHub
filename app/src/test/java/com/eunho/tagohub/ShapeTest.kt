@@ -12,6 +12,17 @@ import org.junit.Test
 import kotlin.math.abs
 
 class ShapeTest {
+    /** 회차 정류장(앞뒤 정류장이 거의 같은 자리)에서 조각을 끊어 가는 길·돌아오는 길을 따로 물음 (서버 shape.js chunks 와 같음) */
+    @Test
+    fun chunks_splitAtTurnaround() {
+        val a = LatLng(35.6377, 127.1551); val turn = LatLng(35.6373, 127.1360); val b = LatLng(35.6378, 127.1550)
+        val stops = listOf(LatLng(35.6300, 127.1550), a, turn, b, LatLng(35.6442, 127.1549), LatLng(35.6537, 127.1548))
+        assertTrue(Osrm.turnsAt(stops, 2))
+        val parts = Osrm.chunks(stops, 6)
+        assertEquals(listOf(3, 4), parts.map { it.size })
+        assertEquals(turn, parts[1][0])
+    }
+
     /** 골목 들르기는 빼고, 회차·회전교차로·터미널 들르기·정류장 없는 굽은 길은 남김 (웹 test/roadline.test.js 와 같은 경우) */
     @Test
     fun despike_removesSideTripsKeepsTurnaroundsAndRoundabouts() {
