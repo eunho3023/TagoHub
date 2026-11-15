@@ -48,9 +48,47 @@ export function sameStop(a, b) {
   if (a.city === b.city && a.no && b.no && a.no !== b.no) return false;
   return a.name === b.name && d <= SAME_SPOT_M;
 }
+const SAME_NAME_M = 60;
+const nameKey = (n) => String(n ?? "").replace(/[\s.·,()[\]\-_]/g, "");
+/**
+ * 같은 자리 정류장 묶음 (예: 전주 시내버스 정류장과 그 자리에 서는 진안·완주 버스 정류장).
+ * 폰 앱 StopMerge.groups · 정류장 짝 표(pipeline/build_stop_companions.js)와 같은 규칙:
+ * 다른 시군 정류장이 30m 안이거나 이름이 같고 60m 안이면 후보, 가까운 짝부터 묶고 한 묶음에는 시군마다 하나씩만.
+ */
+export function spotGroups(stops) {
+  const list = [], seen = new Set();
+  for (const x of stops) if (x && x.lat != null && x.lng != null && !seen.has(x.id)) { seen.add(x.id); list.push(x); }
+  const order = list.map((_, i) => i).sort((a, b) => list[a].lat - list[b].lat);
+  const dLat = SAME_NAME_M / 111000, edges = [];
+  for (let i = 0; i < order.length; i++) {
+    const a = list[order[i]], ka = nameKey(a.name);
+    for (let j = i + 1; j < order.length && list[order[j]].lat - a.lat <= dLat; j++) {
+      const b = list[order[j]];
+      if (a.city === b.city) continue;
+      const d = meters(a.lat, a.lng, b.lat, b.lng);
+      if (d <= (ka && ka === nameKey(b.name) ? SAME_NAME_M : SAME_SPOT_M)) edges.push([order[i], order[j], d]);
+    }
+  }
+  edges.sort((x, y) => x[2] - y[2] || Math.min(x[0], x[1]) - Math.min(y[0], y[1]) || Math.max(x[0], x[1]) - Math.max(y[0], y[1]));
+  const parent = list.map((_, i) => i), cities = list.map((x) => new Set([x.city]));
+  const root = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (const [a, b] of edges) {
+    const ra = root(a), rb = root(b);
+    if (ra === rb || [...cities[ra]].some((c) => cities[rb].has(c))) continue;
+    const [keep, gone] = ra < rb ? [ra, rb] : [rb, ra];
+    parent[gone] = keep;
+    for (const c of cities[gone]) cities[keep].add(c);
+  }
+  const groups = new Map();
+  list.forEach((x, i) => { const r = root(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(x); });
+  return [...groups.values()];
+}
+/** 노선이 많은 것, 같으면 교통안전공단(TS…) 아닌 것 먼저 */
+const byRoutes = (a, b) => b.routes.length - a.routes.length || (a.city.startsWith("TS") ? 1 : 0) - (b.city.startsWith("TS") ? 1 : 0);
+
 /** 같은 이름·같은 자리 정류장 묶기 (노선이 가장 많은 것 하나만) */
 function mergeSameSpot(stops) {
-  const ordered = [...stops].sort((a, b) => b.routes.length - a.routes.length || (a.city.startsWith("TS") ? 1 : 0) - (b.city.startsWith("TS") ? 1 : 0));
+  const ordered = [...stops].sort(byRoutes);
   const out = [];
   for (const s of ordered) if (!out.some((o) => sameStop(o, s))) out.push(s);
   return out;
@@ -73,8 +111,10 @@ export async function stopsIn(s, w, n, e, limit = 400) {
   const names = tileNames(s, w, n, e);
   if (names.length > 12) return [];
   const all = (await Promise.all(names.map(tile))).flat();
-  return mergeSameSpot(all.filter((x) => x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e &&
-    (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("JEB") || x.id.startsWith("JUB")))).slice(0, limit);
+  const inView = all.filter((x) => x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e &&
+    (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
+  // 같은 자리의 다른 시군 정류장은 점 하나로 (대표는 노선이 많은 것)
+  return mergeSameSpot(spotGroups(inView).map((g) => [...g].sort(byRoutes)[0])).slice(0, limit);
 }
 
 /** 자료 조각의 원래 좌표 (손으로 고친 것 적용 전). 못 찾으면 null */
@@ -321,6 +361,8 @@ export async function sameSpot(stop) {
   const groups = new Map();
   // 경기 밖에 있는 경기 버스 정류장(인천·서울·청주 등의 GGB): 그 지역 시내버스 정류장이 조금 떨어져 따로 있어 가까운 것 하나씩 함께 봄
   const borrowed = stop.id.startsWith("GGB") && !stop.city.startsWith("31");
+  // 지도에서 점 하나로 묶인 같은 자리 정류장 (spotGroups)
+  const mine = new Set((spotGroups([stop, ...near.filter((o) => o.id !== stop.id)]).find((g) => g.some((o) => o.id === stop.id)) || []).map((o) => o.id));
   for (const o of near) {
     if (o.id === stop.id) continue;
     const m = meters(stop.lat, stop.lng, o.lat, o.lng);
@@ -329,7 +371,7 @@ export async function sameSpot(stop) {
       if (!best || meters(stop.lat, stop.lng, best.lat, best.lng) > m) groups.set(k, o);
       continue;
     }
-    if (!((stop.no && o.no === stop.no && m <= SAME_NO_M) || (o.city !== stop.city && m <= SAME_SPOT_M))) continue;
+    if (!((stop.no && o.no === stop.no && m <= SAME_NO_M) || mine.has(o.id))) continue;
     const k = o.city + "|" + (o.no || o.id);
     const best = groups.get(k);
     if (!best || meters(stop.lat, stop.lng, best.lat, best.lng) > m) groups.set(k, o);
