@@ -142,9 +142,22 @@ export function gpsShape(points, base, stops = []) {
   return { shape: out };
 }
 
-/** 예약 작업: 점이 충분히 쌓인(만든 뒤 30% 넘게 늘어난) 노선 하나 → {id, city} 또는 null */
+/**
+ * 예약 작업: 점이 충분히 쌓인(만든 뒤 30% 넘게 늘어난) 노선 하나 → {id, city} 또는 null.
+ * 사람들이 보는 노선(route_interest, src/poll.js) 먼저: 모으는 노선이 전국 수천 개라 아무 노선이나 고르면 차례가 오지 않음
+ */
 export async function nextGpsRoute(db) {
   await ensureGps(db);
+  try {
+    const hot = await db.prepare("SELECT g.route_id FROM gps_routes g JOIN route_interest i ON i.route_id = g.route_id ORDER BY g.tried ASC, i.score DESC LIMIT 10").all();
+    const ids = (hot.results || []).map((r) => r.route_id);
+    if (ids.length) {
+      const q = ids.map(() => "?").join(",");
+      await db.prepare(`UPDATE gps_routes SET cells = (SELECT COUNT(*) FROM gps_cells c WHERE c.route_id = gps_routes.route_id) WHERE route_id IN (${q})`).bind(...ids).run();
+      const pick = await db.prepare(`SELECT route_id, city, cells FROM gps_routes WHERE route_id IN (${q}) AND cells >= 30 AND cells > built * 1.3 ORDER BY tried ASC, cells DESC LIMIT 1`).bind(...ids).first();
+      if (pick) return pick;
+    }
+  } catch (_) { /* 관심 노선 표가 아직 없음 */ }
   await db.prepare("UPDATE gps_routes SET cells = (SELECT COUNT(*) FROM gps_cells c WHERE c.route_id = gps_routes.route_id) WHERE route_id IN (SELECT route_id FROM gps_routes ORDER BY tried ASC LIMIT 20)").run();
   return db.prepare("SELECT route_id, city, cells FROM gps_routes WHERE cells >= 30 AND cells > built * 1.3 ORDER BY tried ASC, cells DESC LIMIT 1").first();
 }
