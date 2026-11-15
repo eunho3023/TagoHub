@@ -10,70 +10,78 @@ data class MergedStop(val main: BusStop, val others: List<BusStop>) {
 }
 
 /**
- * 시군 경계 정류장 합치기.
- * 규칙(정류장 패널과 같음): 다른 시군 정류장 중 시군마다 가장 가까운 하나, 30m 안.
- * 같은 이름이라도 20~30m 떨어진 건 대개 길 건너편이라, 더 가까운 같은 시군 정류장이 있으면 그쪽만 묶인다.
+ * 같은 자리 정류장 묶기 (예: 전주 시내버스 정류장과 그 자리에 서는 진안·완주 버스 정류장).
+ * 웹(site/js/busdata.js spotGroups)·정류장 짝 표(pipeline/build_stop_companions.js)와 같은 규칙:
+ * - 다른 시군(또는 다른 기관) 정류장이 [RADIUS_M] 안이거나, 이름이 같고 [SAME_NAME_M] 안이면 같은 자리 후보
+ * - 가까운 짝부터 묶고, 한 묶음에는 시군마다 하나씩만 (길 건너편 같은 이름 정류장은 그쪽 짝과 따로 묶임)
  * 대표 정류장은 preferCity(지금 보고 있는 지역)가 있으면 그 시군 것, 없으면 번호가 있는 것.
  */
 object StopMerge {
     const val RADIUS_M = 30.0
+    const val SAME_NAME_M = 60.0
 
-    /**
-     * 같은 자리의 다른 시군 정류장 고르기 (주변 정류장 목록에서): 시군마다 가장 가까운 하나, 30m 안.
-     * 전국 정류장 파일에 없는 정류장(예: 전주시 안의 전북 통합 정류장 TSB…)도 TAGO 주변 정류장으로 찾기 위해.
-     */
-    fun companions(stop: BusStop, nearby: List<BusStop>): List<BusStop> {
-        val lat = stop.lat ?: return emptyList()
-        val lng = stop.lng ?: return emptyList()
-        return nearby.asSequence()
-            .filter { it.cityCode != stop.cityCode && it.nodeId != stop.nodeId && it.lat != null && it.lng != null }
-            .map { it to Geo.meters(lat, lng, it.lat!!, it.lng!!) }
-            .filter { it.second <= RADIUS_M }
-            .groupBy { it.first.cityCode }
-            .map { (_, l) -> l.minBy { it.second }.first }
-            .toList()
+    /** 이름 비교용: 공백·문장부호·괄호를 뺌 ("부산대학병원(토성역)" = "부산대학병원.토성역") */
+    fun nameKey(name: String): String = name.replace(Regex("[\\s.·,()\\[\\]\\-_]"), "")
+
+    /** 같은 자리로 볼 수 있는 거리 한계 (두 정류장 이름에 따라) */
+    private fun limit(a: BusStop, b: BusStop): Double {
+        val ka = nameKey(a.name)
+        return if (ka.isNotEmpty() && ka == nameKey(b.name)) SAME_NAME_M else RADIUS_M
     }
 
-    fun merge(stops: List<BusStop>, preferCity: String? = null): List<MergedStop> {
-        val located = stops.filter { it.lat != null && it.lng != null }
-        val byLat = located.sortedBy { it.lat }
-        val dLat = RADIUS_M / 111_000.0
-        // 각 정류장 → 다른 시군별 가장 가까운 후보
-        val partner = HashMap<String, MutableMap<String, Pair<BusStop, Double>>>()
+    /** 같은 자리 묶음 (좌표 있는 정류장만). 묶음 안 순서는 들어온 순서 */
+    fun groups(stops: List<BusStop>): List<List<BusStop>> {
+        val located = stops.filter { it.lat != null && it.lng != null }.distinctBy { it.nodeId }
+        val byLat = located.withIndex().sortedBy { it.value.lat }
+        val dLat = SAME_NAME_M / 111_000.0
+        data class Edge(val a: Int, val b: Int, val d: Double)
+        val edges = ArrayList<Edge>()
         for (i in byLat.indices) {
-            val a = byLat[i]
+            val (ia, a) = byLat[i]
             var j = i + 1
-            while (j < byLat.size && byLat[j].lat!! - a.lat!! <= dLat) {
-                val b = byLat[j]
+            while (j < byLat.size && byLat[j].value.lat!! - a.lat!! <= dLat) {
+                val (ib, b) = byLat[j]
                 if (a.cityCode != b.cityCode) {
                     val d = Geo.meters(a.lat!!, a.lng!!, b.lat!!, b.lng!!)
-                    if (d <= RADIUS_M) {
-                        listOf(a to b, b to a).forEach { (x, y) ->
-                            val m = partner.getOrPut(x.nodeId) { HashMap() }
-                            val cur = m[y.cityCode]
-                            if (cur == null || d < cur.second) m[y.cityCode] = y to d
-                        }
-                    }
+                    if (d <= limit(a, b)) edges += Edge(ia, ib, d)
                 }
                 j++
             }
         }
-        // 서로가 서로의 가장 가까운 상대일 때만 묶는다 (한쪽만 가까운 길 건너편은 제외)
-        val used = HashSet<String>()
-        val out = ArrayList<MergedStop>()
-        for (s in located) {
-            if (s.nodeId in used) continue
-            val group = linkedMapOf(s.nodeId to s)
-            partner[s.nodeId]?.values?.forEach { (o, _) ->
-                val back = partner[o.nodeId]?.get(s.cityCode)?.first
-                if (back?.nodeId == s.nodeId && o.nodeId !in used) group[o.nodeId] = o
-            }
-            group.keys.forEach { used += it }
-            val members = group.values.toList()
+        // 가까운 짝부터 묶음을 합침. 합칠 두 묶음에 같은 시군이 있으면 안 합침
+        val parent = IntArray(located.size) { it }
+        val cities = Array(located.size) { mutableSetOf(located[it].cityCode) }
+        fun root(x: Int): Int { var r = x; while (parent[r] != r) r = parent[r]; var y = x; while (parent[y] != r) { val n = parent[y]; parent[y] = r; y = n }; return r }
+        edges.sortWith(compareBy<Edge> { it.d }.thenBy { minOf(it.a, it.b) }.thenBy { maxOf(it.a, it.b) })
+        for (e in edges) {
+            val ra = root(e.a)
+            val rb = root(e.b)
+            if (ra == rb || cities[ra].any { it in cities[rb] }) continue
+            val (keep, gone) = if (ra < rb) ra to rb else rb to ra
+            parent[gone] = keep
+            cities[keep].addAll(cities[gone])
+        }
+        val out = LinkedHashMap<Int, MutableList<BusStop>>()
+        located.indices.forEach { out.getOrPut(root(it)) { ArrayList() } += located[it] }
+        return out.values.toList()
+    }
+
+    /**
+     * 같은 자리의 다른 시군 정류장 (주변 정류장 목록에서): [groups] 로 묶었을 때 [stop] 과 같은 묶음.
+     * 전국 정류장 파일에 없는 정류장(예: 전주시 안의 전북 통합 정류장 TSB…)도 TAGO 주변 정류장으로 찾기 위해.
+     */
+    fun companions(stop: BusStop, nearby: List<BusStop>): List<BusStop> {
+        if (stop.lat == null || stop.lng == null) return emptyList()
+        val g = groups(listOf(stop) + nearby.filter { it.nodeId != stop.nodeId }).firstOrNull { l -> l.any { it.nodeId == stop.nodeId } }
+        return g.orEmpty().filter { it.nodeId != stop.nodeId }
+    }
+
+    fun merge(stops: List<BusStop>, preferCity: String? = null): List<MergedStop> {
+        val out = groups(stops).map { members ->
             val main = members.firstOrNull { it.cityCode == preferCity }
                 ?: members.firstOrNull { it.nodeNo != null }
                 ?: members.first()
-            out += MergedStop(main, members.filter { it.nodeId != main.nodeId })
+            MergedStop(main, members.filter { it.nodeId != main.nodeId })
         }
         return out + stops.filter { it.lat == null || it.lng == null }.map { MergedStop(it, emptyList()) }
     }
