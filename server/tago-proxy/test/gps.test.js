@@ -22,13 +22,32 @@ test("노선별 약 5m 칸에 더함 (한 번 묶어 쓰기)", async () => {
   assert.equal(await recordGps(db, "bad id!", "22", xml), 0);
 });
 
-test("노선을 85% 넘게 덮어야 지도 맞추기", async () => {
-  const base = [[35.80, 128.60], [35.81, 128.60]];   // 약 1.1km
+test("노선을 85% 넘게 덮어야 만들고, 버스가 지나간 자리(오른쪽 차로)를 그대로 이음", () => {
+  const base = [[35.80, 128.60], [35.81, 128.60]];   // 북쪽으로 약 1.1km
   const half = Array.from({ length: 10 }, (_, i) => ({ lat: 35.80 + i * 0.0005, lng: 128.6001, n: 1 }));
-  assert.match((await gpsShape(half, base, async () => ({ ok: false }))).why, /coverage/);
-  const full = Array.from({ length: 30 }, (_, i) => ({ lat: 35.80 + i * 0.00034, lng: 128.6001, n: 1 }));
-  let asked = 0;
-  const osrm = async (u) => { asked++; assert.ok(u.includes("/match/v1/driving/") && u.includes("radiuses=30")); return { ok: true, json: async () => ({ code: "Ok", matchings: [{ geometry: encode([[35.80, 128.60], [35.81, 128.60]], 6) }] }) }; };
-  const r = await gpsShape(full, base, osrm);
-  assert.ok(r.shape && r.shape.length >= 2 && asked === 1);
+  assert.match(gpsShape(half, base).why, /coverage/);
+  // 선에서 동쪽 9m(오른쪽 차로)로 지나간 자리
+  const full = Array.from({ length: 30 }, (_, i) => ({ lat: 35.80 + i * 0.00034, lng: 128.6001, n: 3 }));
+  const r = gpsShape(full, base);
+  assert.ok(r.shape && r.shape.length > 20);
+  const mid = r.shape.slice(3, -3);
+  assert.ok(mid.every((p) => Math.abs(p[1] - 128.6001) < 0.00002), "자리 그대로 (선으로 끌어오지 않음)");
+  for (let i = 1; i < r.shape.length; i++) assert.ok(r.shape[i][0] >= r.shape[i - 1][0] - 1e-9, "노선 차례대로");
+});
+
+test("같은 길을 오가는 노선: 정류장 순번으로 가는 길·오는 길 자리를 가름, 빈 곳은 지금 선으로", () => {
+  const base = [[35.80, 128.60], [35.81, 128.60], [35.80, 128.60]];   // 북쪽으로 갔다 같은 길로 돌아옴
+  const stops = [[35.80, 128.60], [35.81, 128.60], [35.80, 128.60]];
+  const up = Array.from({ length: 30 }, (_, i) => ({ lat: 35.80 + i * 0.00034, lng: 128.6001, ord: 1, n: 2 }));   // 가는 길: 동쪽 차로
+  const down = Array.from({ length: 30 }, (_, i) => ({ lat: 35.81 - i * 0.00034, lng: 128.5999, ord: 2, n: 2 })); // 오는 길: 서쪽 차로
+  const r = gpsShape([...up, ...down], base, stops);
+  assert.ok(r.shape);
+  const n = r.shape.length, first = r.shape.slice(3, n / 2 - 3), second = r.shape.slice(n / 2 + 3, -3);
+  assert.ok(first.every((p) => p[1] > 128.60005), "가는 길은 동쪽");
+  assert.ok(second.every((p) => p[1] < 128.59995), "오는 길은 서쪽");
+  // 오는 길 앞 절반만 지나간 자리가 있으면, 나머지는 지금 선으로 채움 (85% 는 넘게)
+  const some = down.slice(0, 26);
+  const r2 = gpsShape([...up, ...some], base, stops);
+  assert.ok(r2.shape);
+  assert.ok(r2.shape.slice(-4, -1).every((p) => Math.abs(p[1] - 128.60) < 0.00002), "빈 곳은 지금 선");
 });
