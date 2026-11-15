@@ -225,6 +225,7 @@ fun MainScreen() {
                         onReport = { showReport = true },
                         onHistory = { showHistory = true },
                         onTab = ::onTab,
+                        onMapFix = { mapVm.startStopFixMode(); openMap(MapMode.Bus) },
                     )
                     Dest.Bus -> com.eunho.tagohub.ui.map.BusDetailScreen(
                         vm = mapVm,

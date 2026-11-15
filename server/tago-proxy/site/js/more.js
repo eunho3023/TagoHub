@@ -33,7 +33,7 @@ export function settings(root) {
   let adminMsg = "", checking = false;
   // 관리자 키: 맞는 키를 넣은 브라우저에서만 노선 모양·정류장 위치 고치기 단추가 보임 (키는 배포한 컴퓨터의 local.properties EDIT_ADMIN_KEY)
   const adminHtml = () => sectionHead("관리자") + (Edits.isAdmin()
-    ? `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장 화면에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 모드를 껐어요"; draw(); })}>끄기</button></div></div>`
+    ? `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장 화면에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(() => go("fixstops"))}>지도 고치기 열기</button><button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 모드를 껐어요"; draw(); })}>끄기</button></div></div>`
     : `<div class="searchbox"><input id="adminkey" type="password" autocomplete="off" placeholder="관리자 키"><div class="flexrow"><small class="grow">지도 고치기는 관리자만 할 수 있어요</small><button class="btn" ${checking ? "disabled" : ""} ${act(async () => {
         const v = root.querySelector("#adminkey")?.value || "";
         if (!v.trim()) return;
