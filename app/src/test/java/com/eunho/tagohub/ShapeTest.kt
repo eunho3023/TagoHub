@@ -12,19 +12,24 @@ import org.junit.Test
 import kotlin.math.abs
 
 class ShapeTest {
-    /** 큰길 → 골목 정류장 → 큰길로 되돌아온 가시·같은 자리로 되돌아온 작은 고리는 빼고, 마을을 도는 큰 고리는 남김 */
+    /** 골목 들르기(큰길 → 골목 정류장 → 큰길로 나와 가던 방향으로 계속)는 빼고, 회차(왔던 쪽으로 되돌아감)·큰 고리는 남김 */
     @Test
-    fun despike_removesSpikesAndTinyLoops() {
+    fun despike_removesSideTripsKeepsTurnarounds() {
         val a = LatLng(35.80, 127.10); val b = LatLng(35.80, 127.1010); val c = LatLng(35.80, 127.1020)
-        val tip = LatLng(35.8004, 127.1010)              // 큰길(동쪽)에서 북쪽으로 44m 들어간 정류장
+        val tip = LatLng(35.8004, 127.1010)
         assertEquals(listOf(a, b, c), Shapes.despike(listOf(a, b, tip, b, c)))
-        // 같은 점으로 되돌아오는 네모 고리 (한 바퀴 약 130m)
         val l1 = LatLng(35.8003, 127.1010); val l2 = LatLng(35.8003, 127.1013); val l3 = LatLng(35.8000, 127.1013)
         assertEquals(listOf(a, b, c), Shapes.despike(listOf(a, b, l1, l2, l3, b, c)))
-        // 마을을 크게 도는 고리 (한 바퀴 약 190m, 큰길이 아닌 쪽에서 돌아옴) 는 남김
-        val v1 = LatLng(35.8008, 127.1010); val v2 = LatLng(35.8008, 127.1015); val v3 = LatLng(35.8003, 127.1015)
-        val loop = listOf(a, b, v1, v2, v3, b, c)
+        // 회차: 고리를 돌거나 막다른 길 끝까지 갔다 왔던 쪽(서쪽)으로 되돌아감 → 그대로
+        val back = LatLng(35.79995, 127.1000)
+        val loop = listOf(a, b, l1, l2, l3, b, back)
         assertEquals(loop, Shapes.despike(loop))
+        val stub = listOf(a, b, tip, b, back)
+        assertEquals(stub, Shapes.despike(stub))
+        // 마을을 크게 도는 고리 (약 190m) 도 그대로
+        val v1 = LatLng(35.8008, 127.1010); val v2 = LatLng(35.8008, 127.1015); val v3 = LatLng(35.8003, 127.1015)
+        val big = listOf(a, b, v1, v2, v3, b, c)
+        assertEquals(big, Shapes.despike(big))
     }
 
     private fun fixture(name: String): String =

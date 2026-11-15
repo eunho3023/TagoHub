@@ -104,58 +104,79 @@ object Shapes {
     private fun bearing(a: LatLng, b: LatLng): Double =
         Math.atan2((b.lng - a.lng) * Math.cos(Math.toRadians(a.lat)), b.lat - a.lat)
 
-    private fun turnAt(a: LatLng, b: LatLng, c: LatLng): Double {
-        val t = Math.abs(bearing(a, b) - bearing(b, c))
+    private fun turnAt(a: LatLng, b: LatLng, c: LatLng): Double = angleBetween(bearing(a, b), bearing(b, c))
+
+    private fun angleBetween(x: Double, y: Double): Double {
+        val t = Math.abs(x - y) % (2 * Math.PI)
         return if (t > Math.PI) 2 * Math.PI - t else t
     }
 
     private fun m(a: LatLng, b: LatLng): Double = Geo.meters(a.lat, a.lng, b.lat, b.lng)
 
+    /** path[i] 에서 길을 따라 [dist] m 앞(step 1)·뒤(step -1) 점 (모자라면 끝점) */
+    private fun pointAlong(path: List<LatLng>, i: Int, dist: Double, step: Int): LatLng {
+        var walked = 0.0
+        var k = i
+        while (k + step in path.indices) {
+            walked += m(path[k], path[k + step])
+            if (walked >= dist) return path[k + step]
+            k += step
+        }
+        return if (step > 0) path.last() else path.first()
+    }
+
+    /** i 로 들어온 방향(30m 앞에서)과 j 에서 나가는 방향(30m 뒤까지)이 60도 안 = 가던 방향으로 계속 감 (노선 처음·끝이라 모르면 false) */
+    private fun goesOn(path: List<LatLng>, i: Int, j: Int): Boolean {
+        val before = pointAlong(path, i, 30.0, -1)
+        val after = pointAlong(path, j, 30.0, 1)
+        if (m(before, path[i]) < 5 || m(path[j], after) < 5) return false
+        return angleBetween(bearing(before, path[i]), bearing(path[j], after)) <= Math.PI / 3
+    }
+
     /**
-     * 가시·작은 고리 없애기 (웹 site/js/roadline.js despike 와 같음). 노선 모양은 정류장 몇 개씩 끊어 받은 도로 길을 이어 붙여서,
-     * 조각 끝이 큰길 옆 정류장에 닿는 곳에 큰길 → 정류장 → 큰길로 되돌아오는 가시나 교차로 안 작은 고리가 생김.
-     *  1) 거의 되돌아가는(150도 넘게 꺾이는) 꼭짓점을, 양쪽 조각 중 하나가 [maxLeg] m 안이면 뺌 (빼고 또 생기면 이어서)
-     *  2) 길을 따라 60m 안에 시작점 12m 곁으로, 또는 150m 안에 같은 점(2m)으로 되돌아오는 작은 고리를 곧게
-     * 마을을 한 바퀴 돌아 나오는 회차 고리(250m 안팎)·회전교차로는 남음
+     * 골목 들르기만 없애기, 회차는 남김 (웹 site/js/roadline.js despike 와 같음).
+     * 큰길로 오다가 옆 골목 정류장까지 들어갔다 같은 자리(15m 안)로 나와서 원래 가던 방향으로 계속 가면 골목 들르기 → 곧게
+     * (노선 모양을 정류장 몇 개씩 끊어 받아 이어 붙인 곳에 생기는 가시·블록 고리).
+     * 고리를 돌거나 막다른 길 끝까지 갔다 나온 뒤 왔던 쪽으로 되돌아가면 회차 → 크기와 상관없이 그대로.
+     * 들어간 길 150m 넘는 것도 그대로 (실제로 마을을 돌아 나오는 노선)
      */
-    fun despike(path: List<LatLng>, maxLeg: Double = 80.0): List<LatLng> {
+    fun despike(path: List<LatLng>): List<LatLng> {
         if (path.size < 3) return path
-        // 작은 고리 먼저 (가시를 먼저 빼면 고리가 같은 점으로 돌아오는 것이 안 보임)
-        val out = ArrayList<LatLng>(path.size)
-        for (q in cutSmallLoops(path)) {
-            if (out.isNotEmpty() && m(out.last(), q) < 0.5) continue
-            out += q
-            while (out.size >= 3) {
-                val a = out[out.size - 3]; val b = out[out.size - 2]; val c = out[out.size - 1]
-                if (turnAt(a, b, c) > Math.toRadians(150.0) && minOf(m(a, b), m(b, c)) <= maxLeg) {
-                    out.removeAt(out.size - 2)
-                    if (m(out[out.size - 2], out.last()) < 0.5) out.removeAt(out.size - 1)   // 가시 앞뒤가 같은 점
-                } else break
+        val pts = dropJitter(path)
+        val out = ArrayList<LatLng>(pts.size)
+        var i = 0
+        while (i < pts.size) {
+            if (out.isEmpty() || m(out.last(), pts[i]) >= 0.5) out += pts[i]
+            var walked = 0.0
+            var far = 0.0
+            val cand = ArrayList<Int>()
+            for (j in i + 1 until pts.size) {
+                walked += m(pts[j - 1], pts[j])
+                if (walked > 150.0) break
+                val d = m(pts[i], pts[j])
+                far = maxOf(far, d)
+                if (d <= 15.0 && far >= d + 10 && walked >= d * 2.5 + 20) cand += j
             }
+            val j = cand.asReversed().firstOrNull { goesOn(pts, i, it) }
+            i = j ?: (i + 1)
         }
         return out
     }
 
-    /** 길을 따라 60m 안에 시작점 12m 곁으로, 또는 150m 안에 같은 점(2m)으로 되돌아오는 작은 고리를 곧게 */
-    private fun cutSmallLoops(out: List<LatLng>): List<LatLng> {
-        val res = ArrayList<LatLng>(out.size)
-        var i = 0
-        while (i < out.size) {
-            res += out[i]
-            var walked = 0.0
-            var far = 0.0
-            var best = -1
-            for (j in i + 1 until out.size) {
-                walked += m(out[j - 1], out[j])
-                if (walked > 150.0) break
-                val d = m(out[i], out[j])
-                far = maxOf(far, d)
-                if (far < d + 10 || walked < d * 2.5 + 20) continue
-                if ((walked <= 60.0 && d <= 12.0) || d <= 2.0) best = j
-            }
-            i = if (best > 0) best else i + 1
+    /** 같은 점(0.5m 안) 겹침과, 5m 안에서 앞뒤로 떨리는 점(150도 넘게 되돌아감)을 뺌 (한 번만) */
+    private fun dropJitter(path: List<LatLng>): List<LatLng> {
+        val pts = ArrayList<LatLng>(path.size)
+        for (q in path) if (pts.isEmpty() || m(pts.last(), q) >= 0.5) pts += q
+        if (pts.size < 3) return pts
+        val out = ArrayList<LatLng>(pts.size)
+        out += pts.first()
+        for (i in 1 until pts.size - 1) {
+            val a = out.last(); val b = pts[i]; val c = pts[i + 1]
+            if (turnAt(a, b, c) > Math.toRadians(150.0) && minOf(m(a, b), m(b, c)) <= 5.0) continue
+            out += b
         }
-        return res
+        out += pts.last()
+        return out
     }
 
     fun length(path: List<LatLng>): Double {
