@@ -20,6 +20,34 @@ object StopMerge {
     const val RADIUS_M = 30.0
     const val SAME_NAME_M = 60.0
 
+    /**
+     * 관리자가 손으로 고친 묶음 (지도 고치기 → 묶기, 서버 /w/edits 의 group).
+     * joins: 정류장 id → 함께 묶을 정류장 id 들. 빈 목록이면 그 정류장은 자동으로 묶지 않음(따로 떼기).
+     */
+    data class Manual(val joins: Map<String, List<String>> = emptyMap()) {
+        private val keyed: Map<String, List<String>> = joins.entries.associate { (k, v) -> TagoIds.legacy(k) to v.map { TagoIds.legacy(it) } }
+        val split: Set<String> = keyed.filterValues { it.isEmpty() }.keys
+        /** 손으로 묶은 짝 (id 쌍) */
+        val pairs: List<Pair<String, String>> = keyed.flatMap { (k, v) -> v.map { k to it } }
+        /** 이 정류장과 손으로 묶은 정류장 id 들 (어느 쪽에 적혀 있든, 이어진 것까지: A-B, B-C 면 A 는 B·C) */
+        fun joinedWith(id: String): Set<String> {
+            val k = TagoIds.legacy(id)
+            val out = LinkedHashSet<String>()
+            val todo = ArrayDeque(listOf(k))
+            while (todo.isNotEmpty()) {
+                val x = todo.removeFirst()
+                pairs.forEach { (a, b) ->
+                    if (a == x && out.add(b)) todo += b
+                    if (b == x && out.add(a)) todo += a
+                }
+            }
+            return out - k
+        }
+    }
+    @Volatile var manual = Manual()
+
+    private fun key(id: String) = TagoIds.legacy(id)
+
     /** 이름 비교용: 공백·문장부호·괄호를 뺌 ("부산대학병원(토성역)" = "부산대학병원.토성역") */
     fun nameKey(name: String): String = name.replace(Regex("[\\s.·,()\\[\\]\\-_]"), "")
 
@@ -48,18 +76,30 @@ object StopMerge {
                 j++
             }
         }
-        // 가까운 짝부터 묶음을 합침. 합칠 두 묶음에 같은 시군이 있으면 안 합침
         val parent = IntArray(located.size) { it }
         val cities = Array(located.size) { mutableSetOf(located[it].cityCode) }
         fun root(x: Int): Int { var r = x; while (parent[r] != r) r = parent[r]; var y = x; while (parent[y] != r) { val n = parent[y]; parent[y] = r; y = n }; return r }
-        edges.sortWith(compareBy<Edge> { it.d }.thenBy { minOf(it.a, it.b) }.thenBy { maxOf(it.a, it.b) })
-        for (e in edges) {
-            val ra = root(e.a)
-            val rb = root(e.b)
-            if (ra == rb || cities[ra].any { it in cities[rb] }) continue
+        fun join(a: Int, b: Int) {
+            val ra = root(a)
+            val rb = root(b)
+            if (ra == rb) return
             val (keep, gone) = if (ra < rb) ra to rb else rb to ra
             parent[gone] = keep
             cities[keep].addAll(cities[gone])
+        }
+        // 1) 손으로 묶은 것 먼저 (거리·시군 상관없이)
+        val m = manual
+        val at = HashMap<String, Int>().apply { located.forEachIndexed { i, s -> put(key(s.nodeId), i) } }
+        m.pairs.forEach { (a, b) -> val ia = at[a]; val ib = at[b]; if (ia != null && ib != null) join(ia, ib) }
+        // 2) 가까운 짝부터 묶음을 합침. 합칠 두 묶음에 같은 시군이 있으면 안 합침. 따로 떼어 둔 정류장은 빼고
+        val apart = located.indices.filter { key(located[it].nodeId) in m.split }.toSet()
+        edges.sortWith(compareBy<Edge> { it.d }.thenBy { minOf(it.a, it.b) }.thenBy { maxOf(it.a, it.b) })
+        for (e in edges) {
+            if (e.a in apart || e.b in apart) continue
+            val ra = root(e.a)
+            val rb = root(e.b)
+            if (ra == rb || cities[ra].any { it in cities[rb] }) continue
+            join(e.a, e.b)
         }
         val out = LinkedHashMap<Int, MutableList<BusStop>>()
         located.indices.forEach { out.getOrPut(root(it)) { ArrayList() } += located[it] }

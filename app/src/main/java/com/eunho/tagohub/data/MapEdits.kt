@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
  * 앱을 열 때 한 번 받고(5분 기억) 노선 선·정류장 좌표·역 좌표를 그릴 때 고친 것이 있으면 그것을 씀.
  */
 object MapEdits {
-    enum class Kind(val key: String) { Bus("bus"), Rail("rail"), Stop("stop"), Station("station") }
+    enum class Kind(val key: String) { Bus("bus"), Rail("rail"), Stop("stop"), Station("station"), Group("group") }
 
     private val lines = ConcurrentHashMap<String, List<LatLng>>()   // "bus|id", "rail|노선"
     private val points = ConcurrentHashMap<String, LatLng>()        // "stop|id", "station|id"
@@ -101,21 +101,51 @@ object MapEdits {
         for (k in listOf(Kind.Stop, Kind.Station)) o.optJSONObject(k.key)?.let { m ->
             m.keys().forEach { id -> m.optJSONArray(id)?.let { a -> if (a.length() == 2) newPoints["${k.key}|$id"] = LatLng(a.optDouble(0), a.optDouble(1)) } }
         }
-        val changed = newLines != HashMap(lines) || newPoints != HashMap(points)
+        // 같은 자리 정류장 손으로 묶기 (id → 함께 묶을 id 들, 빈 목록은 따로 떼기)
+        val newGroups = HashMap<String, List<String>>()
+        o.optJSONObject(Kind.Group.key)?.let { m ->
+            m.keys().forEach { id -> m.optJSONArray(id)?.let { a -> newGroups[id] = (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } } }
+        }
+        val groupsChanged = newGroups != StopMerge.manual.joins
+        val changed = newLines != HashMap(lines) || newPoints != HashMap(points) || groupsChanged
+        if (groupsChanged) StopMerge.manual = StopMerge.Manual(newGroups)
         lines.keys.retainAll(newLines.keys); lines.putAll(newLines)
         points.keys.retainAll(newPoints.keys); points.putAll(newPoints)
         loadedAt = System.currentTimeMillis()
         if (changed) version.value = version.value + 1
     }
 
+    /** 손으로 묶은 정류장 (id 와 함께 묶을 정류장들). 없으면 null, 따로 떼어 둔 것이면 빈 목록 */
+    fun group(id: String): List<String>? = StopMerge.manual.joins[id] ?: StopMerge.manual.joins[TagoIds.legacy(id)]
+
+    /** 같은 자리 정류장 묶기 저장: [others] 와 한 점으로. 빈 목록이면 따로 떼기, null 이면 고친 것 지우기 */
+    suspend fun saveGroup(id: String, others: List<String>?): String? {
+        post(Kind.Group, id, if (others == null) JSONObject.NULL else JSONArray(others.distinct()))?.let { return it }
+        val now = HashMap(StopMerge.manual.joins)
+        if (others == null) now.remove(id) else now[id] = others.distinct()
+        StopMerge.manual = StopMerge.Manual(now)
+        version.value = version.value + 1
+        return null
+    }
+
     /** 저장 (pts 가 null 이면 고친 것을 지우고 원래대로). 실패하면 이유 글 */
     suspend fun save(kind: Kind, id: String, pts: List<LatLng>?): String? {
-        val b = base() ?: return "서버 주소가 없어 저장할 수 없어요"
         val data: Any = when {
             pts == null -> JSONObject.NULL
             kind == Kind.Bus || kind == Kind.Rail -> JSONArray(pts.map { JSONArray(listOf(round(it.lat, 5), round(it.lng, 5))) })
             else -> JSONArray(listOf(round(pts.first().lat, 6), round(pts.first().lng, 6)))
         }
+        post(kind, id, data)?.let { return it }
+        val k = "${kind.key}|$id"
+        if (kind == Kind.Bus || kind == Kind.Rail) { if (pts == null) lines.remove(k) else lines[k] = pts }
+        else { if (pts == null) points.remove(k) else points[k] = pts.first() }
+        version.value = version.value + 1
+        return null
+    }
+
+    /** 서버에 고친 것 하나 보내기. 실패하면 이유 글 */
+    private suspend fun post(kind: Kind, id: String, data: Any): String? {
+        val b = base() ?: return "서버 주소가 없어 저장할 수 없어요"
         val json = JSONObject().put("kind", kind.key).put("id", id).put("data", data).toString()
         val code = withContext(Dispatchers.IO) {
             runCatching {
@@ -126,12 +156,7 @@ object MapEdits {
                 }
             }.getOrDefault(-1)
         }
-        if (code != 200) return when (code) { 429 -> "잠시 뒤에 다시 저장해 주세요"; 403 -> "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요"; -1 -> "인터넷 연결을 확인해 주세요"; else -> "저장하지 못했어요 ($code)" }
-        val k = "${kind.key}|$id"
-        if (kind == Kind.Bus || kind == Kind.Rail) { if (pts == null) lines.remove(k) else lines[k] = pts }
-        else { if (pts == null) points.remove(k) else points[k] = pts.first() }
-        version.value = version.value + 1
-        return null
+        return if (code == 200) null else when (code) { 429 -> "잠시 뒤에 다시 저장해 주세요"; 403 -> "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요"; -1 -> "인터넷 연결을 확인해 주세요"; else -> "저장하지 못했어요 ($code)" }
     }
 
     private fun round(v: Double, d: Int): Double = Math.round(v * Math.pow(10.0, d.toDouble())) / Math.pow(10.0, d.toDouble())

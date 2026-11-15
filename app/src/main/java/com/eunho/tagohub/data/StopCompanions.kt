@@ -92,7 +92,14 @@ object StopCompanions {
     /** 이 정류장과 같은 자리에 서는 다른 시·군 정류장 (없으면 빈 목록) */
     fun of(nodeId: String): List<BusStop> {
         ensure()
-        return map[nodeId].orEmpty()
+        // 관리자가 손으로 고친 묶음 (지도 고치기 → 묶기·따로 떼기) 을 표보다 먼저
+        val m = StopMerge.manual
+        val base = if (TagoIds.legacy(nodeId) in m.split) emptyList() else map[nodeId].orEmpty()
+        val joined = m.joinedWith(nodeId)
+        if (joined.isEmpty()) return base
+        val db = StopDb.peek()
+        val extra = joined.filter { j -> base.none { TagoIds.legacy(it.nodeId) == j } }.mapNotNull { db?.byId(it) }
+        return base + extra
     }
 
     internal fun set(m: Map<String, List<BusStop>>) {

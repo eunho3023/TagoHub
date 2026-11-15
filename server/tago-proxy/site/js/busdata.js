@@ -72,17 +72,34 @@ export function spotGroups(stops) {
   edges.sort((x, y) => x[2] - y[2] || Math.min(x[0], x[1]) - Math.min(y[0], y[1]) || Math.max(x[0], x[1]) - Math.max(y[0], y[1]));
   const parent = list.map((_, i) => i), cities = list.map((x) => new Set([x.city]));
   const root = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
-  for (const [a, b] of edges) {
+  const join = (a, b) => {
     const ra = root(a), rb = root(b);
-    if (ra === rb || [...cities[ra]].some((c) => cities[rb].has(c))) continue;
+    if (ra === rb) return;
     const [keep, gone] = ra < rb ? [ra, rb] : [rb, ra];
     parent[gone] = keep;
     for (const c of cities[gone]) cities[keep].add(c);
+  };
+  // 1) 관리자가 손으로 묶은 것 먼저 (거리·시군 상관없이), 빈 목록은 따로 떼기 (지도 고치기 → 묶기, edits.js)
+  const at = new Map(list.map((x, i) => [legacyId(x.id), i])), apart = new Set();
+  for (const [k, v] of Object.entries(Edits.groupEdits())) {
+    if (!Array.isArray(v)) continue;
+    if (!v.length) { apart.add(legacyId(k)); continue; }
+    const a = at.get(legacyId(k));
+    for (const o of v) { const b = at.get(legacyId(String(o))); if (a != null && b != null) join(a, b); }
+  }
+  // 2) 가까운 짝부터. 합칠 두 묶음에 같은 시군이 있으면 안 합침
+  for (const [a, b] of edges) {
+    if (apart.has(legacyId(list[a].id)) || apart.has(legacyId(list[b].id))) continue;
+    const ra = root(a), rb = root(b);
+    if (ra === rb || [...cities[ra]].some((c) => cities[rb].has(c))) continue;
+    join(a, b);
   }
   const groups = new Map();
   list.forEach((x, i) => { const r = root(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(x); });
   return [...groups.values()];
 }
+/** 그 지역 시내버스 정류장인지 (교통안전공단 TS… 아님. 지도에는 노선 있는 것과 전주·제주 정류장만 들어옴) */
+const localStop = (x) => (x.city.startsWith("TS") ? 0 : 1);
 /** 노선이 많은 것, 같으면 교통안전공단(TS…) 아닌 것 먼저 */
 const byRoutes = (a, b) => b.routes.length - a.routes.length || (a.city.startsWith("TS") ? 1 : 0) - (b.city.startsWith("TS") ? 1 : 0);
 
@@ -113,8 +130,9 @@ export async function stopsIn(s, w, n, e, limit = 400) {
   const all = (await Promise.all(names.map(tile))).flat();
   const inView = all.filter((x) => x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e &&
     (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
-  // 같은 자리의 다른 시군 정류장은 점 하나로 (대표는 노선이 많은 것)
-  return mergeSameSpot(spotGroups(inView).map((g) => [...g].sort(byRoutes)[0])).slice(0, limit);
+  // 같은 자리의 다른 시군 정류장은 점 하나로. 대표는 그 지역 시내버스 정류장(교통안전공단 TS… 아닌 것) — 폰 앱과 같게
+  const mainOf = (g) => [...g].sort((x, y) => (localStop(y) - localStop(x)) || byRoutes(x, y))[0];
+  return mergeSameSpot(spotGroups(inView).map(mainOf)).slice(0, limit);
 }
 
 /** 자료 조각의 원래 좌표 (손으로 고친 것 적용 전). 못 찾으면 null */
@@ -354,6 +372,18 @@ function ggArrivals(body) {
 }
 
 // ── 도착 ──
+/** [near] 안에서 [stop] 과 한 점으로 묶이는 정류장 (stop 은 빼고) */
+function matesIn(stop, near) {
+  const g = spotGroups([stop, ...near.filter((o) => o.id !== stop.id)]).find((l) => l.some((o) => o.id === stop.id)) || [];
+  return g.filter((o) => o.id !== stop.id);
+}
+/** 지도에서 이 정류장과 한 점으로 묶인 정류장 (지도 고치기 창에 보여 줌) */
+export async function spotMates(stop) {
+  const d = 0.005;
+  const near = (await Promise.all(tileNames(stop.lat - d, stop.lng - d, stop.lat + d, stop.lng + d).map(tile))).flat();
+  return matesIn(stop, near);
+}
+
 /** 같은 자리의 다른 시군 정류장 (시군마다 가장 가까운 하나) */
 export async function sameSpot(stop) {
   const d = 0.005;
@@ -362,7 +392,7 @@ export async function sameSpot(stop) {
   // 경기 밖에 있는 경기 버스 정류장(인천·서울·청주 등의 GGB): 그 지역 시내버스 정류장이 조금 떨어져 따로 있어 가까운 것 하나씩 함께 봄
   const borrowed = stop.id.startsWith("GGB") && !stop.city.startsWith("31");
   // 지도에서 점 하나로 묶인 같은 자리 정류장 (spotGroups)
-  const mine = new Set((spotGroups([stop, ...near.filter((o) => o.id !== stop.id)]).find((g) => g.some((o) => o.id === stop.id)) || []).map((o) => o.id));
+  const mine = new Set(matesIn(stop, near).map((o) => o.id));
   for (const o of near) {
     if (o.id === stop.id) continue;
     const m = meters(stop.lat, stop.lng, o.lat, o.lng);
