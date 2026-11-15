@@ -111,6 +111,104 @@ object Osrm {
     }
 }
 
+/**
+ * 정류장 사이 길 고치기: 이어지는 두 정류장 사이의 실제 길 (노선 자료·길찾기가 모르는 회차 길 등).
+ * 그 두 정류장을 차례로 지나는 모든 노선에 씀 (웹 site/js/roadline.js SEG_FIXES 와 같은 표)
+ */
+object SegFixes {
+    data class Fix(val from: String, val to: String, val path: List<LatLng>)
+
+    val all: List<Fix> = listOf(
+        // 전주 기린대로 병무청(3050104 → 길 건너 3050070): 임실·진안 버스는 기린대로로 올라가 이름 없는 큰 블록(전주고 서쪽)을 돌아 회차
+        Fix(
+            "TSB305000104", "TSB305000070",
+            listOf(
+                LatLng(35.821319, 127.152197),
+                LatLng(35.821797, 127.151635),
+                LatLng(35.822193, 127.15113),
+                LatLng(35.82233, 127.150958),
+                LatLng(35.822449, 127.15083),
+                LatLng(35.822529, 127.150739),
+                LatLng(35.82257, 127.150693),
+                LatLng(35.822663, 127.150589),
+                LatLng(35.822737, 127.150495),
+                LatLng(35.822784, 127.150436),
+                LatLng(35.822841, 127.150374),
+                LatLng(35.822958, 127.150242),
+                LatLng(35.82316, 127.150012),
+                LatLng(35.823265, 127.149886),
+                LatLng(35.823849, 127.149296),
+                LatLng(35.823902, 127.149279),
+                LatLng(35.823918, 127.149278),
+                LatLng(35.823943, 127.149275),
+                LatLng(35.823964, 127.149275),
+                LatLng(35.824004, 127.149282),
+                LatLng(35.824197, 127.149542),
+                LatLng(35.824247, 127.14961),
+                LatLng(35.824377, 127.149785),
+                LatLng(35.824438, 127.149867),
+                LatLng(35.824494, 127.14992),
+                LatLng(35.82462, 127.150039),
+                LatLng(35.82471, 127.150124),
+                LatLng(35.824744, 127.150599),
+                LatLng(35.823897, 127.150686),
+                LatLng(35.823803, 127.150695),
+                LatLng(35.823739, 127.150601),
+                LatLng(35.823496, 127.150843),
+                LatLng(35.82332, 127.151035),
+                LatLng(35.823286, 127.151072),
+                LatLng(35.823208, 127.151174),
+                LatLng(35.823109, 127.151089),
+                LatLng(35.823083, 127.151059),
+                LatLng(35.822837, 127.150775),
+                LatLng(35.822806, 127.150746),
+                LatLng(35.82277, 127.150713),
+                LatLng(35.822729, 127.150675),
+                LatLng(35.822663, 127.150589),
+                LatLng(35.822493, 127.150585),
+                LatLng(35.822267, 127.150861),
+                LatLng(35.822091, 127.151058),
+                LatLng(35.82139, 127.151889),
+                LatLng(35.821092, 127.152248),
+                LatLng(35.821012, 127.152345),
+            ),
+        ),
+    )
+
+    private fun m(a: LatLng, b: LatLng) = Geo.meters(a.lat, a.lng, b.lat, b.lng)
+
+    /** line 에서 점 p 에 가장 가까운 꼭짓점 (from 부터 길 maxM 안) → (번호, 거리) */
+    private fun nearest(line: List<LatLng>, p: LatLng, from: Int, maxM: Double): Pair<Int, Double>? {
+        var best: Pair<Int, Double>? = null
+        var walked = 0.0
+        for (i in from until line.size) {
+            if (i > from) walked += m(line[i - 1], line[i])
+            if (walked > maxM) break
+            val d = m(line[i], p)
+            if (best == null || d < best.second) best = i to d
+        }
+        return best
+    }
+
+    /** 고친 길을 노선 선에 끼움. [stops] 는 노선 차례대로 (id, 좌표) */
+    fun apply(line: List<LatLng>, stops: List<Pair<String, LatLng>>, fixes: List<Fix> = all): List<LatLng> {
+        if (line.size < 2 || stops.size < 2) return line
+        var out = line
+        var cursor = 0
+        for (k in 0 until stops.size - 1) {
+            val a = stops[k]; val b = stops[k + 1]
+            val fix = fixes.firstOrNull { it.from == TagoIds.legacy(a.first) && it.to == TagoIds.legacy(b.first) } ?: continue
+            val ha = nearest(out, a.second, cursor, 1e9) ?: continue
+            if (ha.second > 150) continue
+            val hb = nearest(out, b.second, ha.first, 3000.0) ?: continue
+            if (hb.second > 150) continue
+            out = out.subList(0, ha.first + 1) + fix.path + out.subList(hb.first, out.size)
+            cursor = ha.first + fix.path.size
+        }
+        return out
+    }
+}
+
 /** 노선 선형 계산: 정류소 ↔ 도로 선형 대응, 구간 자르기, 경로 위 위치 */
 object Shapes {
     private fun bearing(a: LatLng, b: LatLng): Double =

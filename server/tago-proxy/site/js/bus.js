@@ -436,7 +436,7 @@ export function routeScreen(root, p, ctx) {
   let drawn = null, drawnMpp = 0, sideM = 0;
   const timers = [];
   /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
-  const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name]) : []);
+  const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]) : []);
   // 버스마다 도로 위 자리(처음부터 m)·그 자리를 받은 시각·속도(m/초): 다음 위치가 올 때까지 도로를 따라 앞으로 움직여 보임
   // (공공데이터 GPS 는 몇십 초 늦게 바뀌어서, 가만히 두면 실제 버스보다 늦어 보임)
   const track = new Map();
