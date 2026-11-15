@@ -307,6 +307,62 @@ function chainOf(road, cum, p, from, to) {
   }
   return best;
 }
+/** 처음부터 ch 미터 간 자리가 있는 조각 번호 */
+function segAt(cum, ch) {
+  let i = 0;
+  while (i < cum.length - 2 && cum[i + 1] < ch) i++;
+  return i;
+}
+/** 노선 선 굵기(px)와, 오른쪽 통행에 맞춰 진행 방향 오른쪽으로 비키는 거리(px: 굵기 절반 + 조금 → 오가는 두 줄이 겹치지 않음) */
+const LINE_W = 7, LINE_SIDE_PX = 4.5;
+/** 점 p 를 방향 deg(북쪽 0도, 시계 방향)의 오른쪽으로 m 미터 */
+function shiftRight(p, deg, m) {
+  const a = ((deg + 90) * Math.PI) / 180;
+  return [p[0] + (m * Math.cos(a)) / 110540, p[1] + (m * Math.sin(a)) / (111320 * Math.cos((p[0] * Math.PI) / 180))];
+}
+/**
+ * 선을 진행 방향 오른쪽으로 m 미터 평행 이동 (폰 앱 core/OffsetLine 과 같은 방법).
+ * 꺾이는 점은 양쪽 조각 법선의 평균 방향으로 옮기고, 아주 뾰족한 곳은 2m 까지로 제한
+ */
+export function offsetRight(line, m) {
+  const n = line.length;
+  if (n < 2 || !m) return line;
+  const lat0 = line[0][0], kx = 111320 * Math.cos((lat0 * Math.PI) / 180), ky = 110540;
+  // 평면 (x 동쪽, y 북쪽). 진행 방향 (dx, dy) 의 오른쪽 법선은 (dy, -dx)
+  const xs = line.map((p) => (p[1] - line[0][1]) * kx), ys = line.map((p) => (p[0] - lat0) * ky);
+  const nx = [], ny = [];
+  let lx = 0, ly = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const dx = xs[i + 1] - xs[i], dy = ys[i + 1] - ys[i], len = Math.hypot(dx, dy);
+    if (len > 1e-3) { lx = dy / len; ly = -dx / len; }
+    nx.push(lx); ny.push(ly);
+  }
+  const first = nx.findIndex((v, i) => v !== 0 || ny[i] !== 0);
+  if (first < 0) return line;
+  for (let i = 0; i < first; i++) { nx[i] = nx[first]; ny[i] = ny[first]; }
+  return line.map((p, i) => {
+    const a = i === 0 ? 0 : i - 1, b = i === n - 1 ? n - 2 : i;
+    let mx = nx[a] + nx[b], my = ny[a] + ny[b];
+    const ml = Math.hypot(mx, my);
+    if (ml < 1e-3) { mx = nx[b]; my = ny[b]; } else { mx /= ml; my /= ml; }
+    const cos = Math.max(0.5, mx * nx[b] + my * ny[b]);
+    return [lat0 + (ys[i] + (my * m) / cos) / ky, line[0][1] + (xs[i] + (mx * m) / cos) / kx];
+  });
+}
+/** 선 단순화 (tol 미터 안의 꼭짓점은 뺌, Douglas-Peucker). 축소했을 때 촘촘한 꼭짓점 때문에 비킨 선이 톱니처럼 되지 않게 */
+export function simplifyLine(line, tol) {
+  if (!line || line.length < 3 || !(tol > 0)) return line;
+  const keep = new Uint8Array(line.length);
+  keep[0] = keep[line.length - 1] = 1;
+  const stack = [[0, line.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let far = -1, fd = tol;
+    for (let i = a + 1; i < b; i++) { const d = project(line[i], line[a], line[b]).d; if (d > fd) { fd = d; far = i; } }
+    if (far >= 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+  return line.filter((_, i) => keep[i]);
+}
 /** 처음부터 ch 미터 간 자리 */
 function pointAt(road, cum, ch) {
   let i = 0;
@@ -364,17 +420,19 @@ function snapStopsFull(stops, road) {
     return { pt: h.pt, seg: i, t: h.t };
   });
 }
-/** 버스 GPS 를 도로 선 위로 (가까우면) */
-function snapPoint(p, road) {
-  if (!road || road.length < 2) return p;
+/** 버스 GPS 를 도로 선 위로 (가까우면 {pt, seg}, 멀면 null) */
+function snapHit(p, road) {
+  if (!road || road.length < 2) return null;
   let best = null;
-  for (let i = 0; i < road.length - 1; i++) { const h = project(p, road[i], road[i + 1]); if (!best || h.d < best.d) best = h; }
-  return best && best.d <= SNAP_M ? best.pt : p;
+  for (let i = 0; i < road.length - 1; i++) { const h = project(p, road[i], road[i + 1]); if (!best || h.d < best.d) best = { ...h, seg: i }; }
+  return best && best.d <= SNAP_M ? best : null;
 }
 const plateTail =(no) => (no || "").replace(/\D/g, "").slice(-4) || null;
 
 export function routeScreen(root, p, ctx) {
   let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null, linesOf = null;
+  // 화면에 그린 노선 선 (도로 선을 진행 방향 오른쪽으로 비킨 것)과 그때의 m/px·비킨 거리(m)
+  let drawn = null, drawnMpp = 0, sideM = 0;
   const timers = [];
   // 버스마다 도로 위 자리(처음부터 m)·그 자리를 받은 시각·속도(m/초): 다음 위치가 올 때까지 도로를 따라 앞으로 움직여 보임
   // (공공데이터 GPS 는 몇십 초 늦게 바뀌어서, 가만히 두면 실제 버스보다 늦어 보임)
@@ -419,21 +477,31 @@ export function routeScreen(root, p, ctx) {
   /** 지금 보일 자리 */
   const busXY = (b) => {
     const t = track.get(b.vehicleNo);
-    if (!t || !snapped) return snapPoint([b.lat, b.lng], road);
-    return pointAt(road, snapped.cum, shownCh(t));
+    if (!t || !snapped) { const h = snapHit([b.lat, b.lng], road); return h ? toRight(h.pt, h.seg) : [b.lat, b.lng]; }
+    const ch = shownCh(t);
+    return toRight(pointAt(road, snapped.cum, ch), segAt(snapped.cum, ch));
   };
+  /** 도로 선 위 점을 그 자리 진행 방향 오른쪽으로 (그린 선과 같은 거리) */
+  const toRight = (pt, seg) => (road && sideM && seg != null ? shiftRight(pt, bearingAt(road, seg), sideM) : pt);
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
   const drawMap = () => {
     if (!r) return;
     const color = busColor(r.type);
     const pts = r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]);
-    if (linesOf !== (road || pts)) { linesOf = road || pts; MapView.lines([{ pts: linesOf, color, width: 7 }]); }
+    // 도로 선은 오른쪽 통행에 맞춰 진행 방향 오른쪽으로 선 굵기 절반쯤 비켜 그림 → 같은 길을 오가는 노선은 두 줄로 나란히 (폰 앱과 같음)
+    const mpp = MapView.metersPerPx() || 0;
+    if (linesOf !== (road || pts) || (road && Math.abs(mpp - drawnMpp) > drawnMpp * 0.05)) {
+      linesOf = road || pts; drawnMpp = mpp;
+      sideM = road && mpp ? mpp * LINE_SIDE_PX : 0;
+      drawn = sideM ? offsetRight(simplifyLine(road, mpp * 0.7), sideM) : linesOf;
+      MapView.lines([{ pts: drawn, color, width: LINE_W }]);
+    }
     const z = MapView.zoom();
     // 노선 선 위에 진행 방향 화살표 (정류장 점이 아니라 선에, 화면에서 약 90px 마다)
-    const dots = lineArrows(linesOf);
+    const dots = lineArrows(drawn);
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
     if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; track.clear(); learn(); }
-    const at = (i) => (road && snapped ? snapped.full[i]?.pt : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
+    const at = (i) => (road && snapped ? (snapped.full[i] ? toRight(snapped.full[i].pt, snapped.full[i].seg) : null) : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
     r.stops.forEach((s, i) => {
       const xy = at(i);
       if (!xy) return;
