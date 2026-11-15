@@ -77,8 +77,8 @@ function mergeRows(sums, arrivals) {
 export function stopScreen(root, p) {
   let stop = known.get(p.id);
   let alive = true, live = null, sums = null, city = null, toward = null;
-  // 노선 목록(자료 파일·교통안전공단)과 실시간 도착(TAGO 등)을 같이 보여 줌: 둘 다 올 때까지(최대 6초) 줄을 그리지 않음
-  let waited = false;
+  // 노선 목록이 오면 바로 줄을 그리고, 실시간 도착은 오는 대로 채움 (노선 목록이 늦으면 도착이 온 뒤 3초까지 기다림)
+  let waited = false, liveWait = null;
   const timers = [];
   const ensure = async () => {
     if (!stop && p.lat) stop = await B.stopAt(p.id, +p.lat, +p.lng);
@@ -142,7 +142,9 @@ export function stopScreen(root, p) {
     if (!alive || !stop) return;
     const elapsed = elapsedNow();
     const arr = (live?.list || []).filter((a) => !B.passed(a, elapsed));
-    const both = waited || (sums && live);
+    // 도착이 먼저 오고 노선 목록이 늦으면 3초 뒤엔 도착만으로라도 그림
+    if (live && sums == null && !liveWait) liveWait = setTimeout(() => { waited = true; draw(); }, 3000);
+    const both = waited || sums != null;
     rows = both ? mergeRows(sums || [], live?.list || []) : [];
     let status = "";
     if (!both) status = "불러오는 중...";
@@ -170,7 +172,8 @@ export function stopScreen(root, p) {
     draw();
     timers.push(setTimeout(() => { waited = true; draw(); }, 6000));
     B.cityName(stop.city).then((c) => { city = c; draw(); });
-    B.stopRoutes(stop).then((s) => {
+    // 저장해 둔 노선 목록은 바로, 서버에서 달라진 목록이 오면 바꿔 그림
+    B.stopRoutes(stop, { onNewer: (s) => { if (alive) { sums = s; draw(); } } }).then((s) => {
       sums = s; draw();
       // 어느 방면인지: 지나는 노선의 다음 정류장
       B.towardOf(stop, s).then((t) => { if (t && alive) { toward = t; draw(); } }).catch(() => {});

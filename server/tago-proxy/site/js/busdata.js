@@ -240,8 +240,29 @@ async function ggRoute(id) {
   return { id, no: "노선", start, end, city: "31", region: "경기", type: null, sum: null, stops };
 }
 
-/** 정류장에 서는 노선 요약 (같은 자리 정류장 것까지) */
-export async function stopRoutes(stop) {
+// 정류장 노선 목록은 이 브라우저에 하루 저장해 두고 바로 보여 줌 (서버 확인은 뒤에서, 달라졌으면 onNewer 로 알림).
+// 전주시 정류장처럼 자료에 노선 목록이 없는 곳은 서버에 물어야 해서 처음엔 몇 초 걸림
+const STOP_ROUTES_KEEP_MS = 24 * 3600 * 1000;
+const stopRoutesMemo = new Map();
+/** 정류장에 서는 노선 요약 (같은 자리 정류장 것까지). 저장해 둔 것이 있으면 바로 */
+export async function stopRoutes(stop, { onNewer = null } = {}) {
+  const key = "stoproutes:" + legacyId(stop.id);
+  // 같은 화면에서 여러 곳이 물어도(지도 카드 방면·정류장 화면) 한 번만
+  let m = stopRoutesMemo.get(key);
+  if (!m || Date.now() - m.at > 60000) {
+    m = { at: Date.now(), p: stopRoutesNet(stop) };
+    stopRoutesMemo.set(key, m);
+    m.p.then((v) => cachePut(key, { at: Date.now(), v }), () => stopRoutesMemo.delete(key));
+  }
+  const saved = await cacheGet(key);
+  if (saved && Array.isArray(saved.v) && saved.v.length && Date.now() - saved.at < STOP_ROUTES_KEEP_MS) {
+    const sig = (l) => l.map((r) => r.id).sort().join(",");
+    m.p.then((v) => { if (onNewer && sig(v) !== sig(saved.v)) onNewer(v); }).catch(() => {});
+    return saved.v;
+  }
+  return m.p;
+}
+async function stopRoutesNet(stop) {
   const same = await sameSpot(stop);
   const ids = [...new Set([stop, ...same].flatMap((s) => s.routes))];
   const sums = await routeSums(ids);
