@@ -40,9 +40,9 @@ function dotEl(d) {
   wrap.appendChild(dot);
   if (d.label) {
     const t = document.createElement("div");
-    t.className = "mdot-label";
+    t.className = d.labelUp ? "mdot-label up" : "mdot-label";
     t.textContent = d.label;
-    t.style.cssText = `left:${d.r + 6}px;background:${d.color}`;
+    t.style.cssText = d.labelUp ? `bottom:${d.r + 8}px;background:${d.color}` : `left:${d.r + 6}px;background:${d.color}`;
     wrap.appendChild(t);
   }
   // 카카오 지도는 마우스 누름을 지도 끌기로 가져가서, 점을 누른 것은 직접 받음 (끌다가 놓은 것은 무시)

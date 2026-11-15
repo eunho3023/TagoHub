@@ -120,6 +120,8 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .mdot-wrap { position: relative; cursor: pointer; }
 .mdot { border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 1px 2px rgba(0,0,0,.35); box-sizing: content-box; transform: translate(-50%, -50%); position: absolute; }
 .mdot-label { position: absolute; top: -9px; white-space: nowrap; font: 600 11px var(--font); color: #fff; border-radius: 6px; padding: 1px 5px; }
+/* 고른 정류장 이름: 앱처럼 아이콘 바로 위 가운데 */
+.mdot-label.up { top: auto; left: 0; transform: translateX(-50%); font-size: 12px; padding: 3px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .side-card { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 500; display: none; align-items: center; gap: 12px; background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-radius: var(--r-card); padding: 14px 18px; box-shadow: var(--shadow); max-width: 520px; }
 .side-card div { flex: 1; }
 .map-slot .side-card { left: 8px; right: 8px; bottom: 8px; }

@@ -479,8 +479,11 @@ fun MapScreen(
         ) {
             val editing by vm.mapEdit.collectAsStateWithLifecycle()
             editing?.let { MapEditBar(vm, it) }
-            if (editing == null) pickedPlace?.let { PickCard(vm, it) }
-            if (editing == null) when (panel) {
+            val fixingStops by vm.stopFix.collectAsStateWithLifecycle()
+            if (editing == null) fixingStops?.let { StopFixBar(vm, it) }
+            val busyEditing = editing != null || fixingStops != null
+            if (!busyEditing) pickedPlace?.let { PickCard(vm, it) }
+            if (!busyEditing) when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
                 MapPanel.Route -> route?.let { RoutePanel(vm, it, hasStop = selected != null) }
                 MapPanel.Station -> station?.let { d ->
@@ -1368,7 +1371,7 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
             Text("방문 장소로 저장", Modifier.padding(start = 8.dp))
         }
         val admin by com.eunho.tagohub.data.MapEdits.admin.collectAsStateWithLifecycle()
-        if (admin && d.stop.lat != null) MapEditLinks(listOf("정류장 위치 고치기" to { vm.startStopEdit() }))
+        if (admin && d.stop.lat != null) MapEditLinks(listOf("정류장 위치 고치기" to { vm.startStopFixMode(d.stop) }))
         liveNote?.let {
             Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }

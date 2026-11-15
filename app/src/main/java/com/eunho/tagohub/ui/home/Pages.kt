@@ -145,6 +145,8 @@ fun MorePage(
     onNotices: () -> Unit,
     onReport: () -> Unit,
     onHistory: () -> Unit = {},
+    /** 설정 → 관리자 → 지도 고치기 열기 (지도에서 정류장 위치를 한꺼번에) */
+    onMapFix: (() -> Unit)? = null,
     onTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -186,7 +188,7 @@ fun MorePage(
 
                 // 관리자: 맞는 키를 넣은 기기에서만 지도 고치기(노선 모양·정류장·역 위치) 단추가 보임
                 com.eunho.tagohub.ui.common.SettingsGroup("관리자", "지도 고치기는 관리자만") {
-                    com.eunho.tagohub.ui.map.AdminKeyRow()
+                    com.eunho.tagohub.ui.map.AdminKeyRow(onMapFix)
                 }
 
                 // 정보·계정: 계정 연결, 공지, 제보, 약관

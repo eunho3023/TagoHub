@@ -12,6 +12,7 @@ import { Alight } from "./alight.js";
 import * as subway from "./subway.js";
 import * as air from "./air.js";
 import { fixScreen } from "./fix.js";
+import { fixStopsScreen } from "./fixstops.js";
 import * as Edits from "./edits.js";
 import "./modes.js";
 
@@ -38,6 +39,7 @@ const SCREENS = {
   airport: air.airportScreen,
   report: more.reportScreen,
   fix: fixScreen,
+  fixstops: fixStopsScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */
 export function addScreen(name, fn) { SCREENS[name] = fn; }
@@ -111,7 +113,8 @@ export function stopsMap(host, focus) {
     const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
     MapView.dots(
       [...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
-        .map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, color: picked && s.id === picked.id ? "#D7262E" : primary, ring: "#fff", r: picked && s.id === picked.id ? 8 : 5 })),
+        // 고른 정류장은 앱처럼 아이콘 위에 이름
+        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
       (d) => { picked = stops.find((s) => s.id === d.id) || picked; draw(); },
     );
     if (picked && picked.name) {
