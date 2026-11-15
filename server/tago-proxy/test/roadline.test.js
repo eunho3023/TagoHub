@@ -67,3 +67,15 @@ test("노선 정류장 차례가 되돌아가는 곳(길 건너 같은 정류장
   const pair = [[35.8003, 127.10105, "기린대로 병무청"], [35.8003, 127.10125, "기린대로 병무청"]];   // 약 18m 마주 봄
   assert.deepEqual(despike(path, [[35.79, 127.09, "앞"], ...pair, [35.79, 127.11, "뒤"]]), path);
 });
+
+test("정류장 사이 길 고치기: 이어지는 두 정류장(id) 사이를 고친 길로 바꿔 끼움", async () => {
+  const { applySegFixes } = await import("../site/js/roadline.js");
+  const line = [[35.80, 127.10], [35.80, 127.101], [35.80, 127.102], [35.80, 127.103], [35.80, 127.104]];
+  const fix = { from: "A", to: "B", path: [[35.8001, 127.101], [35.801, 127.1015], [35.8001, 127.1022]] };
+  const stops = [[35.80, 127.10, "처음", "S"], [35.8001, 127.101, "가", "A"], [35.8001, 127.102, "나", "B"], [35.80, 127.104, "끝", "E"]];
+  const out = applySegFixes(line, stops, [fix]);
+  assert.deepEqual(out, [[35.80, 127.10], [35.80, 127.101], ...fix.path, [35.80, 127.102], [35.80, 127.103], [35.80, 127.104]]);
+  // 차례가 다르거나(B → A) 선에서 멀면 그대로
+  assert.deepEqual(applySegFixes(line, [stops[2], stops[1]], [fix]), line);
+  assert.deepEqual(applySegFixes(line, [[36.0, 127.0, "", "A"], [36.0, 127.001, "", "B"]], [fix]), line);
+});

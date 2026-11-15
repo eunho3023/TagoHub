@@ -12,6 +12,19 @@ import org.junit.Test
 import kotlin.math.abs
 
 class ShapeTest {
+    /** 정류장 사이 길 고치기: 이어지는 두 정류장 사이를 고친 길로 바꿔 끼움 (웹 roadline.js applySegFixes 와 같음) */
+    @Test
+    fun segFixes_spliceBetweenStops() {
+        val line = listOf(LatLng(35.80, 127.10), LatLng(35.80, 127.101), LatLng(35.80, 127.102), LatLng(35.80, 127.103), LatLng(35.80, 127.104))
+        val fix = com.eunho.tagohub.data.SegFixes.Fix("TSB1", "TSB2", listOf(LatLng(35.8001, 127.101), LatLng(35.801, 127.1015), LatLng(35.8001, 127.1022)))
+        val stops = listOf("TSB0" to LatLng(35.80, 127.10), "TSB1" to LatLng(35.8001, 127.101), "TSB2" to LatLng(35.8001, 127.102), "TSB9" to LatLng(35.80, 127.104))
+        val out = com.eunho.tagohub.data.SegFixes.apply(line, stops, listOf(fix))
+        assertEquals(listOf(line[0], line[1]) + fix.path + listOf(line[2], line[3], line[4]), out)
+        assertEquals(line, com.eunho.tagohub.data.SegFixes.apply(line, listOf(stops[2], stops[1]), listOf(fix)))
+        // 병무청 회차 길이 표에 있음
+        assertTrue(com.eunho.tagohub.data.SegFixes.all.any { it.from == "TSB305000104" && it.to == "TSB305000070" && it.path.size > 20 })
+    }
+
     /** 회차 정류장(앞뒤 정류장이 거의 같은 자리)에서 조각을 끊어 가는 길·돌아오는 길을 따로 물음 (서버 shape.js chunks 와 같음) */
     @Test
     fun chunks_splitAtTurnaround() {
