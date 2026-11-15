@@ -293,8 +293,8 @@ class MarkerBitmaps(private val density: Float) {
      * (카카오 SDK 는 패턴 이미지 크기에 지도 dp 값을 곱하므로 dp 1배 크기로 만든다)
      */
     fun arrowPattern(): Bitmap {
-        val w = 10
-        val h = 8
+        val w = 12   // 선이 굵어진 만큼 화살표도 조금 크게
+        val h = 9
         val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)
         val p = Path().apply {
@@ -303,7 +303,7 @@ class MarkerBitmaps(private val density: Float) {
             lineTo(w - 1f, h - 1.5f)
         }
         stroke.color = Color.WHITE
-        stroke.strokeWidth = 1.8f
+        stroke.strokeWidth = 2.2f
         stroke.strokeCap = Paint.Cap.ROUND
         stroke.strokeJoin = Paint.Join.ROUND
         c.drawPath(p, stroke)
