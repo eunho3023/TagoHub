@@ -20,10 +20,57 @@ export async function getText(path, query) {
 
 export async function getJson(path, query) { return JSON.parse(await getText(path, query)); }
 
-/** 같은 주소는 한 번만 받기 (자료 조각) */
+// ── 이 브라우저에 저장 (Cache Storage): 다음에 열 때 서버를 기다리지 않고 바로 보여 줌 ──
+// 자료 조각(data/…)은 서버 자료가 새로 만들어지면(manifest.json 의 built) 통째로 지우고 다시 받음.
+const STORE = "tagohub-store-v1", DATA_STORE = "tagohub-data-v1", BUILT_KEY = "tagohub.dataBuilt";
+const storeUrl = (key) => location.origin + "/__store/" + encodeURIComponent(key);
+/** 저장해 둔 값 (없거나 못 읽으면 undefined) */
+export async function cacheGet(key, name = STORE) {
+  try {
+    if (!self.caches) return undefined;
+    const r = await (await caches.open(name)).match(storeUrl(key));
+    return r ? await r.json() : undefined;
+  } catch (e) { return undefined; }
+}
+/** 값 저장 (못 하면 그냥 넘어감) */
+export async function cachePut(key, value, name = STORE) {
+  try {
+    if (!self.caches) return;
+    await (await caches.open(name)).put(storeUrl(key), new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } }));
+  } catch (e) { /* 저장 공간 없음 등 */ }
+}
+// 페이지를 열 때 한 번: 서버 자료가 바뀌었으면 저장해 둔 자료 조각을 지움 (뒤에서, 화면을 막지 않음)
+const dataChecked = (async () => {
+  try {
+    const m = await getJson("data/manifest.json", { t: Math.floor(Date.now() / 600000) });
+    const built = String(m.built ?? m.dbVersion ?? "");
+    if (!built) return;
+    let old = null;
+    try { old = localStorage.getItem(BUILT_KEY); } catch (e) { /* 못 읽음 */ }
+    if (old !== built) {
+      if (self.caches) await caches.delete(DATA_STORE);
+      memo.clear();
+      try { localStorage.setItem(BUILT_KEY, built); } catch (e) { /* 못 씀 */ }
+    }
+  } catch (e) { /* 서버에 못 닿음: 가진 것 그대로 */ }
+})();
+
+/** 같은 주소는 한 번만 받기 (자료 조각). data/… 는 이 브라우저에 저장해 두고 다음부터 바로 */
 const memo = new Map();
 export function cached(path) {
-  if (!memo.has(path)) memo.set(path, getJson(path).catch((e) => { memo.delete(path); throw e; }));
+  if (!memo.has(path)) {
+    const persist = path.startsWith("data/") && path !== "data/manifest.json";
+    const load = async () => {
+      if (persist) {
+        const have = await cacheGet(path, DATA_STORE);
+        if (have !== undefined) return have;
+      }
+      const v = await getJson(path);
+      if (persist) dataChecked.then(() => cachePut(path, v, DATA_STORE));
+      return v;
+    };
+    memo.set(path, load().catch((e) => { memo.delete(path); throw e; }));
+  }
   return memo.get(path);
 }
 

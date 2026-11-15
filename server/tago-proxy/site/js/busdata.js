@@ -1,6 +1,6 @@
 // 버스 자료 (Compose 웹 WebRepo.kt·MetroBus.kt 와 같은 규칙).
 // 정류장 찾기는 서버 이름 조각(/data/names), 도착은 웹 통로(/w/dg/1613000 TAGO, /w/bus/seoul|gg 서울·경기).
-import { cached, getText, getJson, xmlRows, findRows, num, int, str, meters } from "./core.js";
+import { cached, getText, getJson, xmlRows, findRows, num, int, str, meters, cacheGet, cachePut } from "./core.js";
 import * as Edits from "./edits.js";
 
 // ── 자료 조각 주소 (pipeline/build_web_data.py 와 같게) ──
@@ -186,11 +186,29 @@ export async function route(id, city) {
 async function routeRaw(id, city) {
   const legacy = legacyId(id);
   const m = (await cached(`data/routes/${bucket(legacy)}.json`).catch(() => ({})))[legacy];
-  if (!m || m.no == null) return ggId(id) ? ggRoute(id) : city && /^\d+$/.test(city) ? tagoRoute(id, city) : null;
+  if (!m || m.no == null) return ggId(id) || (city && /^\d+$/.test(city)) ? savedRoute(id, city) : null;
   const info = Array.isArray(m.info) ? m.info : null;
   const sum = info ? { id: legacy, no: String(m.no), start: str(m.start), end: str(m.end), type: str(m.rtype), first: str(info[0]), last: str(info[1]), interval: int(info[2]), intervalSat: int(info[3]), intervalSun: int(info[4]) } : null;
   const stops = (m.stops || []).map((a) => ({ seq: int(a[0]) || 0, id: str(a[1]), name: String(a[2] ?? ""), lat: num(a[3]), lng: num(a[4]), upDown: str(a[5]) })).sort((a, b) => a.seq - b.seq);
   return { id: currentId(legacy), no: String(m.no), start: str(m.start), end: str(m.end), city: String(m.city ?? ""), region: str(m.region), type: str(m.rtype), sum, stops };
+}
+
+/**
+ * 자료 조각에 없는 노선(경기·TAGO 지역)은 서버에 물어야 해서 느림 → 이 브라우저에 저장해 두고 다음부터 바로.
+ * 저장한 것이 있으면 그것을 주고 뒤에서 새로 받아 저장 (다음에 열 때 반영). 하루 지나면 기다려서 새로 받음
+ */
+const ROUTE_KEEP_MS = 24 * 3600 * 1000;
+async function savedRoute(id, city) {
+  const key = "route:" + legacyId(id) + ":" + (city || "");
+  const net = () => (ggId(id) ? ggRoute(id) : tagoRoute(id, city)).then((r) => {
+    if (r && r.stops && r.stops.length) cachePut(key, { at: Date.now(), r });
+    return r;
+  });
+  const saved = await cacheGet(key);
+  if (!saved || !saved.r || Date.now() - saved.at > ROUTE_KEEP_MS) return net();
+  net().catch(() => {});
+  // 정류장 고친 위치는 route() 가 덧씌우므로 저장본은 그대로 복사해서 줌
+  return JSON.parse(JSON.stringify(saved.r));
 }
 
 /** TAGO 노선 정류장 목록·기본 정보로 노선 만들기 (서버 웹 통로, 하루 저장) */
@@ -271,7 +289,25 @@ async function liveStopRoutes(stop, same) {
 }
 
 /** 노선 도로 모양 (서버가 만들어 저장). 못 받으면 null. [city] 는 자료 조각에 없는 노선(전주 등)을 TAGO 로 만들 때 */
-export async function shape(routeId, city, stops, no, { noEdit = false } = {}) {
+/**
+ * 노선 모양. 이 브라우저에 저장해 둔 것이 있으면 바로 주고, 서버 쪽은 뒤에서 다시 받아
+ * 달라졌으면 저장하고 onNewer(새 모양) 로 알려 줌 (폰 앱처럼 열자마자 그림).
+ */
+export async function shape(routeId, city, stops, no, { noEdit = false, onNewer = null } = {}) {
+  const key = "shape:" + legacyId(routeId) + (noEdit ? ":auto" : "");
+  const saved = await cacheGet(key);
+  const fresh = shapeNet(routeId, city, stops, no, { noEdit }).then((pts) => {
+    if (pts && pts.length >= 2) cachePut(key, Edits.encodePolyline(pts));
+    return pts;
+  });
+  const old = typeof saved === "string" ? decodePolyline(saved, 5) : [];
+  if (old.length < 2) return fresh;
+  fresh.then((pts) => {
+    if (onNewer && pts && pts.length >= 2 && Edits.encodePolyline(pts) !== saved) onNewer(pts);
+  }).catch(() => {});
+  return old;
+}
+async function shapeNet(routeId, city, stops, no, { noEdit = false } = {}) {
   // 지도에서 손으로 고친 노선 모양이 있으면 그것 (edits.js)
   if (!noEdit) {
     await Edits.ready();

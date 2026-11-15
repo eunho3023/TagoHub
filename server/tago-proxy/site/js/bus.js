@@ -509,7 +509,9 @@ export function routeScreen(root, p, ctx) {
     root.querySelector("#rrefresh")?.addEventListener("click", () => tick());
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
-    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no).then((s) => { road = s; drawMap(); });
+    // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림
+    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, { onNewer: (s) => { if (!alive) return; road = s; snapped = null; linesOf = null; drawList(); drawMap(); } })
+      .then((s) => { if (alive) { road = s; drawMap(); } });
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
     // 누가 노선 모양·정류장 위치를 고치면 바로 다시 그림
