@@ -128,8 +128,10 @@ export async function stopsIn(s, w, n, e, limit = 400) {
   const names = tileNames(s, w, n, e);
   if (names.length > 12) return [];
   const all = (await Promise.all(names.map(tile))).flat();
+  // 노선 목록이 없는 정류장은 빼되, 노선을 서버에 물어 채우는 지역은 남김: 교통안전공단(TSB… — 도시 코드가 TS… 인 곳도,
+  // 익산 35030·진안 35320 처럼 숫자인 곳도 있음), 제주(JEB), 전주(JUB)
   const inView = all.filter((x) => x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e &&
-    (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
+    (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("TSB") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
   // 같은 자리의 다른 시군 정류장은 점 하나로. 대표는 그 지역 시내버스 정류장(교통안전공단 TS… 아닌 것) — 폰 앱과 같게
   const mainOf = (g) => [...g].sort((x, y) => (localStop(y) - localStop(x)) || byRoutes(x, y))[0];
   return mergeSameSpot(spotGroups(inView).map(mainOf)).slice(0, limit);
