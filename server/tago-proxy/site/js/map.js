@@ -26,6 +26,13 @@ function loadScript(src) {
 }
 
 function dotEl(d) {
+  // 노선 선 위 진행 방향 화살표 (d.chevron: 북쪽 0도, 시계 방향). 눌러지지 않음
+  if (d.chevron != null) {
+    const a = document.createElement("div");
+    a.className = "mline-arrow";
+    a.innerHTML = `<svg width="12" height="12" viewBox="0 0 10 10" style="transform:rotate(${Math.round(d.chevron)}deg)"><path d="M2 7 L5 3 L8 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return a;
+  }
   const size = d.r * 2;
   const wrap = document.createElement("div");
   wrap.className = "mdot-wrap";
@@ -99,7 +106,7 @@ async function kakaoImpl() {
     },
     dots(ds) {
       dotObjs.forEach((o) => o.setMap(null));
-      dotObjs = ds.map((d) => new K.CustomOverlay({ map, position: new K.LatLng(d.lat, d.lng), content: dotEl(d), xAnchor: 0.5, yAnchor: 0.5, zIndex: d.label ? 3 : 2, clickable: true }));
+      dotObjs = ds.map((d) => new K.CustomOverlay({ map, position: new K.LatLng(d.lat, d.lng), content: dotEl(d), xAnchor: 0.5, yAnchor: 0.5, zIndex: d.chevron != null ? 1 : d.label ? 3 : 2, clickable: d.chevron == null }));
     },
     bounds() { const b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast(); return { s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng() }; },
     zoom() { return 20 - map.getLevel(); },
@@ -237,5 +244,11 @@ export const MapView = {
   /** 지도를 옮기지 않고 그림을 다시 (고친 정류장 위치를 바로 보이게) */
   redraw() { idleCbs.forEach((f) => f()); },
   bounds() { return impl ? impl.bounds() : null; },
+  /** 지금 화면에서 1px 이 몇 m 인지 (모르면 null) */
+  metersPerPx() {
+    const b = impl ? impl.bounds() : null;
+    if (!b || !el.clientWidth) return null;
+    return ((b.e - b.w) * 111000 * Math.cos((((b.s + b.n) / 2) * Math.PI) / 180)) / el.clientWidth;
+  },
   zoom() { return impl ? impl.zoom() : 0; },
 };

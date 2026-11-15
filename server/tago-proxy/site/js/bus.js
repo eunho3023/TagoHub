@@ -316,6 +316,28 @@ function pointAt(road, cum, ch) {
 }
 // 정류장 점을 노선 선 위로 옮기는 최대 거리 (좌표가 골목 쪽으로 잘못 찍힌 정류장도 큰길 선 위로, 서버 shape.js OFF_COORD_M 과 같게)
 const SNAP_M = 250, STOP_SNAP_M = 1000;
+/** 노선 선 위 방향 화살표 자리 (화면 안, 약 [gapPx] px 마다, 최대 300개) → 지도 점 [{chevron}] */
+function lineArrows(line, gapPx = 90) {
+  const mpp = MapView.metersPerPx(), b = MapView.bounds();
+  if (!line || line.length < 2 || !mpp || !b) return [];
+  const step = gapPx * mpp, padLat = (b.n - b.s) * 0.1, padLng = (b.e - b.w) * 0.1;
+  const inView = (p) => p[0] >= b.s - padLat && p[0] <= b.n + padLat && p[1] >= b.w - padLng && p[1] <= b.e + padLng;
+  const out = [];
+  let next = step / 2;
+  let walked = 0;
+  for (let i = 0; i < line.length - 1 && out.length < 300; i++) {
+    const a = line[i], c = line[i + 1];
+    const len = Math.hypot((c[0] - a[0]) * 111000, (c[1] - a[1]) * 111000 * Math.cos((a[0] * Math.PI) / 180));
+    if (!len) continue;
+    while (next <= walked + len && out.length < 300) {
+      const t = (next - walked) / len, p = [a[0] + t * (c[0] - a[0]), a[1] + t * (c[1] - a[1])];
+      if (inView(p)) out.push({ id: "a:" + out.length, lat: p[0], lng: p[1], chevron: bearingAt(line, i) });
+      next += step;
+    }
+    walked += len;
+  }
+  return out;
+}
 /** 도로 선 seg 번째 조각의 진행 방향 (북쪽 0도, 시계 방향) */
 function bearingAt(road, seg) {
   const a = road[Math.max(0, Math.min(seg, road.length - 2))], b = road[Math.max(1, Math.min(seg + 1, road.length - 1))];
@@ -405,9 +427,10 @@ export function routeScreen(root, p, ctx) {
     if (!r) return;
     const color = busColor(r.type);
     const pts = r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]);
-    if (linesOf !== (road || pts)) { linesOf = road || pts; MapView.lines([{ pts: linesOf, color, width: 5 }]); }
+    if (linesOf !== (road || pts)) { linesOf = road || pts; MapView.lines([{ pts: linesOf, color, width: 7 }]); }
     const z = MapView.zoom();
-    const dots = [];
+    // 노선 선 위에 진행 방향 화살표 (정류장 점이 아니라 선에, 화면에서 약 90px 마다)
+    const dots = lineArrows(linesOf);
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
     if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; track.clear(); learn(); }
     const at = (i) => (road && snapped ? snapped.full[i]?.pt : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
@@ -415,11 +438,7 @@ export function routeScreen(root, p, ctx) {
       const xy = at(i);
       if (!xy) return;
       const here = p.from && s.id && B.legacyId(s.id) === B.legacyId(p.from), focused = focusSeq === s.seq;
-      // 정류장 점 안에 진행 방향 화살표 (도로 선을 받았으면 그 자리 도로 방향, 아니면 다음 정류장 쪽)
-      const sn = snapped?.full[i];
-      const nx = r.stops.slice(i + 1).find((q) => q.lat != null);
-      const dir = road && sn && sn.seg != null ? bearingAt(road, sn.seg) : nx ? bearingAt([[s.lat, s.lng], [nx.lat, nx.lng]], 0) : null;
-      if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: xy[0], lng: xy[1], color: here || focused ? "#D7262E" : color, ring: "#fff", r: here || focused ? 8 : 7, dir, label: focused ? s.name : null });
+      if (z >= 14 || here || focused) dots.push({ id: "s:" + s.seq, lat: xy[0], lng: xy[1], color: here || focused ? "#D7262E" : color, ring: "#fff", r: here || focused ? 8 : 6, label: focused ? s.name : null });
     });
     for (const b of pos?.buses || []) {
       if (b.lat == null) continue;
