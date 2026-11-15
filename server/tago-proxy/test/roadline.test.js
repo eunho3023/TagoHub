@@ -3,32 +3,53 @@ import assert from "node:assert/strict";
 import { despike, roundCorners, tidyRoad } from "../site/js/roadline.js";
 
 // 큰길: 서쪽에서 동쪽으로 (a → b → c)
-const a = [35.80, 127.10], b = [35.80, 127.1010], c = [35.80, 127.1020];
+const a = [35.80, 127.10], b = [35.80, 127.1010], c = [35.80, 127.1020], e = [35.80, 127.1035];
+const l1 = [35.8003, 127.1010], l2 = [35.8003, 127.1013], l3 = [35.8000, 127.1013];
 
-test("골목 들르기: 큰길 → 골목 정류장 → 큰길로 나와 가던 방향으로 계속 가면 뺌 (앱 Shapes.despike 와 같음)", () => {
+test("골목 들르기: 같은 자리로 나와 가던 방향으로 계속 가면 뺌 (앱 Shapes.despike 와 같음)", () => {
   const tip = [35.8004, 127.1010]; // 큰길에서 북쪽으로 44m
   assert.deepEqual(despike([a, b, tip, b, c]), [a, b, c]);
-  // 블록을 한 바퀴 돌아 같은 자리로 나와 계속 감 (한 바퀴 약 120m)
-  const l1 = [35.8003, 127.1010], l2 = [35.8003, 127.1013], l3 = [35.8000, 127.1013];
   assert.deepEqual(despike([a, b, l1, l2, l3, b, c]), [a, b, c]);
+  // 교차로에서 꺾여 나가도(들어온 방향과 90도) 회차가 아님 → 뺌
+  const south = [35.7990, 127.1010];
+  assert.deepEqual(despike([a, b, l1, l2, l3, b, south]), [a, b, south]);
 });
 
-test("회차: 고리를 돌거나 막다른 길 끝까지 갔다가 왔던 쪽으로 되돌아가면 크기와 상관없이 남김", () => {
-  const back = [35.79995, 127.1000]; // 고리를 돌고 다시 서쪽으로 (반대 차로)
-  const l1 = [35.8003, 127.1010], l2 = [35.8003, 127.1013], l3 = [35.8000, 127.1013];
+test("회차: 고리를 돌거나 막다른 길 끝까지 갔다가 왔던 쪽으로 되돌아가면 남김", () => {
+  const back = [35.79995, 127.1000];
   const loop = [a, b, l1, l2, l3, b, back];
   assert.deepEqual(despike(loop), loop);
-  const end = [35.8004, 127.1010];
-  const stub = [a, b, end, b, back];
+  const stub = [a, b, [35.8004, 127.1010], b, back];
   assert.deepEqual(despike(stub), stub);
-  // 마을을 크게 도는 고리 (약 190m) 도 남김
-  const v1 = [35.8008, 127.1010], v2 = [35.8008, 127.1015], v3 = [35.8003, 127.1015];
-  const big = [a, b, v1, v2, v3, b, c];
-  assert.deepEqual(despike(big), big);
+});
+
+test("회전교차로를 도는 길은 남김", () => {
+  // b 동쪽 15m 를 중심으로 반지름 15m: 동쪽으로 오다가 b(서쪽 끝)에서 들어가 시계 반대 방향으로 270도 돌고 북쪽으로 나감 (좌회전)
+  const k = 111320 * Math.cos((35.8 * Math.PI) / 180), cLng = 127.1010 + 15 / k;
+  const ring = [];
+  for (let d = 180; d <= 450; d += 15) {
+    const t = (d * Math.PI) / 180;
+    ring.push([35.80 + (15 * Math.sin(t)) / 110540, cLng + (15 * Math.cos(t)) / k]);
+  }
+  const exit = ring[ring.length - 1], north = [exit[0] + 0.0004, exit[1]];
+  const path = [a, ...ring, north];
+  assert.deepEqual(despike(path), path);
+});
+
+test("큰길 옆에 찍힌 정류장 때문에 옆길로 빠졌다 들어온 우회는 곧게, 정류장 없는 굽은 길·터미널 들르기는 그대로", () => {
+  const s1 = [35.8005, 127.1012], s2 = [35.8005, 127.1020], back = [35.80, 127.1022];
+  const path = [a, b, s1, s2, back, e];
+  const stray = [35.8004, 127.1015, "풍남문"];
+  assert.deepEqual(despike(path, [stray]), [a, b, back, e]);
+  assert.deepEqual(despike(path), path);
+  assert.deepEqual(despike(path, [[35.8004, 127.1015, "강진터미널"]]), path);
+  // 같은 자리로 돌아오는 고리도 터미널을 들르면 그대로
+  const loop = [a, b, l1, l2, l3, b, c];
+  assert.deepEqual(despike(loop, [[35.8003, 127.1011, "임실터미널"]]), loop);
 });
 
 test("꺾이는 곳은 모서리 15m 안에서 둥글게, 곧은 길은 그대로", () => {
-  const corner = [35.8010, 127.1010]; // b 에서 북쪽으로 꺾음
+  const corner = [35.8010, 127.1010];
   const r = roundCorners([a, b, corner]);
   assert.ok(r.length > 3);
   assert.deepEqual(r[0], a);

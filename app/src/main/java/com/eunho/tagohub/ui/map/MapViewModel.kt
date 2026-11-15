@@ -2498,7 +2498,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 val saved = if (fixedNow == null) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }
                     ?.takeIf { pts.size < 2 || com.eunho.tagohub.data.Shapes.fitsStops(it, pts, 100.0, 0.85) } else null
                 (fixedNow ?: saved)?.let { quick ->
-                    if (route.value === d) { d.shape.value = com.eunho.tagohub.data.Shapes.despike(quick); pushRoute(); pushBuses() }
+                    if (route.value === d) { d.shape.value = tidyShape(d, quick); pushRoute(); pushBuses() }
                 }
                 // 2) 뒤에서 확인: 지도에서 손으로 고친 모양(웹과 같이 씀, MapEdits), 앱이 만들어 서버에 올린 모양(AppShapes) → 다르면 바꿔 그림
                 com.eunho.tagohub.data.MapEdits.refresh()
@@ -2530,7 +2530,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 // 이 폰이 가진(만든·저장한) 모양을 서버에 올려 웹·다른 폰도 같은 선을 쓰게 (서버에 이미 있으면 그대로)
                 if (fixed == null && shared == null && shape != null) com.eunho.tagohub.data.AppShapes.upload(d.routeId, shape)
                 if (shape != null && shape != d.shape.value && route.value === d) {
-                    d.shape.value = com.eunho.tagohub.data.Shapes.despike(shape)
+                    d.shape.value = tidyShape(d, shape)
                     pushRoute()
                     pushBuses()
                 }
@@ -2857,7 +2857,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             val fixed = com.eunho.tagohub.data.MapEdits.busShape(d.routeId)
             if (fixed != null) d.shape.value = fixed
             else viewModelScope.launch {
-                withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }?.let { if (route.value === d) { d.shape.value = com.eunho.tagohub.data.Shapes.despike(it); pushRoute() } }
+                withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.shape(d.routeId) }?.let { if (route.value === d) { d.shape.value = tidyShape(d, it); pushRoute() } }
             }
             pushRoute(); pushBuses()
         }
@@ -3159,6 +3159,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     // ───────────────────────── 노선 방향 (상·하행 한 방향씩) ─────────────────────────
 
     private fun located(d: BusDest.Route) = d.stops.value.valueOrNull().orEmpty().filter { it.lat != null && it.lng != null }
+
+    /** 노선 선 다듬기: 큰길 옆 정류장 때문에 생긴 골목 들르기만 곧게 (회차·회전교차로·터미널 들르기는 남김, Shapes.despike) */
+    private fun tidyShape(d: BusDest.Route, shape: List<LatLng>): List<LatLng> =
+        com.eunho.tagohub.data.Shapes.despike(shape, located(d).map { LatLng(it.lat!!, it.lng!!) to it.name })
 
     /** 회차 정류장 순번 (패널 목록에 회차 표시). 나눌 수 없으면 null */
     fun routeTurnOrd(d: BusDest.Route): Int? {

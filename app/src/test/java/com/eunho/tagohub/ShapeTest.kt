@@ -12,24 +12,36 @@ import org.junit.Test
 import kotlin.math.abs
 
 class ShapeTest {
-    /** 골목 들르기(큰길 → 골목 정류장 → 큰길로 나와 가던 방향으로 계속)는 빼고, 회차(왔던 쪽으로 되돌아감)·큰 고리는 남김 */
+    /** 골목 들르기는 빼고, 회차·회전교차로·터미널 들르기·정류장 없는 굽은 길은 남김 (웹 test/roadline.test.js 와 같은 경우) */
     @Test
-    fun despike_removesSideTripsKeepsTurnarounds() {
-        val a = LatLng(35.80, 127.10); val b = LatLng(35.80, 127.1010); val c = LatLng(35.80, 127.1020)
-        val tip = LatLng(35.8004, 127.1010)
-        assertEquals(listOf(a, b, c), Shapes.despike(listOf(a, b, tip, b, c)))
+    fun despike_removesSideTripsKeepsTurnaroundsAndRoundabouts() {
+        val a = LatLng(35.80, 127.10); val b = LatLng(35.80, 127.1010); val c = LatLng(35.80, 127.1020); val e = LatLng(35.80, 127.1035)
         val l1 = LatLng(35.8003, 127.1010); val l2 = LatLng(35.8003, 127.1013); val l3 = LatLng(35.8000, 127.1013)
+        val tip = LatLng(35.8004, 127.1010)
+        // 골목 들르기: 같은 자리로 나와 가던 방향으로 계속, 또는 교차로에서 꺾여 나감
+        assertEquals(listOf(a, b, c), Shapes.despike(listOf(a, b, tip, b, c)))
         assertEquals(listOf(a, b, c), Shapes.despike(listOf(a, b, l1, l2, l3, b, c)))
-        // 회차: 고리를 돌거나 막다른 길 끝까지 갔다 왔던 쪽(서쪽)으로 되돌아감 → 그대로
+        val south = LatLng(35.7990, 127.1010)
+        assertEquals(listOf(a, b, south), Shapes.despike(listOf(a, b, l1, l2, l3, b, south)))
+        // 회차: 왔던 쪽으로 되돌아감
         val back = LatLng(35.79995, 127.1000)
         val loop = listOf(a, b, l1, l2, l3, b, back)
         assertEquals(loop, Shapes.despike(loop))
         val stub = listOf(a, b, tip, b, back)
         assertEquals(stub, Shapes.despike(stub))
-        // 마을을 크게 도는 고리 (약 190m) 도 그대로
-        val v1 = LatLng(35.8008, 127.1010); val v2 = LatLng(35.8008, 127.1015); val v3 = LatLng(35.8003, 127.1015)
-        val big = listOf(a, b, v1, v2, v3, b, c)
-        assertEquals(big, Shapes.despike(big))
+        // 회전교차로: b 에서 들어가 시계 반대 방향으로 270도 돌고 북쪽으로 나감
+        val k = 111_320.0 * Math.cos(Math.toRadians(35.8)); val cLng = 127.1010 + 15 / k
+        val ring = (180..450 step 15).map { d -> val t = Math.toRadians(d.toDouble()); LatLng(35.80 + 15 * Math.sin(t) / 110_540.0, cLng + 15 * Math.cos(t) / k) }
+        val round = listOf(a) + ring + LatLng(ring.last().lat + 0.0004, ring.last().lng)
+        assertEquals(round, Shapes.despike(round))
+        // 큰길 옆에 찍힌 정류장 때문에 옆길로 빠졌다 들어온 우회는 곧게, 정류장 없거나 터미널이면 그대로
+        val s1 = LatLng(35.8005, 127.1012); val s2 = LatLng(35.8005, 127.1020); val back2 = LatLng(35.80, 127.1022)
+        val detour = listOf(a, b, s1, s2, back2, e)
+        assertEquals(listOf(a, b, back2, e), Shapes.despike(detour, listOf(LatLng(35.8004, 127.1015) to "풍남문")))
+        assertEquals(detour, Shapes.despike(detour))
+        assertEquals(detour, Shapes.despike(detour, listOf(LatLng(35.8004, 127.1015) to "강진터미널")))
+        val lp = listOf(a, b, l1, l2, l3, b, c)
+        assertEquals(lp, Shapes.despike(lp, listOf(LatLng(35.8003, 127.1011) to "임실터미널")))
     }
 
     private fun fixture(name: String): String =
