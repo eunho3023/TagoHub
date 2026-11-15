@@ -51,16 +51,28 @@ object Osrm {
             "?overview=full&geometries=polyline6&continue_straight=true"
 
     /** 앞 구간 끝 정류소를 다음 구간 시작으로 겹쳐서 나눈다 */
+    /**
+     * k 번째 정류장에서 회차함: 앞뒤 정류장이 거의 같은 자리 (예: 입석 → 용운입구 → 입석).
+     * 길찾기는 경유지에서 U턴을 하지 않아, 회차 정류장을 가운데 두고 한 번에 물으면 멀리 돌아오고 그 뒤 정류장이 모두 직선이 됨
+     */
+    fun turnsAt(stops: List<LatLng>, k: Int): Boolean {
+        if (k <= 0 || k >= stops.size - 1) return false
+        val m = { a: LatLng, b: LatLng -> Geo.meters(a.lat, a.lng, b.lat, b.lng) }
+        val ab = m(stops[k - 1], stops[k]); val bc = m(stops[k], stops[k + 1])
+        return ab >= 150 && bc >= 150 && m(stops[k - 1], stops[k + 1]) <= 0.3 * minOf(ab, bc)
+    }
+
+    /** 앞 구간 끝 정류장을 다음 구간 시작으로 겹쳐서 나눔. 회차 정류장에서는 끊어 가는 길·돌아오는 길을 따로 물음 (서버 shape.js chunks 와 같음) */
     fun chunks(stops: List<LatLng>, size: Int = CHUNK): List<List<LatLng>> {
-        if (stops.size <= size) return listOf(stops)
         val out = ArrayList<List<LatLng>>()
         var start = 0
         while (start < stops.size - 1) {
-            val end = minOf(start + size, stops.size)
+            var end = minOf(start + size, stops.size)
+            for (k in start + 1 until end - 1) if (turnsAt(stops, k)) { end = k + 1; break }
             out += stops.subList(start, end)
             start = end - 1
         }
-        return out
+        return if (out.isEmpty()) listOf(stops) else out
     }
 
     private val geometry = Regex("\"geometry\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
