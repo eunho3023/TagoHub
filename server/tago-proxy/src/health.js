@@ -118,7 +118,7 @@ async function ensure(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS api_health (name TEXT PRIMARY KEY, ok INTEGER NOT NULL, msg TEXT, ms INTEGER, at INTEGER NOT NULL, last_ok INTEGER, fail_since INTEGER) WITHOUT ROWID").run();
 }
 
-/** 예약 작업: 모두 확인해 기록 (한 번에 9곳 + D1 쓰기 몇 번: 바깥 요청 50번 한도 안) */
+/** 예약 작업: 모두 확인해 기록 (한 번에 11곳 + D1 쓰기 몇 번: 바깥 요청 50번 한도 안) */
 export async function healthCron(env, fetcher = fetch) {
   if (!env.DB) return { skip: "no db" };
   await ensure(env.DB);
