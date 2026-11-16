@@ -23,9 +23,10 @@ export function upstreamPath(pathname) {
 }
 
 /**
- * 울산 BIS 도착 저장 시간(초). 자료가 바뀌는 간격에 맞춤 (아래 ttlFor·busWebRequest)
+ * 울산 BIS 도착 저장 시간(초). 다른 도착과 같은 5초: 하루 한도를 아끼기보다 새로운 정보가 먼저 (사용자 요청, 2026-11-16).
+ * 한도(개발계정 하루 1,000건)를 넘으면 앱·웹이 TAGO 도착으로 넘어감 (아래 ttlFor·busWebRequest)
  */
-export const ULSAN_TTL = 10;
+export const ULSAN_TTL = 5;
 
 /**
  * 다시 쓸 시간(초). 버스 도착·위치는 5초(여러 사람이 같은 걸 보면 한 번만 부르되 늦어지지 않게),
@@ -33,7 +34,7 @@ export const ULSAN_TTL = 10;
  */
 export function ttlFor(path) {
   const p = path.toLowerCase();
-  // 울산 BIS 도착: 개발계정 하루 1,000건이라 조금 더 오래 저장 (웹 /w/bus/ulsan 과 같은 저장을 씀)
+  // 울산 BIS 도착 (웹 /w/bus/ulsan 과 같은 저장을 씀)
   if (p.includes("6310000/bis/getbusarrivalinfo")) return ULSAN_TTL;
   // 서울 버스(ws.bus.go.kr): buspos = 버스 위치, getStationByUid = 정류장 도착
   // 부산 stopArrByBstopid·광주 arriveInfo·여수 getArrInfoByStopID 는 이름에 arrival 이 없어 60초 저장되고 있었음 (도착이 최대 1분 늦게 보임)
