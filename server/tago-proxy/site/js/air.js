@@ -1,5 +1,5 @@
 // 항공: 국내선 시간표(서버에 올린 운항 파일) + 한국공항공사 실시간 운항, 공항 화면(실시간 혼잡도·출발·도착·기본 정보), 인천공항 운항.
-import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2 } from "./core.js";
+import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn } from "./core.js";
 import { act, header, note, sectionHead, chips } from "./ui.js";
 import { go } from "./nav.js";
 import { clock } from "./subway.js";
@@ -160,10 +160,13 @@ export function airScreen(root, chipsHtml) {
     root.innerHTML = h;
     if (y) root.scrollTop = y; else root.querySelector(`[data-i="${next}"]`)?.scrollIntoView({ block: "start" });
   }
-  load().then((d) => { data = d; draw(); }).catch(() => { failed = true; draw(); });
+  const loadAll = () => { failed = false; load().then((d) => { data = d; draw(); }).catch(() => { failed = true; draw(); }); };
+  loadAll();
   loadLive();
   draw();
-  return () => { alive = false; };
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  const offReturn = onReturn(() => { if (alive && failed) { loadAll(); draw(); } });
+  return () => { alive = false; offReturn(); };
 }
 
 // ── 공항 화면 ──

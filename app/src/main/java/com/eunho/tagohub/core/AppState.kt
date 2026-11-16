@@ -25,4 +25,19 @@ object AppState {
     suspend fun awaitMapVisible() {
         combine(foreground, mapVisible) { f, m -> f && m }.first { it }
     }
+
+    /**
+     * 다음 갱신까지 [ms] 기다림. 그사이 앱이(또는 [map] 이면 지도 화면이) 가려졌다가 다시 보이면 바로 돌아옴.
+     * 다른 앱에 갔다 오면 남은 주기(15~45초)를 기다리지 않고 바로 새로 받게 (웹 livePoll 과 같음)
+     */
+    suspend fun pause(ms: Long, map: Boolean = false) {
+        val shown = if (map) combine(foreground, mapVisible) { f, m -> f && m } else foreground
+        kotlinx.coroutines.withTimeoutOrNull(ms) {
+            shown.first { !it }
+            shown.first { it }
+        }
+    }
+
+    /** 못 받았을 때 다시 묻기까지: 연속 실패 1·2·3번째는 2·4·6초, 그 뒤(또는 성공)는 보통 주기 [normalMs] */
+    fun retryMs(fails: Int, normalMs: Long): Long = if (fails in 1..3) fails * 2_000L else normalMs
 }

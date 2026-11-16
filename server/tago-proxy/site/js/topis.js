@@ -1,6 +1,6 @@
 // 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사).
 // 도로 링크 모양은 seoul/links.json (pipeline/build_seoul_links.py), 실시간 값은 서버 /w/topis/… (src/seoultraffic.js)
-import { getJson, esc } from "./core.js";
+import { getJson, esc, onReturn } from "./core.js";
 import { MapView } from "./map.js";
 import { decodePolyline } from "./busdata.js";
 import { offsetRight } from "./bus.js";
@@ -133,6 +133,8 @@ export function trafficLayer(onChange) {
   let retries = 0;
   const timer = setInterval(refresh, 120000);
   const offIdle = MapView.onIdle(refresh);
+  // 다른 앱에 갔다 돌아오면 2분을 기다리지 않고 오래된 묶음만 바로 새로 (그사이 못 받은 묶음도)
+  const offReturn = onReturn(() => { retries = 0; refresh(); });
   refresh();
 
   return {
@@ -165,6 +167,6 @@ export function trafficLayer(onChange) {
       }
       return null;
     },
-    destroy() { alive = false; clearInterval(timer); offIdle(); btn.remove(); },
+    destroy() { alive = false; clearInterval(timer); offIdle(); offReturn(); btn.remove(); },
   };
 }

@@ -536,7 +536,7 @@ class TripController(
                 val first = liveFor(p.legs[0])
                 val second = p.legs.getOrNull(1)?.let { liveFor(it) }.orEmpty()
                 live.value = TripLive(first, second)
-                delay(20_000)
+                com.eunho.tagohub.core.AppState.pause(20_000, map = true)
             }
         }
     }

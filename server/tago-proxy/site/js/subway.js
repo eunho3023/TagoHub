@@ -1,5 +1,5 @@
 // 지하철: 역 찾기(국토교통부), 역 화면(서울 실시간 도착·시간표·혼잡도·시설), 서울 지하철 노선도 그림.
-import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor } from "./core.js";
+import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor, livePoll, onReturn } from "./core.js";
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent } from "./store.js";
@@ -143,17 +143,21 @@ export function subwaySearch(root, chipsHtml) {
     out.innerHTML = note("찾는 중...");
     const r = await searchStations(q).catch(() => null);
     if (my !== seq) return;
+    lastFailed = !r;
     out.innerHTML = !r ? note("역 정보를 받지 못했어요") : !r.length ? note("찾는 역이 없어요") : `<div class="list">${r.map(stLine).join("")}</div>`;
   };
+  let lastFailed = false;
   bindInput(root, "#q", (v) => { search.q = v; draw(); }, 350);
   draw();
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  return onReturn(() => { if (lastFailed) draw(); });
 }
 
 // ── 역 화면 ──
 export function stationScreen(root, p) {
   const s = { id: p.id, name: p.name || "역", line: p.line || "" };
   Recent.addStation(s);
-  let alive = true, tab = 0, day = dayCode(isoDay()), all = false, up = null, down = null, failed = false, live = undefined, congDay = ["W", "W", "W", "W", "W", "S", "U"][isoDay() - 1];
+  let alive = true, tab = 0, day = dayCode(isoDay()), all = false, up = null, down = null, failed = false, live = undefined, liveAt = 0, liveFailed = false, congDay = ["W", "W", "W", "W", "W", "S", "U"][isoDay() - 1];
   const realtime = !!lineIdOf(s);
   const timers = [];
   const segs = (list, cur, set) => `<div class="segs">${list.map(([k, l]) => `<button class="${k === cur ? "on" : ""}" ${act(() => { set(k); draw(); })}>${l}</button>`).join("")}</div>`;
@@ -165,6 +169,7 @@ export function stationScreen(root, p) {
   function liveHtml() {
     if (!realtime) return "";
     let h = `<div class="shead live">실시간 도착</div>`;
+    if (liveFailed) return h + note("실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.");
     if (live === undefined) return h + note("실시간 도착을 불러오는 중...");
     if (!live || !live.length) return h + note("지금 실시간 도착 정보가 없어요");
     const by = new Map();
@@ -231,13 +236,28 @@ export function stationScreen(root, p) {
     root.scrollTop = y;
   }
   loadSched();
+  // 시간표를 못 받은 채로 다른 앱에 갔다 돌아오면 다시 받음
+  const offReturn = onReturn(() => { if (alive && failed) loadSched(); });
+  // 실시간 도착: 20초마다, 다른 앱에서 돌아오면 바로, 못 받으면 2·4·6초 뒤 다시 (livePoll).
+  // 다시 묻는 동안은 받은 지 2분 안의 도착을 그대로, 그보다 오래됐으면 "불러오는 중". 예전엔 처음에 못 받으면 "실시간 도착 정보가 없어요"로 보였음
+  let poll = null;
   if (realtime) {
-    const tick = async () => { try { live = await seoulLive(s); } catch (e) { live = live || []; } if (tab === 0) draw(); };
-    tick();
-    timers.push(setInterval(tick, 20000));
+    poll = livePoll(async ({ lastTry }) => {
+      let got;
+      try { got = await seoulLive(s); } catch (e) {
+        if (!alive) return;
+        if (lastTry) { liveFailed = true; live = undefined; }
+        else if (Date.now() - liveAt > 120000) live = undefined;
+        if (tab === 0) draw();
+        return false;
+      }
+      if (!alive) return;
+      live = got; liveAt = Date.now(); liveFailed = false;
+      if (tab === 0) draw();
+    }, 20000);
   }
   timers.push(setInterval(() => { if (tab === 0 && !all) draw(); }, 15000));
-  return () => { alive = false; timers.forEach(clearInterval); };
+  return () => { alive = false; timers.forEach(clearInterval); poll?.stop(); offReturn(); };
 }
 
 // ── 서울 지하철 노선도 (그림, 끌어서 옮기기·휠로 확대, 역 이름을 누르면 그 역 찾기) ──

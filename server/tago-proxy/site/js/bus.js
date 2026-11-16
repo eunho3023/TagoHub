@@ -1,5 +1,5 @@
 // 버스 화면: 정류장 찾기, 정류장(실시간 도착), 노선(지도·버스 위치·정류장 목록), 지도 탭.
-import { esc, busColor, naturalCompare, isoDay, meters, seoulNow } from "./core.js";
+import { esc, busColor, naturalCompare, isoDay, meters, seoulNow, livePoll, onReturn } from "./core.js";
 import { act, header, note, sectionHead, bindInput, icon } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -11,8 +11,9 @@ import { tidyRoad } from "./roadline.js";
 import * as Ahead from "./busahead.js";
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
-/** 도착을 못 받으면 2·4·6초 뒤 다시 (세 번), 그동안 받은 지 이만큼 안 된 도착은 그대로 보여 줌 */
-const RETRY_MAX = 3, RETRY_STEP_MS = 2000, KEEP_LIVE_MS = 120000;
+/** 못 받아서 다시 묻는 동안(livePoll) 받은 지 이만큼 안 된 자료는 그대로 보여 줌 */
+const KEEP_LIVE_MS = 120000;
+const fresh = (x) => x?.state === "ok" && Date.now() - x.at < KEEP_LIVE_MS;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
 /** 화면 사이에 정류장 정보를 넘김 (주소에는 id·좌표만) */
 const known = new Map();
@@ -46,6 +47,7 @@ export function busSearch(root, chipsHtml) {
     out.innerHTML = note("찾는 중...");
     const r = await B.searchStops(q).catch(() => null);
     if (my !== seq) return;
+    lastFailed = !r;
     if (!r) { out.innerHTML = note("정류장 목록을 받지 못했어요"); return; }
     if (!r.length) { out.innerHTML = note("찾는 정류장이 없어요"); return; }
     out.innerHTML = `<div class="list">${r.map((s) => stopLine(s, "")).join("")}</div>`;
@@ -59,9 +61,12 @@ export function busSearch(root, chipsHtml) {
       B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => { info[i].t = t; fill(i); }).catch(() => {});
     });
   };
+  let lastFailed = false;
   const inp = bindInput(root, "#q", (v) => { search.q = v; draw(); });
   if (!isWide()) inp?.focus({ preventScroll: true });
   draw();
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  return onReturn(() => { if (lastFailed) draw(); });
 }
 
 // ── 정류장 화면 ──
@@ -84,7 +89,10 @@ export function stopScreen(root, p) {
   let waited = false, liveWait = null;
   const timers = [];
   const ensure = async () => {
-    if (!stop && p.lat) stop = await B.stopAt(p.id, +p.lat, +p.lng);
+    if (!stop && p.lat) {
+      try { stop = await B.stopAt(p.id, +p.lat, +p.lng); }
+      catch (e) { root.innerHTML = header("정류장", null, { back: true }) + note("정류장 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return null; }
+    }
     if (!stop) { root.innerHTML = header("정류장", null, { back: true }) + note("정류장을 찾지 못했어요"); return false; }
     remember(stop);
     Recent.addStop(stop);
@@ -170,10 +178,14 @@ export function stopScreen(root, p) {
     }).join("")}</div>`;
     tickTimes();
   };
-  let onShow = null;
-  (async () => {
+  let poll = null, offRetry = null;
+  const start = async () => {
     root.innerHTML = header("정류장", null, { back: true }) + note("불러오는 중...");
-    if (!(await ensure())) return;
+    const ok = await ensure();
+    if (!alive) return;
+    // 연결 실패(null)면 다른 앱에서 돌아오거나 인터넷이 다시 켜질 때 처음부터 다시
+    if (ok === null) { offRetry = onReturn(() => { offRetry(); offRetry = null; start(); }); return; }
+    if (!ok) return;
     draw();
     timers.push(setTimeout(() => { waited = true; draw(); }, 6000));
     B.cityName(stop.city).then((c) => { city = c; draw(); });
@@ -183,22 +195,16 @@ export function stopScreen(root, p) {
       // 어느 방면인지: 지나는 노선의 다음 정류장
       B.towardOf(stop, s).then((t) => { if (t && alive) { toward = t; draw(); } }).catch(() => {});
     }).catch(() => { sums = []; draw(); });
-    // 못 받았을 때: 폰에서 다른 앱에 갔다 돌아오면 통신이 깨어나기 전에 물어 실패하곤 했음 (다음 새로고침 15초 동안 "받지 못했어요").
-    // 그래서 2·4·6초 뒤 다시 묻고, 그동안은 받은 지 2분이 안 된 도착을 그대로 보여 줌 (없으면 "다시 받는 중"). 세 번 넘게 실패해야 "받지 못했어요"
-    let fails = 0, retryTimer = null;
-    const tick = async () => {
-      clearTimeout(retryTimer);
+    // 못 받았을 때(폰에서 다른 앱에 갔다 돌아오면 통신이 깨어나기 전에 물어 실패하곤 했음): livePoll 이 2·4·6초 뒤 다시 묻고,
+    // 그동안은 받은 지 2분이 안 된 도착을 그대로 보여 줌 (없으면 "다시 받는 중"). 세 번 더 실패해야 "받지 못했어요".
+    // 다른 앱에서 돌아오면 15초를 기다리지 않고 바로 새로 받음
+    const tick = async ({ lastTry = true } = {}) => {
       let got = await B.arrivals(stop);
       if (!alive) return;
-      if (got.state === "failed") {
-        fails++;
-        if (fails <= RETRY_MAX) {
-          retryTimer = setTimeout(() => { if (alive) tick(); }, RETRY_STEP_MS * fails);
-          if (!(live?.state === "ok" && Date.now() - live.at < KEEP_LIVE_MS)) live = { state: "retry", list: [], at: Date.now() };
-          draw();
-          return;
-        }
-      } else fails = 0;
+      if (got.state === "failed" && !lastTry) {
+        if (!fresh(live)) { live = { state: "retry", list: [], at: Date.now() }; draw(); }
+        return false;
+      }
       // 직전엔 도착이 있었는데 갑자기 하나도 없으면(공공데이터가 잠깐 빈 응답을 줄 때) 3초 뒤 한 번 더 물음
       if (got.state === "ok" && !got.list.length && live?.list?.length) {
         await new Promise((r) => setTimeout(r, 3000));
@@ -213,27 +219,20 @@ export function stopScreen(root, p) {
       if (refine && live) {
         const fixed = await Promise.race([refine, new Promise((r) => setTimeout(() => r(null), 1500))]);
         if (!alive) return;
-        if (fixed) { live = { ...got, list: fixed }; draw(); return; }
+        if (fixed) { live = { ...got, list: fixed }; draw(); return true; }
       }
       live = got; draw();
-      if (!refine) return;
-      const fixed = await refine;
-      if (alive && live === got && fixed !== got.list) { live = { ...got, list: fixed }; draw(); }
+      if (refine) refine.then((fixed) => { if (alive && live === got && fixed !== got.list) { live = { ...got, list: fixed }; draw(); } });
+      return got.state !== "failed";
     };
+    poll = livePoll(tick, REFRESH_MS);
     // 새로고침 단추: 도착 정보만 다시 (3초 안에 여러 번 누르면 한 번만)
     let lastRefresh = 0;
-    refresh = () => { if (Date.now() - lastRefresh < 3000) return; lastRefresh = Date.now(); tick(); };
-    tick();
-    timers.push(setInterval(tick, REFRESH_MS), setInterval(tickTimes, 1000));
-    // 다른 앱에 갔다 돌아오면 다음 15초를 기다리지 않고 바로 새로 받음 (받아 둔 도착은 그사이 오래됐음)
-    onShow = () => { if (alive && document.visibilityState === "visible" && Date.now() - (live?.at || 0) > 5000) { fails = 0; tick(); } };
-    document.addEventListener("visibilitychange", onShow);
-    window.addEventListener("pageshow", onShow);
-  })();
-  return () => {
-    alive = false; timers.forEach(clearInterval);
-    if (onShow) { document.removeEventListener("visibilitychange", onShow); window.removeEventListener("pageshow", onShow); }
+    refresh = () => { if (Date.now() - lastRefresh < 3000) return; lastRefresh = Date.now(); poll.now(); };
+    timers.push(setInterval(tickTimes, 1000));
   };
+  start();
+  return () => { alive = false; timers.forEach(clearInterval); poll?.stop(); offRetry?.(); };
 }
 
 // ── 정류장 시간표: 지난 운행 기록(최근 6주)으로 요일별 "몇 시에 몇 번 버스가 오는지" ──
@@ -523,7 +522,7 @@ export function routeScreen(root, p, ctx) {
     const color = busColor(r.type);
     const at = B.busAtStops(r.stops, pos?.buses || []);
     const status = !pos ? "버스 위치를 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
-      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 15초마다 새로` : "지금 운행 중인 버스가 없어요";
+      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 10초마다 새로` : "지금 운행 중인 버스가 없어요";
     const s = r.sum;
     const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, isoDay()) > 0 && "배차 " + B.intervalOn(s, isoDay()) + "분"].filter(Boolean).join(" · ") : "";
     const list = root.querySelector("#stops");
@@ -558,15 +557,22 @@ export function routeScreen(root, p, ctx) {
       </div>`;
     }).join("");
   };
-  (async () => {
+  let offRetry = null;
+  const start = async () => {
     try { r = await B.route(p.id, p.city); } catch (e) { r = null; }
     // 자료 조각에 없는 노선은 번호·종류를 정류장 화면에서 넘겨받음
     if (r && r.no === "노선" && p.no) { r.no = p.no; if (!r.type && p.type) r.type = p.type; }
     if (!alive) return;
-    if (!r) { root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요"); return; }
+    if (!r) {
+      root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요.");
+      // 다른 앱에서 돌아오거나 인터넷이 다시 켜지면 다시
+      offRetry = onReturn(() => { offRetry(); offRetry = null; start(); });
+      return;
+    }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
       `<div class="map-slot"></div><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button>${Edits.isAdmin() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="stops" class="list"></div>`;
-    root.querySelector("#rrefresh")?.addEventListener("click", () => tick());
+    let tickNow = () => {};
+    root.querySelector("#rrefresh")?.addEventListener("click", () => tickNow());
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
     // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림
@@ -584,14 +590,23 @@ export function routeScreen(root, p, ctx) {
       road = tidyRoad(s2, stopPts()); snapped = null; linesOf = null; drawList(); drawMap();
     });
     timers.push(() => offEdit());
-    async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }
-    tick();
-    // 버스 위치는 10초마다 받고, 새 좌표로 옮기는 동안 1초마다 다시 그림
-    const t = setInterval(tick, BUS_POS_MS);
+    // 버스 위치는 10초마다 받고(livePoll: 다른 앱에서 돌아오면 바로, 못 받으면 2·4·6초 뒤 다시), 새 좌표로 옮기는 동안 1초마다 다시 그림.
+    // 다시 묻는 동안은 받은 지 2분이 안 된 위치를 그대로 둠 (예전엔 한 번 실패하면 버스가 다 사라지고 "받지 못했어요")
+    async function tick({ lastTry = true } = {}) {
+      const got = await B.positions(r);
+      if (!alive) return;
+      if (got.state === "failed" && !lastTry && fresh(pos)) return false;
+      pos = got.state === "ok" ? { ...got, at: Date.now() } : got;
+      learn(); drawList(); drawMap();
+      return got.state !== "failed";
+    }
+    const poll = livePoll(tick, BUS_POS_MS);
+    tickNow = () => poll.now();
     const anim = setInterval(() => { const now = Date.now(); if (alive && [...track.values()].some((x) => moving(x, now))) drawMap(); }, 1000);
-    timers.push(() => clearInterval(t), () => clearInterval(anim));
-  })();
-  return () => { alive = false; timers.forEach((f) => f()); };
+    timers.push(() => poll.stop(), () => clearInterval(anim));
+  };
+  start();
+  return () => { alive = false; timers.forEach((f) => f()); offRetry?.(); };
 }
 
 // ── 지도 탭 (좁은 화면: 지도 + 아래 카드 / 넓은 화면: 오른쪽 지도) ──

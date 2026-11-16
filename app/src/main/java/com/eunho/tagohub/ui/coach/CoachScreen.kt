@@ -170,7 +170,7 @@ private fun LivePane(vm: CoachViewModel) {
             while (true) {
                 com.eunho.tagohub.core.AppState.awaitForeground()
                 vm.refreshLive()
-                delay(60_000)
+                com.eunho.tagohub.core.AppState.pause(60_000)
             }
         }
     }

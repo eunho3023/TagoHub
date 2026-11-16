@@ -108,6 +108,7 @@ internal fun LiveArrivalsCard(
             value = LiveState.NoPermission
             return@produceState
         }
+        var fails = 0
         while (true) {
             AppState.awaitForeground()
             val place = lastKnownLocation(context) ?: currentLocation(context)
@@ -129,13 +130,16 @@ internal fun LiveArrivalsCard(
                 continue
             }
             // 정류장마다 동시에 받고(앱은 공공 API 동시 요청을 4개로 제한), 한 곳이 늦어도 나머지는 바로 보여 준다.
+            // 못 받은 정류장은 지난번 것을 그대로 (예전엔 빈 목록으로 바뀌어 "오는 버스 없음"처럼 보였음)
+            val before = (value as? LiveState.Ready)?.stops.orEmpty().associate { it.stop.nodeId to it.routes }
             val got = LinkedHashMap<String, List<RouteEta>>()
+            var failed = false
             coroutineScope {
                 near.forEach { (s, _) ->
                     launch {
                         got[s.nodeId] = when (val r = runCatching { arrivalsFor(Graph.repo, s) }.getOrNull()) {
                             is TagoResult.Success -> HomeText.routeEtas(r.data)
-                            else -> emptyList()
+                            else -> { failed = true; before[s.nodeId].orEmpty() }
                         }
                     }
                 }
@@ -144,7 +148,9 @@ internal fun LiveArrivalsCard(
                 near.map { (s, meters) -> LiveStopRow(s, meters.toInt(), got[s.nodeId].orEmpty()) },
                 clockNow(),
             )
-            delay(30_000L)
+            // 못 받은 정류장이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
+            fails = if (failed) fails + 1 else 0
+            AppState.pause(AppState.retryMs(fails, 30_000L))
         }
     }
     LiveCard(

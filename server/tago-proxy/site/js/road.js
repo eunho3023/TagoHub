@@ -1,5 +1,5 @@
 // 도로: 한국도로공사 돌발·정체·휴게소 주유 가격(서버 /w/ex/), 실시간 신호등(서울·울산, /w/signal/).
-import { getText, esc } from "./core.js";
+import { getText, esc, onReturn } from "./core.js";
 import { act, header, note, bindInput } from "./ui.js";
 import { MapView } from "./map.js";
 
@@ -195,5 +195,7 @@ export function roadScreen(root, chipsHtml, ctx) {
   if (!road.jams) load(1);
   if (!road.gas) load(2);
   draw();
-  return () => { alive = false; stopSig(); offIdle?.(); };
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  const offReturn = onReturn(() => { if (alive && road.failed.size) { [...road.failed].forEach(load); draw(); } });
+  return () => { alive = false; stopSig(); offIdle?.(); offReturn(); };
 }

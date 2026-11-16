@@ -1,5 +1,5 @@
 // 길찾기 (카카오): 장소 찾기 /w/kakao/place, 대중교통 경로 /w/kakao/transit. 집·회사 저장, 최근 목적지.
-import { getText, esc, distText } from "./core.js";
+import { getText, esc, distText, onReturn } from "./core.js";
 import { act, header, note, sectionHead, bindInput } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -137,5 +137,7 @@ export function directionsScreen(root, p, ctx) {
       ${pl.category ? `<small class="cat">${esc(pl.category)}</small>` : ""}<button class="mini" ${act((e, t) => { HomeWork.saveHome(pl); t.textContent = "집 ✓"; })}>집</button><button class="mini" ${act((e, t) => { HomeWork.saveWork(pl); t.textContent = "회사 ✓"; })}>회사</button></div>`).join("")}</div>` : note("찾는 장소가 없어요");
   }
   draw();
-  return () => { alive = false; };
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  const offReturn = onReturn(() => { if (alive && dir.status === "ERROR" && dir.routes && !dir.routes.length) { dir.routes = null; draw(); } });
+  return () => { alive = false; offReturn(); };
 }

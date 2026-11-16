@@ -14,16 +14,85 @@ export async function getText(path, query) {
     if (s) url += (url.includes("?") ? "&" : "?") + s;
   }
   let r;
-  try { r = await fetch(url); }
-  catch (e) {
-    // 연결 자체가 실패(폰에서 웹으로 돌아온 직전처럼 통신이 막 깨어나는 중)면 잠깐 뒤 한 번 더. 서버가 준 오류(HTTP 4xx·5xx)는 그대로
-    await new Promise((res) => setTimeout(res, NET_RETRY_MS));
-    r = await fetch(url);
+  for (let i = 0; ; i++) {
+    try { r = await fetch(url); break; }
+    catch (e) {
+      // 연결 자체가 실패(폰에서 웹으로 돌아온 직후처럼 통신이 막 깨어나는 중)면 조금 뒤 다시 (1초, 2.5초).
+      // 꺼져 있거나 가려져 있으면 켜지거나 보일 때까지(5초까지) 기다렸다가. 서버가 준 오류(HTTP 4xx·5xx)는 그대로
+      if (i >= NET_RETRY_MS.length) throw e;
+      await whenUsable(5000);
+      await new Promise((res) => setTimeout(res, NET_RETRY_MS[i]));
+    }
   }
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.text();
 }
-const NET_RETRY_MS = 1000;
+const NET_RETRY_MS = [1000, 2500];
+
+/** 인터넷이 켜져 있고 화면이 보일 때까지 (최대 ms) */
+function whenUsable(ms) {
+  const usable = () => navigator.onLine !== false && !document.hidden;
+  if (usable()) return Promise.resolve();
+  return new Promise((res) => {
+    const done = () => { clearTimeout(t); window.removeEventListener("online", check); document.removeEventListener("visibilitychange", check); res(); };
+    const check = () => { if (usable()) done(); };
+    const t = setTimeout(done, ms);
+    window.addEventListener("online", check);
+    document.addEventListener("visibilitychange", check);
+  });
+}
+
+/**
+ * 다른 앱에서 돌아오거나(보이게 됨) 인터넷이 다시 켜지면 cb. 한 번 받는 화면이 "받지 못했어요" 상태면 다시 받으려고
+ * (폰에서 받는 도중 다른 앱에 가면 그 요청이 실패하고, 돌아와도 실패 문구가 그대로 남았음). 돌려주는 함수로 해제
+ */
+export function onReturn(cb) {
+  const h = () => { if (!document.hidden) cb(); };
+  document.addEventListener("visibilitychange", h);
+  window.addEventListener("pageshow", h);
+  window.addEventListener("online", h);
+  return () => {
+    document.removeEventListener("visibilitychange", h);
+    window.removeEventListener("pageshow", h);
+    window.removeEventListener("online", h);
+  };
+}
+
+/**
+ * 주기적으로 새로 받는 화면(도착·버스 위치·지하철 도착 등)용.
+ * 폰에서 다른 앱에 갔다 돌아오면 통신이 깨어나기 전에 물어 실패하고, 다음 주기까지 "받지 못했어요"가 남곤 했음.
+ * - 보이게 되거나 인터넷이 다시 켜지면 바로 run (마지막 성공 뒤 minGapMs 넘었을 때)
+ * - 가려져 있는 동안은 주기 실행을 건너뜀
+ * - run 이 false 를 주거나 오류면 실패: 2·4·6초 뒤 다시 (세 번). run({ lastTry }) 의 lastTry 가 true 일 때만 화면에 "받지 못했어요"를,
+ *   그 전에는 받아 둔 것을 그대로 두거나 "다시 받는 중"을 보여 주면 됨
+ * 돌려주는 { now, stop }: now() 는 바로 다시 (새로고침 단추), stop() 은 멈춤
+ */
+export function livePoll(run, everyMs, { minGapMs = 5000, retries = 3, stepMs = 2000 } = {}) {
+  let okAt = 0, fails = 0, retryT = null, stopped = false, busy = null;
+  const go = () => {
+    if (stopped) return Promise.resolve();
+    if (busy) return busy;
+    clearTimeout(retryT);
+    busy = (async () => {
+      let ok = false;
+      try { ok = (await run({ lastTry: fails >= retries })) !== false; } catch (e) { ok = false; }
+      busy = null;
+      if (stopped) return;
+      if (ok) { okAt = Date.now(); fails = 0; }
+      else if (fails < retries) { fails++; retryT = setTimeout(go, stepMs * fails); }
+    })();
+    return busy;
+  };
+  const timer = setInterval(() => { if (!document.hidden) go(); }, everyMs);
+  const off = onReturn(() => { if (Date.now() - okAt > minGapMs) { fails = 0; go(); } });
+  go();
+  return {
+    now: () => { fails = 0; return go(); },
+    stop: () => {
+      stopped = true; clearInterval(timer); clearTimeout(retryT); off();
+    },
+  };
+}
 
 export async function getJson(path, query) { return JSON.parse(await getText(path, query)); }
 
