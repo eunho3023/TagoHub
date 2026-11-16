@@ -22,7 +22,7 @@ test("앱이 모양을 물으면 버스가 실제로 지나간 자리로 만든 
       run: async () => ({}),
     }),
   };
-  const get = async () => (await handleAppShape(new Request("https://x/appshape/JUB305001088"), new URL("https://x/appshape/JUB305001088"), { DB: db })).json();
+  const get = async () => (await handleAppShape(new Request("https://x/appshape/TSB305001088"), new URL("https://x/appshape/TSB305001088"), { DB: db })).json();
   assert.deepEqual(await get(), { poly: "GPS", src: "gps" });
   rows.shapes = { sig: "v7:3:1,2:3,4:k", poly: "KAKAO" };   // 버스 자리 모양이 아니면 앱이 올린 모양
   assert.deepEqual(await get(), { poly: "APP" });
@@ -46,8 +46,8 @@ test("서울 노선은 서울시 공식 경로를 앱이 올린 모양보다 먼
   assert.deepEqual(await get("SEB103900011"), { poly: encode([[37.55, 127.02], [37.56, 127.03]], 5), src: "official" });
   await get("SEB103900011");
   assert.equal(asked, 1, "하루 저장");
-  // 서울·경기가 아니면 그대로 앱 모양
-  assert.deepEqual(await get("JUB305001088"), { poly: "APP" });
+  // 서울·경기·전주가 아니면 그대로 앱 모양
+  assert.deepEqual(await get("TSB305000104"), { poly: "APP" });
   // 서울·경기는 앱 모양을 받지 않음
   const put = await handleAppShape(new Request("https://x/appshape/SEB103900011", { method: "PUT", body: JSON.stringify({ poly: "_p~iF~ps|U_ulLnnqC" }) }), new URL("https://x/appshape/SEB103900011"), env, fetcher);
   assert.deepEqual(await put.json(), { ok: true, kept: false, why: "official" });
@@ -55,4 +55,12 @@ test("서울 노선은 서울시 공식 경로를 앱이 올린 모양보다 먼
   const none = await handleAppShape(new Request("https://x/appshape/GGB200000085"), new URL("https://x/appshape/GGB200000085"), env, async () => new Response("", { status: 500 }));
   assert.equal(none.status, 404);
   delete globalThis.caches;
+});
+
+test("전주 노선 정류장: 전주시 정류장 차례(순번, 같은 순번은 한 번)", async () => {
+  const { jeonjuStopIds } = await import("../src/shape.js");
+  const xml = "<r><list class=\"object\"><brsseqno>2</brsseqno><stopstandardid>305001</stopstandardid><stopkname>나</stopkname></list>" +
+    "<list class=\"object\"><brsseqno>1</brsseqno><stopstandardid>305000</stopstandardid><stopkname>가</stopkname></list>" +
+    "<list class=\"object\"><brsseqno>2</brsseqno><stopstandardid>305001</stopstandardid><stopkname>나</stopkname></list></r>";
+  assert.deepEqual(jeonjuStopIds(xml), [{ seq: 1, id: "JUB305000", name: "가" }, { seq: 2, id: "JUB305001", name: "나" }]);
 });

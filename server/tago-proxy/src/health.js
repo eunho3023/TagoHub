@@ -93,7 +93,8 @@ export async function checkOne(c, env, fetcher = fetch, now = () => Date.now()) 
   try {
     const r = await fetcher(url, { ...(init || {}), signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
     const body = await r.text();
-    const why = reason(r.status, body) || (c.ok(body) ? null : "응답 내용이 예상과 다름");
+    // 내용이 다르면 응답 앞부분을 같이 남김 (무엇이 왔는지 알 수 있게, 키는 scrub 이 지움)
+    const why = reason(r.status, body) || (c.ok(body) ? null : "응답 내용이 예상과 다름: " + body.replace(/<\?xml[^>]*>/, "").replace(/\s+/g, " ").trim().slice(0, 60));
     return { ok: !why, msg: why ? scrub(why, env) : "", ms: now() - t0 };
   } catch (e) {
     return { ok: false, msg: scrub("연결 실패: " + (e && e.name === "TimeoutError" ? "15초 안에 답 없음" : (e && e.message) || e), env), ms: now() - t0 };

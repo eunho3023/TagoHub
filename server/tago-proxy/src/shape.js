@@ -386,6 +386,42 @@ async function ggRouteStops(env, routeId, fetcher) {
   } catch (_) { return null; }
 }
 
+/** 전주시 노선 정류장 목록(XML) → [{seq, id: "JUB…", name}] (순번 차례, 같은 순번은 한 번만) */
+export function jeonjuStopIds(xml) {
+  const tag = (it, t) => { const r = new RegExp(`<${t}[^>]*>([^<]*)</${t}>`, "i").exec(it); return r ? r[1].trim() : null; };
+  const seen = new Set();
+  return [...String(xml).matchAll(/<list[^>]*>([\s\S]*?)<\/list>/g)]
+    .map((m) => ({ seq: parseInt(tag(m[1], "brsseqno") ?? tag(m[1], "brnseqno"), 10), id: tag(m[1], "stopstandardid"), name: tag(m[1], "stopkname") || "" }))
+    .filter((s) => Number.isFinite(s.seq) && s.id && !seen.has(s.seq) && seen.add(s.seq))
+    .map((s) => ({ ...s, id: "JUB" + s.id }))
+    .sort((a, b) => a.seq - b.seq);
+}
+
+/**
+ * 전주 노선(JUB…) 정류장: 전주시 버스 API(4641000, 웹 /w/bus/jeonju/stops 와 같은 자료)의 정류장 차례 + 이름 자료 조각(data/names)의 좌표.
+ * TAGO 노선정보 하루 한도가 차면 서버가 정류장을 못 받아 모양을 못 만들었음 (110번: 웹은 정류장 직선)
+ */
+async function jeonjuRouteStops(env, routeId, fetcher) {
+  const m = /^JUB(\d{9})$/.exec(routeId);
+  if (!m || !env.DATA_GO_KR_KEY || !env.ASSETS) return null;
+  try {
+    const r = await fetcher(`https://apis.data.go.kr/4641000/realtime/bus_location_bus_position_common?brtStdid=${m[1]}&serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}`);
+    if (!r.ok) return null;
+    const list = jeonjuStopIds(await r.text());
+    if (list.length < 2) return null;
+    // 좌표: 이름 자료 조각(data/names/<이름 첫 글자 16진수>.json, [id, 이름, 위도, 경도, …])에서 정류장 id 로 (웹 withCoords 와 같음)
+    const at = new Map();
+    const chars = [...new Set(list.map((s) => s.name.codePointAt(0)?.toString(16)).filter(Boolean))];
+    await Promise.all(chars.map(async (ch) => {
+      const f = await env.ASSETS.fetch(new Request(`https://assets.local/data/names/${ch}.json`)).catch(() => null);
+      if (!f || !f.ok) return;
+      for (const a of await f.json().catch(() => [])) if (String(a[0]).startsWith("JUB")) at.set(a[0], [a[2], a[3]]);
+    }));
+    const stops = list.map((s) => at.get(s.id) && [...at.get(s.id), s.name]).filter(Boolean);
+    return stops.length >= 2 && stops.length >= list.length * 0.8 ? stops : null;
+  } catch (_) { return null; }
+}
+
 /**
  * 서버 노선 조각에 없는 노선(전주·제주·교통안전공단 등): TAGO 노선 정류장 목록으로 (도시코드가 있어야 함).
  * D1 에 사흘 안에 받아 둔 것이 있으면 다시 묻지 않음 (예약 작업이 매번 물어 하루 한도를 다 썼었음, src/tagostore.js).
@@ -447,26 +483,28 @@ export async function officialShape(env, id, fetcher) {
 }
 
 /**
- * 공식 경로를 앱이 올린 모양보다 먼저 쓰는 노선: 서울(SEB, 서울시 getRoutePath)·경기(GGB, 경로 이력).
- * 전주(JUB) 노선 그림은 점이 듬성듬성하고 실제로 안 다니는 가지가 섞인 노선이 있어(305001010: 최대 621m) 넣지 않음
+ * 공식 경로를 앱이 올린 모양보다 먼저 쓰는 노선: 서울(SEB, 서울시 getRoutePath)·경기(GGB, 경로 이력)·전주(JUB, 전주시 노선 그림).
+ * 전주는 앱이 카카오 길찾기 조각을 먼저 이어 선이 흐트러졌음(110번). 전주 그림은 점이 듬성듬성해 정류장 95% 가 맞아야 씀
  */
-export const OFFICIAL_FIRST = /^(SEB\d{1,12}|GGB\d{9})$/;
+export const OFFICIAL_FIRST = /^(SEB\d{1,12}|GGB\d{9}|JUB\d{9})$/;
 /**
- * 서울·경기 노선의 공식 경로를 폴리라인 글자로. 정류장의 80% 가 120m 안을 지날 때만 (노선이 바뀌었으면 null).
+ * 서울·경기·전주 노선의 공식 경로를 폴리라인 글자로. 정류장의 80%(전주 95%) 가 120m 안을 지날 때만 (노선이 바뀌었으면 null).
  * 앱이 올린 모양보다 먼저 씀: 앱이 서울 API 를 못 받던 때(HTTP 401) 카카오·OSRM 으로 대신 만든 엉뚱한 모양이 올라가
  * 앱·웹 모두 그걸 그렸음. 하루 저장(없으면 1시간)
  */
 export async function regionOfficial(env, id, fetcher = fetch) {
   if (!OFFICIAL_FIRST.test(id)) return null;
   const cache = caches.default;
-  const key = new Request(`https://cache.tagohub/official/v1/${id}`);
+  const key = new Request(`https://cache.tagohub/official/v2/${id}`);
   const hit = await cache.match(key).catch(() => null);
   if (hit) return (await hit.text()) || null;
   const pts = await officialShape(env, id, fetcher).catch(() => null);
   let poly = null;
   if (pts && pts.length >= 2) {
-    const stops = await routeStops(env, id).catch(() => null);
-    const fits = !stops || stops.length < 2 || stops.filter((s) => distToPath(s, pts) <= 120).length >= stops.length * 0.8;
+    const jeonju = id.startsWith("JUB");
+    const stops = (await routeStops(env, id).catch(() => null)) || (jeonju ? await jeonjuRouteStops(env, id, fetcher).catch(() => null) : null);
+    // 전주는 정류장을 모르면 쓰지 않음 (맞는지 볼 수 없음)
+    const fits = !stops || stops.length < 2 ? !jeonju : stops.filter((s) => distToPath(s, pts) <= 120).length >= stops.length * (jeonju ? 0.95 : 0.8);
     if (fits) poly = encode(pts, 5);
   }
   await cache.put(key, new Response(poly || "", { headers: { "Cache-Control": `public, max-age=${poly ? 86400 : 3600}` } })).catch(() => {});
@@ -553,7 +591,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const hit = await cache.match(key);
   if (hit) return hit;
 
-  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
+  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops) + (useKakao ? ":k" : "");
   let poly = null, partial = false;
@@ -599,7 +637,7 @@ async function gpsCron(env, fetcher) {
   const job = await nextGpsRoute(env.DB);
   if (!job) return null;
   const id = job.route_id;
-  const stops = (await routeStops(env, id)) || (await tagoRouteStops(env, id, job.city, fetcher));
+  const stops = (await routeStops(env, id)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, job.city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) { await markGps(env.DB, id, job.cells, false); return { id, gps: "no stops" }; }
   const sig = signature(stops);
   const row = await env.DB.prepare("SELECT poly FROM shapes WHERE route_id = ?").bind(id).first();
@@ -675,7 +713,7 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
     return { bucket: cur };
   }
   const id = job.route_id;
-  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, job.city, fetcher));
+  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, job.city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) {
     await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
     return { id, skipped: true };
