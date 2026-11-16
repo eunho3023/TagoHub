@@ -302,21 +302,6 @@ function roadCum(road) {
   }
   return cum;
 }
-/** 점을 도로 선의 [from, to] 구간 안에 내린 자리: {d, ch(처음부터 거리)} */
-function chainOf(road, cum, p, from, to) {
-  let best = null;
-  for (let i = Math.max(0, from); i <= Math.min(to, road.length - 2); i++) {
-    const h = project(p, road[i], road[i + 1]);
-    if (!best || h.d < best.d) best = { d: h.d, ch: cum[i] + h.t * (cum[i + 1] - cum[i]) };
-  }
-  return best;
-}
-/** 처음부터 ch 미터 간 자리가 있는 조각 번호 */
-function segAt(cum, ch) {
-  let i = 0;
-  while (i < cum.length - 2 && cum[i + 1] < ch) i++;
-  return i;
-}
 /** 노선 선 굵기(px)와, 오른쪽 통행에 맞춰 진행 방향 오른쪽으로 비키는 거리(px: 굵기 절반 + 조금 → 오가는 두 줄이 겹치지 않음) */
 const LINE_W = 7, LINE_SIDE_PX = 4.5;
 /** 점 p 를 방향 deg(북쪽 0도, 시계 방향)의 오른쪽으로 m 미터 */
@@ -367,15 +352,8 @@ export function simplifyLine(line, tol) {
   }
   return line.filter((_, i) => keep[i]);
 }
-/** 처음부터 ch 미터 간 자리 */
-function pointAt(road, cum, ch) {
-  let i = 0;
-  while (i < cum.length - 2 && cum[i + 1] < ch) i++;
-  const len = cum[i + 1] - cum[i], t = len ? Math.max(0, Math.min(1, (ch - cum[i]) / len)) : 0;
-  return [road[i][0] + t * (road[i + 1][0] - road[i][0]), road[i][1] + t * (road[i + 1][1] - road[i][1])];
-}
 // 정류장 점을 노선 선 위로 옮기는 최대 거리 (좌표가 골목 쪽으로 잘못 찍힌 정류장도 큰길 선 위로, 서버 shape.js OFF_COORD_M 과 같게)
-const SNAP_M = 250, STOP_SNAP_M = 1000;
+const STOP_SNAP_M = 1000;
 /** 노선 선 위 방향 화살표 자리 (화면 안, 약 [gapPx] px 마다, 최대 300개) → 지도 점 [{chevron}] */
 function lineArrows(line, gapPx = 90) {
   const mpp = MapView.metersPerPx(), b = MapView.bounds();
@@ -424,13 +402,6 @@ function snapStopsFull(stops, road) {
     return { pt: h.pt, seg: i, t: h.t };
   });
 }
-/** 버스 GPS 를 도로 선 위로 (가까우면 {pt, seg}, 멀면 null) */
-function snapHit(p, road) {
-  if (!road || road.length < 2) return null;
-  let best = null;
-  for (let i = 0; i < road.length - 1; i++) { const h = project(p, road[i], road[i + 1]); if (!best || h.d < best.d) best = { ...h, seg: i }; }
-  return best && best.d <= SNAP_M ? best : null;
-}
 const plateTail =(no) => (no || "").replace(/\D/g, "").slice(-4) || null;
 
 export function routeScreen(root, p, ctx) {
@@ -440,53 +411,36 @@ export function routeScreen(root, p, ctx) {
   const timers = [];
   /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
   const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]) : []);
-  // 버스마다 도로 위 자리(처음부터 m)·그 자리를 받은 시각·속도(m/초): 다음 위치가 올 때까지 도로를 따라 앞으로 움직여 보임
-  // (공공데이터 GPS 는 몇십 초 늦게 바뀌어서, 가만히 두면 실제 버스보다 늦어 보임)
-  const track = new Map();
-  const MAX_AHEAD_S = 45, MAX_SPEED = 16.7, BACK_RESET_M = 400;
-  const stopCh = (i) => { const x = snapped?.full[i]; return x && x.seg != null ? snapped.cum[x.seg] + x.t * (snapped.cum[x.seg + 1] - snapped.cum[x.seg]) : null; };
+  // 버스는 받은 실제 GPS 좌표에 그림 (노선 선 위로 옮기거나 노선을 따라 앞으로 미리 움직이지 않음:
+  // 노선 모양이 실제와 다른 곳에서 버스가 엉뚱한 길로 가 보였음). 새 좌표가 오면 지금 보이는 자리에서 새 좌표로 부드럽게 옮김
+  const track = new Map(); // 차량 번호 → {from, to, at, dur, idx, back}
+  const JUMP_M = 1500, STILL_M = 3, BACK_CONFIRM = 3;
+  const meters = (a, b) => Math.hypot((a[0] - b[0]) * 110540, (a[1] - b[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180));
   const stopIdx = (b) => { let i = b.nodeId ? r.stops.findIndex((s) => s.id === b.nodeId) : -1; if (i < 0 && b.ord != null) i = r.stops.findIndex((s) => s.seq === b.ord); return i; };
-  /** 새 버스 위치를 받으면: 지금 정류장~다음 정류장 사이 도로 위로 내리고 속도를 셈 */
+  /** 지금 보일 자리: from → to 를 dur 동안 */
+  const glide = (t, now = Date.now()) => {
+    if (!t.from) return t.to;
+    const k = Math.max(0, Math.min(1, (now - t.at) / t.dur));
+    return [t.from[0] + (t.to[0] - t.from[0]) * k, t.from[1] + (t.to[1] - t.from[1]) * k];
+  };
+  /** 새 버스 위치를 받으면 */
   const learn = () => {
-    if (!snapped || !pos) return;
+    if (!r || !pos) return;
     const now = Date.now(), seen = new Set();
     for (const b of pos.buses || []) {
       if (b.lat == null || !b.vehicleNo) continue;
       seen.add(b.vehicleNo);
-      const i = stopIdx(b);
-      const from = i >= 0 ? snapped.full[i]?.seg ?? 0 : 0, to = i >= 0 ? snapped.full[i + 1]?.seg ?? road.length - 2 : road.length - 2;
-      let h = chainOf(road, snapped.cum, [b.lat, b.lng], from, to);
-      if (!h || h.d > 150) h = i >= 0 && stopCh(i) != null ? { ch: stopCh(i) } : null;
-      if (!h) { track.delete(b.vehicleNo); continue; }
-      const lim = i >= 0 ? stopCh(i + 1) : null;
-      const prev = track.get(b.vehicleNo);
-      if (prev && Math.abs(h.ch - prev.ch) < 3) { prev.lim = lim ?? prev.lim; continue; } // 위치가 그대로면(자료가 아직 안 바뀜) 계속 앞으로
-      // 뒤로 가지 않게: 새 위치가 지금 보이는 자리보다 조금 뒤면(앞으로 움직여 보인 만큼) 그 자리에 멈춰 기다림.
-      // 400m 넘게 뒤면 회차·다음 운행으로 보고 바로 옮김
-      if (prev) {
-        const shown = shownCh(prev);
-        if (h.ch < shown && shown - h.ch < BACK_RESET_M) { track.set(b.vehicleNo, { ch: shown, at: now, v: 0, lim: lim ?? prev.lim }); continue; }
-      }
-      let v = 0;
-      if (prev && h.ch > prev.ch) v = Math.min(MAX_SPEED, (h.ch - prev.ch) / Math.max(1, (now - prev.at) / 1000));
-      if (prev && prev.v && v) v = (v + prev.v) / 2;
-      track.set(b.vehicleNo, { ch: h.ch, at: now, v, lim });
+      const p = [b.lat, b.lng], idx = stopIdx(b), prev = track.get(b.vehicleNo);
+      if (!prev || meters(prev.to, p) > JUMP_M) { track.set(b.vehicleNo, { from: null, to: p, at: now, dur: 1, idx, back: 0 }); continue; }
+      if (meters(prev.to, p) < STILL_M) continue; // 자료가 아직 안 바뀜 (또는 멈춰 있음)
+      // 늦게 온 옛 좌표(정류장 순번이 줄어듦)는 무시. 세 번 연속이거나 노선 절반 넘게 줄면(새 운행) 받아들임
+      if (idx >= 0 && prev.idx >= 0 && idx < prev.idx && prev.idx - idx < r.stops.length / 2 && prev.back + 1 < BACK_CONFIRM) { prev.back++; continue; }
+      track.set(b.vehicleNo, { from: glide(prev, now), to: p, at: now, dur: Math.max(2000, Math.min(BUS_POS_MS, now - prev.at)), idx, back: 0 });
     }
     for (const k of [...track.keys()]) if (!seen.has(k)) track.delete(k);
   };
-  /** 지금 보일 도로 위 자리(처음부터 m): 받은 자리에서 속도만큼 앞으로, 다음 정류장은 넘지 않게 */
-  function shownCh(t) {
-    let ch = t.ch + t.v * Math.min(MAX_AHEAD_S, (Date.now() - t.at) / 1000);
-    if (t.lim != null && t.lim > t.ch) ch = Math.min(ch, t.lim - 3);
-    return Math.max(t.ch, ch);
-  }
   /** 지금 보일 자리 */
-  const busXY = (b) => {
-    const t = track.get(b.vehicleNo);
-    if (!t || !snapped) { const h = snapHit([b.lat, b.lng], road); return h ? toRight(h.pt, h.seg) : [b.lat, b.lng]; }
-    const ch = shownCh(t);
-    return toRight(pointAt(road, snapped.cum, ch), segAt(snapped.cum, ch));
-  };
+  const busXY = (b) => { const t = track.get(b.vehicleNo); return t ? glide(t) : [b.lat, b.lng]; };
   /** 도로 선 위 점을 그 자리 진행 방향 오른쪽으로 (그린 선과 같은 거리) */
   const toRight = (pt, seg) => (road && sideM && seg != null ? shiftRight(pt, bearingAt(road, seg), sideM) : pt);
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
@@ -506,7 +460,7 @@ export function routeScreen(root, p, ctx) {
     // 노선 선 위에 진행 방향 화살표 (정류장 점이 아니라 선에, 화면에서 약 90px 마다)
     const dots = lineArrows(drawn);
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
-    if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; track.clear(); learn(); }
+    if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; }
     const at = (i) => (road && snapped ? (snapped.full[i] ? toRight(snapped.full[i].pt, snapped.full[i].seg) : null) : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
     r.stops.forEach((s, i) => {
       const xy = at(i);
@@ -600,9 +554,9 @@ export function routeScreen(root, p, ctx) {
     timers.push(() => offEdit());
     async function tick() { pos = await B.positions(r); if (alive) { learn(); drawList(); drawMap(); } }
     tick();
-    // 버스 위치는 10초마다 받고, 그 사이에는 2초마다 도로를 따라 앞으로 움직여 그림
+    // 버스 위치는 10초마다 받고, 새 좌표로 옮기는 동안 1초마다 다시 그림
     const t = setInterval(tick, BUS_POS_MS);
-    const anim = setInterval(() => { if (alive && [...track.values()].some((x) => x.v > 0)) drawMap(); }, 2000);
+    const anim = setInterval(() => { const now = Date.now(); if (alive && [...track.values()].some((x) => x.from && now - x.at < x.dur + 1000)) drawMap(); }, 1000);
     timers.push(() => clearInterval(t), () => clearInterval(anim));
   })();
   return () => { alive = false; timers.forEach((f) => f()); };

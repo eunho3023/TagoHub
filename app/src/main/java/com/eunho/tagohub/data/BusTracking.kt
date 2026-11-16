@@ -17,8 +17,10 @@ data class GpsTrack(
     val toSeg: Int? = null,
     val progress: Double? = null,
     val ord: Int? = null,
-    /** 서버가 준 원래 좌표 (멈춤 판단용) */
+    /** 서버가 준 원래 좌표 (멈춤 판단용, 지도에는 이 좌표를 도로 위로 붙여 그림) */
     val raw: LatLng = to,
+    /** 직전에 받은 원래 좌표 (from 이 있을 때). 지도는 fromRaw → raw 로 움직임 */
+    val fromRaw: LatLng? = null,
 )
 
 /** 선 위에 붙인 위치: 구간 시작 꼭짓점, 붙인 점, 노선 시작부터 거리(m) */
@@ -163,7 +165,7 @@ object GpsTracker {
         val bearing = if (moved >= 15.0) bearingDeg(g.raw, p) else null
         val s = geom?.snap(ord, p, after = g.progress, bearing = bearing)
         val shown = s?.point ?: p
-        fun track(from: LatLng?, fromSeg: Int?, dur: Long) = GpsTrack(from, shown, now, dur, fromSeg, s?.seg, s?.progress, ord, p)
+        fun track(from: LatLng?, fromSeg: Int?, dur: Long) = GpsTrack(from, shown, now, dur, fromSeg, s?.seg, s?.progress, ord, p, if (from != null) g.raw else null)
         // 같은 정류장 순번인데 좌표가 움직임, 또는 정류장과 떨어진 좌표 = 진짜 실시간 GPS
         val live = prev.live || offStop || (ord != null && ord == g.ord)
 
@@ -183,7 +185,7 @@ object GpsTracker {
     }
 
     /** a → b 로 움직인 방위(도, 북=0). 두 점이 가까워도 방향은 쓸 만하다 */
-    private fun bearingDeg(a: LatLng, b: LatLng): Double {
+    fun bearingDeg(a: LatLng, b: LatLng): Double {
         val kx = cos(Math.toRadians(a.lat))
         return Math.toDegrees(Math.atan2((b.lng - a.lng) * kx, b.lat - a.lat))
     }

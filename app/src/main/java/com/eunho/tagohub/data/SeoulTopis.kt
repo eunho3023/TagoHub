@@ -87,12 +87,15 @@ object SeoulTopis {
         }.getOrNull()
     }
 
-    /** 한 요청에 묻는 링크 수 (서버 SPEED_MAX: Workers 무료 요금제의 한 요청 바깥 요청 50번 제한) */
-    private const val SPEED_GROUP = 30
-    /** 동시에 보내는 요청 수 */
-    private const val SPEED_PARALLEL = 8
+    /**
+     * 한 요청에 묻는 링크 수. Workers 는 한 요청에서 바깥 연결을 동시에 6개만 열어서(나머지는 기다림)
+     * 6개씩 나눠 여러 요청을 한꺼번에 보내면 서울 API 한 차례 시간에 다 받음
+     */
+    private const val SPEED_GROUP = 6
+    /** 한꺼번에 보내는 요청 수 */
+    private const val SPEED_PARALLEL = 48
 
-    /** 링크별 실시간 속도(km/h). 30개씩 나눠 여러 요청을 동시에 보냄 (정렬해 묶어 같은 묶음은 서버 저장을 같이 씀) */
+    /** 링크별 실시간 속도(km/h). 6개씩 나눠 여러 요청을 한꺼번에 보냄 (정렬해 묶어 같은 묶음은 서버 저장을 같이 씀) */
     suspend fun speeds(ids: List<String>): Map<String, Int> = coroutineScope {
         val out = HashMap<String, Int>()
         for (batch in ids.distinct().sorted().chunked(SPEED_GROUP).chunked(SPEED_PARALLEL)) {

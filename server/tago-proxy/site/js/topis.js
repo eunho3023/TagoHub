@@ -17,14 +17,19 @@ export function speedColor(div, kmh) {
   return div === "02" ? (kmh >= 70 ? GREEN : kmh >= 30 ? AMBER : RED) : (kmh >= 25 ? GREEN : kmh >= 15 ? AMBER : RED);
 }
 
-/** 한 요청에 묻는 링크 수 (서버 SPEED_MAX 와 같게: Workers 무료 요금제의 한 요청 바깥 요청 50번 제한) */
-const GROUP = 30;
-/** 동시에 묻는 묶음 수 (하나가 끝나면 다음 묶음) */
-const GROUPS_MAX = 8;
+/**
+ * 한 요청에 묻는 링크 수. Workers 는 한 요청에서 바깥 연결을 동시에 6개만 열어(나머지는 줄 서서 기다림)
+ * 30개를 한 요청에 물으면 서울 API 를 5번 차례로 기다렸음 → 6개씩 나눠 여러 요청을 한꺼번에 보내면 한 차례로 끝남
+ */
+const GROUP = 6;
+/** 한꺼번에 보내는 요청 수 (화면 하나에 보통 30~40개) */
+const GROUPS_MAX = 48;
+/** 이 시간 안에 다 오지 않으면 받은 것까지 먼저 칠함 (ms) */
+const PAINT_WAIT_MS = 6000;
 let linksP = null;
 /**
  * 서울 도로 링크 [{id, road, from, to, dist, div, pts, b, g}] (처음 한 번 받음).
- * g 는 묶음 번호: 약 1km 칸마다 링크를 30개씩 묶어, 늘 같은 묶음으로 물어 서버 저장을 여러 사람이 같이 씀
+ * g 는 묶음 번호: 약 1km 칸마다 링크를 6개씩 묶어, 늘 같은 묶음으로 물어 서버 저장을 여러 사람이 같이 씀
  */
 function seoulLinks() {
   if (!linksP) {
@@ -108,32 +113,31 @@ export function trafficLayer(onChange) {
     visible = ls.filter((l) => l.b.n >= b.s && l.b.s <= b.n && l.b.e >= b.w && l.b.w <= b.e)
       .map((l) => [l, Math.hypot((l.b.s + l.b.n) / 2 - cla, ((l.b.w + l.b.e) / 2 - clo) * 0.8)])
       .sort((x, y) => x[1] - y[1]).slice(0, 180).map((x) => x[0]);
-    // 화면 가운데에 가까운 묶음부터, 4분 넘은 묶음만 동시에 물음 (서버는 묶음마다 5분 저장)
+    // 4분 넘은 묶음만 한꺼번에 물음 (서버는 묶음마다 5분 저장). 화면 가운데에 가까운 묶음부터
     const need = [];
     for (const l of visible) {
       const at = groupAt.get(l.g);
       if (!need.includes(l.g) && at !== -1 && (at == null || now - at > 240000)) need.push(l.g);
     }
-    for (const g of need) groupAt.set(g, -1);
-    // 동시에 8개까지: 하나가 끝나면 바로 다음 묶음
+    const ask = need.slice(0, GROUPS_MAX);
+    for (const g of ask) groupAt.set(g, -1);
+    // 받는 대로 칠하지 않고 다 받은 뒤 한 번에 칠함 (조각조각 칠해지지 않게). 늦는 요청이 있으면 PAINT_WAIT_MS 뒤 받은 것까지 먼저
     let failed = false;
-    const worker = async () => {
-      while (alive && need.length) {
-        const g = need.shift();
-        try {
-          const v = await getJson("w/topis/traffic", { links: groups[g].join(",") });
-          for (const id of groups[g]) speeds.delete(id);
-          for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1]]);
-          groupAt.set(g, Date.now());
-          if (alive) onChange();
-        } catch (e) { groupAt.delete(g); failed = true; }
-      }
-    };
-    const workers = Array.from({ length: Math.min(GROUPS_MAX, need.length) }, worker);
-    // 못 받은 묶음은 몇 초 뒤 다시 (세 번까지)
-    if (workers.length) Promise.all(workers).then(() => {
-      if (alive && failed && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
-    });
+    const jobs = ask.map((g) => getJson("w/topis/traffic", { links: groups[g].join(",") }).then((v) => {
+      for (const id of groups[g]) speeds.delete(id);
+      for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1]]);
+      groupAt.set(g, Date.now());
+    }).catch(() => { groupAt.delete(g); failed = true; }));
+    if (jobs.length) {
+      const early = setTimeout(() => { if (alive) onChange(); }, PAINT_WAIT_MS);
+      Promise.all(jobs).then(() => {
+        clearTimeout(early);
+        if (!alive) return;
+        onChange();
+        // 못 받았거나 남은 묶음은 몇 초 뒤 다시 (세 번까지)
+        if ((failed || need.length > ask.length) && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
+      });
+    }
     onChange();
   }
   let retries = 0;
