@@ -23,13 +23,21 @@ export function upstreamPath(pathname) {
 }
 
 /**
+ * 울산 BIS 도착 저장 시간(초). 자료가 바뀌는 간격에 맞춤 (아래 ttlFor·busWebRequest)
+ */
+export const ULSAN_TTL = 10;
+
+/**
  * 다시 쓸 시간(초). 버스 도착·위치는 5초(여러 사람이 같은 걸 보면 한 번만 부르되 늦어지지 않게),
  * 노선·정류장 목록처럼 잘 안 바뀌는 것은 하루, 주변 정류장은 1시간, 그 밖은 1분.
  */
 export function ttlFor(path) {
   const p = path.toLowerCase();
+  // 울산 BIS 도착: 개발계정 하루 1,000건이라 조금 더 오래 저장 (웹 /w/bus/ulsan 과 같은 저장을 씀)
+  if (p.includes("6310000/bis/getbusarrivalinfo")) return ULSAN_TTL;
   // 서울 버스(ws.bus.go.kr): buspos = 버스 위치, getStationByUid = 정류장 도착
-  if (/arvl|buslc|location|arrival|realtime|position|buspos|stationbyuid/.test(p)) return 5;
+  // 부산 stopArrByBstopid·광주 arriveInfo·여수 getArrInfoByStopID 는 이름에 arrival 이 없어 60초 저장되고 있었음 (도착이 최대 1분 늦게 보임)
+  if (/arvl|buslc|location|arrival|arrive|arrinfo|arrby|realtime|position|buspos|stationbyuid/.test(p)) return 5;
   if (/prxmt|crdnt/.test(p)) return 3600;
   if (/schdul|kwrdfnd/.test(p)) return 86400;   // 지하철 역 시간표·역 찾기
   if (/strtpnt/.test(p)) return 1800;           // 기차 출발→도착 열차 (종류·요금)
@@ -81,7 +89,6 @@ export const HOSTS = [
   "swopenapi.seoul.go.kr", // 서울 실시간 지하철 (키가 경로에)
   "t-data.seoul.go.kr",    // 서울 신호등
   "data.ex.co.kr",         // 한국도로공사
-  "openapi.its.ulsan.kr",  // 울산 버스
   "ws.bus.go.kr",          // 서울 버스 (공공데이터포털 키. 빠져 있어 앱이 자리표시 키를 그대로 보내 HTTP 401 이 났음)
 ];
 
@@ -290,7 +297,10 @@ export function busWebRequest(pathname) {
   // _type 을 붙여야 한글이 UTF-8 로 옴 (안 붙이면 '?' 로 바뀌어 옴). 예전 주소 openapi.its.ulsan.kr 는 지금 응답 없음
   if (area === "ulsan") {
     if (op !== "arrival" || !/^\d{9}$/.test(id)) return null;
-    return { area, url: `https://apis.data.go.kr/6310000/bis/getBusArrivalInfo?stopid=${id}&pageNo=1&numOfRows=100&_type=xml&serviceKey=KEY`, cacheKey: `bus/ulsan/arrival/${id}`, ttl: 5 };
+    // 저장 이름은 앱이 /h/ 중계로 같은 것을 물을 때와 똑같이 (앱 RegionalBus: serviceKey 자리표시 → stopid → pageNo → numOfRows → _type 순서).
+    // 그래야 같은 정류장을 앱·웹이 함께 봐도 공공데이터포털에는 한 번만 물음 (울산 개발계정은 하루 1,000건)
+    return { area, url: `https://apis.data.go.kr/6310000/bis/getBusArrivalInfo?stopid=${id}&pageNo=1&numOfRows=100&_type=xml&serviceKey=KEY`,
+      cacheKey: `https/apis.data.go.kr/6310000/bis/getBusArrivalInfo?serviceKey=TAGOHUB_TAGO_SERVICE_KEY&stopid=${id}&pageNo=1&numOfRows=100&_type=xml`, ttl: ULSAN_TTL };
   }
   // 전주 정류장을 지나는 노선 (전주시 버스정보, 하루 저장). TAGO 는 전주 정류장 경유 노선을 주지 않음
   if (area === "jeonju") {

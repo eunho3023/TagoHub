@@ -31,11 +31,12 @@ data class DataProxy(val url: String, val token: String) {
 
         /**
          * 서버로 돌리는 호스트 (server/tago-proxy/src/proxy.js 의 HOSTS 와 같게).
-         * 뺀 것: 국가교통정보센터(9443 포트라 Cloudflare 가 못 부름), 도시교통정보센터 UTIC(등록한 IP 에서만 응답 → "허용된 IP가 아닙니다")
+         * 뺀 것: 국가교통정보센터(9443 포트라 Cloudflare 가 못 부름), 도시교통정보센터 UTIC(등록한 IP 에서만 응답 → "허용된 IP가 아닙니다"),
+         * 울산 openapi.its.ulsan.kr(2026-11 응답 없음 → 울산 버스는 공공데이터포털 apis.data.go.kr/6310000/bis)
          */
         val HOSTS = setOf(
             "apis.data.go.kr", "dapi.kakao.com", "apis-navi.kakaomobility.com", "openapi.kric.go.kr",
-            "swopenapi.seoul.go.kr", "t-data.seoul.go.kr", "data.ex.co.kr", "openapi.its.ulsan.kr",
+            "swopenapi.seoul.go.kr", "t-data.seoul.go.kr", "data.ex.co.kr",
             // 서울 버스: 빠져 있어서 자리표시 키("TAGOHUB_TAGO_SERVICE_KEY")가 그대로 가 HTTP 401 이 났음
             "ws.bus.go.kr",
         )
