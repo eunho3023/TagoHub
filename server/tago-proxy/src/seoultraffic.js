@@ -66,24 +66,43 @@ async function getXml(fetcher, url) {
   return r.ok ? r.text() : "";
 }
 
-/** 링크별 실시간 속도 (저장해 둔 것 + 새로 묻는 것 40개까지) */
-export async function trafficFor(ids, key, ctx, fetcher = fetch) {
-  const out = {}, cache = caches.default;
-  let asked = 0;
-  await Promise.all(ids.map(async (id) => {
-    const req = new Request("https://cache.tagohub/seoul/traffic/" + id);
-    const hit = await cache.match(req);
-    if (hit) { const v = await hit.json(); if (v) out[id] = v; return; }
-    if (asked >= 40) return; // 나머지는 다음에 (서버 한 요청당 바깥 요청 수 제한)
-    asked++;
+/** 링크 속도를 5분 안에 받은 것은 다시 묻지 않음 */
+const SPEED_FRESH_MS = 5 * 60 * 1000;
+/** 한 요청에 서울 API 에 새로 묻는 링크 수 (Workers 무료 요금제는 한 요청의 바깥 요청이 50번까지: 저장소 읽기·쓰기 포함) */
+const SPEED_NEW_MAX = 30;
+/**
+ * 링크별 실시간 속도 {id: [km/h, 초]}. 링크마다 따로 저장하면 저장소 조회도 바깥 요청 수에 들어가 60개를 물으면 넘침(502) →
+ * 모든 링크 속도를 한 묶음(traffic/all)으로 저장해 읽기 1번·쓰기 1번, 새로 묻는 것은 30개까지 (나머지는 다음 요청에)
+ */
+export async function trafficFor(ids, key, ctx, fetcher = fetch, now = Date.now()) {
+  const cache = caches.default;
+  const req = new Request("https://cache.tagohub/seoul/traffic/all");
+  let all = {};
+  try { const hit = await cache.match(req); if (hit) all = (await hit.json()) || {}; } catch (_) { all = {}; }
+  const out = {};
+  const need = [];
+  for (const id of ids) {
+    const v = all[id];
+    if (v && now - v[2] < SPEED_FRESH_MS) { if (v[0] != null) out[id] = [v[0], v[1]]; } else need.push(id);
+  }
+  const ask = need.slice(0, SPEED_NEW_MAX);
+  let added = 0;
+  await Promise.all(ask.map(async (id) => {
     try {
       const x = await getXml(fetcher, seoulUrl(key, "TrafficInfo", 1, 5, id));
+      if (!okXml(x)) return;
       const r = rows(x)[0];
       const v = r && r.prcs_spd != null ? [Math.round(+r.prcs_spd), Math.round(+r.prcs_trv_time || 0)] : null;
       if (v) out[id] = v;
-      if (okXml(x)) ctx.waitUntil(cache.put(req, new Response(JSON.stringify(v), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" } })));
+      all[id] = v ? [v[0], v[1], now] : [null, null, now]; // 값이 없는 링크도 5분은 다시 묻지 않음
+      added++;
     } catch (_) { /* 이번엔 없음 */ }
   }));
+  if (added) {
+    // 10분 넘은 것은 버려 묶음이 커지지 않게
+    for (const k of Object.keys(all)) if (now - all[k][2] > 2 * SPEED_FRESH_MS) delete all[k];
+    ctx.waitUntil(cache.put(req, new Response(JSON.stringify(all), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=600" } })));
+  }
   return out;
 }
 

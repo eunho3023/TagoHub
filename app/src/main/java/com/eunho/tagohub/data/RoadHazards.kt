@@ -34,6 +34,7 @@ object RoadHazards {
                 async { part { exLayer(ExMapLayers.SAFE, RoadAlertKind.Caution) } },
                 async { part { exLayer(ExMapLayers.CONGEST, RoadAlertKind.Congest) } },
                 async { part { exLayer(ExMapLayers.REST, RoadAlertKind.Rest) } },
+                async { part { SeoulTopis.accidentHazards() } },
             )
             parts.flatMap { it.await() }
         }

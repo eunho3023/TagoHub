@@ -22,14 +22,22 @@ test("응답 줄 읽기: 태그는 소문자, 글자 참조는 풂", () => {
   assert.deepEqual(r, [{ acc_id: "1", acc_info: "공사\n-통제 : 양방향 & 우회" }]);
 });
 
-test("링크별 실시간 속도: 받은 것은 5분 저장해 다시 묻지 않음", async () => {
+test("링크별 실시간 속도: 받은 것은 한 묶음으로 5분 저장해 다시 묻지 않음", async () => {
   fakeCaches();
   let asked = 0;
   const fetcher = async (u) => { asked++; const id = u.split("/").pop(); return { ok: true, text: async () => `<TrafficInfo><list_total_count>1</list_total_count><row><link_id>${id}</link_id><prcs_spd>23.4</prcs_spd><prcs_trv_time>95</prcs_trv_time></row></TrafficInfo>` }; };
-  assert.deepEqual(await trafficFor(["1000002500", "1000002600"], "k", ctx, fetcher), { 1000002500: [23, 95], 1000002600: [23, 95] });
+  const pending = [];
+  const c2 = { waitUntil: (p) => pending.push(p) };
+  assert.deepEqual(await trafficFor(["1000002500", "1000002600"], "k", c2, fetcher), { 1000002500: [23, 95], 1000002600: [23, 95] });
   assert.equal(asked, 2);
-  await trafficFor(["1000002500"], "k", ctx, fetcher);
+  await Promise.all(pending);
+  await trafficFor(["1000002500"], "k", c2, fetcher);
   assert.equal(asked, 2, "저장한 것은 다시 묻지 않음");
+  // 한 요청에 새로 묻는 것은 30개까지 (바깥 요청 수 제한)
+  const many = Array.from({ length: 50 }, (_, i) => String(2000000000 + i));
+  const got = await trafficFor(many, "k", c2, fetcher);
+  assert.equal(Object.keys(got).length, 30);
+  assert.equal(asked, 32);
 });
 
 test("돌발: 위경도로 바꾸고 유형 이름·날짜를 붙임", async () => {

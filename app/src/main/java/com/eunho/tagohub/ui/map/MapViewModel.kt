@@ -491,7 +491,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (id !in overlays.value || id in STATIC_ITS_ROAD_LAYERS) return
         val box = lastBox ?: return
         if (itsRoadJobs[id]?.isActive == true) return
-        if (com.eunho.tagohub.BuildConfig.ITS_API_KEY.isBlank()) {
+        val seoul = id in com.eunho.tagohub.data.SeoulTopis.LAYERS
+        if (!seoul && com.eunho.tagohub.BuildConfig.ITS_API_KEY.isBlank()) {
             banner.value = com.eunho.tagohub.core.DevMode.msg("ITS 도로정보를 사용하려면 local.properties에 ITS_API_KEY를 설정하세요.")
             return
         }
@@ -505,7 +506,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         itsRoadGenerations[id] = generation
         itsRoadJobs[id] = viewModelScope.launch {
             try {
-                val features = itsRoadRepo.features(id, requestBox[0], requestBox[1], requestBox[2], requestBox[3])
+                val features = if (seoul) com.eunho.tagohub.data.SeoulTopis.features(getApplication(), id, requestBox[0], requestBox[1], requestBox[2], requestBox[3])
+                else itsRoadRepo.features(id, requestBox[0], requestBox[1], requestBox[2], requestBox[3])
                 itsRoadItems[id] = features
                 itsRoadCoverage[id] = requestBox
                 itsRoadCachedLayers.value = itsRoadCachedLayers.value - id
@@ -618,7 +620,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 val features = itsRoadItems[id].orEmpty().filter {
                     it.lat in (box[0] - latMargin)..(box[2] + latMargin) &&
                         it.lng in (box[1] - lngMargin)..(box[3] + lngMargin)
-                }.take(if (id == "ex_flow") ITS_ROAD_MAX_FLOW_LINES else ITS_ROAD_MAX_PER_LAYER)
+                }.take(if (id == "ex_flow" || id == com.eunho.tagohub.data.SeoulTopis.FLOW) ITS_ROAD_MAX_FLOW_LINES else ITS_ROAD_MAX_PER_LAYER)
                 counts[id] = features.size
                 features
             }.take(ITS_ROAD_MAX_MARKERS)
@@ -628,7 +630,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun persistItsRoadCache(id: String, features: List<ItsRoadFeature>, bounds: DoubleArray) {
-        if (id == "ex_flow") return   // 실시간 소통은 저장해 두면 오래된 색이 보이므로 저장하지 않음
+        // 실시간 소통·돌발은 저장해 두면 오래된 것이 보이므로 저장하지 않음
+        if (id == "ex_flow" || id == com.eunho.tagohub.data.SeoulTopis.FLOW || id == com.eunho.tagohub.data.SeoulTopis.ACC) return
         val saved = features.asSequence().filter {
             it.lat in bounds[0]..bounds[2] && it.lng in bounds[1]..bounds[3]
         }.take(ITS_ROAD_CACHE_MAX_FEATURES).toList()
@@ -3346,6 +3349,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "ex_burst",
             "ex_flow",
             "ex_safe",
+            // 서울 실시간 교통 (TOPIS, data/SeoulTopis.kt): 도로 소통 색 선, 돌발, 교통량 지점
+            com.eunho.tagohub.data.SeoulTopis.FLOW,
+            com.eunho.tagohub.data.SeoulTopis.ACC,
+            com.eunho.tagohub.data.SeoulTopis.VOL,
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

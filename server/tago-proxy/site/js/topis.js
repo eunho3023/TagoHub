@@ -78,20 +78,28 @@ export function trafficLayer(onChange) {
     if (MapView.zoom() < TRAFFIC_ZOOM) { visible = []; onChange(); return; }
     const ls = await seoulLinks();
     if (!alive) return;
-    const [cla, clo] = MapView.center();
+    const cla = (b.s + b.n) / 2, clo = (b.w + b.e) / 2;
     visible = ls.filter((l) => l.b.n >= b.s && l.b.s <= b.n && l.b.e >= b.w && l.b.w <= b.e)
       .map((l) => [l, Math.hypot((l.b.s + l.b.n) / 2 - cla, ((l.b.w + l.b.e) / 2 - clo) * 0.8)])
       .sort((x, y) => x[1] - y[1]).slice(0, 180).map((x) => x[0]);
     // 4분 넘은 것만 다시 물음 (서버는 5분 저장, 한 번에 60개)
     const need = visible.filter((l) => { const s = speeds.get(l.id); return !s || now - s[2] > 240000; }).map((l) => l.id);
+    const jobs = [];
     for (let i = 0; i < need.length; i += 60) {
-      getJson("w/topis/traffic", { links: need.slice(i, i + 60).join(",") }).then((v) => {
+      jobs.push(getJson("w/topis/traffic", { links: need.slice(i, i + 60).join(",") }).then((v) => {
         for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1], Date.now()]);
         if (alive) onChange();
-      }).catch(() => {});
+        return Object.keys(v || {}).length;
+      }).catch(() => 0));
     }
+    // 서버는 한 번에 새로 묻는 링크 수가 정해져 있어 빠진 것이 있으면 몇 초 뒤 이어서 (새로 받은 것이 있을 때만, 세 번까지)
+    if (jobs.length) Promise.all(jobs).then((got) => {
+      const missing = need.some((id) => !speeds.has(id));
+      if (alive && missing && got.some((n) => n > 0) && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
+    });
     onChange();
   }
+  let retries = 0;
   const timer = setInterval(refresh, 120000);
   const offIdle = MapView.onIdle(refresh);
   refresh();
