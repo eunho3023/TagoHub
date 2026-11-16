@@ -2,6 +2,7 @@
 // 정류장 찾기는 서버 이름 조각(/data/names), 도착은 웹 통로(/w/dg/1613000 TAGO, /w/bus/seoul|gg 서울·경기).
 import { cached, getText, getJson, xmlRows, findRows, num, int, str, meters, cacheGet, cachePut } from "./core.js";
 import * as Edits from "./edits.js";
+import { seoulTime } from "./busahead.js";
 
 // ── 자료 조각 주소 (pipeline/build_web_data.py 와 같게) ──
 function bucket(id) {
@@ -908,13 +909,13 @@ async function fixByPosition(stop, list) {
   return list.flatMap((a) => (out.has(a) ? (out.get(a) ? [out.get(a)] : []) : [a])).sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
 }
 
-/** 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng}]} */
+/** 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt}]} (dataAt = 자료 시각 ms, 서울만) */
 export async function positions(r) {
   try {
     const sid = seoulId(r.id), gid = ggId(r.id);
     if (sid) {
       const rows = findRows(JSON.parse(await getText("w/bus/seoul/pos/" + sid)), "vehId");
-      return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX) })) };
+      return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX), dataAt: seoulTime(x.dataTm) })) };
     }
     if (gid && ggCity(r.city)) {
       const rows = findRows(JSON.parse(await getText("w/bus/gg/pos/" + gid)), "plateNo");

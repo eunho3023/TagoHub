@@ -29,6 +29,15 @@ object SeoulBus {
         else -> null
     }
 
+    /** 버스 위치 자료 시각 "20261116201530" (한국 시각) → epoch ms. 형식이 다르면 null */
+    fun dataTimeMs(s: String?): Long? {
+        val t = s?.trim()?.takeIf { it.length == 14 && it.all(Char::isDigit) } ?: return null
+        return runCatching {
+            java.time.LocalDateTime.parse(t, java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+                .atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli()
+        }.getOrNull()
+    }
+
     /**
      * 도착 메시지 → (남은 초, 남은 정류장 수).
      * "8분2초후[4번째 전]", "12분후[5번째 전]", "곧 도착", "운행종료", "출발대기"
@@ -130,6 +139,7 @@ object SeoulMappers2 {
             lat = r.double("gpsY", "tmY"),
             lng = r.double("gpsX", "tmX"),
             lowFloor = r.str("busType")?.let { it == "1" },
+            dataAtMs = SeoulBus.dataTimeMs(r.str("dataTm")),
         )
     }
 

@@ -815,7 +815,7 @@ private fun updateGps(d: BusDest.Route) {
         // 좌표가 없는 지역(경기 GBIS·전주시 API 등)은 버스가 있는 정류장 자리로 — 지도는 정류장 순번으로 시간에 따라 움직이는 추정으로 그림
         val p = if (b.lat != null && b.lng != null) LatLng(b.lat!!, b.lng!!) else stopPosition(b, stops) ?: return@forEach
         seen += id
-        d.gps[id] = GpsTracker.next(d.gps[id], p, b.ord, geom, now)
+        d.gps[id] = GpsTracker.next(d.gps[id], p, b.ord, geom, now, b.dataAtMs)
     }
     d.gps.keys.retainAll(seen)
 }
