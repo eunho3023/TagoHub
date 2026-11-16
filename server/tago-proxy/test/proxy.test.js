@@ -14,6 +14,11 @@ test("저장 시간: 도착·위치 5초, 목록 하루, 주변 1시간", () => 
   assert.equal(ttlFor("1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList"), 5);
   assert.equal(ttlFor("1613000/BusLcInfoInqireService/getRouteAcctoBusLcList"), 5);
   assert.equal(ttlFor("1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList"), 86400);
+  // 서울 버스: 위치·정류장 도착은 5초, 노선 경로·정류장 목록은 하루
+  assert.equal(ttlFor("/api/rest/buspos/getBusPosByRtid"), 5);
+  assert.equal(ttlFor("/api/rest/stationinfo/getStationByUid"), 5);
+  assert.equal(ttlFor("/api/rest/busRouteInfo/getRoutePath"), 86400);
+  assert.equal(ttlFor("/api/rest/busRouteInfo/getStaionByRoute"), 86400);
   assert.equal(ttlFor("1613000/BusSttnInfoInqireService/getCtyCodeList"), 86400);
   assert.equal(ttlFor("1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList"), 3600);
   assert.equal(ttlFor("1613000/TrainInfo/GetStrtpntAlocFndTrainInfo"), 1800);
@@ -42,6 +47,8 @@ test("오류 응답은 저장하지 않음", () => {
 test("여러 기관 중계: 허락한 호스트만", () => {
   assert.deepEqual(hostTarget("/h/https/dapi.kakao.com/v2/local/search/keyword.json"), { scheme: "https", host: "dapi.kakao.com", path: "/v2/local/search/keyword.json" });
   assert.deepEqual(hostTarget("/h/http/swopenapi.seoul.go.kr/api/subway/TAGOHUB_SEOUL_SUBWAY_KEY/xml/x"), { scheme: "http", host: "swopenapi.seoul.go.kr", path: "/api/subway/TAGOHUB_SEOUL_SUBWAY_KEY/xml/x" });
+  // 서울 버스 (앱이 자리표시 키로 보냄)
+  assert.deepEqual(hostTarget("/h/http/ws.bus.go.kr/api/rest/busRouteInfo/getRoutePath"), { scheme: "http", host: "ws.bus.go.kr", path: "/api/rest/busRouteInfo/getRoutePath" });
   assert.equal(hostTarget("/h/https/evil.example.com/x"), null);
   assert.equal(hostTarget("/h/https/openapi.its.go.kr/x"), null);   // 9443 포트라 중계 못 함
   assert.equal(hostTarget("/h/http/www.utic.go.kr/guide/x"), null);   // 등록한 IP 에서만 응답

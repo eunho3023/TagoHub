@@ -36,6 +36,8 @@ data class DataProxy(val url: String, val token: String) {
         val HOSTS = setOf(
             "apis.data.go.kr", "dapi.kakao.com", "apis-navi.kakaomobility.com", "openapi.kric.go.kr",
             "swopenapi.seoul.go.kr", "t-data.seoul.go.kr", "data.ex.co.kr", "openapi.its.ulsan.kr",
+            // 서울 버스: 빠져 있어서 자리표시 키("TAGOHUB_TAGO_SERVICE_KEY")가 그대로 가 HTTP 401 이 났음
+            "ws.bus.go.kr",
         )
 
         /** 앱 설정의 서버 (local.properties 의 TAGO_PROXY_URL·TAGO_PROXY_TOKEN). 없으면 null */
