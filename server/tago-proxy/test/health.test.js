@@ -14,7 +14,7 @@ test("한 곳 확인: 정상, 내용이 다르면 실패, 연결 실패, 키는 
   const c = CHECKS.find((x) => x.name === "seoul_bus");
   const env = { DATA_GO_KR_KEY: "SECRET+KEY/1==" };
   assert.deepEqual({ ...(await checkOne(c, env, async () => new Response('{"msgHeader":{"headerCd":"0"}}'), () => 0)), ms: 0 }, { ok: true, msg: "", ms: 0 });
-  assert.equal((await checkOne(c, env, async () => new Response('{"msgHeader":{"headerCd":"7"}}'))).msg, "응답 내용이 예상과 다름");
+  assert.equal((await checkOne(c, env, async () => new Response('{"msgHeader":{"headerCd":"7"}}'))).msg, '응답 내용이 예상과 다름: {"msgHeader":{"headerCd":"7"}}');
   assert.equal((await checkOne(c, env, async () => new Response("Unauthorized", { status: 401 }))).msg, "인증 실패 (키 확인 필요)");
   const failed = await checkOne(c, env, async (u) => { throw new Error("connect to " + u); });
   assert.equal(failed.ok, false);

@@ -104,7 +104,7 @@ test("만든 모양은 저장하고 다음엔 저장한 것을 줌", async () =>
   assert.equal((await handleShape(null, new URL("https://x/w/shape/bad%20id"), env, ctx, osrm)).status, 404);
 });
 
-test("노선 조각에 없는 노선은 도시코드로 TAGO 정류장을 받아 모양을 만듦", async () => {
+test("노선 조각에 없는 노선은 도시코드로 TAGO 정류장을 받아 모양을 만듦 (전주는 전주시 그림·정류장이 먼저라 익산으로)", async () => {
   globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
   const xml = "<response><body><items><item><nodeord>2</nodeord><gpslati>36.01</gpslati><gpslong>127.0</gpslong></item>" +
     "<item><nodeord>1</nodeord><gpslati>36.0</gpslati><gpslong>127.0</gpslong></item></items></body></response>";
@@ -117,11 +117,11 @@ test("노선 조각에 없는 노선은 도시코드로 TAGO 정류장을 받아
     if (u.includes("apis.data.go.kr")) return { ok: true, text: async () => xml };
     return { ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode([[36.0, 127.0], [36.005, 127.001], [36.01, 127.0]], 6) }] }) };
   };
-  const r = await handleShape(null, new URL("https://x/w/shape/JUB305001089?city=35010"), env, ctx, fetcher);
+  const r = await handleShape(null, new URL("https://x/w/shape/IKB305001089?city=35020"), env, ctx, fetcher);
   assert.equal(r.status, 200);
-  assert.ok(asked[0].includes("cityCode=35010&routeId=JUB305001089"));
+  assert.ok(asked[0].includes("cityCode=35020&routeId=IKB305001089"));
   // 도시코드가 없으면 만들지 않음
-  assert.equal((await handleShape(null, new URL("https://x/w/shape/JUB305001090"), env, ctx, fetcher)).status, 404);
+  assert.equal((await handleShape(null, new URL("https://x/w/shape/IKB305001090"), env, ctx, fetcher)).status, 404);
 });
 
 test("경기 노선은 GBIS 정류장 목록으로 모양을 만듦", async () => {
