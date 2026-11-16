@@ -28,7 +28,8 @@ export function upstreamPath(pathname) {
  */
 export function ttlFor(path) {
   const p = path.toLowerCase();
-  if (/arvl|buslc|location|arrival|realtime|position/.test(p)) return 5;
+  // 서울 버스(ws.bus.go.kr): buspos = 버스 위치, getStationByUid = 정류장 도착
+  if (/arvl|buslc|location|arrival|realtime|position|buspos|stationbyuid/.test(p)) return 5;
   if (/prxmt|crdnt/.test(p)) return 3600;
   if (/schdul|kwrdfnd/.test(p)) return 86400;   // 지하철 역 시간표·역 찾기
   if (/strtpnt/.test(p)) return 1800;           // 기차 출발→도착 열차 (종류·요금)
@@ -80,6 +81,7 @@ export const HOSTS = [
   "t-data.seoul.go.kr",    // 서울 신호등
   "data.ex.co.kr",         // 한국도로공사
   "openapi.its.ulsan.kr",  // 울산 버스
+  "ws.bus.go.kr",          // 서울 버스 (공공데이터포털 키. 빠져 있어 앱이 자리표시 키를 그대로 보내 HTTP 401 이 났음)
 ];
 
 // 서버 비밀 값으로 둘 수 있는 키 이름 (자리표시 TAGOHUB_<이름>)
