@@ -46,7 +46,13 @@ test("서울 노선은 서울시 공식 경로를 앱이 올린 모양보다 먼
   assert.deepEqual(await get("SEB103900011"), { poly: encode([[37.55, 127.02], [37.56, 127.03]], 5), src: "official" });
   await get("SEB103900011");
   assert.equal(asked, 1, "하루 저장");
-  // 서울이 아니면 그대로 앱 모양
+  // 서울·경기가 아니면 그대로 앱 모양
   assert.deepEqual(await get("JUB305001088"), { poly: "APP" });
+  // 서울·경기는 앱 모양을 받지 않음
+  const put = await handleAppShape(new Request("https://x/appshape/SEB103900011", { method: "PUT", body: JSON.stringify({ poly: "_p~iF~ps|U_ulLnnqC" }) }), new URL("https://x/appshape/SEB103900011"), env, fetcher);
+  assert.deepEqual(await put.json(), { ok: true, kept: false, why: "official" });
+  // 서울 공식 경로를 못 받으면 앱 모양 대신 404 (앱이 스스로 공식 경로로 만듦)
+  const none = await handleAppShape(new Request("https://x/appshape/GGB200000085"), new URL("https://x/appshape/GGB200000085"), env, async () => new Response("", { status: 500 }));
+  assert.equal(none.status, 404);
   delete globalThis.caches;
 });

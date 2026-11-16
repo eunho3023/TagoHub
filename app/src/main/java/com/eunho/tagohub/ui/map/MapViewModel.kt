@@ -216,6 +216,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private val removedOverlays = setOf(
         "cctv", "utic_safety", "utic_road_risk", "its_safe_driving", "its_disasters",
         "its_ice_sections", "its_vms", "its_vsl", "ex_vms", "its_dangerous_cars",
+        // 서울 교통량 지점 (쓰는 사람이 적어 뺐음)
+        com.eunho.tagohub.data.SeoulTopis.REMOVED_VOL,
     ) + LEGACY_SIGNAL_OVERLAYS
     val overlays = MutableStateFlow(savedOverlays - removedOverlays)
 
@@ -617,9 +619,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             .flatMap { id ->
                 val latMargin = (box[2] - box[0]).coerceAtLeast(0.0) * 0.1
                 val lngMargin = (box[3] - box[1]).coerceAtLeast(0.0) * 0.1
+                // 서울 도로 소통을 켰으면 같은 도로(경부·경인고속도로 서울 구간)의 고속도로 소통 선은 빼서 겹치지 않게
+                val hideUnderSeoul = id == "ex_flow" && com.eunho.tagohub.data.SeoulTopis.FLOW in overlays.value
                 val features = itsRoadItems[id].orEmpty().filter {
                     it.lat in (box[0] - latMargin)..(box[2] + latMargin) &&
-                        it.lng in (box[1] - lngMargin)..(box[3] + lngMargin)
+                        it.lng in (box[1] - lngMargin)..(box[3] + lngMargin) &&
+                        !(hideUnderSeoul && com.eunho.tagohub.data.SeoulTopis.covers(getApplication<android.app.Application>(), it.lat, it.lng))
                 }.take(if (id == "ex_flow" || id == com.eunho.tagohub.data.SeoulTopis.FLOW) ITS_ROAD_MAX_FLOW_LINES else ITS_ROAD_MAX_PER_LAYER)
                 counts[id] = features.size
                 features
@@ -2530,8 +2535,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // 폰에 저장: 다음에 열 때 바로 보이게 (서버 모양이 폰 것과 다르면 서버 것으로 바꿔 저장)
                 if (fixed == null && shape != null && shape != saved) withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.putShape(d.routeId, shape) }
-                // 이 폰이 가진(만든·저장한) 모양을 서버에 올려 웹·다른 폰도 같은 선을 쓰게 (서버에 이미 있으면 그대로)
-                if (fixed == null && shared == null && shape != null) com.eunho.tagohub.data.AppShapes.upload(d.routeId, shape)
+                // 이 폰이 가진(만든·저장한) 모양을 서버에 올려 웹·다른 폰도 같은 선을 쓰게 (서버에 이미 있으면 그대로).
+                // 서울·경기는 서버가 공식 경로를 주므로 올리지 않음 (서울 API 401 때 카카오·OSRM 으로 만든 엉뚱한 모양이 올라가 모두에게 퍼졌음)
+                val officialRegion = com.eunho.tagohub.data.SeoulBus.isSeoul(d.routeId) || com.eunho.tagohub.data.Gyeonggi.isGyeonggi(d.routeId)
+                if (fixed == null && shared == null && shape != null && !officialRegion) com.eunho.tagohub.data.AppShapes.upload(d.routeId, shape)
                 if (shape != null && shape != d.shape.value && route.value === d) {
                     d.shape.value = tidyShape(d, shape)
                     pushRoute()
@@ -3353,10 +3360,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "ex_burst",
             "ex_flow",
             "ex_safe",
-            // 서울 실시간 교통 (TOPIS, data/SeoulTopis.kt): 도로 소통 색 선, 돌발, 교통량 지점
+            // 서울 실시간 교통 (TOPIS, data/SeoulTopis.kt): 도로 소통 색 선, 돌발
             com.eunho.tagohub.data.SeoulTopis.FLOW,
             com.eunho.tagohub.data.SeoulTopis.ACC,
-            com.eunho.tagohub.data.SeoulTopis.VOL,
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

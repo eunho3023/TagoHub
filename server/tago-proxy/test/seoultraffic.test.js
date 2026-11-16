@@ -70,10 +70,11 @@ test("돌발: 위경도로 바꾸고 유형 이름·날짜를 붙임", async () 
   assert.ok(a.lat > 37.4 && a.lat < 37.6 && a.lng > 127.0 && a.lng < 127.2);
 });
 
-test("요청 검사: 키 없음 503, 잘못된 교통량 요청 400, 모르는 주소 404", async () => {
+test("요청 검사: 키 없음 503, 뺀 교통량 주소·모르는 주소 404", async () => {
   fakeCaches();
   assert.equal((await handleSeoulTraffic(new URL("https://x/w/topis/acc"), {}, ctx)).status, 503);
-  assert.equal((await handleSeoulTraffic(new URL("https://x/w/topis/vol?spot=x&ymd=1&hh=99"), { SEOUL_SUBWAY_KEY: "k" }, ctx)).status, 400);
+  assert.equal((await handleSeoulTraffic(new URL("https://x/w/topis/vol?spot=A-01&ymd=20261116&hh=09"), { SEOUL_SUBWAY_KEY: "k" }, ctx)).status, 404);
+  assert.equal((await handleSeoulTraffic(new URL("https://x/w/topis/spots"), { SEOUL_SUBWAY_KEY: "k" }, ctx)).status, 404);
   assert.equal((await handleSeoulTraffic(new URL("https://x/w/topis/nope"), { SEOUL_SUBWAY_KEY: "k" }, ctx)).status, 404);
   const empty = await handleSeoulTraffic(new URL("https://x/w/topis/traffic?links=abc"), { SEOUL_SUBWAY_KEY: "k" }, ctx);
   assert.deepEqual(await empty.json(), {});

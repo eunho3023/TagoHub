@@ -1,9 +1,7 @@
-// 서울시 교통정보(TOPIS, 서울 열린데이터광장 Open API) 중계: 실시간 도로 소통·돌발·교통량.
+// 서울시 교통정보(TOPIS, 서울 열린데이터광장 Open API) 중계: 실시간 도로 소통·돌발. (교통량 지점은 쓰는 사람이 적어 뺐음)
 // 키는 SEOUL_SUBWAY_KEY (서울 열린데이터광장 인증키, 지하철 실시간과 같은 키). 응답은 잠시 저장해 모두가 나눠 씀.
-//  GET /w/topis/traffic?links=id,id,…  링크별 실시간 속도·통행시간 {id: [km/h, 초]} (60개까지, 5분 저장. 한 번에 새로 묻는 것은 40개까지)
+//  GET /w/topis/traffic?links=id,id,…  링크별 실시간 속도·통행시간 {id: [km/h, 초]} (30개까지, 묶음마다 5분 저장)
 //  GET /w/topis/acc                    실시간 돌발(사고·공사·행사 등) [{id, type, sub, link, lat, lng, info, from, to}] (2분 저장)
-//  GET /w/topis/spots                  교통량 지점 [{no, name, lat, lng}] (하루 저장)
-//  GET /w/topis/vol?spot=&ymd=&hh=     지점·시각별 교통량 {in, out, lanes} (지난 시각은 하루, 이번 시각은 10분 저장)
 //  GET /w/topis/status                 확인용: 서울 API 에 닿는지
 
 const BASE = "http://openapi.seoul.go.kr:8088/";
@@ -127,36 +125,6 @@ export async function accidents(key, ctx, fetcher = fetch) {
   });
 }
 
-/** 교통량 지점 */
-export async function spots(key, ctx, fetcher = fetch) {
-  return memo(ctx, "spots", 86400, async () => {
-    const x = await getXml(fetcher, seoulUrl(key, "SpotInfo", 1, 1000));
-    if (!okXml(x)) return null;
-    return rows(x).map((r) => {
-      const [lat, lng] = tmToWgs84(+r.grs80tm_x, +r.grs80tm_y);
-      return { no: r.spot_num, name: r.spot_nm, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
-    });
-  });
-}
-
-/** 지점·시각별 교통량: 들어옴·나감 합과 차로별 */
-export async function volume(key, spot, ymd, hh, ctx, fetcher = fetch, now = new Date()) {
-  const kstNow = new Date(now.getTime() + 9 * 3600 * 1000);
-  const current = ymd === kstNow.toISOString().slice(0, 10).replace(/-/g, "") && +hh === kstNow.getUTCHours();
-  return memo(ctx, `vol/${spot}/${ymd}/${hh}`, current ? 600 : 86400, async () => {
-    const x = await getXml(fetcher, seoulUrl(key, "VolInfo", 1, 500, spot, ymd, hh));
-    if (!okXml(x)) return null;
-    const out = { in: 0, out: 0, lanes: {} };
-    for (const r of rows(x)) {
-      const v = +r.vol || 0, io = r.io_type === "1" ? "in" : "out";
-      out[io] += v;
-      const k = io + (r.lane_num || "");
-      out.lanes[k] = (out.lanes[k] || 0) + v;
-    }
-    return out;
-  });
-}
-
 /** /w/topis/… */
 export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
   const key = (env.SEOUL_SUBWAY_KEY || "").trim();
@@ -169,13 +137,6 @@ export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
       return json(ids.length ? await trafficFor(ids, key, ctx, fetcher) : {}, 60);
     }
     if (op === "acc") { const v = await accidents(key, ctx, fetcher); return v ? json(v, 60) : json([], 30); }
-    if (op === "spots") { const v = await spots(key, ctx, fetcher); return v ? json(v, 3600) : json([], 60); }
-    if (op === "vol") {
-      const spot = url.searchParams.get("spot") || "", ymd = url.searchParams.get("ymd") || "", hh = (url.searchParams.get("hh") || "").padStart(2, "0");
-      if (!/^[A-Z]-\d{2}$/.test(spot) || !/^\d{8}$/.test(ymd) || !/^\d{2}$/.test(hh) || +hh > 23) return new Response("bad request", { status: 400, headers: HEAD });
-      const v = await volume(key, spot, ymd, hh, ctx, fetcher);
-      return v ? json(v, 300) : json(null, 60);
-    }
     if (op === "status") {
       const x = await getXml(fetcher, seoulUrl(key, "RoadDivInfo", 1, 5)).catch((e) => "ERR " + (e && e.message));
       return json({ reach: okXml(x), sample: okXml(x) ? rows(x).length : String(x).replace(key, "").slice(0, 120) }, 0);

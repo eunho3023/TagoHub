@@ -13,10 +13,16 @@ import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
 import { handleAppShape } from "./appshape.js";
+import { healthCron, handleHealth } from "./health.js";
 
 export default {
   // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
   async scheduled(event, env, ctx) {
+    // 30분마다(0분·30분)는 자료 제공처 고장 확인만 (src/health.js). 한 번 실행의 외부 요청 수 한도(50번)를 다른 작업과 나누지 않게
+    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() % 30 === 0) {
+      ctx.waitUntil(healthCron(env).catch(() => null));
+      return;
+    }
     // 관심 노선 버스 위치를 스스로 물어 통과 기록 모으기 (정류장 시간표, src/poll.js).
     // 노선 모양 만들기보다 먼저: 한 번 실행의 외부 요청 수 한도를 모양 만들기가 다 쓰기 전에
     ctx.waitUntil(pollCron(env).catch(() => null).then(() => shapeCron(env)).catch(() => null));
@@ -63,6 +69,8 @@ async function web(request, url, env, ctx) {
     return handleEdits(request, env, ctx, url.pathname);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
+  // 자료 제공처 연결 상태 (src/health.js, 30분마다 확인한 기록)
+  if (url.pathname === "/w/health") return handleHealth(env);
   if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/") || url.pathname.startsWith("/w/gps/") || url.pathname.startsWith("/w/topis/"))) {
     // 서울 교통은 화면 하나에 작은 요청을 30~40개씩 한꺼번에 보내서, 다른 기능(노선 모양 등)과 한도를 나누지 않게 따로 셈
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";

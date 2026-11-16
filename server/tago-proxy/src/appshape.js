@@ -4,7 +4,7 @@
 // PUT  /appshape/<노선 id> {poly}   (앱 토큰) → 처음 올린 것만 저장 (이미 있으면 그대로, kept:false)
 // 웹: /w/shape/<노선 id> 가 이 모양을 먼저 돌려줌 (src/shape.js handleShape)
 
-import { decode, distToPath, bucket, seoulOfficial } from "./shape.js";
+import { decode, distToPath, bucket, regionOfficial, OFFICIAL_FIRST } from "./shape.js";
 
 const HEAD = { "Content-Type": "application/json; charset=utf-8" };
 const MAX_POINTS = 8000;
@@ -60,13 +60,18 @@ export async function handleAppShape(request, url, env, fetcher = fetch) {
     // 버스가 실제로 지나간 자리로 만든 모양(src/gps.js, shapes 표 sig 끝 ":g")이 있으면 그것을 먼저 → 앱·웹 모두 같은 실제 길
     const g = await env.DB.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first().catch(() => null);
     if (g && String(g.sig).endsWith(":g")) return new Response(JSON.stringify({ poly: g.poly, src: "gps" }), { headers: HEAD });
-    // 서울 노선은 서울시 공식 경로 (앱이 올린 모양보다 먼저: 서울 API 401 때 올라간 엉뚱한 모양을 덮음)
-    const seoul = await seoulOfficial(env, id, fetcher).catch(() => null);
-    if (seoul) return new Response(JSON.stringify({ poly: seoul, src: "official" }), { headers: HEAD });
+    // 서울·경기 노선은 공식 경로 (앱이 올린 모양보다 먼저: 서울 API 401 때 올라간 엉뚱한 모양을 덮음).
+    // 공식 경로를 못 받아도 앱이 올린 모양은 주지 않음 → 앱이 스스로 공식 경로로 만듦
+    if (OFFICIAL_FIRST.test(id)) {
+      const official = await regionOfficial(env, id, fetcher).catch(() => null);
+      return official ? new Response(JSON.stringify({ poly: official, src: "official" }), { headers: HEAD }) : new Response("none", { status: 404, headers: HEAD });
+    }
     const poly = await appShape(env.DB, id);
     return poly ? new Response(JSON.stringify({ poly }), { headers: HEAD }) : new Response("none", { status: 404, headers: HEAD });
   }
   if (request.method !== "PUT" && request.method !== "POST") return new Response("GET, PUT only", { status: 405, headers: HEAD });
+  // 서울·경기 노선은 공식 경로가 있어 앱 모양을 받지 않음 (한 번 잘못 올라가면 모두에게 퍼졌음)
+  if (OFFICIAL_FIRST.test(id)) return new Response(JSON.stringify({ ok: true, kept: false, why: "official" }), { headers: HEAD });
   let body;
   try { body = JSON.parse(await request.text()); } catch { return new Response("bad json", { status: 400, headers: HEAD }); }
   const why = checkShape(body?.poly, await fileStops(env, id));

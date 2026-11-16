@@ -463,7 +463,6 @@ class KakaoCanvas(
                     "ex_burst" -> icons.letterBadge(0xFFE65100.toInt(), "돌발")
                     "ex_safe" -> icons.triangleBadge(AMBER)
                     "seoul_acc" -> icons.triangleBadge(0xFFD32F2F.toInt())
-                    "seoul_vol" -> icons.letterBadge(0xFF546E7A.toInt(), "량")
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))
