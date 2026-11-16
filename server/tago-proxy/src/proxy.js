@@ -274,7 +274,7 @@ export function signalWebRequest(pathname) {
  * 서울 도착은 정류장 번호(arsId 5자리), 경기 도착은 정류소 ID(9자리), 위치는 노선 ID. → { url(키 자리 KEY), cacheKey, ttl }
  */
 export function busWebRequest(pathname) {
-  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
+  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
   // 제주 노선 정류장 차례 (제주 버스정보 bus.jeju.go.kr, 키 없음, 앱과 같은 자료, 하루 저장).
@@ -285,6 +285,12 @@ export function busWebRequest(pathname) {
     if (op === "arrival") return { area, url: `https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=${id}`, cacheKey: `bus/jeju/arrival/${id}`, ttl: 5 };
     if (op !== "stops") return null;
     return { area, url: `https://bus.jeju.go.kr/api/searchBusRouteStationList.do?route_id=${id}`, cacheKey: `bus/jeju/stops/${id}`, ttl: 86400 };
+  }
+  // 울산 정류장 도착 (울산 BIS, 공공데이터포털 "울산광역시_BIS 정보_GW", 5초 저장): TAGO 보다 0~1분 새롭고 버스가 같거나 더 많음.
+  // _type 을 붙여야 한글이 UTF-8 로 옴 (안 붙이면 '?' 로 바뀌어 옴). 예전 주소 openapi.its.ulsan.kr 는 지금 응답 없음
+  if (area === "ulsan") {
+    if (op !== "arrival" || !/^\d{9}$/.test(id)) return null;
+    return { area, url: `https://apis.data.go.kr/6310000/bis/getBusArrivalInfo?stopid=${id}&pageNo=1&numOfRows=100&_type=xml&serviceKey=KEY`, cacheKey: `bus/ulsan/arrival/${id}`, ttl: 5 };
   }
   // 전주 정류장을 지나는 노선 (전주시 버스정보, 하루 저장). TAGO 는 전주 정류장 경유 노선을 주지 않음
   if (area === "jeonju") {

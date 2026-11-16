@@ -612,10 +612,31 @@ async function jejuArrivals(id) {
   }).filter((a) => a.routeNo && a.arrSeconds != null);
 }
 
-/** 정류장의 지역 자체 도착 (경기 GBIS·전주시·제주 BIS). 없으면 null */
+/**
+ * 울산 BIS 정류장 도착 (공공데이터포털 "울산광역시_BIS 정보_GW", 앱과 같은 자료). ARRIVALTIME 초, PREVSTOPCNT 남은 정류장,
+ * ROUTENM 노선번호(예전 형식은 "527(태화강역방면)"), REMARK "○○ 방면", ROUTEID 는 TAGO 와 같은 번호(앞에 USB)
+ */
+async function ulsanArrivals(id) {
+  const x = await getText("w/bus/ulsan/arrival/" + id.slice(3));
+  const doc = new DOMParser().parseFromString(x, "text/xml");
+  const code = doc.querySelector("resultCode")?.textContent?.trim();
+  if (code && code !== "200") throw new Error("울산 오류 " + code);
+  return [...doc.getElementsByTagName("row")].map((el) => {
+    const r = {};
+    for (const c of el.children) r[c.tagName.toUpperCase()] = c.textContent.trim();
+    const m = /^(.*?)\s*\((.*?)\)\s*$/.exec(r.ROUTENM || "");
+    const no = (m ? m[1] : r.ROUTENM || "").trim();
+    const toward = (m ? m[2] : r.REMARK || "").replace(/\s*방면$/, "").trim();
+    return { routeId: r.ROUTEID ? "USB" + r.ROUTEID : "", routeNo: no, routeType: null, vehicleType: null, prevStops: int(r.PREVSTOPCNT),
+      arrSeconds: int(r.ARRIVALTIME), city: "26", towards: toward || null, atStop: str(r.PRESENTSTOPNM) };
+  }).filter((a) => a.routeNo && a.arrSeconds != null);
+}
+
+/** 정류장의 지역 자체 도착 (경기 GBIS·전주시·제주 BIS·울산 BIS). 없으면 null */
 function localArrivals(s) {
   if (/^JUB\d{9}$/.test(s.id)) return jeonjuArrivals(s.id);
   if (/^JEB\d{9}$/.test(s.id)) return jejuArrivals(s.id);
+  if (/^USB\d{9}$/.test(s.id)) return ulsanArrivals(s.id);
   if (ggId(s.id) && ggCity(s.city)) return getText("w/bus/gg/arrival/" + ggId(s.id)).then(ggArrivals);
   return null;
 }
@@ -931,6 +952,7 @@ export async function downFor(stop) {
   const names = id.startsWith("SEB") ? ["seoul_bus"] : ["tago_arrival"];
   if (id.startsWith("JUB")) names.push("jeonju_bus");
   else if (id.startsWith("JEB")) names.push("jeju_bus");
+  else if (id.startsWith("USB")) names.push("ulsan_bus");
   else if (ggId(id) && ggCity(stop.city || "")) names.push("gyeonggi_bus");
   return h.checks.filter((c) => names.includes(c.name) && !c.ok).map((c) => ({ label: c.label, since: c.failSince || c.at }));
 }

@@ -24,7 +24,8 @@ import javax.xml.parsers.DocumentBuilderFactory
  */
 enum class RegionalKind(val prefix: String) {
     BUSAN("BSB"),
-    ULSAN("GGB"),
+    /** 울산 정류장 ID 는 USB + 울산 BIS 정류장 ID 9자리 (예전엔 GGB 로 잘못 알아 울산 자료가 한 번도 붙지 않았음) */
+    ULSAN("USB"),
     GWANGJU("KJB"),
     YEOSU("YEB"),
 }
@@ -33,15 +34,12 @@ enum class RegionalKind(val prefix: String) {
 data class RegionalStop(val kind: RegionalKind, val stdId: String)
 
 object RegionalBus {
-    /** 울산은 TAGO ID 접두사(GGB)가 경기와 같아서 도시코드(26)로 구분 */
-    private const val ULSAN_CITY = "26"
-
     fun of(s: BusStop): RegionalStop? = of(s.nodeId, s.cityCode)
 
     fun of(nodeId: String, cityCode: String): RegionalStop? {
         val kind = when {
             nodeId.startsWith("BSB") -> RegionalKind.BUSAN
-            nodeId.startsWith("GGB") && cityCode == ULSAN_CITY -> RegionalKind.ULSAN
+            nodeId.startsWith("USB") -> RegionalKind.ULSAN
             nodeId.startsWith("KJB") && cityCode == "24" -> RegionalKind.GWANGJU
             nodeId.startsWith("YEB") -> RegionalKind.YEOSU
             else -> return null
@@ -70,20 +68,24 @@ object RegionalMappers {
 
     private val ulsanRoute = Regex("""^(.*?)\s*\((.*?)\)\s*$""")
 
-    /** 울산: ROUTENM = "527(태화강역방면)" → 노선 527, 방면 태화강역. 도착시간은 초 */
+    /**
+     * 울산: ROUTENM = "527(태화강역방면)" → 노선 527, 방면 태화강역. 도착시간은 초.
+     * 새 주소(공공데이터포털 6310000/bis, 2026)는 ROUTENM = "725" 에 방면을 REMARK("처용마을입구 방면")로 따로 줌
+     */
     fun ulsan(rows: List<Row>): List<BusArrival> = rows.mapNotNull { r ->
         val name = r.str("ROUTENM") ?: return@mapNotNull null
         val m = ulsanRoute.find(name)
-        val no = m?.groupValues?.get(1)?.ifBlank { null } ?: name
+        val no = m?.groupValues?.get(1)?.ifBlank { null } ?: name.trim()
         BusArrival(
-            routeId = "",
+            // 새 주소는 ROUTEID 를 줌: TAGO 와 같은 번호 (TAGO 는 앞에 USB)
+            routeId = r.str("ROUTEID")?.let { "USB$it" } ?: "",
             routeNo = no,
             routeType = null,
             vehicleType = null,
             prevStops = r.int("PREVSTOPCNT"),
             arrSeconds = r.int("ARRIVALTIME"),
             atStop = r.str("PRESENTSTOPNM"),
-            towards = m?.groupValues?.get(2)?.removeSuffix("방면")?.trim()?.ifBlank { null },
+            towards = (m?.groupValues?.get(2) ?: r.str("REMARK"))?.trim()?.removeSuffix("방면")?.trim()?.ifBlank { null },
         )
     }.sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
 
@@ -191,7 +193,9 @@ class RegionalBusRepository(
         RegionalKind.BUSAN -> RegionalMappers.busan(
             RegionalMappers.xmlRows(get("https://apis.data.go.kr/6260000/BusanBIMS/stopArrByBstopid", "bstopid" to stop.stdId), "부산"))
         RegionalKind.ULSAN -> RegionalMappers.ulsan(
-            RegionalMappers.xmlRows(get("http://openapi.its.ulsan.kr/UlsanAPI/getBusArrivalInfo.xo", "stopid" to stop.stdId, "pageNo" to "1", "numOfRows" to "50"), "울산"))
+            // 예전 주소(openapi.its.ulsan.kr)는 2026-11 지금 응답이 없음 → 공공데이터포털 "울산광역시_BIS 정보_GW".
+            // _type 을 붙여야 한글이 UTF-8 로 옴 (안 붙이면 한글이 '?' 로 바뀌어 옴, 2026-11-16 확인)
+            RegionalMappers.xmlRows(get("https://apis.data.go.kr/6310000/bis/getBusArrivalInfo", "stopid" to stop.stdId, "pageNo" to "1", "numOfRows" to "100", "_type" to "xml"), "울산"))
         RegionalKind.GWANGJU -> RegionalMappers.gwangju(
             RegionalMappers.gwangjuRows(get("https://apis.data.go.kr/6290000/gj_bis/arriveInfo", "BUSSTOP_ID" to stop.stdId, "resultType" to "json")))
         RegionalKind.YEOSU -> RegionalMappers.yeosu(

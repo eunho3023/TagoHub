@@ -280,10 +280,12 @@ async function busWeb(request, url, env, ctx) {
     : r.area === "jeonju" ? (b) => /<code[^>]*>000</.test(b)
     // 제주는 배열로 답함 (노선 정류장·정류장 도착 모두. 도착은 STATION_ID 대신 ARRV_STATION_ID, 버스가 없으면 [])
     : r.area === "jeju" ? (b) => b.trimStart().startsWith("[")
+    // 울산 BIS 는 XML(tableInfo), 정상은 resultCode 200
+    : r.area === "ulsan" ? (b) => /<resultCode>200<\/resultCode>/.test(b)
     : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
   const upstream = !r.url.includes("KEY") ? r.url : raw ? r.url.replace("KEY", encodeKey(raw)) : null;
   return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, upstream, r.ttl, ok,
-    r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju");
+    r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju" || r.area === "ulsan");
 }
 
 /** 웹 버전 인천공항 운항 (proxy.js icnWebRequest). 정상(resultCode 00)만 1분 저장 */

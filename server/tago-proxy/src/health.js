@@ -61,6 +61,11 @@ export const CHECKS = [
     ok: (b) => /<code[^>]*>000<\/code>/.test(b),
   },
   {
+    name: "ulsan_bus", label: "울산 버스",
+    url: (e) => e.DATA_GO_KR_KEY && `${DG}6310000/bis/getBusArrivalInfo?serviceKey=${encodeKey(e.DATA_GO_KR_KEY)}&stopid=193012313&pageNo=1&numOfRows=1&_type=xml`,
+    ok: (b) => /<resultCode>200<\/resultCode>/.test(b),
+  },
+  {
     name: "jeju_bus", label: "제주 버스",
     url: () => "https://bus.jeju.go.kr/publicTrafficInformation/getBusRouteNum",
     init: { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "Mozilla/5.0 (compatible; TagoHub/1.0)" }, body: "GROUTE_TYPE=1" },
