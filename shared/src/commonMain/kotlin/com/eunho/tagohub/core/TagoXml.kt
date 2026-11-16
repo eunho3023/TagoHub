@@ -94,6 +94,7 @@ object TagoXml {
             "30" -> DevMode.msg("등록되지 않은 서비스키: local.properties의 키를 확인하세요")
             "31" -> "활용기간이 만료된 서비스키"
             "32" -> "등록되지 않은 IP"
+            "99" -> "공공데이터포털(TAGO) 서버가 잠시 바빠요. 곧 다시 받아요"
             else -> "API 오류"
         }
         return if (raw.isNullOrBlank()) "$msg (코드 $code)" else "$msg (코드 $code, $raw)"

@@ -213,17 +213,6 @@ object GpsTracker {
         val kx = cos(Math.toRadians(a.lat))
         return Math.toDegrees(Math.atan2((b.lng - a.lng) * kx, b.lat - a.lat))
     }
-
-    /** 그릴 경로: 붙인 점 → 선의 꼭짓점들 → 붙인 점 (선을 따라감) */
-    fun path(t: GpsTrack, line: List<LatLng>?): List<LatLng> {
-        val from = t.from ?: return listOf(t.to)
-        val a = t.fromSeg
-        val b = t.toSeg
-        if (line != null && a != null && b != null && b >= a && b - a < 600) {
-            return listOf(from) + (if (b > a) line.subList(a + 1, b + 1) else emptyList()) + t.to
-        }
-        return listOf(from, t.to)
-    }
 }
 
 /**

@@ -189,23 +189,39 @@ sealed class BusDest {
  * 정류장 도착정보: 지역별 자체 API (전주시·제주 BIS·경기 GBIS), 그 외 지역만 TAGO.
  * 자체 API 가 있는 지역은 TAGO 로 대체하지 않는다 (정보가 섞이지 않게).
  */
-internal /**
+/** 처음 열 때 지역 도착(전주시 등)을 이만큼 기다리고, 안 오면 TAGO 를 먼저 */
+internal const val QUICK_LOCAL_MS = 3_000L
+
+/**
  * 버스 도착정보.
  * - 서울: 서울시 API (TAGO 에 없음, 정류장 번호로)
  * - 경기·전주·제주: 지역 API 먼저 (TAGO 보다 1~2분 새롭고 버스가 더 많음, [ArrivalMerge.preferLocal]). 못 받거나 비면 TAGO
  * - 그 밖(부산·광주 등): TAGO 시간에 지역 API 의 방면·현재 정류장을 덧붙임 (지역 자료가 분 단위라 더 낫다고 보기 어려움)
+ * - [quickMs] 를 주면(화면을 처음 열 때) 지역 도착이 그 안에 안 오면 TAGO 를 먼저 씀
+ *   (전주시 서버가 가끔 6~7초 걸려 첫 화면이 비어 있었음). 다음 새로고침부터는 지역 도착을 끝까지 기다림
  */
-suspend fun arrivalsFor(repo: TagoRepository, s: BusStop): TagoResult<List<BusArrival>> = when {
+internal suspend fun arrivalsFor(repo: TagoRepository, s: BusStop, quickMs: Long? = null): TagoResult<List<BusArrival>> = when {
     SeoulBus.isSeoul(s.nodeId) -> s.nodeNo?.let { Graph.seoulBus.arrivals(it) } ?: TagoResult.Success(emptyList())
     Gyeonggi.isGyeonggi(s.nodeId) && com.eunho.tagohub.data.RegionalBus.of(s) == null ||
-        Jeonju.isJeonju(s.nodeId) || Jeju.isJeju(s.nodeId) -> {
-        val local = runCatching {
-            when {
-                Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
-                Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
-                else -> Graph.gyeonggi.arrivals(s.nodeId)
+        Jeonju.isJeonju(s.nodeId) || Jeju.isJeju(s.nodeId) -> kotlinx.coroutines.coroutineScope {
+        val localJob = async {
+            runCatching {
+                when {
+                    Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
+                    Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
+                    else -> Graph.gyeonggi.arrivals(s.nodeId)
+                }
+            }.getOrNull()
+        }
+        if (quickMs != null) kotlinx.coroutines.withTimeoutOrNull(quickMs) { localJob.join() }
+        if (!localJob.isCompleted) {
+            val tago = repo.stopArrivals(tagoCity(repo, s), s.nodeId)
+            if ((tago as? TagoResult.Success)?.data?.isNotEmpty() == true) {
+                localJob.cancel()
+                return@coroutineScope tago
             }
-        }.getOrNull()
+        }
+        val local = localJob.await()
         if ((local as? TagoResult.Success)?.data?.isNotEmpty() == true) com.eunho.tagohub.data.ArrivalMerge.preferLocal(local, TagoResult.Success(emptyList()))
         else com.eunho.tagohub.data.ArrivalMerge.preferLocal(local, repo.stopArrivals(tagoCity(repo, s), s.nodeId))
     }
@@ -422,7 +438,8 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         }
     }
     val (arr, routes) = coroutineScope {
-        val a = async { arrivalsFor(repo, d.stop) }
+        // 처음 열 때만 지역 도착이 3초 넘게 걸리면 TAGO 를 먼저 (지도 화면이 곧 다시 받아 지역 도착으로 바꿈)
+        val a = async { arrivalsFor(repo, d.stop, quickMs = if (d.lastArrivals == null) QUICK_LOCAL_MS else null) }
         val r = if (d.lastRoutes == null) async { stopRoutesFor(repo, d.stop) } else null
         a.await() to r?.await()
     }

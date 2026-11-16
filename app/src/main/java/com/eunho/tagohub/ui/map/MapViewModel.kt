@@ -2411,9 +2411,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
         var first = true
         var fails = 0
+        var loads = 0
         while (true) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
             tracked { loadStopBoard(repo, d) }
+            loads++
             // 못 받았으면(처음부터 실패, 또는 이전 정보를 보여 주는 중) 15초 대신 2·4·6초 뒤 다시
             fails = if (d.rows.value is Load.Fail || d.note.value?.startsWith("새로고침에 실패") == true) fails + 1 else 0
             if (first) {
@@ -2432,7 +2434,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 viewModelScope.launch { loadDirection(repo, d) }
             }
             // 다른 앱에 갔다 오면 남은 시간을 기다리지 않고 바로 새로 받음
-            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 15_000), map = true)
+            // 처음 연 뒤 한 번은 4초 만에 다시: 지역 도착(전주시 등)이 늦어 TAGO 를 먼저 보여 줬으면 곧 지역 도착으로 바꿈
+            com.eunho.tagohub.core.AppState.pause(if (loads == 1 && fails == 0) 4_000 else com.eunho.tagohub.core.AppState.retryMs(fails, 15_000), map = true)
         }
     }
 

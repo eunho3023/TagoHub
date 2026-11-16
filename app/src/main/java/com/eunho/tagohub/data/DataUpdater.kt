@@ -26,16 +26,21 @@ object DataUpdater {
     private const val PREF = "data_update"
     private val client = Http.builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
-    /** 바꿔 넣었으면 새 버전, 아니면 null */
+    /**
+     * 바꿔 넣었으면 새 버전, 아니면 null.
+     * 정류장 자료가 하나도 없으면(가벼운 앱 -Pslim 을 처음 열 때) 하루 한 번·와이파이 조건 없이 바로 받음 — 없으면 정류장을 못 찾음
+     */
     suspend fun check(ctx: Context, force: Boolean = false): String? = withContext(Dispatchers.IO) {
         val url = BuildConfig.DATA_MANIFEST_URL.trim()
         if (url.isEmpty()) return@withContext null
+        val missing = StopDb.get(ctx) == null
         val prefs = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        if (!force && now - prefs.getLong("last", 0) < 20 * 3600_000L) return@withContext null
+        if (!missing && !force && now - prefs.getLong("last", 0) < 20 * 3600_000L) return@withContext null
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        if (cm == null || cm.activeNetwork == null || cm.isActiveNetworkMetered) return@withContext null // 데이터 요금 걱정 없을 때만 (약 25MB)
-        prefs.edit().putLong("last", now).apply()
+        if (cm == null || cm.activeNetwork == null) return@withContext null
+        if (!missing && cm.isActiveNetworkMetered) return@withContext null // 데이터 요금 걱정 없을 때만 (약 25MB)
+        if (!missing) prefs.edit().putLong("last", now).apply()
         runCatching {
             val manifest = client.newCall(Request.Builder().url(url).header("Accept-Encoding", "identity").build()).execute().use { r ->
                 if (!r.isSuccessful) error("안내 파일 HTTP ${r.code}")

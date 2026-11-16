@@ -27,6 +27,13 @@ fun apiKey(name: String, fallback: String? = null): String {
     return if (proxyOn && v.isNotEmpty()) "TAGOHUB_$name" else v
 }
 
+/**
+ * 폰으로 바로 보낼 가벼운 앱: ./gradlew :app:assembleFast -Pslim
+ * 정류장 자료(bus_stops.db, 압축 약 20MB)를 빼고 처음 열 때 데이터 저장소(DATA_MANIFEST_URL)에서 받음,
+ * 지도 라이브러리(.so)는 압축해서 넣음. 일반 앱(약 60MB)은 파일 공유 한도(30MB)를 넘어 폰으로 못 보냈음
+ */
+val slim = project.hasProperty("slim")
+
 android {
     namespace = "com.eunho.tagohub"
     compileSdk = 37
@@ -115,6 +122,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    defaultConfig {
+        // 가벼운 앱: 정류장 자료가 앱 안에 없음 → 처음 열 때 데이터 요금 제한 없이 받음 (DataUpdater)
+        buildConfigField("boolean", "SLIM", slim.toString())
+    }
+    if (slim) {
+        androidResources { ignoreAssetsPatterns += "!bus_stops.db" }
+        packaging { jniLibs { useLegacyPackaging = true } }
     }
 }
 

@@ -24,9 +24,9 @@ class TrackingTest {
         val s = GpsTracker.next(null, at(300.0, offN = 25.0), 1, geom, 0)
         assertEquals(35.80, s.track.to.lat, 1e-7)
         assertTrue(abs(s.track.progress!! - 300.0) < 10)
-        // 이동 경로의 모든 점이 선 위
+        // 다음 점도 선 위
         val s2 = GpsTracker.next(s, at(420.0, offN = -18.0), 1, geom, 10_000)
-        assertTrue(GpsTracker.path(s2.track, geom.line).all { abs(it.lat - 35.80) < 1e-7 })
+        assertEquals(35.80, s2.track.to.lat, 1e-7)
     }
 
     @Test

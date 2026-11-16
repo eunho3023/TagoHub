@@ -40,6 +40,9 @@ test("같은 요청은 같은 저장 이름 (순서·키 무시)", () => {
 test("오류 응답은 저장하지 않음", () => {
   assert.equal(cacheable(200, "<response><header><resultCode>00</resultCode></header></response>"), true);
   assert.equal(cacheable(200, "<returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg>"), false);
+  // 공공데이터포털이 바쁠 때 JSON 으로 오는 99 도 저장하지 않음
+  assert.equal(cacheable(200, '{"response":{"header":{"resultCode":99,"resultMsg":"가용한 세션이 존재하지 않습니다"}}}'), false);
+  assert.equal(cacheable(200, '{"response":{"header":{"resultCode":"00"},"body":{}}}'), true);
   assert.equal(cacheable(200, "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"), false);
   assert.equal(cacheable(500, "<ok/>"), false);
 });

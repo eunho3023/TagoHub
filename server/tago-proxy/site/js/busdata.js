@@ -620,20 +620,27 @@ function localArrivals(s) {
   return null;
 }
 
-export async function arrivals(stop) {
+/**
+ * 정류장 도착. quickMs 를 주면(화면을 처음 열 때) 지역 도착이 그 안에 안 오는 정류장은 TAGO 도착을 먼저 쓰고,
+ * 결과의 later(Promise) 가 지역 도착까지 받은 결과를 줌 — 전주시 서버가 가끔 6~7초 걸려 첫 화면이 10초쯤 비었음
+ */
+export async function arrivals(stop, { quickMs = null, reuse = null } = {}) {
   try {
     const t = await targets(stop);
     // 경기·전주·제주 정류장: 지역 자체 도착을 먼저 (앱과 같음). 같은 정류장·같은 순간에 비교하니 TAGO 보다 1~2분 새롭고 버스가 더 많았음.
     // 그 정류장의 TAGO 도착은 지역 도착을 못 받았거나 비었을 때만 씀 (둘 다 쓰면 같은 버스가 시간이 달라 두 번 보였음)
     const locals = new Map();
-    for (const s of [stop, ...(await sameSpot(stop))]) if (!locals.has(s.id)) { const p = localArrivals(s); if (p) locals.set(s.id, p); }
+    for (const s of [stop, ...(await sameSpot(stop))]) if (!locals.has(s.id)) { const p = reuse?.get(s.id) || localArrivals(s); if (p) locals.set(s.id, p); }
     if (!t.tago.length && !t.metro.length && !locals.size) return { state: "unsupported", list: [], at: Date.now() };
+    // 처음 열 때: quickMs 안에 안 오는 지역 도착은 "늦음"으로 보고 그 정류장은 TAGO 를 먼저 (지역 도착은 later 로)
+    const SLOW = Symbol("slow"), slow = new Set(), shown = new Map();
+    for (const [id, p] of locals) shown.set(id, quickMs == null ? p : Promise.race([p, new Promise((r) => setTimeout(() => r(SLOW), quickMs))]).then((l) => { if (l === SLOW) slow.add(id); return l; }));
     // 지역마다 한꺼번에 물음 (차례로 물으면 느린 지역들의 시간을 더한 만큼 늦음)
     const res = await Promise.allSettled([
-      ...locals.values(),
+      ...[...shown.values()].map((p) => p.then((l) => (l === SLOW ? [] : l))),
       ...t.tago.map(([c, id]) => {
-        const p = locals.get(id);
-        return p ? p.then((l) => (l.length ? [] : tagoArrivals(c, id)), () => tagoArrivals(c, id)) : tagoArrivals(c, id);
+        const p = shown.get(id);
+        return p ? p.then((l) => (l !== SLOW && l.length ? [] : tagoArrivals(c, id)), () => tagoArrivals(c, id)) : tagoArrivals(c, id);
       }),
       ...t.metro.map(async (p) => seoulArrivals(await getText(p))),
     ]);
@@ -644,7 +651,9 @@ export async function arrivals(stop) {
       // 같은 버스가 두 곳(시군)에서 다른 노선 ID 로 올 때만 하나로: 번호·분·남은 정류장이 다 같을 때 (본선·지선이 같은 분에 와도 남겨 둠)
       .filter((a) => { const k = a.routeNo + "|" + Math.floor((a.arrSeconds ?? -60) / 60) + "|" + (a.prevStops ?? ""); return !seen2.has(k) && seen2.add(k); })
       .sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
-    return { state: "ok", list, at: Date.now() };
+    const later = slow.size ? Promise.allSettled([...slow].map((id) => locals.get(id))).then(() => arrivals(stop, { reuse: locals })) : null;   // 이미 받은 지역 도착을 그대로 씀 (다시 묻지 않음)
+    // 일부(다른 시군 TAGO 등)를 못 받았으면 partial: 화면이 원인(막힌 자료)을 함께 보여 줌
+    return { state: "ok", list, at: Date.now(), later, partial: res.some((r) => r.status === "rejected") };
   } catch (e) {
     return { state: "failed", list: [], at: Date.now(), why: String(e.message || e) };
   }
@@ -907,6 +916,23 @@ async function fixByPosition(stop, list) {
   }));
   if (!out.size) return list;
   return list.flatMap((a) => (out.has(a) ? (out.get(a) ? [out.get(a)] : []) : [a])).sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9));
+}
+
+/**
+ * 이 정류장 도착에 쓰는 자료 중 지금 막혀 있는 것 [{label, since}] (서버가 30분마다 확인하는 /w/health, 1분 저장).
+ * 예: 2026-11-16 TAGO 도착이 30분 넘게 "가용한 세션이 없습니다"(오류 99)였는데 화면엔 "받지 못했어요"만 보였음
+ */
+let healthMemo = null;
+export async function downFor(stop) {
+  if (!healthMemo || Date.now() - healthMemo.at > 60000) healthMemo = { at: Date.now(), p: getJson("w/health").catch(() => null) };
+  const h = await healthMemo.p;
+  if (!h?.checks) return [];
+  const id = stop.id || "";
+  const names = id.startsWith("SEB") ? ["seoul_bus"] : ["tago_arrival"];
+  if (id.startsWith("JUB")) names.push("jeonju_bus");
+  else if (id.startsWith("JEB")) names.push("jeju_bus");
+  else if (ggId(id) && ggCity(stop.city || "")) names.push("gyeonggi_bus");
+  return h.checks.filter((c) => names.includes(c.name) && !c.ok).map((c) => ({ label: c.label, since: c.failSince || c.at }));
 }
 
 /** 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt}]} (dataAt = 자료 시각 ms, 서울만) */
