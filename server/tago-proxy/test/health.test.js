@@ -43,3 +43,10 @@ test("예약 작업이 기록하고 /w/health 가 이름표와 함께 돌려줌"
   assert.equal(seoul.msg, "인증 실패 (키 확인 필요)");
   assert.equal(j.checks.find((x) => x.name === "kakao").ok, null);   // 확인 안 한 곳
 });
+
+test("울산 도로정보: 결과 코드가 정상이어도 도로가 0건이면 실패 (2026-11-17 빈 자료)", async () => {
+  const { CHECKS } = await import("../src/health.js");
+  const c = CHECKS.find((x) => x.name === "ulsan_road");
+  assert.equal(c.ok("<rfcOpenApi><header><resultCode>00</resultCode></header><body><totalCount>0</totalCount><data><list></list></data></body></rfcOpenApi>"), false);
+  assert.equal(c.ok("<rfcOpenApi><header><resultCode>00</resultCode></header><body><data><list><RoadID>2</RoadID><RoadName>문수로</RoadName></list></data></body></rfcOpenApi>"), true);
+});
