@@ -7,6 +7,7 @@ import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps, gpsInfo } from "./gps.js";
 import { storeKey, getStored, putStored, DAY_MS } from "./tagostore.js";
+import { handleSeoulTraffic } from "./seoultraffic.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
@@ -62,7 +63,7 @@ async function web(request, url, env, ctx) {
     return handleEdits(request, env, ctx, url.pathname);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
-  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/") || url.pathname.startsWith("/w/gps/"))) {
+  if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/") || url.pathname.startsWith("/w/gps/") || url.pathname.startsWith("/w/topis/"))) {
     const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
@@ -72,6 +73,8 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/gps/")) return new Response(JSON.stringify(await gpsInfo(env.DB, decodeURIComponent(url.pathname.slice("/w/gps/".length))).catch(() => null)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (url.pathname === "/w/poll/status") return new Response(JSON.stringify(await pollStatus(env)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
+  // 서울시 교통정보(TOPIS): 실시간 도로 소통·돌발·교통량 (src/seoultraffic.js)
+  if (url.pathname.startsWith("/w/topis/")) return handleSeoulTraffic(url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
