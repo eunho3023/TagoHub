@@ -7,7 +7,9 @@ deploy.ps1 을 실행하는 컴퓨터에서 받아 웹 자료 조각(public/data
 """
 import argparse
 import json
+import pathlib
 import re
+import shutil
 import sys
 import time
 import urllib.parse
@@ -91,37 +93,47 @@ def gumi_all():
     return out, len(rows)
 
 
+CACHE = pathlib.Path(__file__).resolve().parent / "cache" / "times"
+
+
+def cheonan_all():
+    out = {}
+    ids = cheonan_route_ids()
+    for rid in ids:
+        try:
+            t = cheonan_one(rid)
+            if t:
+                out[rid] = t
+        except Exception:
+            pass
+        time.sleep(0.1)
+    return out, len(ids)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="public/data 폴더")
+    ap.add_argument("--max-age-days", type=float, default=7, help="보관한 시간표가 이보다 새것이면 다시 받지 않음 (0 이면 늘 받음)")
     a = ap.parse_args()
-    import os
-    os.makedirs(os.path.join(a.out, "times"), exist_ok=True)
-    out = {}
-    try:
-        ids = cheonan_route_ids()
-        for rid in ids:
+    # 받은 시간표는 pipeline/cache/times 에 보관 (public/data 는 배포 때마다 build_web_data.py 가 지우고 새로 만듦)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    dest = pathlib.Path(a.out) / "times"
+    dest.mkdir(parents=True, exist_ok=True)
+    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all)):
+        kept = CACHE / f"{area}.json"
+        age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() else None
+        if age is not None and age < a.max_age_days:
+            print(f"  {name} 배차시간표: {age:.1f}일 전에 받은 것 사용 ({a.max_age_days:g}일마다 새로 받음)")
+        else:
             try:
-                t = cheonan_one(rid)
-                if t:
-                    out[rid] = t
-            except Exception:
-                pass
-            time.sleep(0.1)
-        print(f"  천안 배차시간표 {len(out)}/{len(ids)}개 노선")
-    except Exception as e:
-        print(f"  천안 배차시간표 받기 실패 (건너뜀): {e}")
-    if out:
-        with open(os.path.join(a.out, "times", "cheonan.json"), "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
-    try:
-        gm, n = gumi_all()
-        print(f"  구미 배차시간표 {len(gm)}개 노선 (목록 {n}줄)")
-        if gm:
-            with open(os.path.join(a.out, "times", "gumi.json"), "w", encoding="utf-8") as f:
-                json.dump(gm, f, ensure_ascii=False, separators=(",", ":"))
-    except Exception as e:
-        print(f"  구미 배차시간표 받기 실패 (건너뜀): {e}")
+                got, n = fetch_all()
+                print(f"  {name} 배차시간표 {len(got)}/{n}개 노선")
+                if got:
+                    kept.write_text(json.dumps(got, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            except Exception as e:
+                print(f"  {name} 배차시간표 받기 실패 (건너뜀): {e}")
+        if kept.exists():
+            shutil.copyfile(kept, dest / f"{area}.json")
     return 0
 
 
