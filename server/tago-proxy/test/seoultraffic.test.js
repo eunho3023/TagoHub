@@ -22,22 +22,37 @@ test("응답 줄 읽기: 태그는 소문자, 글자 참조는 풂", () => {
   assert.deepEqual(r, [{ acc_id: "1", acc_info: "공사\n-통제 : 양방향 & 우회" }]);
 });
 
-test("링크별 실시간 속도: 받은 것은 한 묶음으로 5분 저장해 다시 묻지 않음", async () => {
-  fakeCaches();
+test("링크별 실시간 속도: 묶음마다 따로 저장해 동시에 와도 덮어쓰지 않음", async () => {
+  const store = fakeCaches();
   let asked = 0;
   const fetcher = async (u) => { asked++; const id = u.split("/").pop(); return { ok: true, text: async () => `<TrafficInfo><list_total_count>1</list_total_count><row><link_id>${id}</link_id><prcs_spd>23.4</prcs_spd><prcs_trv_time>95</prcs_trv_time></row></TrafficInfo>` }; };
   const pending = [];
   const c2 = { waitUntil: (p) => pending.push(p) };
-  assert.deepEqual(await trafficFor(["1000002500", "1000002600"], "k", c2, fetcher), { 1000002500: [23, 95], 1000002600: [23, 95] });
+  assert.deepEqual(await trafficFor(["1000002600", "1000002500"], "k", c2, fetcher), { 1000002500: [23, 95], 1000002600: [23, 95] });
   assert.equal(asked, 2);
   await Promise.all(pending);
-  await trafficFor(["1000002500"], "k", c2, fetcher);
+  // 같은 묶음은 순서가 달라도 저장한 것을 줌
+  assert.deepEqual(await trafficFor(["1000002500", "1000002600"], "k", c2, fetcher), { 1000002500: [23, 95], 1000002600: [23, 95] });
   assert.equal(asked, 2, "저장한 것은 다시 묻지 않음");
-  // 한 요청에 새로 묻는 것은 30개까지 (바깥 요청 수 제한)
-  const many = Array.from({ length: 50 }, (_, i) => String(2000000000 + i));
-  const got = await trafficFor(many, "k", c2, fetcher);
-  assert.equal(Object.keys(got).length, 30);
-  assert.equal(asked, 32);
+  // 다른 묶음 둘을 동시에: 둘 다 남음
+  const a = Array.from({ length: 30 }, (_, i) => String(2000000000 + i)), b = Array.from({ length: 30 }, (_, i) => String(3000000000 + i));
+  const [ga, gb] = await Promise.all([trafficFor(a, "k", c2, fetcher), trafficFor(b, "k", c2, fetcher)]);
+  assert.equal(Object.keys(ga).length + Object.keys(gb).length, 60);
+  await Promise.all(pending);
+  assert.equal([...store.keys()].filter((k) => k.includes("/traffic/g/")).length, 3);
+  // 한 요청에 묻는 것은 30개까지 (바깥 요청 수 제한)
+  const many = Array.from({ length: 50 }, (_, i) => String(4000000000 + i));
+  assert.equal(Object.keys(await trafficFor(many, "k", c2, fetcher)).length, 30);
+  assert.equal(asked, 92);
+});
+
+test("링크 속도: 서울 API 가 다 실패하면 저장하지 않아 다음에 다시 물음", async () => {
+  const store = fakeCaches();
+  const pending = [];
+  const c2 = { waitUntil: (p) => pending.push(p) };
+  assert.deepEqual(await trafficFor(["1000002500"], "k", c2, async () => ({ ok: false, text: async () => "" })), {});
+  await Promise.all(pending);
+  assert.equal(store.size, 0);
 });
 
 test("돌발: 위경도로 바꾸고 유형 이름·날짜를 붙임", async () => {

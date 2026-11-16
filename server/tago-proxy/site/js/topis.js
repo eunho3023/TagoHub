@@ -17,16 +17,41 @@ export function speedColor(div, kmh) {
   return div === "02" ? (kmh >= 70 ? GREEN : kmh >= 30 ? AMBER : RED) : (kmh >= 25 ? GREEN : kmh >= 15 ? AMBER : RED);
 }
 
+/** 한 요청에 묻는 링크 수 (서버 SPEED_MAX 와 같게: Workers 무료 요금제의 한 요청 바깥 요청 50번 제한) */
+const GROUP = 30;
+/** 한 번에 동시에 묻는 묶음 수 */
+const GROUPS_MAX = 8;
 let linksP = null;
-/** 서울 도로 링크 [{id, road, from, to, dist, div, pts, b}] (처음 한 번 받음) */
+/**
+ * 서울 도로 링크 [{id, road, from, to, dist, div, pts, b, g}] (처음 한 번 받음).
+ * g 는 묶음 번호: 약 1km 칸마다 링크를 30개씩 묶어, 늘 같은 묶음으로 물어 서버 저장을 여러 사람이 같이 씀
+ */
 function seoulLinks() {
   if (!linksP) {
-    linksP = fetch("seoul/links.json").then((r) => (r.ok ? r.json() : { links: {} })).then((d) => Object.entries(d.links || {}).map(([id, a]) => {
-      const pts = decodePolyline(String(a[5] || ""), 5);
-      const b = { s: 90, n: -90, w: 180, e: -180 };
-      for (const [la, lo] of pts) { b.s = Math.min(b.s, la); b.n = Math.max(b.n, la); b.w = Math.min(b.w, lo); b.e = Math.max(b.e, lo); }
-      return { id, road: a[0], from: a[1], to: a[2], dist: a[3], div: a[4], pts, b };
-    }).filter((l) => l.pts.length >= 2)).catch(() => { linksP = null; return []; });
+    linksP = fetch("seoul/links.json").then((r) => (r.ok ? r.json() : { links: {} })).then((d) => {
+      const ls = Object.entries(d.links || {}).map(([id, a]) => {
+        const pts = decodePolyline(String(a[5] || ""), 5);
+        const b = { s: 90, n: -90, w: 180, e: -180 };
+        for (const [la, lo] of pts) { b.s = Math.min(b.s, la); b.n = Math.max(b.n, la); b.w = Math.min(b.w, lo); b.e = Math.max(b.e, lo); }
+        return { id, road: a[0], from: a[1], to: a[2], dist: a[3], div: a[4], pts, b, g: -1 };
+      }).filter((l) => l.pts.length >= 2);
+      const cells = new Map();
+      for (const l of ls) {
+        const c = Math.floor((l.b.s + l.b.n) / 2 / 0.01) + "," + Math.floor((l.b.w + l.b.e) / 2 / 0.0125);
+        if (!cells.has(c)) cells.set(c, []);
+        cells.get(c).push(l);
+      }
+      const groups = [];
+      for (const c of [...cells.keys()].sort()) {
+        const members = cells.get(c).sort((x, y) => (x.id < y.id ? -1 : 1));
+        for (let i = 0; i < members.length; i += GROUP) {
+          const part = members.slice(i, i + GROUP);
+          for (const l of part) l.g = groups.length;
+          groups.push(part.map((l) => l.id));
+        }
+      }
+      return { ls, groups };
+    }).catch(() => { linksP = null; return { ls: [], groups: [] }; });
   }
   return linksP;
 }
@@ -45,7 +70,8 @@ export function trafficLayer(onChange) {
   let on = false;
   try { on = localStorage.getItem(SAVE) === "1"; } catch (e) { /* 못 읽음 */ }
   let alive = true, visible = [], acc = [], spots = [], accAt = 0, spotsAt = 0;
-  const speeds = new Map(); // 링크 id → [km/h, 초, 받은 때]
+  const speeds = new Map(); // 링크 id → [km/h, 초]
+  const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
   btn.className = "locbtn trafficbtn" + (on ? " on" : "");
   btn.title = "실시간 교통 (서울)";
@@ -76,26 +102,31 @@ export function trafficLayer(onChange) {
       getJson("w/topis/spots").then((v) => { spots = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { spotsAt = 0; });
     }
     if (MapView.zoom() < TRAFFIC_ZOOM) { visible = []; onChange(); return; }
-    const ls = await seoulLinks();
+    const { ls, groups } = await seoulLinks();
     if (!alive) return;
     const cla = (b.s + b.n) / 2, clo = (b.w + b.e) / 2;
     visible = ls.filter((l) => l.b.n >= b.s && l.b.s <= b.n && l.b.e >= b.w && l.b.w <= b.e)
       .map((l) => [l, Math.hypot((l.b.s + l.b.n) / 2 - cla, ((l.b.w + l.b.e) / 2 - clo) * 0.8)])
       .sort((x, y) => x[1] - y[1]).slice(0, 180).map((x) => x[0]);
-    // 4분 넘은 것만 다시 물음 (서버는 5분 저장, 한 번에 60개)
-    const need = visible.filter((l) => { const s = speeds.get(l.id); return !s || now - s[2] > 240000; }).map((l) => l.id);
-    const jobs = [];
-    for (let i = 0; i < need.length; i += 60) {
-      jobs.push(getJson("w/topis/traffic", { links: need.slice(i, i + 60).join(",") }).then((v) => {
-        for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1], Date.now()]);
-        if (alive) onChange();
-        return Object.keys(v || {}).length;
-      }).catch(() => 0));
+    // 화면 가운데에 가까운 묶음부터, 4분 넘은 묶음만 동시에 물음 (서버는 묶음마다 5분 저장)
+    const need = [];
+    for (const l of visible) {
+      const at = groupAt.get(l.g);
+      if (!need.includes(l.g) && at !== -1 && (at == null || now - at > 240000)) need.push(l.g);
     }
-    // 서버는 한 번에 새로 묻는 링크 수가 정해져 있어 빠진 것이 있으면 몇 초 뒤 이어서 (새로 받은 것이 있을 때만, 세 번까지)
-    if (jobs.length) Promise.all(jobs).then((got) => {
-      const missing = need.some((id) => !speeds.has(id));
-      if (alive && missing && got.some((n) => n > 0) && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
+    const jobs = need.slice(0, GROUPS_MAX).map((g) => {
+      groupAt.set(g, -1);
+      return getJson("w/topis/traffic", { links: groups[g].join(",") }).then((v) => {
+        for (const id of groups[g]) speeds.delete(id);
+        for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1]]);
+        groupAt.set(g, Date.now());
+        if (alive) onChange();
+        return true;
+      }).catch(() => { groupAt.delete(g); return false; });
+    });
+    // 못 받은 묶음이나 8개 넘어 남은 묶음은 몇 초 뒤 이어서 (세 번까지)
+    if (jobs.length) Promise.all(jobs).then((ok) => {
+      if (alive && (ok.includes(false) || need.length > GROUPS_MAX) && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
     });
     onChange();
   }
