@@ -252,3 +252,12 @@ test("제주 노선 정류장 차례: 제주 버스정보 (키 없음, 하루 �
   assert.equal(busWebRequest("/w/bus/jeju/pos/405130002"), null);
   assert.equal(busWebRequest("/w/bus/jeju/stops/12"), null);
 });
+
+test("웹 울산 도착: 공공데이터포털 울산 BIS(GW), 한글이 깨지지 않게 _type, 5초 저장, 도착만", () => {
+  const r = busWebRequest("/w/bus/ulsan/arrival/193012313");
+  assert.equal(r.url, "https://apis.data.go.kr/6310000/bis/getBusArrivalInfo?stopid=193012313&pageNo=1&numOfRows=100&_type=xml&serviceKey=KEY");
+  assert.equal(r.ttl, 5);
+  assert.equal(r.cacheKey, "bus/ulsan/arrival/193012313");
+  assert.equal(busWebRequest("/w/bus/ulsan/pos/193012313"), null);
+  assert.equal(busWebRequest("/w/bus/ulsan/arrival/12345"), null);
+});

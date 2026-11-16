@@ -11,7 +11,8 @@ class RegionalBusTest {
     @Test
     fun stopIdPrefixesMapToRegions() {
         assertEquals(RegionalKind.BUSAN to "505780000", RegionalBus.of("BSB505780000", "21")!!.let { it.kind to it.stdId })
-        assertEquals(RegionalKind.ULSAN to "196040122", RegionalBus.of("GGB196040122", "26")!!.let { it.kind to it.stdId })
+        assertEquals(RegionalKind.ULSAN to "196040122", RegionalBus.of("USB196040122", "26")!!.let { it.kind to it.stdId })
+        assertNull(RegionalBus.of("GGB196040122", "26"))   // 앱·TAGO 의 울산 정류장은 USB
         assertEquals(RegionalKind.GWANGJU to "2873", RegionalBus.of("KJB2873", "24")!!.let { it.kind to it.stdId })
         assertEquals(RegionalKind.YEOSU to "325001135", RegionalBus.of("YEB325001135", "36020")!!.let { it.kind to it.stdId })
         // 경기(GGB)·광주시(경기, 38090) 는 해당 없음
@@ -46,6 +47,21 @@ class RegionalBusTest {
         assertEquals("변전소삼거리", a.atStop)
         assertEquals(245, a.arrSeconds)
         assertEquals(5, a.prevStops)
+    }
+
+    /** 새 주소: 노선번호만 오고 방면은 REMARK */
+    @Test
+    fun ulsanGatewayDirectionFromRemark() {
+        val xml = """<tableInfo><resultCode>200</resultCode><resultMsg>SUCCESS</resultMsg><list>
+            <row><VEHICLENO>울산71자2207</VEHICLENO><PREVSTOPCNT>3</PREVSTOPCNT><ARRIVALTIME>217</ARRIVALTIME><ROUTEID>195000199</ROUTEID>
+            <REMARK>처용마을입구 방면</REMARK><STOPID>196040122</STOPID><PRESENTSTOPNM>울산119안전센터</PRESENTSTOPNM><ROUTENM>725</ROUTENM></row>
+            </list></tableInfo>"""
+        val a = RegionalMappers.ulsan(RegionalMappers.xmlRows(xml, "울산")).single()
+        assertEquals("725", a.routeNo)
+        assertEquals("USB195000199", a.routeId)
+        assertEquals("처용마을입구", a.towards)
+        assertEquals("울산119안전센터", a.atStop)
+        assertEquals(217, a.arrSeconds)
     }
 
     @Test
