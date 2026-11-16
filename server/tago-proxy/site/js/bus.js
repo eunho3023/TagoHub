@@ -11,6 +11,8 @@ import { tidyRoad } from "./roadline.js";
 import * as Ahead from "./busahead.js";
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
+/** 도착을 못 받으면 2·4·6초 뒤 다시 (세 번), 그동안 받은 지 이만큼 안 된 도착은 그대로 보여 줌 */
+const RETRY_MAX = 3, RETRY_STEP_MS = 2000, KEEP_LIVE_MS = 120000;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
 /** 화면 사이에 정류장 정보를 넘김 (주소에는 id·좌표만) */
 const known = new Map();
@@ -151,6 +153,7 @@ export function stopScreen(root, p) {
     if (!both) status = "불러오는 중...";
     else if (!live) status = "실시간 도착을 받는 중...";
     else if (live.state === "unsupported") status = "이 정류장의 실시간 도착은 웹 버전에서 볼 수 없어요. 폰 앱에서 볼 수 있어요.";
+    else if (live.state === "retry") status = "실시간 도착을 다시 받는 중...";
     else if (live.state === "failed") status = "실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.";
     else if (!rows.length) status = "이 정류장에 서는 버스 정보가 없어요";
     else if (!arr.length) status = "지금 도착 예정인 버스가 없어요";
@@ -167,6 +170,7 @@ export function stopScreen(root, p) {
     }).join("")}</div>`;
     tickTimes();
   };
+  let onShow = null;
   (async () => {
     root.innerHTML = header("정류장", null, { back: true }) + note("불러오는 중...");
     if (!(await ensure())) return;
@@ -179,9 +183,22 @@ export function stopScreen(root, p) {
       // 어느 방면인지: 지나는 노선의 다음 정류장
       B.towardOf(stop, s).then((t) => { if (t && alive) { toward = t; draw(); } }).catch(() => {});
     }).catch(() => { sums = []; draw(); });
+    // 못 받았을 때: 폰에서 다른 앱에 갔다 돌아오면 통신이 깨어나기 전에 물어 실패하곤 했음 (다음 새로고침 15초 동안 "받지 못했어요").
+    // 그래서 2·4·6초 뒤 다시 묻고, 그동안은 받은 지 2분이 안 된 도착을 그대로 보여 줌 (없으면 "다시 받는 중"). 세 번 넘게 실패해야 "받지 못했어요"
+    let fails = 0, retryTimer = null;
     const tick = async () => {
+      clearTimeout(retryTimer);
       let got = await B.arrivals(stop);
       if (!alive) return;
+      if (got.state === "failed") {
+        fails++;
+        if (fails <= RETRY_MAX) {
+          retryTimer = setTimeout(() => { if (alive) tick(); }, RETRY_STEP_MS * fails);
+          if (!(live?.state === "ok" && Date.now() - live.at < KEEP_LIVE_MS)) live = { state: "retry", list: [], at: Date.now() };
+          draw();
+          return;
+        }
+      } else fails = 0;
       // 직전엔 도착이 있었는데 갑자기 하나도 없으면(공공데이터가 잠깐 빈 응답을 줄 때) 3초 뒤 한 번 더 물음
       if (got.state === "ok" && !got.list.length && live?.list?.length) {
         await new Promise((r) => setTimeout(r, 3000));
@@ -208,8 +225,15 @@ export function stopScreen(root, p) {
     refresh = () => { if (Date.now() - lastRefresh < 3000) return; lastRefresh = Date.now(); tick(); };
     tick();
     timers.push(setInterval(tick, REFRESH_MS), setInterval(tickTimes, 1000));
+    // 다른 앱에 갔다 돌아오면 다음 15초를 기다리지 않고 바로 새로 받음 (받아 둔 도착은 그사이 오래됐음)
+    onShow = () => { if (alive && document.visibilityState === "visible" && Date.now() - (live?.at || 0) > 5000) { fails = 0; tick(); } };
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onShow);
   })();
-  return () => { alive = false; timers.forEach(clearInterval); };
+  return () => {
+    alive = false; timers.forEach(clearInterval);
+    if (onShow) { document.removeEventListener("visibilitychange", onShow); window.removeEventListener("pageshow", onShow); }
+  };
 }
 
 // ── 정류장 시간표: 지난 운행 기록(최근 6주)으로 요일별 "몇 시에 몇 번 버스가 오는지" ──

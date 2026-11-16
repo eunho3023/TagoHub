@@ -13,10 +13,17 @@ export async function getText(path, query) {
     const s = p.toString();
     if (s) url += (url.includes("?") ? "&" : "?") + s;
   }
-  const r = await fetch(url);
+  let r;
+  try { r = await fetch(url); }
+  catch (e) {
+    // 연결 자체가 실패(폰에서 웹으로 돌아온 직전처럼 통신이 막 깨어나는 중)면 잠깐 뒤 한 번 더. 서버가 준 오류(HTTP 4xx·5xx)는 그대로
+    await new Promise((res) => setTimeout(res, NET_RETRY_MS));
+    r = await fetch(url);
+  }
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.text();
 }
+const NET_RETRY_MS = 1000;
 
 export async function getJson(path, query) { return JSON.parse(await getText(path, query)); }
 
