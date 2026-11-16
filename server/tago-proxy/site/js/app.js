@@ -5,6 +5,7 @@ import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
 import { applyTheme } from "./store.js";
 import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
+import { trafficLayer } from "./topis.js";
 import * as home from "./home.js";
 import * as bus from "./bus.js";
 import * as more from "./more.js";
@@ -106,18 +107,36 @@ const towardMemo = new Map();
 export function stopsMap(host, focus) {
   let stops = [], picked = focus;
   let timer = null, alive = true;
+  /** 서울 실시간 교통 점(돌발·교통량 지점)을 눌렀을 때 카드 내용 */
+  let info = null;
   const card = document.createElement("div");
   card.className = "side-card";
   host.appendChild(card);
+  // 서울 실시간 교통 (켜기 버튼은 지도 오른쪽 위, 내 위치 아래): 확대하면 도로 소통 색, 돌발·교통량 지점 (topis.js). 아래 draw 를 만든 뒤에 만듦
+  let traffic = null;
   const draw = () => {
     const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
+    MapView.lines(traffic ? traffic.lines() : []);
     MapView.dots(
-      [...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
+      [...(traffic ? traffic.dots() : []), ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
-        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
-      (d) => { picked = stops.find((s) => s.id === d.id) || picked; draw(); },
+        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; })],
+      (d) => {
+        if (/^(acc|spot):/.test(d.id)) {
+          picked = null;
+          info = traffic && traffic.card(d.id, (h) => { if (info != null) { info = h; draw(); } });
+          draw();
+          return;
+        }
+        info = null;
+        picked = stops.find((s) => s.id === d.id) || picked;
+        draw();
+      },
     );
-    if (picked && picked.name) {
+    if (info) {
+      card.style.display = "flex";
+      card.innerHTML = info;
+    } else if (picked && picked.name) {
       card.style.display = "flex";
       card.innerHTML = `<div><b>${esc(picked.name)}</b><small>${picked.no ? "정류장 번호 " + esc(picked.no) : ""}</small></div><button class="btn" ${act(() => go("stop", picked.id, { lat: picked.lat, lng: picked.lng }))}>도착 정보</button>`;
       // 시군 이름과 방면(지나는 노선의 다음 정류장)을 받는 대로 채움
@@ -138,12 +157,13 @@ export function stopsMap(host, focus) {
       if (alive) draw();
     }, 300);
   };
+  traffic = trafficLayer(() => { if (alive) draw(); });
   const off = MapView.onIdle(load);
   // 누가 정류장 위치를 고치면 바로 다시 (지도는 그대로)
   const offEdit = Edits.onChange(load);
-  MapView.onTap(() => { picked = null; draw(); });
+  MapView.onTap(() => { picked = null; info = null; draw(); });
   MapView.ready.then(load);
-  return () => { alive = false; off(); offEdit(); card.remove(); };
+  return () => { alive = false; off(); offEdit(); card.remove(); traffic.destroy(); MapView.lines([]); };
 }
 
 window.addEventListener("hashchange", show);

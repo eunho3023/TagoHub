@@ -217,6 +217,9 @@ textarea:focus { border-color: var(--primary); }
 .locbtn { position: absolute; right: 10px; top: 10px; z-index: 600; width: 44px; height: 44px; border-radius: 14px; background: var(--glass); color: var(--muted);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; }
 .locbtn.on { color: var(--primary); }
+/* 서울 실시간 교통 켜기 (내 위치 버튼 아래) */
+.trafficbtn { top: 62px; }
+.home-map .trafficbtn { top: 86px; }
 .locbtn.wait svg { animation: s 1s linear infinite; }
 @keyframes s { to { transform: rotate(360deg); } }
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(37,99,235,.5); transform: translate(-50%, -50%); position: absolute; animation: mepulse 2s infinite; }
