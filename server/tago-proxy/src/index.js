@@ -278,7 +278,8 @@ async function busWeb(request, url, env, ctx) {
   const raw = env.DATA_GO_KR_KEY;
   const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b)
     : r.area === "jeonju" ? (b) => /<code[^>]*>000</.test(b)
-    : r.area === "jeju" ? (b) => /"STATION_ID"/.test(b)
+    // 제주는 배열로 답함 (노선 정류장·정류장 도착 모두. 도착은 STATION_ID 대신 ARRV_STATION_ID, 버스가 없으면 [])
+    : r.area === "jeju" ? (b) => b.trimStart().startsWith("[")
     : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
   const upstream = !r.url.includes("KEY") ? r.url : raw ? r.url.replace("KEY", encodeKey(raw)) : null;
   return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, upstream, r.ttl, ok,

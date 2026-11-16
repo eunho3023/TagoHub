@@ -190,11 +190,25 @@ sealed class BusDest {
  * 자체 API 가 있는 지역은 TAGO 로 대체하지 않는다 (정보가 섞이지 않게).
  */
 internal /**
- * 버스 도착정보: TAGO 버스도착정보(정류소별 도착예정정보) 하나로 — 제주·경기·전주 포함.
- * 서울은 TAGO 에 없어서(도시코드 목록에 서울 없음) 서울시 API (정류장 번호로).
+ * 버스 도착정보.
+ * - 서울: 서울시 API (TAGO 에 없음, 정류장 번호로)
+ * - 경기·전주·제주: 지역 API 먼저 (TAGO 보다 1~2분 새롭고 버스가 더 많음, [ArrivalMerge.preferLocal]). 못 받거나 비면 TAGO
+ * - 그 밖(부산·광주 등): TAGO 시간에 지역 API 의 방면·현재 정류장을 덧붙임 (지역 자료가 분 단위라 더 낫다고 보기 어려움)
  */
 suspend fun arrivalsFor(repo: TagoRepository, s: BusStop): TagoResult<List<BusArrival>> = when {
     SeoulBus.isSeoul(s.nodeId) -> s.nodeNo?.let { Graph.seoulBus.arrivals(it) } ?: TagoResult.Success(emptyList())
+    Gyeonggi.isGyeonggi(s.nodeId) && com.eunho.tagohub.data.RegionalBus.of(s) == null ||
+        Jeonju.isJeonju(s.nodeId) || Jeju.isJeju(s.nodeId) -> {
+        val local = runCatching {
+            when {
+                Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
+                Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
+                else -> Graph.gyeonggi.arrivals(s.nodeId)
+            }
+        }.getOrNull()
+        if ((local as? TagoResult.Success)?.data?.isNotEmpty() == true) com.eunho.tagohub.data.ArrivalMerge.preferLocal(local, TagoResult.Success(emptyList()))
+        else com.eunho.tagohub.data.ArrivalMerge.preferLocal(local, repo.stopArrivals(tagoCity(repo, s), s.nodeId))
+    }
     else -> kotlinx.coroutines.coroutineScope {
         // TAGO(시간·남은 정류장·저상) + 지역 API(방면·현재 정류장)를 동시에 받아 합침
         val tago = async { repo.stopArrivals(tagoCity(repo, s), s.nodeId) }
