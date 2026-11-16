@@ -110,7 +110,8 @@ class RoadLinkIndex(private val buf: ByteBuffer) {
                     if (abs(HeadingMath.delta(bearing, seg)) > MAX_TURN_DEG) continue
                 }
                 bestD = d
-                best = LatLng(lat + by / ky, lng + bx / kx)
+                // 선분 위 가장 가까운 점 (예전에는 선분 끝점을 줘서 버스가 도로 조각 끝으로 튀었음)
+                best = LatLng(lat + (ay + vy * tc) / ky, lng + (ax + vx * tc) / kx)
             }
         }
         return best

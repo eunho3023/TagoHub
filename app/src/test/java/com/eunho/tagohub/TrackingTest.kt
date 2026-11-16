@@ -30,6 +30,17 @@ class TrackingTest {
     }
 
     @Test
+    fun keepsRawGpsForDrawingOnMapRoads() {
+        // 지도는 노선 선이 아니라 실제 좌표(직전 → 지금)를 도로 위에 붙여 그림
+        val a = at(300.0, offN = 25.0)
+        val b = at(420.0, offN = -18.0)
+        val s = GpsTracker.next(GpsTracker.next(null, a, 1, geom, 0), b, 1, geom, 10_000)
+        assertEquals(a, s.track.fromRaw)
+        assertEquals(b, s.track.raw)
+        assertEquals(null, GpsTracker.next(null, a, 1, geom, 0).track.fromRaw)
+    }
+
+    @Test
     fun liveGps_detectedOnlyWhenMovingWithinSameStop() {
         // 정류장 좌표만 주는 지역: 정류장이 바뀔 때만 좌표가 바뀜 → live 아님
         var s = GpsTracker.next(null, at(0.0), 1, geom, 0)

@@ -3233,7 +3233,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 지도의 버스: GPS 를 주는 API(제주 BIS, TAGO, 서울)는 그 좌표, GPS 가 없는 API(경기 GBIS·전주시: 정류장 순번만)는
      * 지도에 그리지 않고 노선도(정류장 띠)에서만 보여 준다.
-     * GPS 버스는 노선 선 위로 붙인 위치를, 직전 위치 → 새 위치로 노선을 따라 이동 (그대로면 멈춤, 뒤로는 안 감).
+     * GPS 버스는 실제 좌표를 지도 도로(국토부 표준 링크, road_links.bin) 위로 붙여 그리고, 직전 위치 → 새 위치로 움직임.
+     * 노선 선을 따라가게 하지 않음 (노선 모양이 실제와 다른 곳에서 버스가 엉뚱한 길로 가 보였음). 도로가 30m 안에 없으면 받은 좌표 그대로.
+     * 그대로면 멈춤, 뒤로 오는 늦은 좌표는 GpsTracker 가 거름.
      */
     private fun pushBuses() {
         if (mapEdit.value != null) return // 지도 고치기 중엔 고치는 선만
@@ -3244,7 +3246,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val color = busRouteColor(d.routeType).toArgb()
-        val shape = d.shape.value
         val now = System.currentTimeMillis()
         canvas?.setBuses(d.buses.value.mapIndexedNotNull { n, b ->
             val id = b.vehicleNo ?: "bus$n"
@@ -3254,11 +3255,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // GPS 좌표가 없는 버스(정류장 순번만 주는 지역, TAGO 가 정류장 좌표만 주는 버스)는 지도에 그리지 않는다.
             // 이런 버스는 노선도(정류장 띠)에서만 보여 준다.
             if (g == null || state?.live != true) return@mapIndexedNotNull null
-            // 선형(모양)이 없는 노선은 정류장을 직선으로 이은 선 대신, 지금 좌표를 가장 가까운 도로 위로 붙여 그린다
-            val onRoad = if (shape == null) roadLinks?.snap(g.to.lat, g.to.lng) else null
-            val path = if (onRoad != null) listOf(onRoad) else GpsTracker.path(g, d.geom?.line ?: shape)
+            val prevRaw = g.fromRaw
+            // 움직인 방향 (15m 넘게 움직였을 때만): 그 방향 도로에만 붙여 반대 차로·옆 골목에 붙지 않게
+            val heading = prevRaw?.takeIf { Geo.meters(it.lat, it.lng, g.raw.lat, g.raw.lng) >= 15.0 }?.let { GpsTracker.bearingDeg(it, g.raw) }
+            fun onRoad(p: LatLng) = roadLinks?.snap(p.lat, p.lng, heading) ?: roadLinks?.snap(p.lat, p.lng) ?: p
+            val to = onRoad(g.raw)
+            val path = if (prevRaw != null) listOf(onRoad(prevRaw), to) else listOf(to)
             val dur = g.durMs.toDouble()
-            val k = if (onRoad != null || g.from == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
+            val k = if (prevRaw == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
             VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, label, "")
         })
         pushKlidBuses()

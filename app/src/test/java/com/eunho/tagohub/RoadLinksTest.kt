@@ -37,6 +37,17 @@ class RoadLinksTest {
     }
 
     @Test
+    fun snapPutsPointOnTheRoadNotAtSegmentEnd() {
+        val idx = tiny()
+        // 도로(위도 37.5, 경도 127.000~127.004)에서 북쪽으로 약 11m 떨어진 점 → 같은 경도의 도로 위
+        val p = idx.snap(37.5001, 127.0015)!!
+        assertEquals(37.5, p.lat, 1e-6)
+        assertEquals(127.0015, p.lng, 1e-6)
+        assertNull(idx.snap(37.5001, 127.0015, bearing = 270.0)) // 반대 방향 도로에는 붙이지 않음
+        assertNull(idx.snap(37.5010, 127.0015))                  // 30m 넘게 떨어짐
+    }
+
+    @Test
     fun emptyOrBrokenFileGivesNothing() {
         assertEquals(0, RoadLinkIndex(ByteBuffer.allocate(4)).count)
         assertNull(RoadLinkIndex(ByteBuffer.allocate(8)).find(37.5, 127.0, null))

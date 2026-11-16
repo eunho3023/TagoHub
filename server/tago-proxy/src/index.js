@@ -64,7 +64,9 @@ async function web(request, url, env, ctx) {
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
   if (env.WEB_LIMIT && (url.pathname.startsWith("/w/shape/") || url.pathname.startsWith("/w/log/") || url.pathname.startsWith("/w/poll/") || url.pathname.startsWith("/w/gps/") || url.pathname.startsWith("/w/topis/"))) {
-    const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    // 서울 교통은 화면 하나에 작은 요청을 30~40개씩 한꺼번에 보내서, 다른 기능(노선 모양 등)과 한도를 나누지 않게 따로 셈
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const { success } = await env.WEB_LIMIT.limit({ key: url.pathname.startsWith("/w/topis/") ? "topis:" + ip : ip });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
   if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
