@@ -1,5 +1,5 @@
 // 홈 (폰 앱 홈과 같은 모양): 로고·"어디로 가시나요?"·지도 바로가기, 실시간 도착 카드, 바로가기(집·회사·즐겨찾기·최근), 최근 검색, 즐겨찾기, 내 주변 정류장, 공지.
-import { esc, busColor, subwayColor, meters, distText } from "./core.js";
+import { esc, busColor, subwayColor, meters, distText, livePoll } from "./core.js";
 import { act, icon, note, bindInput } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent, HomeWork } from "./store.js";
@@ -113,7 +113,10 @@ export function render(root, _p, ctx) {
       ${rows}</div></div>`;
   }
 
-  async function paintLive() {
+  // 실패(못 받음)면 false: livePoll 이 2·4·6초 뒤 다시 물음. 그동안은 받아 둔 카드(2분 안)나 불러오는 모양을 두고,
+  // 마지막 시도(lastTry)에서만 "받지 못했어요". 단추로 부르면(인자 없음) 바로 결과를 보여 줌
+  async function paintLive(opt) {
+    const lastTry = opt?.lastTry ?? true;
     if (!alive || st.q.trim()) return;
     if (!("geolocation" in navigator)) {
       st.live = { state: "noperm", rows: null, at: 0, note: "이 브라우저는 위치를 지원하지 않아요." };
@@ -130,13 +133,23 @@ export function render(root, _p, ctx) {
       return;
     }
     const [la, lo] = here;
+    const fail = () => {
+      if (!alive) return false;
+      const fresh = st.live.state === "ok" && Date.now() - st.live.at < 120000;
+      if (!lastTry) { if (!fresh && st.live.state !== "loading") { st.live = { ...st.live, state: "loading" }; draw(); } return false; }
+      st.live = { state: "error", rows: null, at: 0, note: "도착 정보를 받지 못했어요." };
+      draw();
+      return false;
+    };
     try {
-      const near = (await B.stopsIn(la - 0.005, lo - 0.006, la + 0.005, lo + 0.006).catch(() => []))
+      const near = (await B.stopsIn(la - 0.005, lo - 0.006, la + 0.005, lo + 0.006))
         .map((s) => ({ s, m: meters(la, lo, s.lat, s.lng) }))
         .filter((x) => x.m <= 700)
         .sort((a, b) => a.m - b.m)
         .slice(0, 2);
-      const lists = await Promise.all(near.map(({ s }) => B.arrivals(s).catch(() => ({ state: "error", list: [] }))));
+      const lists = await Promise.all(near.map(({ s }) => B.arrivals(s).catch(() => ({ state: "failed", list: [] }))));
+      // 근처 정류장 도착을 하나도 못 받았으면 실패 ("700m 안에 없어요"로 보이던 것)
+      if (near.length && lists.every((x) => x.state === "failed")) return fail();
       const rows = [];
       near.forEach(({ s, m }, i) => {
         const got = lists[i];
@@ -146,8 +159,7 @@ export function render(root, _p, ctx) {
       if (!alive) return;
       st.live = { state: "ok", rows: rows.slice(0, 4), at: Date.now(), note: null };
     } catch (e) {
-      if (!alive) return;
-      st.live = { state: "error", rows: null, at: 0, note: "도착 정보를 받지 못했어요." };
+      return fail();
     }
     draw();
   }
@@ -179,37 +191,31 @@ export function render(root, _p, ctx) {
     draw();
   }
 
-  // 즐겨찾기 정류장의 가장 먼저 오는 버스 (30초마다)
-  const refresh = () => Favorites.stops.items.slice(0, 4).forEach(async (s) => {
-    const a = await B.arrivals(s);
-    if (a.state === "ok") st.first.set(s.id, { a: a.list[0] || null, at: a.at });
-    else if (a.state === "unsupported") st.first.set(s.id, { a: null, at: a.at });
-    if (alive && !st.q.trim()) draw();
-  });
-  refresh();
-  const t = setInterval(refresh, 30000);
+  // 즐겨찾기 정류장의 가장 먼저 오는 버스 (30초마다, 다른 앱에서 돌아오면 바로). 못 받은 정류장은 전에 받은 것을 그대로 두고 몇 초 뒤 다시
+  const refresh = async () => {
+    const got = await Promise.all(Favorites.stops.items.slice(0, 4).map(async (s) => {
+      const a = await B.arrivals(s);
+      if (a.state === "ok") st.first.set(s.id, { a: a.list[0] || null, at: a.at });
+      else if (a.state === "unsupported") st.first.set(s.id, { a: null, at: a.at });
+      if (alive && !st.q.trim()) draw();
+      return a.state !== "failed";
+    }));
+    return got.every(Boolean);
+  };
+  const favPoll = livePoll(refresh, 30000);
   // 실시간 도착 카드: 첫 화면에서 바로 채우고, 남은 시간은 1초마다 줄인다.
   // 서버 저장(5초)이 짧아 10초 주기면 사실상 최신이다. 탭이 가려지면 요청을 멈춘다.
+  // livePoll: 가려지면 멈추고, 돌아오거나 인터넷이 다시 켜지면 바로, 못 받으면 2·4·6초 뒤 다시
   const POLL_MS = 10000;
-  let lt = 0;
-  const startPoll = () => { if (!lt) lt = setInterval(() => { if (!document.hidden) paintLive(); }, POLL_MS); };
-  const stopPoll = () => { clearInterval(lt); lt = 0; };
-  const onVis = () => { if (document.hidden) stopPoll(); else { paintLive(); startPoll(); } };
-  const onOnline = () => paintLive();
-  document.addEventListener("visibilitychange", onVis);
-  window.addEventListener("online", onOnline);
-  paintLive();
-  startPoll();
+  const livePollH = livePoll(paintLive, POLL_MS);
   const tk = setInterval(() => { if (!document.hidden) tickEta(); }, 1000);
   bindInput(root, "#q", (v) => { st.q = v; draw(); }, 400);
   draw();
   return () => {
     alive = false;
     if (stopMap) stopMap();
-    clearInterval(t); clearInterval(tk);
-    stopPoll();
-    document.removeEventListener("visibilitychange", onVis);
-    window.removeEventListener("online", onOnline);
+    favPoll.stop(); clearInterval(tk);
+    livePollH.stop();
   };
 }
 

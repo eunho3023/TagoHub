@@ -456,23 +456,27 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
     }
     val etas by produceState(emptyMap<String, List<RouteEta>>(), shown) {
         val stops = shown.filter { it.kind == Favorite.Kind.Stop }
+        var fails = 0
         while (true) {
             // 앱이 내려가 있으면 기다림. 즐겨찾기마다 동시에 받고(공공 API 동시 요청은 앱이 4개로 제한), 오는 대로 화면에 채움.
             // 전에는 하나씩 차례로 받아서 즐겨찾기가 늘수록 오래 걸리고, 다 받은 뒤에야 한꺼번에 보였음
             com.eunho.tagohub.core.AppState.awaitForeground()
             val got = LinkedHashMap<String, List<RouteEta>>(value)
+            var failed = false
             kotlinx.coroutines.coroutineScope {
                 stops.forEach { f ->
                     launch {
                         got[f.id] = when (val r = runCatching { arrivalsFor(Graph.repo, f.toStop()) }.getOrNull()) {
                             is TagoResult.Success -> HomeText.routeEtas(r.data)
-                            else -> got[f.id] ?: emptyList()   // 이번에 못 받으면 지난 값을 그대로 둠
+                            else -> { failed = true; got[f.id] ?: emptyList() }   // 이번에 못 받으면 지난 값을 그대로 둠
                         }
                         value = LinkedHashMap(got)
                     }
                 }
             }
-            delay(45_000L)
+            // 못 받은 곳이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
+            fails = if (failed) fails + 1 else 0
+            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 45_000L))
         }
     }
     // 하나의 흰 카드 안에 줄로 나눠서, 도착 시간은 빨간 글씨

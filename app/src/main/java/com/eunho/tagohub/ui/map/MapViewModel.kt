@@ -1661,7 +1661,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: IOException) {
                     banner.value = "초정밀 버스 위치를 불러오지 못했어요: ${e.message}"
                 }
-                delay(KLID_BUS_REFRESH_MS)
+                com.eunho.tagohub.core.AppState.pause(KLID_BUS_REFRESH_MS, map = true)
             }
         }
     }
@@ -2410,9 +2410,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         var first = true
+        var fails = 0
         while (true) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
             tracked { loadStopBoard(repo, d) }
+            // 못 받았으면(처음부터 실패, 또는 이전 정보를 보여 주는 중) 15초 대신 2·4·6초 뒤 다시
+            fails = if (d.rows.value is Load.Fail || d.note.value?.startsWith("새로고침에 실패") == true) fails + 1 else 0
             if (first) {
                 first = false
                 // 실시간 지역인데 지나는 노선이 하나도 없는 정류장: 같은 자리의 다른 ID 정류장으로
@@ -2428,7 +2431,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 viewModelScope.launch { loadDirection(repo, d) }
             }
-            delay(15_000)
+            // 다른 앱에 갔다 오면 남은 시간을 기다리지 않고 바로 새로 받음
+            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 15_000), map = true)
         }
     }
 
@@ -2550,7 +2554,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
             tracked { refreshBusData(repo, d) }
             pushBuses()
-            delay(10_000)
+            com.eunho.tagohub.core.AppState.pause(10_000, map = true)
         }
     }
 
@@ -2573,6 +2577,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         pushTrains()
         if (want.isEmpty()) return
         trainJob = viewModelScope.launch {
+            var trainFails = 0
             while (true) {
                 com.eunho.tagohub.core.AppState.awaitMapVisible()
                 val results = coroutineScope {
@@ -2585,10 +2590,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                         is TagoResult.Error -> { error = r.message }
                     }
                 }
+                trainFails = if (error != null) trainFails + 1 else 0
                 if (error != null && error != lastTrainError) banner.value = error
                 lastTrainError = error
                 pushTrains()
-                delay(30_000)
+                com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(trainFails, 30_000), map = true)
             }
         }
     }
@@ -2626,7 +2632,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 while (true) {
                     com.eunho.tagohub.core.AppState.awaitMapVisible()
                     com.eunho.tagohub.data.MapEdits.refresh()
-                    delay(com.eunho.tagohub.data.MapEdits.POLL_MS)
+                    com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.data.MapEdits.POLL_MS, map = true)
                 }
             }
             com.eunho.tagohub.data.MapEdits.version.collect { v -> if (v != seen) { seen = v; if (mapEdit.value == null) applyEdits() } }

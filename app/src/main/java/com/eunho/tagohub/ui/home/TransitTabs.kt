@@ -105,21 +105,25 @@ internal fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit, onSho
     }
     if (stops.isEmpty()) return
     val etas by androidx.compose.runtime.produceState(emptyMap<String, List<RouteEta>>(), stops) {
+        var fails = 0
         while (true) {
             com.eunho.tagohub.core.AppState.awaitForeground()
             val got = LinkedHashMap<String, List<RouteEta>>(value)
+            var failed = false
             kotlinx.coroutines.coroutineScope {
                 stops.forEach { (s, _) ->
                     launch {
                         got[s.nodeId] = when (val r = runCatching { com.eunho.tagohub.ui.bus.arrivalsFor(com.eunho.tagohub.data.Graph.repo, s) }.getOrNull()) {
                             is com.eunho.tagohub.core.TagoResult.Success -> HomeText.routeEtas(r.data)
-                            else -> got[s.nodeId] ?: emptyList()
+                            else -> { failed = true; got[s.nodeId] ?: emptyList() }
                         }
                         value = LinkedHashMap(got)
                     }
                 }
             }
-            kotlinx.coroutines.delay(45_000L)
+            // 못 받은 곳이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
+            fails = if (failed) fails + 1 else 0
+            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 45_000L))
         }
     }
     val red = if (com.eunho.tagohub.ui.theme.LocalDarkTheme.current) androidx.compose.ui.graphics.Color(0xFFFF8A80) else androidx.compose.ui.graphics.Color(0xFFD92D20)

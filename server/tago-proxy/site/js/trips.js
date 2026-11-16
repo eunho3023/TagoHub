@@ -1,5 +1,5 @@
 // 기차(서버에 올린 한국철도공사 시간표 + 국토교통부 종류·요금)와 고속·시외버스(국토교통부) 시간표.
-import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay } from "./core.js";
+import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, onReturn } from "./core.js";
 import { act, header, note } from "./ui.js";
 import { clock } from "./subway.js";
 
@@ -106,7 +106,9 @@ export function trainScreen(root, chipsHtml) {
     r.after();
   }
   load();
-  return () => { alive = false; };
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  const offReturn = onReturn(() => { if (alive && failed) load(); });
+  return () => { alive = false; offReturn(); };
 }
 
 // ── 고속·시외버스 ──
@@ -181,5 +183,7 @@ export function coachScreen(root, chipsHtml) {
     r.after();
   }
   coach.editing ? draw() : load();
-  return () => { alive = false; };
+  // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
+  const offReturn = onReturn(() => { if (alive && failed) load(); });
+  return () => { alive = false; offReturn(); };
 }

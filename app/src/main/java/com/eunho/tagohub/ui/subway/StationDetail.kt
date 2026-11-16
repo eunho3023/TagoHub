@@ -139,14 +139,17 @@ class StationDetailController(
             d.arrivals.value = Load.Ok(emptyList())
             return
         }
+        var fails = 0
         while (true) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
             val fetched = seoul.arrivals(d.group)
+            fails = if (fetched is TagoResult.Success) 0 else fails + 1
             // 새로고침해도 남은 시간이 거꾸로 늘지 않게
             val r = if (fetched is TagoResult.Success) TagoResult.Success(com.eunho.tagohub.data.ArrivalSmoothing.subway((d.arrivals.value as? Load.Ok)?.value, fetched.data, java.time.LocalDateTime.now())) else fetched
             if (r is TagoResult.Success || d.arrivals.value !is Load.Ok) d.arrivals.value = r.toLoad()
             if (r is TagoResult.Success) d.arrivalsUpdated.value = LocalTime.now()
-            delay(20_000)
+            // 못 받으면 2·4·6초 뒤 다시(받아 둔 도착은 그대로), 다른 앱에 갔다 오면 바로
+            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 20_000), map = true)
         }
     }
 
