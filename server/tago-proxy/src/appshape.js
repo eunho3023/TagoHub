@@ -4,7 +4,7 @@
 // PUT  /appshape/<노선 id> {poly}   (앱 토큰) → 처음 올린 것만 저장 (이미 있으면 그대로, kept:false)
 // 웹: /w/shape/<노선 id> 가 이 모양을 먼저 돌려줌 (src/shape.js handleShape)
 
-import { decode, distToPath, bucket } from "./shape.js";
+import { decode, distToPath, bucket, seoulOfficial } from "./shape.js";
 
 const HEAD = { "Content-Type": "application/json; charset=utf-8" };
 const MAX_POINTS = 8000;
@@ -52,7 +52,7 @@ async function fileStops(env, id) {
   } catch { return null; }
 }
 
-export async function handleAppShape(request, url, env) {
+export async function handleAppShape(request, url, env, fetcher = fetch) {
   const id = decodeURIComponent(url.pathname.slice("/appshape/".length));
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) return new Response("not allowed", { status: 404, headers: HEAD });
   if (!env.DB) return new Response("no db", { status: 503, headers: HEAD });
@@ -60,6 +60,9 @@ export async function handleAppShape(request, url, env) {
     // 버스가 실제로 지나간 자리로 만든 모양(src/gps.js, shapes 표 sig 끝 ":g")이 있으면 그것을 먼저 → 앱·웹 모두 같은 실제 길
     const g = await env.DB.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first().catch(() => null);
     if (g && String(g.sig).endsWith(":g")) return new Response(JSON.stringify({ poly: g.poly, src: "gps" }), { headers: HEAD });
+    // 서울 노선은 서울시 공식 경로 (앱이 올린 모양보다 먼저: 서울 API 401 때 올라간 엉뚱한 모양을 덮음)
+    const seoul = await seoulOfficial(env, id, fetcher).catch(() => null);
+    if (seoul) return new Response(JSON.stringify({ poly: seoul, src: "official" }), { headers: HEAD });
     const poly = await appShape(env.DB, id);
     return poly ? new Response(JSON.stringify({ poly }), { headers: HEAD }) : new Response("none", { status: 404, headers: HEAD });
   }
