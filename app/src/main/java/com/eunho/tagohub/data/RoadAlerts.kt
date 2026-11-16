@@ -19,6 +19,10 @@ enum class RoadAlertKind(val label: String, val announceM: Double, val maxOffset
     /** 한국도로공사 정체 구간 */
     Congest("고속도로 정체 구간", 3000.0, 250.0),
     Rest("휴게소", 2000.0, 250.0),
+    /** 서울 실시간 돌발 (서울시 교통정보 TOPIS: 사고·공사·행사 등) */
+    CityIncident("서울 돌발", 1500.0, 80.0),
+    /** 서울 정체 구간 (TOPIS 링크 속도, 같은 방향 링크만) */
+    CityCongest("서울 정체 구간", 1500.0, 40.0),
 }
 
 /** 지도 위의 위험·시설 한 곳 */

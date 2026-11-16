@@ -210,7 +210,9 @@ class DriveGuidanceService : Service() {
     private fun loadAlerts(nav: NavRoute) {
         scope.launch(Dispatchers.Default) {
             val hazards = RoadHazards.load(applicationContext)
-            if (currentNav === nav) alertTracker = RoadAlertTracker(RoadAlerts.match(nav, hazards))
+            // 서울 정체 구간: 경로가 지나는 서울 링크의 지금 속도로 (경로마다 따로, 서울 밖이면 빈 목록)
+            val jams = runCatching { kotlinx.coroutines.withTimeoutOrNull(30_000L) { com.eunho.tagohub.data.SeoulTopis.routeCongestion(applicationContext, nav) } }.getOrNull().orEmpty()
+            if (currentNav === nav) alertTracker = RoadAlertTracker(RoadAlerts.match(nav, hazards + jams))
         }
     }
 
