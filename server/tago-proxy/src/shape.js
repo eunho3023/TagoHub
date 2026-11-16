@@ -445,6 +445,28 @@ export async function officialShape(env, id, fetcher) {
   } catch (_) { /* 없음 */ }
   return null;
 }
+
+/**
+ * 서울 노선(SEB…)의 서울시 공식 경로(getRoutePath)를 폴리라인 글자로. 정류장의 80% 가 120m 안을 지날 때만 (노선이 바뀌었으면 null).
+ * 앱이 올린 모양보다 먼저 씀: 앱이 서울 API 를 못 받던 때(HTTP 401) 카카오·OSRM 으로 대신 만든 엉뚱한 모양이 올라가
+ * 앱·웹 모두 그걸 그렸음. 하루 저장(없으면 1시간)
+ */
+export async function seoulOfficial(env, id, fetcher = fetch) {
+  if (!/^SEB\d{1,12}$/.test(id)) return null;
+  const cache = caches.default;
+  const key = new Request(`https://cache.tagohub/official/v1/${id}`);
+  const hit = await cache.match(key).catch(() => null);
+  if (hit) return (await hit.text()) || null;
+  const pts = await officialShape(env, id, fetcher).catch(() => null);
+  let poly = null;
+  if (pts && pts.length >= 2) {
+    const stops = await routeStops(env, id).catch(() => null);
+    const fits = !stops || stops.length < 2 || stops.filter((s) => distToPath(s, pts) <= 120).length >= stops.length * 0.8;
+    if (fits) poly = encode(pts, 5);
+  }
+  await cache.put(key, new Response(poly || "", { headers: { "Cache-Control": `public, max-age=${poly ? 86400 : 3600}` } })).catch(() => {});
+  return poly;
+}
 function pointsOf(list, seqKey, latKey, lngKey) {
   const rows = (Array.isArray(list) ? list : list ? [list] : [])
     .map((x) => [+x[seqKey] || 0, parseFloat(x[latKey]), parseFloat(x[lngKey])]).filter((x) => Number.isFinite(x[1]) && Number.isFinite(x[2]));
@@ -507,6 +529,9 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   // 버스가 실제로 지나간 자리로 만든 모양(src/gps.js, sig 끝 ":g")이 있으면 그것이 가장 먼저 (실제 길·차로·회전교차로 그대로)
   const fromGps = env.DB ? await gpsStored(env.DB, id).catch(() => null) : null;
   if (fromGps) return new Response(JSON.stringify({ poly: fromGps, src: "gps" }), { headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
+  // 서울 노선은 서울시 공식 경로 (앱이 올린 모양보다 먼저)
+  const seoul = await seoulOfficial(env, id, fetcher).catch(() => null);
+  if (seoul) return new Response(JSON.stringify({ poly: seoul, src: "official" }), { headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
   // 앱(폰)이 만들어 올린 모양이 있으면 그것 (앱과 웹의 노선 선이 같게, src/appshape.js). 저장해 둔 서버 모양보다 먼저
   const fromApp = env.DB ? await appShape(env.DB, id).catch(() => null) : null;
   if (fromApp) return new Response(JSON.stringify({ poly: fromApp, src: "app" }), { headers: { ...HEAD, "Cache-Control": "public, max-age=300" } });
