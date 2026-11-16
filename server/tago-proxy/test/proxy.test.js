@@ -242,6 +242,10 @@ test("제주 노선 정류장 차례: 제주 버스정보 (키 없음, 하루 �
   assert.equal(r.url, "https://bus.jeju.go.kr/api/searchBusRouteStationList.do?route_id=405130002");
   assert.equal(r.cacheKey, "bus/jeju/stops/405130002");
   assert.equal(r.ttl, 86400);
-  assert.equal(busWebRequest("/w/bus/jeju/arrival/405130002"), null);
+  // 정류장 도착 (TAGO 보다 새로워 웹이 먼저 씀, 5초 저장)
+  const a = busWebRequest("/w/bus/jeju/arrival/405000153");
+  assert.equal(a.url, "https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=405000153");
+  assert.equal(a.ttl, 5);
+  assert.equal(busWebRequest("/w/bus/jeju/pos/405130002"), null);
   assert.equal(busWebRequest("/w/bus/jeju/stops/12"), null);
 });

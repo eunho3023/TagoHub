@@ -576,7 +576,6 @@ async function targets(stop) {
   const metro = new Set();
   for (const s of [stop, ...same]) {
     if (s.id.startsWith("SEB") && ars(s.no)) metro.add("w/bus/seoul/arrival/" + ars(s.no));
-    if (ggId(s.id) && ggCity(s.city)) metro.add("w/bus/gg/arrival/" + ggId(s.id));
   }
   return { tago: out.slice(0, 5), metro: [...metro].slice(0, 3) };
 }
@@ -600,22 +599,42 @@ async function jeonjuArrivals(id) {
   }).filter((a) => a.routeNo && a.arrSeconds != null);
 }
 
+/** 제주 버스정보 정류장 도착 (bus.jeju.go.kr, 앱과 같은 자료). predict_trav_tm 분, remain_station 남은 정류장 */
+async function jejuArrivals(id) {
+  const rows = JSON.parse(await getText("w/bus/jeju/arrival/" + id.slice(3)));
+  return (Array.isArray(rows) ? rows : findRows(rows, "ROUTE_NUM")).map((r) => {
+    const g = (k) => r[k] ?? r[k.toLowerCase()];
+    const min = int(g("PREDICT_TRAV_TM"));
+    return { routeId: g("ROUTE_ID") != null ? "JEB" + g("ROUTE_ID") : "", routeNo: String(g("ROUTE_NUM") ?? ""), routeType: null,
+      vehicleType: g("LOW_PLATE_TP") === "Y" ? "저상버스" : null, prevStops: int(g("REMAIN_STATION")), arrSeconds: min == null ? null : min * 60, city: "39",
+      towards: str(g("ROUTE_SUB_NM")) };
+  }).filter((a) => a.routeNo && a.arrSeconds != null);
+}
+
+/** 정류장의 지역 자체 도착 (경기 GBIS·전주시·제주 BIS). 없으면 null */
+function localArrivals(s) {
+  if (/^JUB\d{9}$/.test(s.id)) return jeonjuArrivals(s.id);
+  if (/^JEB\d{9}$/.test(s.id)) return jejuArrivals(s.id);
+  if (ggId(s.id) && ggCity(s.city)) return getText("w/bus/gg/arrival/" + ggId(s.id)).then(ggArrivals);
+  return null;
+}
+
 export async function arrivals(stop) {
   try {
     const t = await targets(stop);
-    // 전주 정류장: 전주시 버스정보 도착 (앱과 같은 자료). 받으면 그 정류장의 TAGO 도착은 쓰지 않음
-    const jeonju = [...new Set([stop, ...(await sameSpot(stop))].map((s) => (/^JUB\d{9}$/.test(s.id) ? s.id : null)).filter(Boolean))];
-    if (!t.tago.length && !t.metro.length && !jeonju.length) return { state: "unsupported", list: [], at: Date.now() };
-    // 지역마다 한꺼번에 물음 (차례로 물으면 느린 지역들의 시간을 더한 만큼 늦음).
-    // 전주 정류장의 TAGO 도착은 전주시 도착을 못 받았을 때만 씀
-    const juP = jeonju.map((id) => jeonjuArrivals(id));
+    // 경기·전주·제주 정류장: 지역 자체 도착을 먼저 (앱과 같음). 같은 정류장·같은 순간에 비교하니 TAGO 보다 1~2분 새롭고 버스가 더 많았음.
+    // 그 정류장의 TAGO 도착은 지역 도착을 못 받았거나 비었을 때만 씀 (둘 다 쓰면 같은 버스가 시간이 달라 두 번 보였음)
+    const locals = new Map();
+    for (const s of [stop, ...(await sameSpot(stop))]) if (!locals.has(s.id)) { const p = localArrivals(s); if (p) locals.set(s.id, p); }
+    if (!t.tago.length && !t.metro.length && !locals.size) return { state: "unsupported", list: [], at: Date.now() };
+    // 지역마다 한꺼번에 물음 (차례로 물으면 느린 지역들의 시간을 더한 만큼 늦음)
     const res = await Promise.allSettled([
-      ...juP,
+      ...locals.values(),
       ...t.tago.map(([c, id]) => {
-        const k = jeonju.indexOf(id);
-        return k < 0 ? tagoArrivals(c, id) : juP[k].then(() => [], () => tagoArrivals(c, id));
+        const p = locals.get(id);
+        return p ? p.then((l) => (l.length ? [] : tagoArrivals(c, id)), () => tagoArrivals(c, id)) : tagoArrivals(c, id);
       }),
-      ...t.metro.map(async (p) => { const b = await getText(p); return p.includes("/seoul/") ? seoulArrivals(b) : ggArrivals(b); }),
+      ...t.metro.map(async (p) => seoulArrivals(await getText(p))),
     ]);
     if (res.every((r) => r.status === "rejected")) throw res[0].reason;
     const seen1 = new Set(), seen2 = new Set();

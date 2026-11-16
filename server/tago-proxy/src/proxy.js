@@ -279,7 +279,10 @@ export function busWebRequest(pathname) {
   // 제주 노선 정류장 차례 (제주 버스정보 bus.jeju.go.kr, 키 없음, 앱과 같은 자료, 하루 저장).
   // TAGO 노선정보 하루 한도가 찼을 때 웹이 제주 노선을 여는 데 씀
   if (area === "jeju") {
-    if (op !== "stops" || !/^\d{9}$/.test(id)) return null;
+    if (!/^\d{9}$/.test(id)) return null;
+    // 정류장 도착 예정 (제주 버스정보, 앱과 같은 자료, 5초 저장): TAGO 보다 새롭고 버스가 더 많이 나옴
+    if (op === "arrival") return { area, url: `https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=${id}`, cacheKey: `bus/jeju/arrival/${id}`, ttl: 5 };
+    if (op !== "stops") return null;
     return { area, url: `https://bus.jeju.go.kr/api/searchBusRouteStationList.do?route_id=${id}`, cacheKey: `bus/jeju/stops/${id}`, ttl: 86400 };
   }
   // 전주 정류장을 지나는 노선 (전주시 버스정보, 하루 저장). TAGO 는 전주 정류장 경유 노선을 주지 않음
