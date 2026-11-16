@@ -550,7 +550,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
  */
 internal suspend fun loadDirection(repo: TagoRepository, d: BusDest.Stop) {
     if (d.direction.value != null) return
-    val routes = d.lastRoutes.orEmpty().take(4)
+    val routes = d.lastRoutes.orEmpty()   // 모든 노선 (예전엔 4개까지만)
     if (routes.isEmpty()) return
     val names = coroutineScope {
         routes.map { r -> async { nextStopName(repo, d.stop, r) } }.awaitAll()
@@ -890,7 +890,6 @@ private fun mergeWithGrace(d: BusDest.Route, freshRaw: List<BusLocation>): List<
 
 private val busPosCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<Int>>>()
 private const val BUS_POS_TTL_MS = 14_000L   // 정류장 화면은 15초마다 새로고침: 매번 새 위치로
-private const val BUS_POS_MAX_ROUTES = 5
 
 /** 승차 알림용: 이 정류장의 도착 정보에서 지나간 버스를 빼고 위치로 바로잡은 목록. 못 받으면 null */
 internal suspend fun liveArrivalsFor(repo: TagoRepository, stop: BusStop): List<BusArrival>? {
@@ -903,13 +902,13 @@ internal suspend fun liveArrivalsFor(repo: TagoRepository, stop: BusStop): List<
  * (도착 예측이 늦게 갱신돼 지나간 버스가 "3정류장 전 · 3분" 으로 남는 경우).
  * 위치로는 도착 정보보다 더 가까이 와 있으면 남은 정류장 수와 시간을 위치에 맞춘다 ([PassedByPosition.closer]).
  * 버스 위치는 지역마다 받는 곳이 달라서([busOrdsOnRoute]) 노선 정류장 목록의 정류장 ID 로 순번을 맞춘다.
- * 노선당 위치 조회가 한 번 늘어나므로, 해당하는 노선만 최대 [BUS_POS_MAX_ROUTES] 개, 14초 동안 결과를 재사용한다
+ * 노선당 위치 조회가 한 번 늘어나므로 14초 동안 결과를 재사용한다. 해당하는 노선은 모두 봄 (예전엔 한도를 아끼려고 5개까지만)
  * (버스 위치는 30~60초마다 바뀜). 위치를 못 받거나 정류장이 노선에 여러 번 나오면 판단하지 않고 그대로 둔다.
  */
 private suspend fun dropPassedByPosition(repo: TagoRepository, d: BusDest.Stop, list: List<BusArrival>): List<BusArrival> {
     val firsts = list.filter { !it.scheduled && (it.prevStops ?: Int.MAX_VALUE) <= PassedByPosition.APPROACH_STOPS }
         .groupBy { it.routeId }.values.map { g -> g.minBy { it.arrSeconds ?: Int.MAX_VALUE } }
-        .sortedBy { it.arrSeconds ?: Int.MAX_VALUE }.take(BUS_POS_MAX_ROUTES)
+        .sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
     if (firsts.isEmpty()) return list
     val city = runCatching { tagoCity(repo, d.stop) }.getOrDefault(d.stop.cityCode)
     val verdicts = coroutineScope {

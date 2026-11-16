@@ -123,7 +123,7 @@ internal fun NearbyStops(onStop: (com.eunho.tagohub.data.BusStop) -> Unit, onSho
             }
             // 못 받은 곳이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
             fails = if (failed) fails + 1 else 0
-            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 45_000L))
+            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 15_000L))   // 정류장 화면과 같은 15초 (예전엔 45초)
         }
     }
     val red = if (com.eunho.tagohub.ui.theme.LocalDarkTheme.current) androidx.compose.ui.graphics.Color(0xFFFF8A80) else androidx.compose.ui.graphics.Color(0xFFD92D20)

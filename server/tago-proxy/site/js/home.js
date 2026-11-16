@@ -52,7 +52,7 @@ export function render(root, _p, ctx) {
       });
       return;
     }
-    const favStops = Favorites.stops.items.slice(0, 4), favSt = Favorites.stations.items, rec = Recent.places.items;
+    const favStops = Favorites.stops.items, favSt = Favorites.stations.items, rec = Recent.places.items;
     const home = HomeWork.home, work = HomeWork.work;
     const tile = (label, ic, run) => `<button class="tile" ${act(run)}><span class="tile-ic">${icon(ic, 26)}</span><span>${label}</span></button>`;
     body.innerHTML = `${liveSection()}
@@ -191,9 +191,10 @@ export function render(root, _p, ctx) {
     draw();
   }
 
-  // 즐겨찾기 정류장의 가장 먼저 오는 버스 (30초마다, 다른 앱에서 돌아오면 바로). 못 받은 정류장은 전에 받은 것을 그대로 두고 몇 초 뒤 다시
+  // 즐겨찾기 정류장(모두)의 가장 먼저 오는 버스 (정류장 화면과 같은 15초마다, 다른 앱에서 돌아오면 바로). 못 받은 정류장은 전에 받은 것을 그대로 두고 몇 초 뒤 다시.
+  // 예전엔 한도를 아끼려고 4곳·30초마다
   const refresh = async () => {
-    const got = await Promise.all(Favorites.stops.items.slice(0, 4).map(async (s) => {
+    const got = await Promise.all(Favorites.stops.items.map(async (s) => {
       const a = await B.arrivals(s);
       if (a.state === "ok") st.first.set(s.id, { a: a.list[0] || null, at: a.at });
       else if (a.state === "unsupported") st.first.set(s.id, { a: null, at: a.at });
@@ -202,7 +203,7 @@ export function render(root, _p, ctx) {
     }));
     return got.every(Boolean);
   };
-  const favPoll = livePoll(refresh, 30000);
+  const favPoll = livePoll(refresh, 15000);
   // 실시간 도착 카드: 첫 화면에서 바로 채우고, 남은 시간은 1초마다 줄인다.
   // 서버 저장(5초)이 짧아 10초 주기면 사실상 최신이다. 탭이 가려지면 요청을 멈춘다.
   // livePoll: 가려지면 멈추고, 돌아오거나 인터넷이 다시 켜지면 바로, 못 받으면 2·4·6초 뒤 다시

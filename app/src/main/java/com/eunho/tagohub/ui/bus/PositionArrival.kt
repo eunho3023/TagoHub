@@ -23,12 +23,9 @@ private const val MAX_SECOND_STOPS = 40
 
 /** 같은 정류장·노선의 어림 결과를 다시 쓰는 시간 (새로고침마다 노선 API 를 또 부르지 않게) */
 private const val ESTIMATE_TTL_MS = 14_000L
-/** 지난 운행 기록으로 다음 차를 어림할 노선 수 (정류장 하나에서) */
-private const val MAX_LOG_ROUTES = 6
 /** 첫 버스 도착 뒤 이만큼(초) 안의 기록은 그 첫 버스로 봄 */
 private const val LOG_SAME_BUS_SEC = 180
 private const val ESTIMATE_TIMEOUT_MS = 8_000L
-private const val MAX_ESTIMATE_ROUTES = 14
 
 
 private fun clockMinutes(t: String?): Int? =
@@ -118,7 +115,7 @@ internal suspend fun positionArrivals(repo: TagoRepository, stop: BusStop, row: 
 }
 
 /**
- * 도착정보(API)와 버스 위치를 맞춰 본다. 최대 [MAX_ESTIMATE_ROUTES] 개 노선, 동시에.
+ * 도착정보(API)와 버스 위치를 맞춰 본다. 해당하는 모든 노선을 동시에 (예전엔 한도를 아끼려고 14개까지만).
  *  1) 도착정보가 비었는데(운행종료도 아님) 달리고 있는 노선: 위치로 "N정류장 전 · 약 M분"을 어림해 채운다.
  *     같은 번호의 다른 변형 노선에 이미 실제 도착정보가 있으면 그 노선의 버스일 가능성이 커서 어림하지 않는다.
  *  2) 도착정보와 위치가 어긋나면 위치를 따른다: 이미 정류장에 와 있으면 "정류장 도착", 도착정보의 첫 버스보다 [RouteLive.NEARER_GAP] 정류장 이상 가까운 버스가 위치에 있으면(API 가 빠뜨림) 그 버스를 앞에 끼운다
@@ -137,7 +134,7 @@ internal suspend fun fillFromPositions(
     fun needsCheck(r: StopRouteRow) = r.arrivals.firstOrNull()?.let { a -> !a.estimated && (a.prevStops ?: 0) >= 1 } == true
     // 도착정보가 한 대만 있으면 둘째 버스를 위치로 채움
     fun needsSecond(r: StopRouteRow) = r.arrivals.size == 1 && !r.arrivals[0].estimated
-    val targets = rows.filter { needsEstimate(it) || needsCheck(it) || needsSecond(it) }.take(MAX_ESTIMATE_ROUTES)
+    val targets = rows.filter { needsEstimate(it) || needsCheck(it) || needsSecond(it) }
     if (targets.isEmpty()) return rows
     val found: Map<String, List<BusArrival>> = coroutineScope {
         targets.map { r ->
@@ -176,10 +173,9 @@ internal suspend fun fillFromPositions(
  * 노선 정보·운행 시각은 캐시돼 있어 호출이 거의 늘지 않는다.
  */
 private suspend fun withHeadwaySecond(repo: TagoRepository, stop: BusStop, rows: List<StopRouteRow>): List<StopRouteRow> = coroutineScope {
-    var lookups = 0
     rows.map { r ->
-        // 지난 운행 기록을 물어볼 노선 수 제한 (노선이 많은 정류장에서 요청이 몰리지 않게)
-        val useLog = (r.arrivals.size == 1 && !r.arrivals[0].scheduled || r.arrivals.isEmpty() && !r.ended) && lookups++ < MAX_LOG_ROUTES
+        // 지난 운행 기록은 해당하는 모든 노선에 물음 (예전엔 한도를 아끼려고 6개 노선까지만)
+        val useLog = r.arrivals.size == 1 && !r.arrivals[0].scheduled || r.arrivals.isEmpty() && !r.ended
         async {
             // 도착 정보도 버스 위치도 없는 노선: 지난 운행 기록에 여러 날 이 무렵 온 버스가 있으면 "약 N분 · 지난 기록 기준"
             if (r.arrivals.isEmpty()) {

@@ -476,7 +476,7 @@ internal fun Favorites(vm: MapViewModel, onFavorite: (Favorite) -> Unit) {
             }
             // 못 받은 곳이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
             fails = if (failed) fails + 1 else 0
-            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 45_000L))
+            com.eunho.tagohub.core.AppState.pause(com.eunho.tagohub.core.AppState.retryMs(fails, 15_000L))   // 정류장 화면과 같은 15초 (예전엔 45초)
         }
     }
     // 하나의 흰 카드 안에 줄로 나눠서, 도착 시간은 빨간 글씨

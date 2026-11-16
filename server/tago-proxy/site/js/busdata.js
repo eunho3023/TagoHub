@@ -578,7 +578,8 @@ async function targets(stop) {
   for (const s of [stop, ...same]) {
     if (s.id.startsWith("SEB") && ars(s.no)) metro.add("w/bus/seoul/arrival/" + ars(s.no));
   }
-  return { tago: out.slice(0, 5), metro: [...metro].slice(0, 3) };
+  // 같은 자리의 모든 정류장 (예전엔 TAGO 5곳·서울 3곳까지만)
+  return { tago: out, metro: [...metro] };
 }
 
 async function tagoArrivals(city, node) {
@@ -682,7 +683,8 @@ export async function arrivals(stop, { quickMs = null, reuse = null } = {}) {
 
 // ── 버스 위치로 도착 정보 고치기 (앱 PassedByPosition 과 같은 규칙) ──
 // 도착 예측은 늦게 갱신되고 버스 위치가 더 새로운 경우가 많아서: 막 지나간 버스는 빼고, 위치가 더 가까우면 남은 정류장·시간을 줄임
-const APPROACH_STOPS = 6, JUST_PASSED_STOPS = 2, MAX_ROUTES = 6;
+// 다가오는 모든 노선의 버스 위치를 봄 (예전엔 한도를 아끼려고 6개 노선까지만 → 나머지 노선은 막 지나간 버스가 남아 보였음)
+const APPROACH_STOPS = 6, JUST_PASSED_STOPS = 2;
 const memo = new Map();
 function remembered(key, ms, make) {
   const hit = memo.get(key);
@@ -919,7 +921,7 @@ async function fixByPosition(stop, list) {
   if (!firsts.size) return list;
   const ids = new Set([stop, ...(await sameSpot(stop))].map((s) => s.id));
   const out = new Map();
-  await Promise.all([...firsts.values()].slice(0, MAX_ROUTES).map(async (a) => {
+  await Promise.all([...firsts.values()].map(async (a) => {
     try {
       const r = await remembered("route|" + a.routeId, 600000, () => route(a.routeId, a.city || null));
       if (!r || !r.stops.length) return;
