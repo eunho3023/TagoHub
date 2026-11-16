@@ -18,6 +18,16 @@ class SeoulTopisTest {
         assertEquals(3, SeoulTopis.grade("05", 14))
     }
 
+    /** 서울 링크 근처(60m 안)만 "덮음" → 그 자리 고속도로 소통 선은 빼서 겹치지 않게 */
+    @Test
+    fun covers_onlyNearSeoulLinks() {
+        val pts = listOf(com.eunho.tagohub.data.LatLng(37.50, 127.00), com.eunho.tagohub.data.LatLng(37.50, 127.01))
+        val link = SeoulTopis.Link("1", "경부고속도로", "a", "b", 880, "02", pts, 37.50, 127.00, 37.50, 127.01)
+        assertTrue(SeoulTopis.covers(listOf(link), 37.5003, 127.005))   // 약 33m
+        assertFalse(SeoulTopis.covers(listOf(link), 37.5010, 127.005))  // 약 110m
+        assertFalse(SeoulTopis.covers(emptyList(), 37.5, 127.005))
+    }
+
     @Test
     fun inSeoul_onlyAroundSeoul() {
         assertTrue(SeoulTopis.inSeoul(37.49, 127.02, 37.51, 127.04))      // 강남역

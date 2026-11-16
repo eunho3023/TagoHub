@@ -19,14 +19,15 @@ import kotlin.math.hypot
 /**
  * 서울 실시간 교통 (서울시 교통정보 TOPIS). 웹 site/js/topis.js 와 같은 자료·기준.
  *  - 도로 링크 모양: assets/seoul_links.json (pipeline/build_seoul_links.py, 한 방향 링크 5천여 개)
- *  - 실시간 값: 서버 /w/topis/… (src/seoultraffic.js) — 링크 속도(5분 저장), 돌발, 교통량 지점·시각별 교통량
- * 지도 층(서울 도로 소통·서울 돌발·서울 교통량)과 운전 길안내(앞쪽 정체 구간·돌발)에 씀.
+ *  - 실시간 값: 서버 /w/topis/… (src/seoultraffic.js) — 링크 속도(5분 저장), 돌발
+ * 지도 층(서울 도로 소통·서울 돌발)과 운전 길안내(앞쪽 정체 구간·돌발)에 씀. (교통량 지점 층은 쓰는 사람이 적어 뺐음)
  */
 object SeoulTopis {
     const val FLOW = "seoul_flow"
     const val ACC = "seoul_acc"
-    const val VOL = "seoul_vol"
-    val LAYERS = setOf(FLOW, ACC, VOL)
+    val LAYERS = setOf(FLOW, ACC)
+    /** 예전 「서울 교통량」 층 (뺐음: 저장된 켜기 값을 지우는 데만 씀) */
+    const val REMOVED_VOL = "seoul_vol"
 
     data class Link(
         val id: String, val road: String, val from: String, val to: String, val dist: Int, val div: String,
@@ -34,8 +35,6 @@ object SeoulTopis {
     )
 
     data class Acc(val id: String, val type: String?, val sub: String?, val lat: Double, val lng: Double, val info: String, val from: String?, val to: String?)
-
-    data class Spot(val no: String, val name: String, val lat: Double, val lng: Double)
 
     private const val S = 37.41
     private const val N = 37.72
@@ -117,26 +116,6 @@ object SeoulTopis {
         }.filter { !it.lat.isNaN() && !it.lng.isNaN() }
     }
 
-    suspend fun spots(): List<Spot> {
-        val arr = get("spots")?.let { runCatching { JSONArray(it) }.getOrNull() } ?: return emptyList()
-        return (0 until arr.length()).mapNotNull { i ->
-            val o = arr.optJSONObject(i) ?: return@mapNotNull null
-            Spot(o.optString("no"), o.optString("name"), o.optDouble("lat"), o.optDouble("lng"))
-        }.filter { !it.lat.isNaN() }
-    }
-
-    /** 지점·시각별 교통량 (들어옴, 나감) */
-    suspend fun volume(spot: String, ymd: String, hh: String): Pair<Int, Int>? {
-        val o = get("vol", listOf("spot" to spot, "ymd" to ymd, "hh" to hh))?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return null
-        return o.optInt("in") to o.optInt("out")
-    }
-
-    /** 한국 시각 (YYYYMMDD, HH), h 시간 전 */
-    private fun kstHour(h: Int): Pair<String, String> {
-        val t = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")).minusHours(h.toLong())
-        return "%04d%02d%02d".format(t.year, t.monthValue, t.dayOfMonth) to "%02d".format(t.hour)
-    }
-
     /** 사고·공사 등 이름 (유형 · 세부) */
     fun accName(a: Acc): String = listOfNotNull(a.type, a.sub?.takeIf { it != a.type }).joinToString(" · ").ifBlank { "돌발" }
 
@@ -167,17 +146,33 @@ object SeoulTopis {
                 val when_ = listOfNotNull(a.from?.let { "$it 부터" }, a.to?.let { "$it 까지" }).joinToString(" ")
                 ItsRoadFeature("$ACC:${a.id}", ACC, accName(a), listOf(a.info.replace(Regex("\\n+"), " "), when_).filter { it.isNotBlank() }.joinToString("\n"), a.lat, a.lng)
             }
-            VOL -> {
-                val inBox = spots().filter { it.lat in s..n && it.lng in w..e }
-                val (ymd, hh) = kstHour(1)
-                inBox.take(MAX_VOL_DETAIL).map { sp ->
-                    val v = volume(sp.no, ymd, hh)
-                    val txt = v?.let { (i, o) -> "${hh.toInt()}시 들어옴 ${"%,d".format(i)}대 · 나감 ${"%,d".format(o)}대" } ?: "교통량 정보를 받지 못했어요"
-                    ItsRoadFeature("$VOL:${sp.no}", VOL, "${sp.name} 교통량", txt, sp.lat, sp.lng)
-                } + inBox.drop(MAX_VOL_DETAIL).map { sp -> ItsRoadFeature("$VOL:${sp.no}", VOL, "${sp.name} 교통량", "", sp.lat, sp.lng) }
-            }
             else -> emptyList()
         }
+    }
+
+    /**
+     * [lat],[lng] 에서 [maxM] 미터 안을 서울 링크가 지나는지. 서울 도로 소통을 켜면 같은 도로(경부·경인고속도로 서울 구간)의
+     * 고속도로 소통 선을 빼서 두 층이 겹쳐 그려지지 않게 함
+     */
+    fun covers(context: Context, lat: Double, lng: Double, maxM: Double = COVER_M): Boolean = covers(links(context), lat, lng, maxM)
+
+    fun covers(ls: List<Link>, lat: Double, lng: Double, maxM: Double = COVER_M): Boolean {
+        val pad = maxM / 111_000.0 * 1.5
+        val kx = 111_320.0 * cos(Math.toRadians(lat))
+        val ky = 110_540.0
+        for (l in ls) {
+            if (lat < l.s - pad || lat > l.n + pad || lng < l.w - pad * 1.3 || lng > l.e + pad * 1.3) continue
+            for (i in 0 until l.pts.size - 1) {
+                val ax = (l.pts[i].lng - lng) * kx
+                val ay = (l.pts[i].lat - lat) * ky
+                val vx = (l.pts[i + 1].lng - lng) * kx - ax
+                val vy = (l.pts[i + 1].lat - lat) * ky - ay
+                val len2 = vx * vx + vy * vy
+                val t = if (len2 == 0.0) 0.0 else (-(ax * vx + ay * vy) / len2).coerceIn(0.0, 1.0)
+                if (hypot(ax + vx * t, ay + vy * t) <= maxM) return true
+            }
+        }
+        return false
     }
 
     /** 운전 길안내: 서울 돌발 (경로에 맞추는 것은 RoadAlerts) */
@@ -232,8 +227,8 @@ object SeoulTopis {
     }
 
     private const val MAX_FLOW = 180
-    private const val MAX_VOL_DETAIL = 12
     private const val SIDE_M = 5.0
+    private const val COVER_M = 60.0
     private const val PAD = 0.003
     private const val ON_ROUTE_M = 25.0
     private const val SAME_DIR_DEG = 60.0

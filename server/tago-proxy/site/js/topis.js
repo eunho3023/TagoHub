@@ -1,4 +1,4 @@
-// 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사), 교통량 지점.
+// 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사).
 // 도로 링크 모양은 seoul/links.json (pipeline/build_seoul_links.py), 실시간 값은 서버 /w/topis/… (src/seoultraffic.js)
 import { getJson, esc } from "./core.js";
 import { MapView } from "./map.js";
@@ -61,12 +61,6 @@ function seoulLinks() {
   return linksP;
 }
 
-/** 한국 시각 날짜(YYYYMMDD)·시(HH), h 시간 전 */
-function kstHour(h = 0) {
-  const d = new Date(Date.now() + 9 * 3600 * 1000 - h * 3600 * 1000);
-  return [d.toISOString().slice(0, 10).replace(/-/g, ""), String(d.getUTCHours()).padStart(2, "0")];
-}
-
 /**
  * 서울 실시간 교통 층. 지도에 켜기 버튼을 달고, 켜져 있으면 확대한 화면 안 링크의 속도를 받아 색을 칠함.
  * [onChange] 는 다시 그려야 할 때 부름 (선·점은 부르는 쪽이 lines()·dots() 로 받아 그림)
@@ -74,7 +68,7 @@ function kstHour(h = 0) {
 export function trafficLayer(onChange) {
   let on = false;
   try { on = localStorage.getItem(SAVE) === "1"; } catch (e) { /* 못 읽음 */ }
-  let alive = true, visible = [], acc = [], spots = [], accAt = 0, spotsAt = 0;
+  let alive = true, visible = [], acc = [], accAt = 0;
   const speeds = new Map(); // 링크 id → [km/h, 초]
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
@@ -101,10 +95,6 @@ export function trafficLayer(onChange) {
     if (now - accAt > 120000) {
       accAt = now;
       getJson("w/topis/acc").then((v) => { acc = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { accAt = 0; });
-    }
-    if (!spotsAt) {
-      spotsAt = now;
-      getJson("w/topis/spots").then((v) => { spots = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { spotsAt = 0; });
     }
     if (MapView.zoom() < TRAFFIC_ZOOM) { visible = []; onChange(); return; }
     const { ls, groups } = await seoulLinks();
@@ -158,15 +148,13 @@ export function trafficLayer(onChange) {
       }
       return out;
     },
-    /** 돌발·교통량 지점 점 (켜져 있고 서울일 때) */
+    /** 돌발 점 (켜져 있고 서울일 때) */
     dots() {
       if (!on || !inSeoul(MapView.bounds())) return [];
-      const z = MapView.zoom();
       const out = acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 }));
-      if (z >= 13) for (const s of spots) out.push({ id: "spot:" + s.no, lat: s.lat, lng: s.lng, color: "#6b7280", ring: "#fff", r: 5 });
       return out;
     },
-    /** 점을 눌렀을 때 카드 내용 (모르는 점이면 null). 교통량은 받는 대로 [fill] 로 채움 */
+    /** 점을 눌렀을 때 카드 내용 (모르는 점이면 null) */
     card(id, fill) {
       if (id.startsWith("acc:")) {
         const a = acc.find((x) => "acc:" + x.id === id);
@@ -174,17 +162,6 @@ export function trafficLayer(onChange) {
         const kind = [a.type, a.sub].filter(Boolean).join(" · ");
         const when = [a.from && a.from + "부터", a.to && a.to + "까지"].filter(Boolean).join(" ");
         return `<div><b>${esc(kind || "돌발")}</b><small>${esc(a.info.replace(/\n+/g, " "))}</small>${when ? `<small>${esc(when)}</small>` : ""}</div>`;
-      }
-      if (id.startsWith("spot:")) {
-        const s = spots.find((x) => "spot:" + x.no === id);
-        if (!s) return null;
-        // 지금 시간대는 아직 덜 모였을 수 있어 지난 시간대도 같이
-        const hours = [kstHour(1), kstHour(0)];
-        Promise.all(hours.map(([ymd, hh]) => getJson("w/topis/vol", { spot: s.no, ymd, hh }).catch(() => null))).then((vs) => {
-          const txt = vs.map((v, i) => (v ? `${+hours[i][1]}시 들어옴 ${v.in.toLocaleString()}대 · 나감 ${v.out.toLocaleString()}대` : null)).filter(Boolean).join(" / ");
-          fill(`<div><b>${esc(s.name)} 교통량</b><small>${esc(txt || "교통량 정보를 받지 못했어요")}</small></div>`);
-        });
-        return `<div><b>${esc(s.name)} 교통량</b><small>받는 중...</small></div>`;
       }
       return null;
     },

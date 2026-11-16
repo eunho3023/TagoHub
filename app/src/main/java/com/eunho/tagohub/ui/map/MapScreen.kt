@@ -592,10 +592,9 @@ private fun MapLayerSheet(
         // 신호등: 위치(전국) + 파란 테두리는 눌러서 실시간 신호(서울·울산)나 신호 계획(인천·대구)
         MapLayerOption(listOf("traffic_lights"), "신호등", Icons.Filled.Traffic),
         MapLayerOption(listOf("utic_incidents", "its_events"), "돌발·사고", Icons.Filled.Warning),
-        // 서울시 교통정보(TOPIS): 도로 소통 색, 돌발(사고·공사), 교통량 지점 (서울만)
+        // 서울시 교통정보(TOPIS): 도로 소통 색, 돌발(사고·공사) (서울만)
         MapLayerOption(listOf("seoul_flow"), "서울 도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("seoul_acc"), "서울 돌발", Icons.Filled.Warning),
-        MapLayerOption(listOf("seoul_vol"), "서울 교통량", Icons.Filled.Place),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
