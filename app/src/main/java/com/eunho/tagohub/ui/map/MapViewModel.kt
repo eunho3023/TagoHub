@@ -3266,13 +3266,46 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             // 움직인 방향 (15m 넘게 움직였을 때만): 그 방향 도로에만 붙여 반대 차로·옆 골목에 붙지 않게
             val heading = prevRaw?.takeIf { Geo.meters(it.lat, it.lng, g.raw.lat, g.raw.lng) >= 15.0 }?.let { GpsTracker.bearingDeg(it, g.raw) }
             fun onRoad(p: LatLng) = roadLinks?.snap(p.lat, p.lng, heading) ?: roadLinks?.snap(p.lat, p.lng) ?: p
+            // 늦은 만큼 앞으로 (BusAhead): 받은 위치에서 진행 방향으로, 앞 정류장은 넘지 않게. 멈춘 버스는 받은 자리
+            val ahead = if (heading == null || state?.still == true) null else {
+                val cap = com.eunho.tagohub.data.BusAhead.stopAhead(g.raw, heading, aheadStops(d)) ?: com.eunho.tagohub.data.BusAhead.MAX_AHEAD_M
+                fun at(t: Long) = com.eunho.tagohub.data.BusAhead.aheadM(g.speedMps, g.at, g.ageMs, t, cap)
+                at(now) to at(now + AHEAD_STEP_MS)
+            }
+            if (ahead != null && ahead.second > 0.0) {
+                // 앞으로 당긴 점이 도로에서 벗어나면(굽은 길) 조금씩 덜 당겨 도로 위 점을 찾음
+                fun aheadOnRoad(m: Double): LatLng {
+                    for (f in doubleArrayOf(1.0, 0.66, 0.33)) {
+                        val q = com.eunho.tagohub.data.BusAhead.move(g.raw, heading!!, m * f)
+                        (roadLinks?.snap(q.lat, q.lng, heading) ?: if (roadLinks == null) q else null)?.let { return it }
+                    }
+                    return onRoad(g.raw)
+                }
+                val a = aheadOnRoad(ahead.first)
+                val b = aheadOnRoad(ahead.second)
+                // 지도는 지금 보이는 자리에서 이어서 움직임 (뒤에 있으면 짧게 미끄러져 옴)
+                return@mapIndexedNotNull VehiclePin(id, listOf(a, b), 0.0, 1.0, if (a == b) 0L else AHEAD_STEP_MS, color, label, "")
+            }
             val to = onRoad(g.raw)
             val path = if (prevRaw != null) listOf(onRoad(prevRaw), to) else listOf(to)
             val dur = g.durMs.toDouble()
-            val k = if (prevRaw == null) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
+            val k = if (prevRaw == null || state?.still == true) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
             VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, label, "")
         })
         pushKlidBuses()
+    }
+
+    /** 앞으로 당겨 그릴 때 한 번에 그려 둘 시간 (버스 위치를 10초마다 받으니 조금 길게) */
+    private val AHEAD_STEP_MS = 12_000L
+
+    /** 앞으로 당길 때 넘지 않을 정류장 좌표 (노선마다 한 번 만듦) */
+    private var aheadStopsOf: Pair<Any?, List<LatLng>>? = null
+    private fun aheadStops(d: BusDest.Route): List<LatLng> {
+        val stops = d.stops.value.valueOrNull()
+        aheadStopsOf?.let { (k, v) -> if (k === stops) return v }
+        val v = stops.orEmpty().mapNotNull { s -> if (s.lat != null && s.lng != null) LatLng(s.lat!!, s.lng!!) else null }
+        aheadStopsOf = stops to v
+        return v
     }
 
     /** 현재 중심에서 먼 정류소부터 버려 마커 수를 제한 */

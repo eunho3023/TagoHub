@@ -85,6 +85,8 @@ data class BusLocation(
     val lowFloor: Boolean? = null,
     /** 상태 (경기 stateCd: 0 교차로통과, 1 정류소 도착, 2 정류소 출발). 모르면 null */
     val state: Int? = null,
+    /** 이 위치 자료의 시각(epoch ms, 서울 dataTm). 모르면 null — 지도에서 늦은 만큼 앞으로 당겨 그릴 때 씀 */
+    val dataAtMs: Long? = null,
 )
 
 data class BusSearch(

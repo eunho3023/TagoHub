@@ -21,6 +21,12 @@ data class GpsTrack(
     val raw: LatLng = to,
     /** 직전에 받은 원래 좌표 (from 이 있을 때). 지도는 fromRaw → raw 로 움직임 */
     val fromRaw: LatLng? = null,
+    /** fromRaw → raw 로 간 속도(m/s). 모르면 0 (앞으로 당겨 그리지 않음, [BusAhead]) */
+    val speedMps: Double = 0.0,
+    /** 받을 때 자료 나이(ms) */
+    val ageMs: Long = BusAhead.UNKNOWN_AGE_MS,
+    /** API 가 준 자료 시각 (서울 dataTm). 모르면 null */
+    val dataAt: Long? = null,
 )
 
 /** 선 위에 붙인 위치: 구간 시작 꼭짓점, 붙인 점, 노선 시작부터 거리(m) */
@@ -144,28 +150,46 @@ object GpsTracker {
     const val BACK_TOLERANCE_M = 15.0
     const val BACK_CONFIRM = 3
 
-    data class State(val track: GpsTrack, val backStreak: Int = 0, val live: Boolean = false)
+    /**
+     * [still]: 자료 시각이 새로운데 위치가 그대로 = 멈춰 있음 (앞으로 당겨 그리지 않음).
+     * 자료 시각을 모르는 API(TAGO)는 멈춤을 알 수 없음: 위치가 보통 23~27초, 길면 40~90초마다 바뀌어서
+     * (2026-11-16 전주·대전 실측) "몇 번 그대로"로는 달리는 버스도 멈춘 것으로 보게 됨. 대신 [BusAhead.MAX_LEAD_MS] 까지만 당김
+     */
+    data class State(val track: GpsTrack, val backStreak: Int = 0, val live: Boolean = false, val still: Boolean = false)
 
     /** 받은 좌표가 알려준 정류장에서 이만큼 넘게 떨어져 있으면 정류장 좌표가 아니라 실제 GPS */
     const val OFF_STOP_M = 25.0
 
-    fun next(prev: State?, p: LatLng, ord: Int?, geom: RouteGeom?, now: Long): State {
+    fun next(prev: State?, p: LatLng, ord: Int?, geom: RouteGeom?, now: Long, dataAt: Long? = null): State {
         // 처음부터 정류장과 떨어진 좌표면 실시간 GPS 로 바로 판단 (추정 → GPS 전환 때 뒤로 튀는 것 방지)
         val offStop = geom?.stopPoint(ord)?.let { Geo.meters(it.lat, it.lng, p.lat, p.lng) > OFF_STOP_M } ?: false
         if (prev == null) {
             val s0 = geom?.snap(ord, p)
             // 정류장에 막 도착해 멈춘 GPS 버스도 지도에 보이도록, 정류장 점과 몇 m 어긋나면 실시간으로 본다.
             val offPoint = geom?.stopPoint(ord)?.let { Geo.meters(it.lat, it.lng, p.lat, p.lng) } ?: 0.0
-            return State(GpsTrack(null, s0?.point ?: p, now, 0, null, s0?.seg, s0?.progress, ord, p), live = offStop || offPoint > 2.0)
+            return State(
+                GpsTrack(null, s0?.point ?: p, now, 0, null, s0?.seg, s0?.progress, ord, p, ageMs = BusAhead.ageAt(now, dataAt), dataAt = dataAt),
+                live = offStop || offPoint > 2.0,
+            )
         }
         val g = prev.track
         val moved = Geo.meters(g.raw.lat, g.raw.lng, p.lat, p.lng)
-        if (moved < MOVE_MIN_M) return prev.copy(backStreak = 0)
+        // 그대로(또는 조금 뒤) 온 자료: 자료 시각이 같으면 아직 안 바뀐 것, 새 시각인데 그대로면 멈춘 것
+        fun unchanged(live: Boolean = prev.live): State {
+            val newer = dataAt != null && (g.dataAt == null || dataAt > g.dataAt)
+            return prev.copy(backStreak = 0, live = live, still = prev.still || newer)
+        }
+        if (moved < MOVE_MIN_M) return unchanged()
         // 움직인 방향을 알면 그 방향과 맞는 구간에만 붙인다 (반대 차로·이미 지나온 구간 방지)
         val bearing = if (moved >= 15.0) bearingDeg(g.raw, p) else null
         val s = geom?.snap(ord, p, after = g.progress, bearing = bearing)
         val shown = s?.point ?: p
-        fun track(from: LatLng?, fromSeg: Int?, dur: Long) = GpsTrack(from, shown, now, dur, fromSeg, s?.seg, s?.progress, ord, p, if (from != null) g.raw else null)
+        fun track(from: LatLng?, fromSeg: Int?, dur: Long): GpsTrack {
+            // 속도: 자료 시각을 알면 두 자료 시각 차, 모르면 받은 시각 차
+            val dt = if (dataAt != null && g.dataAt != null && dataAt > g.dataAt) dataAt - g.dataAt else dur
+            val v = if (from != null) BusAhead.speed(g.raw, p, dt) else 0.0
+            return GpsTrack(from, shown, now, dur, fromSeg, s?.seg, s?.progress, ord, p, if (from != null) g.raw else null, v, BusAhead.ageAt(now, dataAt), dataAt)
+        }
         // 같은 정류장 순번인데 좌표가 움직임, 또는 정류장과 떨어진 좌표 = 진짜 실시간 GPS
         val live = prev.live || offStop || (ord != null && ord == g.ord)
 
@@ -178,7 +202,7 @@ object GpsTracker {
         }
         if (delta < 0) {
             // 조금 뒤 (GPS 오차·시차) = 그 자리에 그대로. 버스는 뒤로 가지 않는다
-            return prev.copy(backStreak = 0, live = live)
+            return unchanged(live)
         }
         if (newTrip) return State(track(null, null, 0), 0, live)
         return State(track(g.to, g.toSeg, (now - g.at).coerceIn(5_000, 30_000)), 0, live)

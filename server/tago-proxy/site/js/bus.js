@@ -8,6 +8,7 @@ import * as B from "./busdata.js";
 import { Alight } from "./alight.js";
 import * as Edits from "./edits.js";
 import { tidyRoad } from "./roadline.js";
+import * as Ahead from "./busahead.js";
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
@@ -411,17 +412,20 @@ export function routeScreen(root, p, ctx) {
   const timers = [];
   /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
   const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]) : []);
-  // 버스는 받은 실제 GPS 좌표에 그림 (노선 선 위로 옮기거나 노선을 따라 앞으로 미리 움직이지 않음:
-  // 노선 모양이 실제와 다른 곳에서 버스가 엉뚱한 길로 가 보였음). 새 좌표가 오면 지금 보이는 자리에서 새 좌표로 부드럽게 옮김
-  const track = new Map(); // 차량 번호 → {from, to, at, dur, idx, back}
-  const JUMP_M = 1500, STILL_M = 3, BACK_CONFIRM = 3;
-  const meters = (a, b) => Math.hypot((a[0] - b[0]) * 110540, (a[1] - b[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180));
+  // 버스는 받은 실제 GPS 좌표에서 그림 (노선 선 위로 옮기거나 노선을 따라 움직이지 않음:
+  // 노선 모양이 실제와 다른 곳에서 버스가 엉뚱한 길로 가 보였음). 대신 API 가 늦은 만큼(15~30초) 마지막 진행 방향으로 곧장
+  // 앞으로 당겨 그림 (busahead.js: 앞 정류장은 넘지 않고, 멈춘 버스는 그 자리). 새 좌표가 오면 보이던 자리에서 짧게 미끄러져 옮김
+  const track = new Map(); // 차량 번호 → {a: busahead 기록, from, at, idx, back}
+  const JUMP_M = 1500, MOVE_M = 8, BACK_CONFIRM = 3, GLIDE_MS = 2000;
+  const meters = Ahead.meters;
   const stopIdx = (b) => { let i = b.nodeId ? r.stops.findIndex((s) => s.id === b.nodeId) : -1; if (i < 0 && b.ord != null) i = r.stops.findIndex((s) => s.seq === b.ord); return i; };
-  /** 지금 보일 자리: from → to 를 dur 동안 */
+  let aheadStopsOf = null, aheadStops = [];
+  const stopLL = () => { if (aheadStopsOf !== r.stops) { aheadStopsOf = r.stops; aheadStops = r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng]); } return aheadStops; };
+  /** 지금 보일 자리: 앞으로 당긴 자리, 새 좌표를 받은 직후엔 보이던 자리에서 그쪽으로 미끄러짐 */
   const glide = (t, now = Date.now()) => {
-    if (!t.from) return t.to;
-    const k = Math.max(0, Math.min(1, (now - t.at) / t.dur));
-    return [t.from[0] + (t.to[0] - t.from[0]) * k, t.from[1] + (t.to[1] - t.from[1]) * k];
+    const q = Ahead.predict(t.a, stopLL(), now);
+    const k = t.from ? Math.max(0, Math.min(1, (now - t.at) / GLIDE_MS)) : 1;
+    return k >= 1 ? q : [t.from[0] + (q[0] - t.from[0]) * k, t.from[1] + (q[1] - t.from[1]) * k];
   };
   /** 새 버스 위치를 받으면 */
   const learn = () => {
@@ -431,16 +435,20 @@ export function routeScreen(root, p, ctx) {
       if (b.lat == null || !b.vehicleNo) continue;
       seen.add(b.vehicleNo);
       const p = [b.lat, b.lng], idx = stopIdx(b), prev = track.get(b.vehicleNo);
-      if (!prev || meters(prev.to, p) > JUMP_M) { track.set(b.vehicleNo, { from: null, to: p, at: now, dur: 1, idx, back: 0 }); continue; }
-      if (meters(prev.to, p) < STILL_M) continue; // 자료가 아직 안 바뀜 (또는 멈춰 있음)
+      if (!prev || meters(prev.a.raw, p) > JUMP_M) { track.set(b.vehicleNo, { a: Ahead.update(null, p, now, b.dataAt), from: null, at: now, idx, back: 0 }); continue; }
+      const moved = meters(prev.a.raw, p) >= MOVE_M;
       // 늦게 온 옛 좌표(정류장 순번이 줄어듦)는 무시. 세 번 연속이거나 노선 절반 넘게 줄면(새 운행) 받아들임
-      if (idx >= 0 && prev.idx >= 0 && idx < prev.idx && prev.idx - idx < r.stops.length / 2 && prev.back + 1 < BACK_CONFIRM) { prev.back++; continue; }
-      track.set(b.vehicleNo, { from: glide(prev, now), to: p, at: now, dur: Math.max(2000, Math.min(BUS_POS_MS, now - prev.at)), idx, back: 0 });
+      if (moved && idx >= 0 && prev.idx >= 0 && idx < prev.idx && prev.idx - idx < r.stops.length / 2 && prev.back + 1 < BACK_CONFIRM) { prev.back++; continue; }
+      const a = Ahead.update(prev.a, p, now, b.dataAt, MOVE_M);
+      if (a === prev.a) continue; // 자료가 아직 안 바뀜
+      track.set(b.vehicleNo, { a, from: glide(prev, now), at: now, idx: moved ? idx : prev.idx, back: 0 });
     }
     for (const k of [...track.keys()]) if (!seen.has(k)) track.delete(k);
   };
   /** 지금 보일 자리 */
   const busXY = (b) => { const t = track.get(b.vehicleNo); return t ? glide(t) : [b.lat, b.lng]; };
+  /** 그리는 자리가 움직이는 중인지 (미끄러지는 중이거나 앞으로 당기는 중) */
+  const moving = (x, now) => (x.from && now - x.at < GLIDE_MS + 1000) || (!x.a.still && x.a.v > 0 && x.a.deg != null && now - x.a.at < Ahead.MAX_LEAD_MS);
   /** 도로 선 위 점을 그 자리 진행 방향 오른쪽으로 (그린 선과 같은 거리) */
   const toRight = (pt, seg) => (road && sideM && seg != null ? shiftRight(pt, bearingAt(road, seg), sideM) : pt);
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
@@ -556,7 +564,7 @@ export function routeScreen(root, p, ctx) {
     tick();
     // 버스 위치는 10초마다 받고, 새 좌표로 옮기는 동안 1초마다 다시 그림
     const t = setInterval(tick, BUS_POS_MS);
-    const anim = setInterval(() => { const now = Date.now(); if (alive && [...track.values()].some((x) => x.from && now - x.at < x.dur + 1000)) drawMap(); }, 1000);
+    const anim = setInterval(() => { const now = Date.now(); if (alive && [...track.values()].some((x) => moving(x, now))) drawMap(); }, 1000);
     timers.push(() => clearInterval(t), () => clearInterval(anim));
   })();
   return () => { alive = false; timers.forEach((f) => f()); };
