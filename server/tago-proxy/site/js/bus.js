@@ -133,8 +133,8 @@ export function stopScreen(root, p) {
     // 기점 → 종점이나 첫차·막차·배차가 없는 노선(자료 파일에 없는 노선)은 노선 정보를 한 번 받아 채움
     const hasPlan = r.sum && (r.sum.first || r.sum.last || r.sum.interval);
     const own = r.sum && [r.sum.start, r.sum.end].filter(Boolean).join(" → ");
-    // 요청을 아끼려고: 기점·종점이 없거나, 지금 오는 버스가 없어 첫차·막차를 보여 줄 줄만, 한 화면에 15개까지 (노선 요약만, 한 번씩)
-    if (r.id && (!own || (live && !hasPlan && !r.arr.length)) && !asked.has(r.id) && asked.size < 15) {
+    // 기점·종점이 없거나, 지금 오는 버스가 없어 첫차·막차를 보여 줄 줄만 (노선마다 한 번씩. 예전엔 한도를 아끼려고 한 화면에 15개까지만)
+    if (r.id && (!own || (live && !hasPlan && !r.arr.length)) && !asked.has(r.id)) {
       asked.add(r.id);
       B.routeInfo(r.id, r.city || (/^\d+$/.test(stop.city) ? stop.city : null))
         .then((x) => {
@@ -322,8 +322,8 @@ export function stopTable(root, p) {
     if (l == null) failed = true;
     log = l || {}; sums = s;
     draw();
-    // 예상 시간표 재료: 노선 정류장 목록(기점에서 걸리는 시간)과 첫차·막차 (노선 15개까지, 받는 대로 다시 그림)
-    await Promise.all(sums.slice(0, 15).map((rt) => B.plannedFor(stop, rt).then((x) => { if (x) plans.set(rt.id, x); }).catch(() => null)));
+    // 예상 시간표 재료: 노선 정류장 목록(기점에서 걸리는 시간)과 첫차·막차 (모든 노선, 받는 대로 다시 그림. 예전엔 15개까지만)
+    await Promise.all(sums.map((rt) => B.plannedFor(stop, rt).then((x) => { if (x) plans.set(rt.id, x); }).catch(() => null)));
     draw();
   })();
   return () => { alive = false; };

@@ -150,7 +150,7 @@ internal fun LiveArrivalsCard(
             )
             // 못 받은 정류장이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
             fails = if (failed) fails + 1 else 0
-            AppState.pause(AppState.retryMs(fails, 30_000L))
+            AppState.pause(AppState.retryMs(fails, 15_000L))   // 정류장 화면과 같은 15초 (예전엔 30초)
         }
     }
     LiveCard(
