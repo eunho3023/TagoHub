@@ -245,9 +245,9 @@ object RouteLive {
                 return@mapNotNull Motion(i, f, 0, 0.0)
             }
             if (b.state == 1 || i == 0 || i >= stops.lastIndex || !noGps(b, here)) {
-                return@mapNotNull Motion(i, 0f, 0, 0.0)
+                return@mapNotNull Motion(i, i.toFloat(), 0, 0.0)
             }
-            val start = since(b, i) ?: return@mapNotNull Motion(i, 0f, 0, 0.0)
+            val start = since(b, i) ?: return@mapNotNull Motion(i, i.toFloat(), 0, 0.0)
             Motion(i, null, start, travelSec(i, i + 1) ?: 60.0)
         }
     }
