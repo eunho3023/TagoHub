@@ -2,6 +2,9 @@ package com.eunho.tagohub.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
@@ -84,22 +87,22 @@ object SeoulTopis {
         }.getOrNull()
     }
 
-    /** 링크별 실시간 속도(km/h). 서버가 한 번에 새로 묻는 수가 정해져 있어 빠진 것은 몇 번 더 물음 */
-    suspend fun speeds(ids: List<String>): Map<String, Int> {
+    /** 한 요청에 묻는 링크 수 (서버 SPEED_MAX: Workers 무료 요금제의 한 요청 바깥 요청 50번 제한) */
+    private const val SPEED_GROUP = 30
+    /** 동시에 보내는 요청 수 */
+    private const val SPEED_PARALLEL = 8
+
+    /** 링크별 실시간 속도(km/h). 30개씩 나눠 여러 요청을 동시에 보냄 (정렬해 묶어 같은 묶음은 서버 저장을 같이 씀) */
+    suspend fun speeds(ids: List<String>): Map<String, Int> = coroutineScope {
         val out = HashMap<String, Int>()
-        var left = ids.distinct()
-        repeat(4) {
-            if (left.isEmpty()) return out
-            val before = out.size
-            for (part in left.chunked(60)) {
-                val body = get("traffic", listOf("links" to part.joinToString(","))) ?: continue
-                val o = runCatching { JSONObject(body) }.getOrNull() ?: continue
+        for (batch in ids.distinct().sorted().chunked(SPEED_GROUP).chunked(SPEED_PARALLEL)) {
+            val bodies = batch.map { part -> async { get("traffic", listOf("links" to part.joinToString(","))) } }.awaitAll()
+            for (body in bodies) {
+                val o = body?.let { runCatching { JSONObject(it) }.getOrNull() } ?: continue
                 for (k in o.keys()) o.optJSONArray(k)?.let { out[k] = it.optInt(0) }
             }
-            left = left.filter { it !in out }
-            if (out.size == before) return out
         }
-        return out
+        out
     }
 
     suspend fun accidents(): List<Acc> {
