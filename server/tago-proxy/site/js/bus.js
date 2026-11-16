@@ -14,6 +14,8 @@ const REFRESH_MS = 15000, BUS_POS_MS = 10000;
 /** 못 받아서 다시 묻는 동안(livePoll) 받은 지 이만큼 안 된 자료는 그대로 보여 줌 */
 const KEEP_LIVE_MS = 120000;
 const fresh = (x) => x?.state === "ok" && Date.now() - x.at < KEEP_LIVE_MS;
+/** 처음 열 때 지역 도착(전주시 등)을 이만큼 기다리고, 안 오면 TAGO 를 먼저 보여 줌 */
+const QUICK_LOCAL_MS = 3000;
 const stopParams = (s) => ({ lat: s.lat, lng: s.lng });
 /** 화면 사이에 정류장 정보를 넘김 (주소에는 id·좌표만) */
 const known = new Map();
@@ -148,7 +150,7 @@ export function stopScreen(root, p) {
     const towards = r.arr.find((a) => a.towards)?.towards;
     return towards ? towards + " 방면" : "";
   };
-  let refresh = null;
+  let refresh = null, downNote = null;
   const draw = () => {
     if (!alive || !stop) return;
     const elapsed = elapsedNow();
@@ -162,7 +164,8 @@ export function stopScreen(root, p) {
     else if (!live) status = "실시간 도착을 받는 중...";
     else if (live.state === "unsupported") status = "이 정류장의 실시간 도착은 웹 버전에서 볼 수 없어요. 폰 앱에서 볼 수 있어요.";
     else if (live.state === "retry") status = "실시간 도착을 다시 받는 중...";
-    else if (live.state === "failed") status = "실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.";
+    else if (live.state === "failed") status = downNote ? downNote + ". 받는 대로 저절로 보여 드려요." : "실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.";
+    else if (live.partial && downNote) status = downNote + ". 일부 도착이 빠졌을 수 있어요.";
     else if (!rows.length) status = "이 정류장에 서는 버스 정보가 없어요";
     else if (!arr.length) status = "지금 도착 예정인 버스가 없어요";
     const sub = [city, stop.no ? "정류장 번호 " + stop.no : null, toward ? toward + " 방면" : null].filter(Boolean).join(" · ");
@@ -198,9 +201,28 @@ export function stopScreen(root, p) {
     // 못 받았을 때(폰에서 다른 앱에 갔다 돌아오면 통신이 깨어나기 전에 물어 실패하곤 했음): livePoll 이 2·4·6초 뒤 다시 묻고,
     // 그동안은 받은 지 2분이 안 된 도착을 그대로 보여 줌 (없으면 "다시 받는 중"). 세 번 더 실패해야 "받지 못했어요".
     // 다른 앱에서 돌아오면 15초를 기다리지 않고 바로 새로 받음
+    let tickSeq = 0;
+    // 못 받았을 때 원인: 이 정류장이 쓰는 자료 중 서버 확인(30분마다)에서 막혀 있는 것 ("TAGO 버스 도착 (전국) 자료가 14:05부터 잘 안 와요")
+    const explain = (got) => {
+      if (got.state !== "failed" && !got.partial) { if (downNote) { downNote = null; draw(); } return; }
+      B.downFor(stop).then((d) => {
+        if (!alive) return;
+        downNote = d.length ? d.map((x) => `${x.label} 자료가 ${new Date(x.since).toTimeString().slice(0, 5)}부터 잘 안 와요`).join(" · ") : null;
+        draw();
+      }).catch(() => {});
+    };
     const tick = async ({ lastTry = true } = {}) => {
-      let got = await B.arrivals(stop);
+      const my = ++tickSeq;
+      // 처음 열 때만: 지역 도착(전주시 등)이 3초 안에 안 오면 TAGO 를 먼저 보여 주고, 지역 도착이 오면 바꿈
+      let got = await B.arrivals(stop, { quickMs: live?.state === "ok" ? null : QUICK_LOCAL_MS });
       if (!alive) return;
+      if (got.state !== "failed" || lastTry) explain(got);
+      got.later?.then(async (g2) => {
+        if (!alive || my !== tickSeq || g2.state !== "ok") return;
+        live = g2; draw();
+        const fixed = g2.list.length ? await B.refineArrivals(stop, g2.list) : g2.list;
+        if (alive && live === g2 && fixed !== g2.list) { live = { ...g2, list: fixed }; draw(); }
+      });
       if (got.state === "failed" && !lastTry) {
         if (!fresh(live)) { live = { state: "retry", list: [], at: Date.now() }; draw(); }
         return false;

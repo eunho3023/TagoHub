@@ -62,8 +62,9 @@ export function cacheKey(path, search) {
 /** 저장해도 되는 응답인지: 정상(200)이고 키·한도 오류가 아닌 것만 (오류를 저장하면 그동안 모두 오류를 받음) */
 export function cacheable(status, body) {
   if (status !== 200) return false;
-  // resultCode 99: 공공데이터포털이 잠시 바쁨("가용한 세션이 존재하지 않습니다") → 저장하면 그동안 모두 빈 답을 받음
-  return !/SERVICE_KEY_IS_NOT|LIMITED_NUMBER_OF_SERVICE|SERVICE_ACCESS_DENIED|returnAuthMsg|SERVICE ERROR|APPLICATION_ERROR|<resultCode>99<\/resultCode>/.test(body);
+  // resultCode 99: 공공데이터포털이 잠시 바쁨("가용한 세션이 존재하지 않습니다") → 저장하면 그동안 모두 빈 답을 받음.
+  // 이 오류는 XML 을 요청해도 JSON({"response":{"header":{"resultCode":99,…}}})으로 오기도 함 (2026-11-16 실측)
+  return !/SERVICE_KEY_IS_NOT|LIMITED_NUMBER_OF_SERVICE|SERVICE_ACCESS_DENIED|returnAuthMsg|SERVICE ERROR|APPLICATION_ERROR|<resultCode>99<\/resultCode>|"resultCode"\s*:\s*"?99\b/.test(body);
 }
 
 // ── 여러 기관 중계 (/h/<http|https>/<호스트>/<경로>) ──────────────────────────────

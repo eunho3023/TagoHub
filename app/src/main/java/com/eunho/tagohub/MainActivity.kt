@@ -66,7 +66,18 @@ class MainActivity : ComponentActivity() {
             // 같은 자리 타 시·군 정류장 표: 서버(Firebase 등)에 더 새것이 있으면 하루 한 번·와이파이에서 받아 둠
             com.eunho.tagohub.data.StopCompanions.refresh(applicationContext)
             // 정류장·노선 데이터 자동 업데이트 (데이터 저장소, 하루 한 번·와이파이에서만)
-            com.eunho.tagohub.data.DataUpdater.check(applicationContext)
+            if (StopDb.get(applicationContext) != null) com.eunho.tagohub.data.DataUpdater.check(applicationContext)
+            else {
+                // 가벼운 앱(-Pslim) 처음 열 때: 정류장 자료가 앱 안에 없음 → 바로 받음 (약 26MB). 못 받으면 30·60·90초 … 뒤 다시
+                android.widget.Toast.makeText(applicationContext, "정류장 자료를 받는 중이에요 (약 26MB, 처음 한 번)", android.widget.Toast.LENGTH_LONG).show()
+                for (n in 1..5) {
+                    if (com.eunho.tagohub.data.DataUpdater.check(applicationContext, force = true) != null) {
+                        android.widget.Toast.makeText(applicationContext, "정류장 자료를 받았어요", android.widget.Toast.LENGTH_SHORT).show()
+                        break
+                    }
+                    kotlinx.coroutines.delay(30_000L * n)
+                }
+            }
         }
         // 잘 안 바뀌는 정보(노선 모양·정류장 순서·노선 정보 등)를 저장해 두는 곳
         com.eunho.tagohub.data.StaticCache.init(filesDir, appVersionCode())

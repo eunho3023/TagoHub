@@ -152,7 +152,18 @@ export function cached(path) {
 
 /** 공공데이터 XML(<item>…</item>) → 행 목록 [{소문자 키: 값}] */
 export function xmlRows(text) {
+  // 공공데이터포털이 바쁠 때는 XML 을 요청해도 JSON 오류({"response":{"header":{"resultCode":99,…}}})가 옴.
+  // 예전엔 이것을 "버스 없음"(빈 목록)으로 읽어 TAGO 가 멈춘 동안 "도착 예정 버스가 없어요"로 보였음
+  const t = String(text ?? "").trimStart();
+  if (t.startsWith("{")) {
+    let h = null;
+    try { h = JSON.parse(t)?.response?.header; } catch (e) { /* 아래에서 오류 */ }
+    const c = h ? String(h.resultCode ?? "") : "";
+    if (!h || (c !== "00" && c !== "0")) throw new Error("오류 " + (c || "응답") + (h?.resultMsg ? " " + h.resultMsg : ""));
+    return [];
+  }
   const doc = new DOMParser().parseFromString(text, "text/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("응답을 읽지 못했어요");
   const code = doc.querySelector("resultCode")?.textContent?.trim();
   const auth = doc.querySelector("returnAuthMsg")?.textContent?.trim();
   if (auth) throw new Error(auth);

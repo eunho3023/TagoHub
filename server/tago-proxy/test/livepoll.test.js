@@ -73,3 +73,10 @@ test("onReturn: 보이게 되거나 인터넷이 켜지면, 가려진 채면 안
   window.fire("online");
   assert.equal(n, 3);
 });
+
+test("xmlRows: 공공데이터포털이 바쁠 때 JSON 으로 오는 오류 99 는 빈 목록이 아니라 오류", async () => {
+  const { xmlRows } = await import("../site/js/core.js");
+  assert.throws(() => xmlRows('{"response":{"header":{"resultCode":99,"resultMsg":"가용한 세션이 존재하지 않습니다"}}}'), /오류 99/);
+  assert.throws(() => xmlRows("{깨진 JSON"), /오류/);
+  assert.deepEqual(xmlRows('{"response":{"header":{"resultCode":"00"},"body":{}}}'), []);
+});
