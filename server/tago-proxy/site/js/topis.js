@@ -19,7 +19,7 @@ export function speedColor(div, kmh) {
 
 /** 한 요청에 묻는 링크 수 (서버 SPEED_MAX 와 같게: Workers 무료 요금제의 한 요청 바깥 요청 50번 제한) */
 const GROUP = 30;
-/** 한 번에 동시에 묻는 묶음 수 */
+/** 동시에 묻는 묶음 수 (하나가 끝나면 다음 묶음) */
 const GROUPS_MAX = 8;
 let linksP = null;
 /**
@@ -114,19 +114,25 @@ export function trafficLayer(onChange) {
       const at = groupAt.get(l.g);
       if (!need.includes(l.g) && at !== -1 && (at == null || now - at > 240000)) need.push(l.g);
     }
-    const jobs = need.slice(0, GROUPS_MAX).map((g) => {
-      groupAt.set(g, -1);
-      return getJson("w/topis/traffic", { links: groups[g].join(",") }).then((v) => {
-        for (const id of groups[g]) speeds.delete(id);
-        for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1]]);
-        groupAt.set(g, Date.now());
-        if (alive) onChange();
-        return true;
-      }).catch(() => { groupAt.delete(g); return false; });
-    });
-    // 못 받은 묶음이나 8개 넘어 남은 묶음은 몇 초 뒤 이어서 (세 번까지)
-    if (jobs.length) Promise.all(jobs).then((ok) => {
-      if (alive && (ok.includes(false) || need.length > GROUPS_MAX) && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
+    for (const g of need) groupAt.set(g, -1);
+    // 동시에 8개까지: 하나가 끝나면 바로 다음 묶음
+    let failed = false;
+    const worker = async () => {
+      while (alive && need.length) {
+        const g = need.shift();
+        try {
+          const v = await getJson("w/topis/traffic", { links: groups[g].join(",") });
+          for (const id of groups[g]) speeds.delete(id);
+          for (const [id, x] of Object.entries(v || {})) speeds.set(id, [x[0], x[1]]);
+          groupAt.set(g, Date.now());
+          if (alive) onChange();
+        } catch (e) { groupAt.delete(g); failed = true; }
+      }
+    };
+    const workers = Array.from({ length: Math.min(GROUPS_MAX, need.length) }, worker);
+    // 못 받은 묶음은 몇 초 뒤 다시 (세 번까지)
+    if (workers.length) Promise.all(workers).then(() => {
+      if (alive && failed && retries < 3) { retries++; setTimeout(refresh, 3000); } else retries = 0;
     });
     onChange();
   }
