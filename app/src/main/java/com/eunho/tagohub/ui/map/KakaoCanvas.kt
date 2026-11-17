@@ -465,7 +465,7 @@ class KakaoCanvas(
                     "ex_safe" -> icons.triangleBadge(AMBER)
                     "seoul_acc" -> icons.triangleBadge(0xFFD32F2F.toInt())
                     // 공영자전거 대여소: 빌릴 수 있는 대수 (0대면 회색)
-                    "seoul_bike" -> icons.letterBadge(if (flowGrade == "0") 0xFF9E9E9E.toInt() else 0xFF2E7D32.toInt(), flowGrade ?: "따")
+                    "seoul_bike" -> icons.letterBadge(when (flowGrade) { "0" -> 0xFF9E9E9E.toInt(); "-" -> 0xFF607D8B.toInt(); else -> 0xFF2E7D32.toInt() }, flowGrade ?: "따")
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))

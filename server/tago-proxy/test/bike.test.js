@@ -14,3 +14,8 @@ test("따릉이 점: 화면 안 것만, 가운데에서 가까운 순, 글자는
   assert.equal(bikeDots(list, b, 1).length, 1);
   assert.deepEqual(bikeDots(list, null), []);
 });
+
+test("실시간 대수 없는 대여소(표준데이터): 청회색 점, 글자는 -", () => {
+  const dots = bikeDots([{ id: "std:3", name: "세종 대여소", lat: 36.5, lng: 127.26, bikes: null, racks: 10 }], { s: 36.4, n: 36.6, w: 127.2, e: 127.3 });
+  assert.deepEqual(dots.map((d) => [d.id, d.label, d.color]), [["bike:std:3", "-", "#607d8b"]]);
+});

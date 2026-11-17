@@ -175,7 +175,8 @@ export function trafficLayer(onChange) {
       if (id.startsWith("bike:")) {
         const x = bikes.find((v) => "bike:" + v.id === id);
         if (!x) return null;
-        return `<div><b>${esc(x.name)}</b><small>대여 가능 ${x.bikes}대${x.racks > 0 ? " · 거치대 " + x.racks : ""}</small></div>`;
+        const now = x.bikes == null ? "실시간 대수 없음" : `대여 가능 ${x.bikes}대`;
+        return `<div><b>${esc(x.name)}</b><small>${now}${x.racks > 0 ? " · 거치대 " + x.racks : ""}</small>${x.info ? `<small>${esc(x.info)}</small>` : ""}</div>`;
       }
       return null;
     },
