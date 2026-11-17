@@ -70,7 +70,7 @@ function seoulLinks() {
 export function trafficLayer(onChange) {
   let on = false;
   try { on = localStorage.getItem(SAVE) === "1"; } catch (e) { /* 못 읽음 */ }
-  let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0, parks = [];
+  let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0, parks = [], parkSeq = 0;
   const speeds = new Map(); // 링크 id → [km/h, 초]
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
@@ -98,8 +98,11 @@ export function trafficLayer(onChange) {
       bikeAt = now;
       getJson("w/topis/bike").then((v) => { bikes = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { bikeAt = 0; });
     }
-    // 주차장: 고정 자료라 칸마다 한 번만 받음
-    if (on && b && MapView.zoom() >= PARKING_ZOOM) parkingIn(b).then((v) => { parks = v; if (alive) onChange(); }).catch(() => {});
+    // 주차장: 고정 자료라 칸마다 한 번만 받음. 지도를 옮기는 사이 먼저 물은 것이 늦게 오면 버림 (마지막에 물은 것만)
+    if (on && b && MapView.zoom() >= PARKING_ZOOM) {
+      const seq = ++parkSeq;
+      parkingIn(b).then((v) => { if (seq !== parkSeq) return; parks = v; if (alive) onChange(); }).catch(() => {});
+    }
     if (!on || !inSeoul(b)) { visible = []; onChange(); return; }
     if (now - accAt > 120000) {
       accAt = now;
