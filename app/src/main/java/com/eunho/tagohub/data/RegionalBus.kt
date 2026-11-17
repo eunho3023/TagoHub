@@ -28,6 +28,8 @@ enum class RegionalKind(val prefix: String) {
     ULSAN("USB"),
     GWANGJU("KJB"),
     YEOSU("YEB"),
+    /** 대전 정류장 ID 는 DJB + 대전 BIS 정류장 ID 7자리, 노선 ID 는 DJB + 8자리 (TAGO 와 같은 번호) */
+    DAEJEON("DJB"),
 }
 
 /** 지역 API 로 물어볼 정류장 (stdId = TAGO ID 에서 접두사를 뗀 지역 API 의 정류장 ID) */
@@ -42,6 +44,7 @@ object RegionalBus {
             nodeId.startsWith("USB") -> RegionalKind.ULSAN
             nodeId.startsWith("KJB") && cityCode == "24" -> RegionalKind.GWANGJU
             nodeId.startsWith("YEB") -> RegionalKind.YEOSU
+            nodeId.startsWith("DJB") -> RegionalKind.DAEJEON
             else -> return null
         }
         val std = nodeId.removePrefix(kind.prefix)
@@ -126,6 +129,53 @@ object RegionalMappers {
         )
     }.sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
 
+    /** 대전 ROUTE_TP → TAGO 와 같은 이름 (2026-11-17 같은 노선 TAGO routetp 와 맞춰 봄: 2 간선, 3·7 광역, 4 지선, 5 마을) */
+    fun daejeonType(code: String?): String? = when (code?.trim()) {
+        "1" -> "급행버스"; "2" -> "간선버스"; "3", "7" -> "광역버스"; "4" -> "지선버스"; "5" -> "마을버스"
+        else -> null
+    }
+
+    /**
+     * 대전 정류장 도착 (6300000/arrive/getArrInfoByStopID): EXTIME_SEC 남은 초, STATUS_POS 남은 정류장 수, DESTINATION 방면(종점).
+     * MSG_TP 07 은 아직 차고지에서 출발하지 않은 차: EXTIME_SEC 에 남은 초가 아니라 출발 시각(1440 = 14:40)이 들어 있어
+     * 남은 시간·정류장을 비움 (TAGO 는 이 값을 1440초로 잘못 보여 줌)
+     */
+    fun daejeon(rows: List<Row>): List<BusArrival> = rows.mapNotNull { r ->
+        val no = r.str("ROUTE_NO") ?: return@mapNotNull null
+        val waiting = r.str("MSG_TP") == "07"
+        BusArrival(
+            routeId = r.str("ROUTE_CD")?.let { "DJB$it" } ?: "",
+            routeNo = no,
+            routeType = daejeonType(r.str("ROUTE_TP")),
+            vehicleType = null,
+            prevStops = if (waiting) null else r.int("STATUS_POS"),
+            arrSeconds = if (waiting) null else r.int("EXTIME_SEC"),
+            towards = r.str("DESTINATION"),
+        )
+    }.sortedBy { it.arrSeconds ?: Int.MAX_VALUE }
+
+    /**
+     * 대전 노선 버스 위치 (6300000/busposinfo/getBusPosByRtid): BUS_NODE_ID 지금(또는 막 지난) 정류장, DIR 0 가는 길·1 오는 길,
+     * GPS_LATI·GPS_LONG 은 그 정류장 좌표 (TAGO 와 같음, 대신 한 정류장쯤 새로움).
+     * 순번이 없어서 [stops] 에서 정류장 ID 로 찾고, 같은 정류장이 두 번 나오면(오가는 길이 같은 정류장) DIR 로 앞·뒤를 고름
+     */
+    fun daejeonBuses(rows: List<Row>, stops: List<RouteStop>): List<BusLocation> {
+        val ordOf = stops.groupBy { it.nodeId }.mapValues { e -> e.value.map { it.ord }.sorted() }
+        return rows.mapNotNull { r ->
+            val plate = r.str("PLATE_NO") ?: return@mapNotNull null
+            val node = r.str("BUS_NODE_ID")?.let { "DJB$it" }
+            val cands = node?.let { ordOf[it] }.orEmpty()
+            BusLocation(
+                nodeId = node,
+                nodeName = null,
+                ord = if (r.str("DIR") == "1") cands.lastOrNull() else cands.firstOrNull(),
+                vehicleNo = plate,
+                lat = r.double("GPS_LATI"),
+                lng = r.double("GPS_LONG"),
+            )
+        }
+    }
+
     // ───────── 응답 본문 → 행 ─────────
 
     /** 광주: JSON {"RESULT":{...},"BUSSTOP_LIST":[...]} */
@@ -153,6 +203,13 @@ object RegionalMappers {
             DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(InputSource(StringReader(text)))
         } catch (e: Exception) {
             throw IOException("$label 버스 API XML 을 해석하지 못했습니다: ${e.message}", e)
+        }
+        // 대전 BIS: <msgHeader><headerCd>0</headerCd> (4 = 결과 없음, 그 밖은 오류)
+        doc.getElementsByTagName("headerCd").item(0)?.textContent?.trim()?.let { hc ->
+            if (hc != "0" && hc != "4") {
+                val msg = doc.getElementsByTagName("headerMsg").item(0)?.textContent?.trim().orEmpty()
+                throw IOException("$label 버스 API 오류 $hc: $msg")
+            }
         }
         val code = doc.getElementsByTagName("resultCode").item(0)?.textContent?.trim()
         // 03 = 데이터 없음(빈 목록)
@@ -200,6 +257,23 @@ class RegionalBusRepository(
             RegionalMappers.gwangjuRows(get("https://apis.data.go.kr/6290000/gj_bis/arriveInfo", "BUSSTOP_ID" to stop.stdId, "resultType" to "json")))
         RegionalKind.YEOSU -> RegionalMappers.yeosu(
             RegionalMappers.xmlRows(get("https://apis.data.go.kr/4810000/arrive/getArrInfoByStopID", "busStopID" to stop.stdId, "pageNo" to "1", "numOfRows" to "50"), "여수"))
+        // 대전 BIS: 같은 순간 TAGO 보다 같은 버스가 40~130초 새롭고 버스가 더 많음 (2026-11-17 실측). 웹 /w/bus/daejeon 과 같은 요청(저장 공유)
+        RegionalKind.DAEJEON -> RegionalMappers.daejeon(
+            RegionalMappers.xmlRows(get("https://apis.data.go.kr/6300000/arrive/getArrInfoByStopID", "BusStopID" to stop.stdId), "대전"))
+    }
+
+    /** 대전 노선 버스 위치 ([routeId] = DJB + 노선 ID 8자리). 정류장 순번은 [stops] 에서 정류장 ID 로 맞춤 */
+    suspend fun daejeonBuses(routeId: String, stops: List<RouteStop>): TagoResult<List<BusLocation>> = try {
+        TagoResult.Success(withContext(Dispatchers.IO) {
+            RegionalMappers.daejeonBuses(
+                RegionalMappers.xmlRows(get("https://apis.data.go.kr/6300000/busposinfo/getBusPosByRtid", "busRouteId" to routeId.removePrefix("DJB")), "대전"),
+                stops,
+            )
+        })
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        TagoResult.Error(e.message ?: "대전 버스 위치 API 오류")
     }
 
     private fun get(base: String, vararg params: Pair<String, String>): String {

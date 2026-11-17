@@ -645,11 +645,44 @@ async function ulsanArrivals(id) {
   }).filter((a) => a.routeNo && a.arrSeconds != null);
 }
 
-/** 정류장의 지역 자체 도착 (경기 GBIS·전주시·제주 BIS·울산 BIS). 없으면 null */
+/** 대전 BIS XML(<ServiceResult>…<itemList>) → [{태그: 값}]. headerCd 가 0·4(결과 없음)가 아니면 오류 */
+export function daejeonRows(xml) {
+  const code = /<headerCd>\s*(\d+)\s*<\/headerCd>/.exec(xml)?.[1];
+  if (code !== "0" && code !== "4") throw new Error("대전 오류 " + (code ?? "형식"));
+  return [...String(xml).matchAll(/<itemList>([\s\S]*?)<\/itemList>/g)].map((m) => {
+    const o = {};
+    for (const [, k, v] of m[1].matchAll(/<(\w+)>([^<]*)<\/\1>/g)) o[k] = v.trim();
+    return o;
+  });
+}
+
+/** 대전 ROUTE_TP → TAGO 와 같은 이름 (앱 RegionalMappers.daejeonType 과 같음) */
+const DAEJEON_TYPES = { 1: "급행버스", 2: "간선버스", 3: "광역버스", 4: "지선버스", 5: "마을버스", 7: "광역버스" };
+
+/**
+ * 대전 BIS 정류장 도착 (앱과 같은 자료): EXTIME_SEC 남은 초, STATUS_POS 남은 정류장, DESTINATION 방면.
+ * MSG_TP 07 은 아직 출발하지 않은 차(EXTIME_SEC 에 출발 시각 1440 = 14:40 이 들어 있음)라 뺌. 같은 순간 TAGO 보다 40~130초 새로움
+ */
+export function daejeonArrivalList(xml) {
+  return daejeonRows(xml).filter((r) => r.MSG_TP !== "07").map((r) => ({
+    routeId: r.ROUTE_CD ? "DJB" + r.ROUTE_CD : "", routeNo: str(r.ROUTE_NO), routeType: DAEJEON_TYPES[int(r.ROUTE_TP)] || null, vehicleType: null,
+    prevStops: int(r.STATUS_POS), arrSeconds: int(r.EXTIME_SEC), city: "25", towards: str(r.DESTINATION),
+  })).filter((a) => a.routeNo && a.arrSeconds != null);
+}
+
+/** 대전 BIS 노선 버스 위치: 정류장 좌표(TAGO 와 같음, 한 정류장쯤 새로움), dir 0 가는 길·1 오는 길 (같은 정류장이 두 번이면 뒤쪽) */
+export function daejeonBusList(xml) {
+  return daejeonRows(xml).filter((x) => x.PLATE_NO).map((x) => ({
+    nodeId: x.BUS_NODE_ID ? "DJB" + x.BUS_NODE_ID : null, ord: null, vehicleNo: x.PLATE_NO, lat: num(x.GPS_LATI), lng: num(x.GPS_LONG), dir: int(x.DIR),
+  }));
+}
+
+/** 정류장의 지역 자체 도착 (경기 GBIS·전주시·제주 BIS·울산 BIS·대전 BIS). 없으면 null */
 function localArrivals(s) {
   if (/^JUB\d{9}$/.test(s.id)) return jeonjuArrivals(s.id);
   if (/^JEB\d{9}$/.test(s.id)) return jejuArrivals(s.id);
   if (/^USB\d{9}$/.test(s.id)) return ulsanArrivals(s.id);
+  if (/^DJB\d{7}$/.test(s.id)) return getText("w/bus/daejeon/arrival/" + s.id.slice(3)).then(daejeonArrivalList);
   if (ggId(s.id) && ggCity(s.city)) return getText("w/bus/gg/arrival/" + ggId(s.id)).then(ggArrivals);
   return null;
 }
@@ -967,6 +1000,7 @@ export async function downFor(stop) {
   if (id.startsWith("JUB")) names.push("jeonju_bus");
   else if (id.startsWith("JEB")) names.push("jeju_bus");
   else if (id.startsWith("USB")) names.push("ulsan_bus");
+  else if (id.startsWith("DJB")) names.push("daejeon_bus");
   else if (ggId(id) && ggCity(stop.city || "")) names.push("gyeonggi_bus");
   return h.checks.filter((c) => names.includes(c.name) && !c.ok).map((c) => ({ label: c.label, since: c.failSince || c.at }));
 }
@@ -983,6 +1017,11 @@ export async function positions(r) {
       const rows = findRows(JSON.parse(await getText("w/bus/gg/pos/" + gid)), "plateNo");
       return { state: "ok", buses: rows.map((x) => ({ nodeId: x.stationId != null ? "GGB" + x.stationId : null, ord: int(x.stationSeq), vehicleNo: str(x.plateNo), lat: null, lng: null })) };
     }
+    // 대전 BIS (앱과 같음): 못 받거나 비면 아래 TAGO
+    if (/^DJB\d{8}$/.test(r.id)) {
+      const dj = await getText("w/bus/daejeon/pos/" + r.id.slice(3)).then(daejeonBusList).catch(() => []);
+      if (dj.length) return { state: "ok", buses: dj };
+    }
     if (!r.city || !/^\d+$/.test(r.city) || metroId(r.id, r.city) || r.id.startsWith("TSB")) return { state: "unsupported", buses: [] };
     const rows = xmlRows(await getText("w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", { cityCode: r.city, routeId: r.id }));
     return { state: "ok", buses: rows.map((x) => ({ nodeId: str(x.nodeid), ord: int(x.nodeord), vehicleNo: str(x.vehicleno), lat: num(x.gpslati), lng: num(x.gpslong) })) };
@@ -995,7 +1034,9 @@ export async function positions(r) {
 export function busAtStops(stops, buses) {
   const at = new Map();
   for (const b of buses) {
-    let i = b.nodeId ? stops.findIndex((s) => s.id && currentId(s.id) === currentId(b.nodeId)) : -1;
+    // 같은 정류장이 노선에 두 번 있으면(오가는 길이 같은 정류장) 오는 길(dir 1, 대전) 버스는 뒤쪽
+    const same = (s) => s.id && currentId(s.id) === currentId(b.nodeId);
+    let i = b.nodeId ? (b.dir === 1 ? stops.findLastIndex(same) : stops.findIndex(same)) : -1;
     if (i < 0 && b.ord != null) i = stops.findIndex((s) => s.seq === b.ord);
     if (i < 0) continue;
     if (!at.has(i)) at.set(i, []);
