@@ -27,12 +27,14 @@ object SeoulTopis {
     const val ACC = "seoul_acc"
     /**
      * 공영자전거 대여소: 서울 따릉이(bikeList) + 서울 밖 10곳(한국지역정보개발원 전국 공영자전거: 대전 타슈·세종 어울링·창원 누비자 등).
-     * id = "seoul_bike:<대여 가능 대수>:<대여소 ID>" (서울 밖 대여소 ID 는 "지역코드:ID"). 층 이름은 예전 그대로(저장된 켜기 값 유지)
+     * + 실시간 대수 없는 대여소(전국자전거대여소표준데이터: 세종·여수·순천·김해 등, 대수 칸 "-", 운영시간·요금은 info).
+     * id = "seoul_bike:<대여 가능 대수 또는 ->:<대여소 ID>" (서울 밖 대여소 ID 는 "지역코드:ID", 표준데이터는 "std:순번"). 층 이름은 예전 그대로(저장된 켜기 값 유지)
      */
     const val BIKE = "seoul_bike"
     val LAYERS = setOf(FLOW, ACC, BIKE)
 
-    data class Bike(val id: String, val name: String, val lat: Double, val lng: Double, val bikes: Int, val racks: Int)
+    /** [bikes] 가 null 이면 실시간 대수를 모르는 대여소 (표준데이터), [info] 는 운영시간·요금·전화 */
+    data class Bike(val id: String, val name: String, val lat: Double, val lng: Double, val bikes: Int?, val racks: Int, val info: String? = null)
     /** 예전 「서울 교통량」 층 (뺐음: 저장된 켜기 값을 지우는 데만 씀) */
     const val REMOVED_VOL = "seoul_vol"
 
@@ -126,21 +128,22 @@ object SeoulTopis {
     /** 공영자전거 대여소 전부 (서버가 1분 저장) */
     suspend fun bikes(): List<Bike> = parseBikes(get("bike"))
 
-    /** 서버 응답 [{id, name, lat, lng, bikes, racks}] 읽기 (MiniJson: 단위 테스트에서도 돌게) */
+    /** 서버 응답 [{id, name, lat, lng, bikes, racks, info}] 읽기 (bikes 가 null 이면 대수 모름) (MiniJson: 단위 테스트에서도 돌게) */
     fun parseBikes(body: String?): List<Bike> {
         val root = body?.let { runCatching { com.eunho.tagohub.core.MiniJson.parse(it) }.getOrNull() } ?: return emptyList()
         return com.eunho.tagohub.core.MiniJson.findRows(root, "id").mapNotNull { r ->
             val id = r.str("id") ?: return@mapNotNull null
             val lat = r.double("lat") ?: return@mapNotNull null
             val lng = r.double("lng") ?: return@mapNotNull null
-            Bike(id, r.str("name") ?: "공영자전거 대여소", lat, lng, r.int("bikes") ?: 0, r.int("racks") ?: 0)
+            Bike(id, r.str("name") ?: "공영자전거 대여소", lat, lng, r.int("bikes"), r.int("racks") ?: 0, r.str("info"))
         }
     }
 
-    /** 지도 점: 글자는 대여 가능 대수, 누르면 "대여 가능 7대 · 거치대 15" */
+    /** 지도 점: 글자는 대여 가능 대수(모르면 "-"), 누르면 "대여 가능 7대 · 거치대 15" (모르면 "실시간 대수 없음 · 거치대 10 · 24시간 · 무료") */
     fun bikeFeature(b: Bike) = ItsRoadFeature(
-        "$BIKE:${b.bikes}:${b.id}", BIKE, b.name,
-        "대여 가능 ${b.bikes}대" + (if (b.racks > 0) " · 거치대 ${b.racks}" else ""), b.lat, b.lng,
+        "$BIKE:${b.bikes ?: "-"}:${b.id}", BIKE, b.name,
+        (if (b.bikes == null) "실시간 대수 없음" else "대여 가능 ${b.bikes}대") + (if (b.racks > 0) " · 거치대 ${b.racks}" else "") +
+            (b.info?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), b.lat, b.lng,
     )
 
     /** 사고·공사 등 이름 (유형 · 세부) */

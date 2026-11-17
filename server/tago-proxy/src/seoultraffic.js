@@ -4,7 +4,10 @@
 //  GET /w/topis/acc                    실시간 돌발(사고·공사·행사 등) [{id, type, sub, link, lat, lng, info, from, to}] (2분 저장)
 //  GET /w/topis/bike                   공영자전거 대여소 실시간 [{id, name, lat, lng, bikes, racks}] (1분 저장)
 //                                      서울 따릉이(서울 키, 거치대 수 있음) + 그 밖 10곳(한국지역정보개발원 전국 공영자전거, 공공데이터 키)
+//                                      + 실시간 대수 없는 대여소(전국자전거대여소표준데이터, src/bikestations.js): bikes 가 null, info 에 운영시간·요금
 //  GET /w/topis/status                 확인용: 서울 API 에 닿는지
+
+import { STD_BIKES } from "./bikestations.js";
 
 const BASE = "http://openapi.seoul.go.kr:8088/";
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -187,6 +190,36 @@ export async function nationalBikes(rawKey, ctx, fetcher = fetch) {
   });
 }
 
+/** 서울 범위 (따릉이 실시간이 있으면 표준데이터의 서울 대여소는 뺌) */
+const SEOUL_BOX = { s: 37.41, n: 37.72, w: 126.76, e: 127.19 };
+/** 실시간 대여소에서 이 거리(m) 안이면 같은 곳으로 보고 표준데이터 쪽을 뺌 */
+const STD_NEAR_M = 80;
+
+/**
+ * 실시간 대수가 없는 대여소 (전국자전거대여소표준데이터): 실시간 목록 [live] 에 가까운 것·(따릉이를 받았으면) 서울 것은 뺌.
+ * {id: "std:<순번>", name, lat, lng, bikes: null, racks, info}
+ */
+export function stdBikes(live, seoulOk, list = STD_BIKES) {
+  const cell = (la, lo) => Math.floor(la / 0.001) + "," + Math.floor(lo / 0.00125);
+  const grid = new Set();
+  for (const b of live || []) grid.add(cell(b.lat, b.lng));
+  const near = (la, lo) => {
+    const a = Math.floor(la / 0.001), o = Math.floor(lo / 0.00125);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) if (grid.has(a + i + "," + (o + j))) {
+      for (const b of live) if (Math.abs(b.lat - la) * 111000 < STD_NEAR_M && Math.abs(b.lng - lo) * 89000 < STD_NEAR_M) return true;
+      return false;
+    }
+    return false;
+  };
+  const out = [];
+  list.forEach(([name, lat, lng, racks, info], i) => {
+    if (seoulOk && lat > SEOUL_BOX.s && lat < SEOUL_BOX.n && lng > SEOUL_BOX.w && lng < SEOUL_BOX.e) return;
+    if (near(lat, lng)) return;
+    out.push({ id: "std:" + i, name, lat, lng, bikes: null, racks, info });
+  });
+  return out;
+}
+
 /** /w/topis/… */
 export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
   const key = (env.SEOUL_SUBWAY_KEY || "").trim();
@@ -203,7 +236,8 @@ export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
       // 서울 따릉이 + 전국(서울 밖). 한쪽이 실패해도 받은 쪽은 보여 줌 (둘 다 실패면 빈 목록을 짧게)
       const dg = (env.DATA_GO_KR_KEY || "").trim();
       const [seoul, kr] = await Promise.all([bikes(key, ctx, fetcher).catch(() => null), dg ? nationalBikes(dg, ctx, fetcher).catch(() => null) : null]);
-      const v = [...(seoul || []), ...(kr || [])];
+      const live = [...(seoul || []), ...(kr || [])];
+      const v = [...live, ...stdBikes(live, !!seoul)];
       return json(v, seoul && (kr || !dg) ? 60 : 30);
     }
     if (op === "status") {

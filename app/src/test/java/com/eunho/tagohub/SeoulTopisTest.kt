@@ -48,6 +48,10 @@ class SeoulTopisTest {
         assertEquals("seoul_bike:2:3000000000:ST0004", dj.id)
         assertEquals("2", dj.id.split(':')[1])
         assertEquals("대여 가능 2대", dj.details)
+        // 실시간 대수 없는 대여소 (표준데이터): 대수 칸 "-", 운영시간·요금을 덧붙임
+        val std = SeoulTopis.bikeFeature(SeoulTopis.parseBikes("""[{"id":"std:12","name":"세종 대여소","lat":36.5,"lng":127.26,"bikes":null,"racks":10,"info":"24시간 · 무료"}]""").single())
+        assertEquals("seoul_bike:-:std:12", std.id)
+        assertEquals("실시간 대수 없음 · 거치대 10 · 24시간 · 무료", std.details)
         assertEquals(emptyList<SeoulTopis.Bike>(), SeoulTopis.parseBikes(null))
     }
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName, nationalBikes } from "../src/seoultraffic.js";
+import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName, nationalBikes, stdBikes } from "../src/seoultraffic.js";
 
 /** caches.default 흉내 */
 function fakeCaches() {
@@ -125,6 +125,20 @@ test("따릉이+전국 합치기: 한쪽이 실패해도 받은 쪽은 보여 �
     return { ok: true, json: async () => ({ header: { resultCode: "K0" }, body: { totalCount: 1, item: [{ lcgvmnInstCd: "3611000000", rntstnId: "A1", rntstnNm: "세종시청", lat: "36.48", lot: "127.28", bcyclTpkctNocs: "4" }] } }) };
   };
   const res = await handleSeoulTraffic(new URL("https://x/w/topis/bike"), { SEOUL_SUBWAY_KEY: "s", DATA_GO_KR_KEY: "d" }, ctx, fetcher);
-  assert.deepEqual((await res.json()).map((b) => [b.id, b.bikes]), [["3611000000:A1", 4]]);
+  const all = await res.json();
+  assert.deepEqual(all.filter((b) => b.bikes != null).map((b) => [b.id, b.bikes]), [["3611000000:A1", 4]]);
+  // 실시간 대수 없는 대여소(표준데이터)도 붙음. 따릉이를 못 받았으니 서울 것도 남음
+  assert.ok(all.some((b) => b.id.startsWith("std:") && b.bikes === null && b.lat > 37.41 && b.lat < 37.72 && b.lng > 126.76 && b.lng < 127.19));
   assert.match(res.headers.get("Cache-Control"), /max-age=30/);
+});
+
+test("표준데이터 대여소: 실시간 대여소 80m 안·서울(따릉이 받았을 때)은 빼고 bikes 는 null", () => {
+  const std = [
+    ["세종 가까운 곳", 36.48, 127.2805, 10, "24시간"],
+    ["세종 먼 곳", 36.49, 127.29, 8, ""],
+    ["서울 어딘가", 37.5, 127.0, 5, ""],
+  ];
+  const live = [{ id: "3611000000:A1", lat: 36.48, lng: 127.28, bikes: 4 }];
+  assert.deepEqual(stdBikes(live, true, std), [{ id: "std:1", name: "세종 먼 곳", lat: 36.49, lng: 127.29, bikes: null, racks: 8, info: "" }]);
+  assert.deepEqual(stdBikes([], false, std).map((b) => b.id), ["std:0", "std:1", "std:2"]);
 });
