@@ -467,6 +467,7 @@ class KakaoCanvas(
                     // 공영자전거 대여소: 빌릴 수 있는 대수 (0대면 회색)
                     "seoul_bike" -> icons.letterBadge(when (flowGrade) { "0" -> 0xFF9E9E9E.toInt(); "-" -> 0xFF607D8B.toInt(); else -> 0xFF2E7D32.toInt() }, flowGrade ?: "따")
                     "parking" -> icons.letterBadge(0xFF1565C0.toInt(), "P")
+                    in com.eunho.tagohub.data.Amenity.KINDS -> com.eunho.tagohub.data.Amenity.KINDS.getValue(feature.layer).let { icons.letterBadge(it.color, it.label) }
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))
