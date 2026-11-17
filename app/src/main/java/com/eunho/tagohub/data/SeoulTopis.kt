@@ -19,13 +19,16 @@ import kotlin.math.hypot
 /**
  * 서울 실시간 교통 (서울시 교통정보 TOPIS). 웹 site/js/topis.js 와 같은 자료·기준.
  *  - 도로 링크 모양: assets/seoul_links.json (pipeline/build_seoul_links.py, 한 방향 링크 5천여 개)
- *  - 실시간 값: 서버 /w/topis/… (src/seoultraffic.js) — 링크 속도(5분 저장), 돌발, 따릉이 대여소(1분 저장)
- * 지도 층(서울 도로 소통·서울 돌발·따릉이)과 운전 길안내(앞쪽 정체 구간·돌발)에 씀. (교통량 지점 층은 쓰는 사람이 적어 뺐음)
+ *  - 실시간 값: 서버 /w/topis/… (src/seoultraffic.js) — 링크 속도(5분 저장), 돌발, 공영자전거 대여소(1분 저장)
+ * 지도 층(서울 도로 소통·서울 돌발·공영자전거)과 운전 길안내(앞쪽 정체 구간·돌발)에 씀. (교통량 지점 층은 쓰는 사람이 적어 뺐음)
  */
 object SeoulTopis {
     const val FLOW = "seoul_flow"
     const val ACC = "seoul_acc"
-    /** 따릉이 대여소 (서울 공공자전거 실시간 대여정보 bikeList). id = "seoul_bike:<대여 가능 대수>:<대여소 ID>" */
+    /**
+     * 공영자전거 대여소: 서울 따릉이(bikeList) + 서울 밖 10곳(한국지역정보개발원 전국 공영자전거: 대전 타슈·세종 어울링·창원 누비자 등).
+     * id = "seoul_bike:<대여 가능 대수>:<대여소 ID>" (서울 밖 대여소 ID 는 "지역코드:ID"). 층 이름은 예전 그대로(저장된 켜기 값 유지)
+     */
     const val BIKE = "seoul_bike"
     val LAYERS = setOf(FLOW, ACC, BIKE)
 
@@ -120,7 +123,7 @@ object SeoulTopis {
         }.filter { !it.lat.isNaN() && !it.lng.isNaN() }
     }
 
-    /** 따릉이 대여소 전부 (서버가 1분 저장) */
+    /** 공영자전거 대여소 전부 (서버가 1분 저장) */
     suspend fun bikes(): List<Bike> = parseBikes(get("bike"))
 
     /** 서버 응답 [{id, name, lat, lng, bikes, racks}] 읽기 (MiniJson: 단위 테스트에서도 돌게) */
@@ -130,14 +133,14 @@ object SeoulTopis {
             val id = r.str("id") ?: return@mapNotNull null
             val lat = r.double("lat") ?: return@mapNotNull null
             val lng = r.double("lng") ?: return@mapNotNull null
-            Bike(id, r.str("name") ?: "따릉이 대여소", lat, lng, r.int("bikes") ?: 0, r.int("racks") ?: 0)
+            Bike(id, r.str("name") ?: "공영자전거 대여소", lat, lng, r.int("bikes") ?: 0, r.int("racks") ?: 0)
         }
     }
 
     /** 지도 점: 글자는 대여 가능 대수, 누르면 "대여 가능 7대 · 거치대 15" */
     fun bikeFeature(b: Bike) = ItsRoadFeature(
         "$BIKE:${b.bikes}:${b.id}", BIKE, b.name,
-        "따릉이 대여 가능 ${b.bikes}대" + (if (b.racks > 0) " · 거치대 ${b.racks}" else ""), b.lat, b.lng,
+        "대여 가능 ${b.bikes}대" + (if (b.racks > 0) " · 거치대 ${b.racks}" else ""), b.lat, b.lng,
     )
 
     /** 사고·공사 등 이름 (유형 · 세부) */
@@ -145,6 +148,8 @@ object SeoulTopis {
 
     /** 지도 층 (화면 범위) */
     suspend fun features(context: Context, layer: String, s: Double, w: Double, n: Double, e: Double): List<ItsRoadFeature> {
+        // 공영자전거는 서울 밖(대전·세종·창원 등)도 있음
+        if (layer == BIKE) return bikes().filter { it.lat in s..n && it.lng in w..e }.map(::bikeFeature)
         if (!inSeoul(s, w, n, e)) return emptyList()
         return when (layer) {
             FLOW -> {
@@ -170,7 +175,6 @@ object SeoulTopis {
                 val when_ = listOfNotNull(a.from?.let { "$it 부터" }, a.to?.let { "$it 까지" }).joinToString(" ")
                 ItsRoadFeature("$ACC:${a.id}", ACC, accName(a), listOf(a.info.replace(Regex("\\n+"), " "), when_).filter { it.isNotBlank() }.joinToString("\n"), a.lat, a.lng)
             }
-            BIKE -> bikes().filter { it.lat in s..n && it.lng in w..e }.map(::bikeFeature)
             else -> emptyList()
         }
     }

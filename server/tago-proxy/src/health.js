@@ -67,6 +67,12 @@ export const CHECKS = [
     ok: (b) => /<headerCd>[04]<\/headerCd>/.test(b),
   },
   {
+    // 한국지역정보개발원 전국 공영자전거 (서울 밖 10곳 대여소, 지도 공영자전거 층). 정상은 resultCode K0
+    name: "bike_kr", label: "전국 공영자전거",
+    url: (e) => e.DATA_GO_KR_KEY && `${DG}B551982/pbdo_v2/inf_101_00010002_v2?serviceKey=${encodeKey(e.DATA_GO_KR_KEY)}&pageNo=1&numOfRows=1&type=JSON&lcgvmnInstCd=3611000000`,
+    ok: (b) => /"resultCode"\s*:\s*"K0"/.test(b),
+  },
+  {
     name: "ulsan_bus", label: "울산 버스",
     url: (e) => e.DATA_GO_KR_KEY && `${DG}6310000/bis/getBusArrivalInfo?serviceKey=${encodeKey(e.DATA_GO_KR_KEY)}&stopid=193012313&pageNo=1&numOfRows=1&_type=xml`,
     ok: (b) => /<resultCode>200<\/resultCode>/.test(b),
@@ -124,7 +130,7 @@ async function ensure(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS api_health (name TEXT PRIMARY KEY, ok INTEGER NOT NULL, msg TEXT, ms INTEGER, at INTEGER NOT NULL, last_ok INTEGER, fail_since INTEGER) WITHOUT ROWID").run();
 }
 
-/** 예약 작업: 모두 확인해 기록 (한 번에 12곳 + D1 쓰기 몇 번: 바깥 요청 50번 한도 안) */
+/** 예약 작업: 모두 확인해 기록 (한 번에 13곳 + D1 쓰기 몇 번: 바깥 요청 50번 한도 안) */
 export async function healthCron(env, fetcher = fetch) {
   if (!env.DB) return { skip: "no db" };
   await ensure(env.DB);

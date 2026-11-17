@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName } from "../src/seoultraffic.js";
+import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName, nationalBikes } from "../src/seoultraffic.js";
 
 /** caches.default 흉내 */
 function fakeCaches() {
@@ -99,4 +99,32 @@ test("따릉이 대여소: 1,000곳씩 4쪽을 한꺼번에 묻고 빈 쪽은 �
   assert.equal(bikeName("2001. 서울숲 입구"), "서울숲 입구");
   fakeCaches();
   assert.equal(await bikes("k", ctx, async () => ({ ok: false })), null);
+});
+
+test("전국 공영자전거: 첫 쪽의 전체 수로 나머지 쪽을 묻고, 서울은 빼고, ID 는 지역코드:ID (2026-11-17 실제 응답 모양)", async () => {
+  fakeCaches();
+  const asked = [];
+  const item = (cd, nm, id, n) => ({ lcgvmnInstCd: cd, lcgvmnInstNm: nm, rntstnId: id, rntstnNm: "탄방동_한가람아파트(2동)", lat: "36.3482010000", lot: "127.3904090000", bcyclTpkctNocs: String(n) });
+  const fetcher = async (u) => {
+    const p = +new URL(u).searchParams.get("pageNo");
+    asked.push(p);
+    const items = p === 1 ? [item("1100000000", "서울특별시", "ST-10", 3)] : [item("3000000000", "대전광역시", "ST0004", 2)];
+    return { ok: true, json: async () => ({ header: { resultCode: "K0", resultMsg: "NORMAL_SERVICE" }, body: { totalCount: 1500, pageNo: p, item: items } }) };
+  };
+  const list = await nationalBikes("raw key", ctx, fetcher);
+  assert.deepEqual(asked.sort(), [1, 2]);
+  assert.deepEqual(list, [{ id: "3000000000:ST0004", name: "탄방동 한가람아파트(2동)", lat: 36.348201, lng: 127.390409, bikes: 2, racks: 0 }]);
+  fakeCaches();
+  assert.equal(await nationalBikes("k", ctx, async () => ({ ok: true, json: async () => ({ header: { resultCode: "K10" }, body: {} }) })), null);
+});
+
+test("따릉이+전국 합치기: 한쪽이 실패해도 받은 쪽은 보여 줌", async () => {
+  fakeCaches();
+  const fetcher = async (u) => {
+    if (u.includes("bikeList")) return { ok: false };
+    return { ok: true, json: async () => ({ header: { resultCode: "K0" }, body: { totalCount: 1, item: [{ lcgvmnInstCd: "3611000000", rntstnId: "A1", rntstnNm: "세종시청", lat: "36.48", lot: "127.28", bcyclTpkctNocs: "4" }] } }) };
+  };
+  const res = await handleSeoulTraffic(new URL("https://x/w/topis/bike"), { SEOUL_SUBWAY_KEY: "s", DATA_GO_KR_KEY: "d" }, ctx, fetcher);
+  assert.deepEqual((await res.json()).map((b) => [b.id, b.bikes]), [["3611000000:A1", 4]]);
+  assert.match(res.headers.get("Cache-Control"), /max-age=30/);
 });

@@ -595,8 +595,8 @@ private fun MapLayerSheet(
         // 서울시 교통정보(TOPIS): 도로 소통 색, 돌발(사고·공사) (서울만)
         MapLayerOption(listOf("seoul_flow"), "서울 도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("seoul_acc"), "서울 돌발", Icons.Filled.Warning),
-        // 서울 공공자전거 대여소: 빌릴 수 있는 대수
-        MapLayerOption(listOf("seoul_bike"), "따릉이", Icons.AutoMirrored.Filled.DirectionsBike),
+        // 공영자전거 대여소(서울 따릉이·대전 타슈·세종 어울링·창원 누비자 등): 빌릴 수 있는 대수
+        MapLayerOption(listOf("seoul_bike"), "공영자전거", Icons.AutoMirrored.Filled.DirectionsBike),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
