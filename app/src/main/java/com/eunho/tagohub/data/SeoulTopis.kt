@@ -19,13 +19,17 @@ import kotlin.math.hypot
 /**
  * 서울 실시간 교통 (서울시 교통정보 TOPIS). 웹 site/js/topis.js 와 같은 자료·기준.
  *  - 도로 링크 모양: assets/seoul_links.json (pipeline/build_seoul_links.py, 한 방향 링크 5천여 개)
- *  - 실시간 값: 서버 /w/topis/… (src/seoultraffic.js) — 링크 속도(5분 저장), 돌발
- * 지도 층(서울 도로 소통·서울 돌발)과 운전 길안내(앞쪽 정체 구간·돌발)에 씀. (교통량 지점 층은 쓰는 사람이 적어 뺐음)
+ *  - 실시간 값: 서버 /w/topis/… (src/seoultraffic.js) — 링크 속도(5분 저장), 돌발, 따릉이 대여소(1분 저장)
+ * 지도 층(서울 도로 소통·서울 돌발·따릉이)과 운전 길안내(앞쪽 정체 구간·돌발)에 씀. (교통량 지점 층은 쓰는 사람이 적어 뺐음)
  */
 object SeoulTopis {
     const val FLOW = "seoul_flow"
     const val ACC = "seoul_acc"
-    val LAYERS = setOf(FLOW, ACC)
+    /** 따릉이 대여소 (서울 공공자전거 실시간 대여정보 bikeList). id = "seoul_bike:<대여 가능 대수>:<대여소 ID>" */
+    const val BIKE = "seoul_bike"
+    val LAYERS = setOf(FLOW, ACC, BIKE)
+
+    data class Bike(val id: String, val name: String, val lat: Double, val lng: Double, val bikes: Int, val racks: Int)
     /** 예전 「서울 교통량」 층 (뺐음: 저장된 켜기 값을 지우는 데만 씀) */
     const val REMOVED_VOL = "seoul_vol"
 
@@ -116,6 +120,26 @@ object SeoulTopis {
         }.filter { !it.lat.isNaN() && !it.lng.isNaN() }
     }
 
+    /** 따릉이 대여소 전부 (서버가 1분 저장) */
+    suspend fun bikes(): List<Bike> = parseBikes(get("bike"))
+
+    /** 서버 응답 [{id, name, lat, lng, bikes, racks}] 읽기 (MiniJson: 단위 테스트에서도 돌게) */
+    fun parseBikes(body: String?): List<Bike> {
+        val root = body?.let { runCatching { com.eunho.tagohub.core.MiniJson.parse(it) }.getOrNull() } ?: return emptyList()
+        return com.eunho.tagohub.core.MiniJson.findRows(root, "id").mapNotNull { r ->
+            val id = r.str("id") ?: return@mapNotNull null
+            val lat = r.double("lat") ?: return@mapNotNull null
+            val lng = r.double("lng") ?: return@mapNotNull null
+            Bike(id, r.str("name") ?: "따릉이 대여소", lat, lng, r.int("bikes") ?: 0, r.int("racks") ?: 0)
+        }
+    }
+
+    /** 지도 점: 글자는 대여 가능 대수, 누르면 "대여 가능 7대 · 거치대 15" */
+    fun bikeFeature(b: Bike) = ItsRoadFeature(
+        "$BIKE:${b.bikes}:${b.id}", BIKE, b.name,
+        "따릉이 대여 가능 ${b.bikes}대" + (if (b.racks > 0) " · 거치대 ${b.racks}" else ""), b.lat, b.lng,
+    )
+
     /** 사고·공사 등 이름 (유형 · 세부) */
     fun accName(a: Acc): String = listOfNotNull(a.type, a.sub?.takeIf { it != a.type }).joinToString(" · ").ifBlank { "돌발" }
 
@@ -146,6 +170,7 @@ object SeoulTopis {
                 val when_ = listOfNotNull(a.from?.let { "$it 부터" }, a.to?.let { "$it 까지" }).joinToString(" ")
                 ItsRoadFeature("$ACC:${a.id}", ACC, accName(a), listOf(a.info.replace(Regex("\\n+"), " "), when_).filter { it.isNotBlank() }.joinToString("\n"), a.lat, a.lng)
             }
+            BIKE -> bikes().filter { it.lat in s..n && it.lng in w..e }.map(::bikeFeature)
             else -> emptyList()
         }
     }
