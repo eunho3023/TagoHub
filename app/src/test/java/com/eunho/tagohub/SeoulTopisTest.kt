@@ -42,7 +42,12 @@ class SeoulTopisTest {
         val f = SeoulTopis.bikeFeature(list[0])
         assertEquals("seoul_bike:7:ST-4", f.id)
         assertEquals("망원역 1번출구 앞", f.title)
-        assertEquals("따릉이 대여 가능 7대 · 거치대 15", f.details)
+        assertEquals("대여 가능 7대 · 거치대 15", f.details)
+        // 서울 밖 (전국 공영자전거): ID 에 지역코드가 붙고 거치대 수는 없음. 지도 글자는 여전히 두 번째 칸
+        val dj = SeoulTopis.bikeFeature(SeoulTopis.parseBikes("""[{"id":"3000000000:ST0004","name":"탄방동 한가람아파트(2동)","lat":36.348201,"lng":127.390409,"bikes":2,"racks":0}]""").single())
+        assertEquals("seoul_bike:2:3000000000:ST0004", dj.id)
+        assertEquals("2", dj.id.split(':')[1])
+        assertEquals("대여 가능 2대", dj.details)
         assertEquals(emptyList<SeoulTopis.Bike>(), SeoulTopis.parseBikes(null))
     }
 }

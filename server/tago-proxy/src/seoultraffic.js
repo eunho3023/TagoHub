@@ -2,7 +2,8 @@
 // 키는 SEOUL_SUBWAY_KEY (서울 열린데이터광장 인증키, 지하철 실시간과 같은 키). 응답은 잠시 저장해 모두가 나눠 씀.
 //  GET /w/topis/traffic?links=id,id,…  링크별 실시간 속도·통행시간 {id: [km/h, 초]} (30개까지, 묶음마다 5분 저장)
 //  GET /w/topis/acc                    실시간 돌발(사고·공사·행사 등) [{id, type, sub, link, lat, lng, info, from, to}] (2분 저장)
-//  GET /w/topis/bike                   따릉이 대여소 실시간 [{id, name, lat, lng, bikes, racks}] (1분 저장)
+//  GET /w/topis/bike                   공영자전거 대여소 실시간 [{id, name, lat, lng, bikes, racks}] (1분 저장)
+//                                      서울 따릉이(서울 키, 거치대 수 있음) + 그 밖 10곳(한국지역정보개발원 전국 공영자전거, 공공데이터 키)
 //  GET /w/topis/status                 확인용: 서울 API 에 닿는지
 
 const BASE = "http://openapi.seoul.go.kr:8088/";
@@ -155,6 +156,37 @@ export async function bikes(key, ctx, fetcher = fetch) {
   });
 }
 
+/** 전국 공영자전거: 한 번에 받는 수 (1,000 넘게 물으면 K10 오류) · 최대 쪽 수 (2026-11 전체 5,667곳) */
+const KR_PAGE = 1000, KR_PAGES = 10;
+const KR_BASE = "https://apis.data.go.kr/B551982/pbdo_v2/inf_101_00010002_v2";
+/** 서울은 따릉이 자체 자료(거치대 수 있음)를 써서 전국 자료에서는 뺌 */
+const SEOUL_CD = "1100000000";
+
+/**
+ * 한국지역정보개발원 "전국 공영자전거 실시간 정보" 대여소별 대여 가능 대수 (서울 밖 10곳: 대전 타슈·세종 어울링·창원 누비자 등).
+ * 지역 코드 없이 물으면 전부 → 첫 쪽에서 전체 수를 보고 나머지 쪽을 한꺼번에. 대여소 ID 가 지역마다 겹칠 수 있어 "지역코드:ID".
+ * 서울 따릉이 원본과 같은 순간 값이 470/477곳 같음 (2026-11-17, 나머지는 1대 차이) → 실시간. 누가 볼 때만 물음(1분 저장)
+ */
+export async function nationalBikes(rawKey, ctx, fetcher = fetch) {
+  const k = rawKey.trim(), key = k.includes("%") ? k : encodeURIComponent(k);
+  return memo(ctx, "bike-kr", 60, async () => {
+    const page = async (n) => {
+      const r = await fetcher(`${KR_BASE}?serviceKey=${key}&pageNo=${n}&numOfRows=${KR_PAGE}&type=JSON`);
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => null);
+      return j?.header?.resultCode === "K0" ? j.body : null;
+    };
+    const first = await page(1);
+    if (!first) return null;
+    const pages = Math.min(KR_PAGES, Math.ceil((+first.totalCount || 0) / KR_PAGE));
+    const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => page(i + 2).catch(() => null)));
+    return [first, ...rest].flatMap((b) => (Array.isArray(b?.item) ? b.item : [])).filter((r) => r.lcgvmnInstCd !== SEOUL_CD && r.rntstnId).map((r) => ({
+      id: `${r.lcgvmnInstCd}:${r.rntstnId}`, name: bikeName(r.rntstnNm).replace(/_/g, " "),
+      lat: Math.round(+r.lat * 1e6) / 1e6, lng: Math.round(+r.lot * 1e6) / 1e6, bikes: +r.bcyclTpkctNocs || 0, racks: 0,
+    })).filter((b) => b.lat > 33 && b.lat < 39 && b.lng > 124 && b.lng < 132);
+  });
+}
+
 /** /w/topis/… */
 export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
   const key = (env.SEOUL_SUBWAY_KEY || "").trim();
@@ -167,7 +199,13 @@ export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
       return json(ids.length ? await trafficFor(ids, key, ctx, fetcher) : {}, 60);
     }
     if (op === "acc") { const v = await accidents(key, ctx, fetcher); return v ? json(v, 60) : json([], 30); }
-    if (op === "bike") { const v = await bikes(key, ctx, fetcher); return v ? json(v, 60) : json([], 30); }
+    if (op === "bike") {
+      // 서울 따릉이 + 전국(서울 밖). 한쪽이 실패해도 받은 쪽은 보여 줌 (둘 다 실패면 빈 목록을 짧게)
+      const dg = (env.DATA_GO_KR_KEY || "").trim();
+      const [seoul, kr] = await Promise.all([bikes(key, ctx, fetcher).catch(() => null), dg ? nationalBikes(dg, ctx, fetcher).catch(() => null) : null]);
+      const v = [...(seoul || []), ...(kr || [])];
+      return json(v, seoul && (kr || !dg) ? 60 : 30);
+    }
     if (op === "status") {
       const x = await getXml(fetcher, seoulUrl(key, "RoadDivInfo", 1, 5)).catch((e) => "ERR " + (e && e.message));
       return json({ reach: okXml(x), sample: okXml(x) ? rows(x).length : String(x).replace(key, "").slice(0, 120) }, 0);

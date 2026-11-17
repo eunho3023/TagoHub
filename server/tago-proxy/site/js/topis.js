@@ -1,4 +1,4 @@
-// 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사), 따릉이 대여소(빌릴 수 있는 대수).
+// 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사), 공영자전거 대여소(빌릴 수 있는 대수, 서울 밖도: 대전 타슈·세종 어울링·창원 누비자 등).
 // 도로 링크 모양은 seoul/links.json (pipeline/build_seoul_links.py), 실시간 값은 서버 /w/topis/… (src/seoultraffic.js)
 import { getJson, esc, onReturn } from "./core.js";
 import { MapView } from "./map.js";
@@ -73,8 +73,8 @@ export function trafficLayer(onChange) {
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
   btn.className = "locbtn trafficbtn" + (on ? " on" : "");
-  btn.title = "실시간 교통 (서울)";
-  btn.setAttribute("aria-label", "실시간 교통 (서울)");
+  btn.title = "실시간 교통 (서울) · 공영자전거";
+  btn.setAttribute("aria-label", "실시간 교통 (서울) · 공영자전거");
   btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="7" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/></svg>';
   for (const ev of ["pointerdown", "mousedown", "touchstart", "dblclick"]) btn.addEventListener(ev, (e) => e.stopPropagation());
   btn.addEventListener("click", (e) => {
@@ -90,16 +90,16 @@ export function trafficLayer(onChange) {
   async function refresh() {
     if (!alive) return;
     const b = MapView.bounds();
-    if (!on || !inSeoul(b)) { visible = []; onChange(); return; }
     const now = Date.now();
+    // 공영자전거(서울 따릉이 + 대전·세종·창원 등): 서울 밖도 있음. 서버가 1분 저장하므로 1분마다
+    if (on && MapView.zoom() >= BIKE_ZOOM && now - bikeAt > 60000) {
+      bikeAt = now;
+      getJson("w/topis/bike").then((v) => { bikes = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { bikeAt = 0; });
+    }
+    if (!on || !inSeoul(b)) { visible = []; onChange(); return; }
     if (now - accAt > 120000) {
       accAt = now;
       getJson("w/topis/acc").then((v) => { acc = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { accAt = 0; });
-    }
-    // 따릉이: 서버가 1분 저장하므로 1분마다
-    if (MapView.zoom() >= BIKE_ZOOM && now - bikeAt > 60000) {
-      bikeAt = now;
-      getJson("w/topis/bike").then((v) => { bikes = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { bikeAt = 0; });
     }
     if (MapView.zoom() < TRAFFIC_ZOOM) { visible = []; onChange(); return; }
     const { ls, groups } = await seoulLinks();
@@ -155,11 +155,11 @@ export function trafficLayer(onChange) {
       }
       return out;
     },
-    /** 돌발 점, 확대했으면 따릉이 대여소 점 (켜져 있고 서울일 때) */
+    /** 돌발 점(서울일 때), 확대했으면 공영자전거 대여소 점(어디서나) — 켜져 있을 때 */
     dots() {
       const b = MapView.bounds();
-      if (!on || !inSeoul(b)) return [];
-      const out = acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 }));
+      if (!on || !b) return [];
+      const out = inSeoul(b) ? acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 })) : [];
       if (MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
       return out;
     },
@@ -175,7 +175,7 @@ export function trafficLayer(onChange) {
       if (id.startsWith("bike:")) {
         const x = bikes.find((v) => "bike:" + v.id === id);
         if (!x) return null;
-        return `<div><b>${esc(x.name)}</b><small>따릉이 대여 가능 ${x.bikes}대${x.racks > 0 ? " · 거치대 " + x.racks : ""}</small></div>`;
+        return `<div><b>${esc(x.name)}</b><small>대여 가능 ${x.bikes}대${x.racks > 0 ? " · 거치대 " + x.racks : ""}</small></div>`;
       }
       return null;
     },
