@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic } from "../src/seoultraffic.js";
+import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName } from "../src/seoultraffic.js";
 
 /** caches.default 흉내 */
 function fakeCaches() {
@@ -78,4 +78,25 @@ test("요청 검사: 키 없음 503, 뺀 교통량 주소·모르는 주소 404"
   assert.equal((await handleSeoulTraffic(new URL("https://x/w/topis/nope"), { SEOUL_SUBWAY_KEY: "k" }, ctx)).status, 404);
   const empty = await handleSeoulTraffic(new URL("https://x/w/topis/traffic?links=abc"), { SEOUL_SUBWAY_KEY: "k" }, ctx);
   assert.deepEqual(await empty.json(), {});
+});
+
+test("따릉이 대여소: 1,000곳씩 4쪽을 한꺼번에 묻고 빈 쪽은 버림, 이름 앞 번호는 뗌", async () => {
+  fakeCaches();
+  const asked = [];
+  const fetcher = async (u) => {
+    const range = u.split("bikeList/")[1];
+    asked.push(range);
+    const a = +range.split("/")[0];
+    if (a === 3001) return { ok: true, json: async () => ({ CODE: "INFO-200", MESSAGE: "해당하는 데이터가 없습니다." }) };
+    const row = a === 1
+      ? [{ stationId: "ST-4", stationName: "102. 망원역 1번출구 앞", stationLatitude: "37.55564880", stationLongitude: "126.91062927", parkingBikeTotCnt: "7", rackTotCnt: "15" }]
+      : [{ stationId: "ST-9" + a, stationName: "엉뚱한 곳", stationLatitude: "0", stationLongitude: "0", parkingBikeTotCnt: "1", rackTotCnt: "1" }];
+    return { ok: true, json: async () => ({ rentBikeStatus: { list_total_count: row.length, row } }) };
+  };
+  const list = await bikes("k", ctx, fetcher);
+  assert.deepEqual(asked.sort(), ["1/1000/", "1001/2000/", "2001/3000/", "3001/4000/"]);
+  assert.deepEqual(list, [{ id: "ST-4", name: "망원역 1번출구 앞", lat: 37.555649, lng: 126.910629, bikes: 7, racks: 15 }]);
+  assert.equal(bikeName("2001. 서울숲 입구"), "서울숲 입구");
+  fakeCaches();
+  assert.equal(await bikes("k", ctx, async () => ({ ok: false })), null);
 });

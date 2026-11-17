@@ -2,6 +2,7 @@
 // 키는 SEOUL_SUBWAY_KEY (서울 열린데이터광장 인증키, 지하철 실시간과 같은 키). 응답은 잠시 저장해 모두가 나눠 씀.
 //  GET /w/topis/traffic?links=id,id,…  링크별 실시간 속도·통행시간 {id: [km/h, 초]} (30개까지, 묶음마다 5분 저장)
 //  GET /w/topis/acc                    실시간 돌발(사고·공사·행사 등) [{id, type, sub, link, lat, lng, info, from, to}] (2분 저장)
+//  GET /w/topis/bike                   따릉이 대여소 실시간 [{id, name, lat, lng, bikes, racks}] (1분 저장)
 //  GET /w/topis/status                 확인용: 서울 API 에 닿는지
 
 const BASE = "http://openapi.seoul.go.kr:8088/";
@@ -125,6 +126,35 @@ export async function accidents(key, ctx, fetcher = fetch) {
   });
 }
 
+/**
+ * 따릉이 한 번에 받는 대여소 수 (서울 API 한도 1,000) · 몇 쪽 (2026-11 대여소 2,741곳).
+ * list_total_count 는 전체가 아니라 그 쪽의 개수라 쪽 수를 미리 알 수 없음 → 4쪽을 한꺼번에 묻고 빈 쪽은 버림
+ */
+const BIKE_PAGE = 1000, BIKE_PAGES = 4;
+/** 대여소 이름 앞 번호 떼기 ("102. 망원역 1번출구 앞" → "망원역 1번출구 앞") */
+export const bikeName = (n) => String(n || "").replace(/^\s*\d+\s*[.)]\s*/, "").trim();
+
+/** 서울 공공자전거(따릉이) 실시간 대여정보 (bikeList, JSON). 모든 대여소를 받아 1분 저장 */
+export async function bikes(key, ctx, fetcher = fetch) {
+  return memo(ctx, "bike", 60, async () => {
+    const page = async (i) => {
+      const a = i * BIKE_PAGE + 1;
+      const r = await fetcher(BASE + [encodeURIComponent(key), "json", "bikeList", a, a + BIKE_PAGE - 1].join("/") + "/");
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => null);
+      return j?.rentBikeStatus || null;
+    };
+    const pages = await Promise.all(Array.from({ length: BIKE_PAGES }, (_, i) => page(i).catch(() => null)));
+    // 첫 쪽을 못 받으면 저장하지 않음 (다음에 다시 물음)
+    if (!Array.isArray(pages[0]?.row)) return null;
+    return pages.flatMap((p) => (Array.isArray(p?.row) ? p.row : [])).map((r) => ({
+      id: r.stationId, name: bikeName(r.stationName),
+      lat: Math.round(+r.stationLatitude * 1e6) / 1e6, lng: Math.round(+r.stationLongitude * 1e6) / 1e6,
+      bikes: +r.parkingBikeTotCnt || 0, racks: +r.rackTotCnt || 0,
+    })).filter((b) => b.id && b.lat > 37 && b.lat < 38 && b.lng > 126.5 && b.lng < 127.5);
+  });
+}
+
 /** /w/topis/… */
 export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
   const key = (env.SEOUL_SUBWAY_KEY || "").trim();
@@ -137,6 +167,7 @@ export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
       return json(ids.length ? await trafficFor(ids, key, ctx, fetcher) : {}, 60);
     }
     if (op === "acc") { const v = await accidents(key, ctx, fetcher); return v ? json(v, 60) : json([], 30); }
+    if (op === "bike") { const v = await bikes(key, ctx, fetcher); return v ? json(v, 60) : json([], 30); }
     if (op === "status") {
       const x = await getXml(fetcher, seoulUrl(key, "RoadDivInfo", 1, 5)).catch((e) => "ERR " + (e && e.message));
       return json({ reach: okXml(x), sample: okXml(x) ? rows(x).length : String(x).replace(key, "").slice(0, 120) }, 0);

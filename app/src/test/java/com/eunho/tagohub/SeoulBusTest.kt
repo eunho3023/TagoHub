@@ -76,6 +76,15 @@ class SeoulBusTest {
         assertEquals(12, x.ord)
         assertEquals(37.627618, x.lat!!, 1e-9)
         assertEquals(true, x.lowFloor)
+        assertEquals(null, x.crowd)
+    }
+
+    /** 위치 API 의 혼잡: 철자가 congetion (2026-11-17 실제 응답 470번: 3 이 22대, 4 가 3대) */
+    @Test
+    fun busPositions_crowd() {
+        val b = SeoulMappers2.buses(SeoulBusXml.parse(wrap("""<itemList><isrunyn>1</isrunyn><plainNo>서울74사1</plainNo><congetion>4</congetion><isFullFlag>0</isFullFlag></itemList>
+            <itemList><isrunyn>1</isrunyn><plainNo>서울74사2</plainNo><congetion>5</congetion><isFullFlag>1</isFullFlag></itemList>""")))
+        assertEquals(listOf("보통", "만차"), b.map { it.crowd })
     }
 
     @Test

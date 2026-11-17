@@ -977,7 +977,7 @@ export async function positions(r) {
     const sid = seoulId(r.id), gid = ggId(r.id);
     if (sid) {
       const rows = findRows(JSON.parse(await getText("w/bus/seoul/pos/" + sid)), "vehId");
-      return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX), dataAt: seoulTime(x.dataTm) })) };
+      return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX), dataAt: seoulTime(x.dataTm), crowd: crowdSeoul(x.congetion ?? x.congestion, x.isFullFlag) })) };
     }
     if (gid && ggCity(r.city)) {
       const rows = findRows(JSON.parse(await getText("w/bus/gg/pos/" + gid)), "plateNo");

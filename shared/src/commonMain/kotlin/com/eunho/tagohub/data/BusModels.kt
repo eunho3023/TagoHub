@@ -89,6 +89,8 @@ data class BusLocation(
     val state: Int? = null,
     /** 이 위치 자료의 시각(epoch ms, 서울 dataTm). 모르면 null — 지도에서 늦은 만큼 앞으로 당겨 그릴 때 씀 */
     val dataAtMs: Long? = null,
+    /** 차 안 혼잡 ("여유", "보통", "혼잡", "매우혼잡", "만차"). 서울 버스 위치 API 만 줌 ([Crowd.seoul]) */
+    val crowd: String? = null,
 )
 
 data class BusSearch(

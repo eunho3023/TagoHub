@@ -442,7 +442,8 @@ class KakaoCanvas(
         val l = layer(ITS_ROAD_LAYER) ?: return
         pointFeatures.forEach { feature ->
             // 고속도로 소통은 등급(id 의 두 번째 칸)마다 색이 다른 점
-            val flowGrade = if (feature.layer == "ex_flow") feature.id.split(':').getOrNull(1) else null
+            // 따릉이는 대여 가능 대수(id 의 두 번째 칸)를 글자로
+            val flowGrade = if (feature.layer == "ex_flow" || feature.layer == "seoul_bike") feature.id.split(':').getOrNull(1) else null
             val st = styles("itsRoad:${feature.layer}${flowGrade.orEmpty()}") {
                 val marker = when (feature.layer) {
                     "ex_flow" -> icons.routeDot(
@@ -463,6 +464,8 @@ class KakaoCanvas(
                     "ex_burst" -> icons.letterBadge(0xFFE65100.toInt(), "돌발")
                     "ex_safe" -> icons.triangleBadge(AMBER)
                     "seoul_acc" -> icons.triangleBadge(0xFFD32F2F.toInt())
+                    // 따릉이 대여소: 빌릴 수 있는 대수 (0대면 회색)
+                    "seoul_bike" -> icons.letterBadge(if (flowGrade == "0") 0xFF9E9E9E.toInt() else 0xFF2E7D32.toInt(), flowGrade ?: "따")
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }
                 LabelStyles.from(icon(marker, 0.5f, 0.5f, 10))

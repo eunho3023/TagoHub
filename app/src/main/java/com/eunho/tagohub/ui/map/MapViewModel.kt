@@ -635,8 +635,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun persistItsRoadCache(id: String, features: List<ItsRoadFeature>, bounds: DoubleArray) {
-        // 실시간 소통·돌발은 저장해 두면 오래된 것이 보이므로 저장하지 않음
-        if (id == "ex_flow" || id == com.eunho.tagohub.data.SeoulTopis.FLOW || id == com.eunho.tagohub.data.SeoulTopis.ACC) return
+        // 실시간 소통·돌발·따릉이 대수는 저장해 두면 오래된 것이 보이므로 저장하지 않음
+        if (id == "ex_flow" || id == com.eunho.tagohub.data.SeoulTopis.FLOW || id == com.eunho.tagohub.data.SeoulTopis.ACC || id == com.eunho.tagohub.data.SeoulTopis.BIKE) return
         val saved = features.asSequence().filter {
             it.lat in bounds[0]..bounds[2] && it.lng in bounds[1]..bounds[3]
         }.take(ITS_ROAD_CACHE_MAX_FEATURES).toList()
@@ -3402,9 +3402,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             "ex_burst",
             "ex_flow",
             "ex_safe",
-            // 서울 실시간 교통 (TOPIS, data/SeoulTopis.kt): 도로 소통 색 선, 돌발
+            // 서울 실시간 교통 (TOPIS, data/SeoulTopis.kt): 도로 소통 색 선, 돌발, 따릉이 대여소
             com.eunho.tagohub.data.SeoulTopis.FLOW,
             com.eunho.tagohub.data.SeoulTopis.ACC,
+            com.eunho.tagohub.data.SeoulTopis.BIKE,
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

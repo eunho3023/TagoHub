@@ -33,4 +33,16 @@ class SeoulTopisTest {
         assertTrue(SeoulTopis.inSeoul(37.49, 127.02, 37.51, 127.04))      // 강남역
         assertFalse(SeoulTopis.inSeoul(35.80, 127.10, 35.85, 127.15))     // 전주
     }
+
+    /** 따릉이: 서버 /w/topis/bike 응답 → 지도 점 (id 두 번째 칸 = 대여 가능 대수, 지도 글자에 씀) */
+    @Test
+    fun bikes_parseAndFeature() {
+        val list = SeoulTopis.parseBikes("""[{"id":"ST-4","name":"망원역 1번출구 앞","lat":37.555649,"lng":126.910629,"bikes":7,"racks":15},{"id":"","name":"x","lat":1,"lng":1}]""")
+        assertEquals(1, list.size)
+        val f = SeoulTopis.bikeFeature(list[0])
+        assertEquals("seoul_bike:7:ST-4", f.id)
+        assertEquals("망원역 1번출구 앞", f.title)
+        assertEquals("따릉이 대여 가능 7대 · 거치대 15", f.details)
+        assertEquals(emptyList<SeoulTopis.Bike>(), SeoulTopis.parseBikes(null))
+    }
 }
