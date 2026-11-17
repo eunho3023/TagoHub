@@ -31,7 +31,8 @@ object SeoulTopis {
      * id = "seoul_bike:<대여 가능 대수 또는 ->:<대여소 ID>" (서울 밖 대여소 ID 는 "지역코드:ID", 표준데이터는 "std:순번"). 층 이름은 예전 그대로(저장된 켜기 값 유지)
      */
     const val BIKE = "seoul_bike"
-    val LAYERS = setOf(FLOW, ACC, BIKE)
+    /** 서버 /w/topis 와 같은 길로 받는 층 (주차장은 서버 정적 파일, data/Parking.kt) */
+    val LAYERS = setOf(FLOW, ACC, BIKE, Parking.LAYER)
 
     /** [bikes] 가 null 이면 실시간 대수를 모르는 대여소 (표준데이터), [info] 는 운영시간·요금·전화 */
     data class Bike(val id: String, val name: String, val lat: Double, val lng: Double, val bikes: Int?, val racks: Int, val info: String? = null)
@@ -153,6 +154,7 @@ object SeoulTopis {
     suspend fun features(context: Context, layer: String, s: Double, w: Double, n: Double, e: Double): List<ItsRoadFeature> {
         // 공영자전거는 서울 밖(대전·세종·창원 등)도 있음
         if (layer == BIKE) return bikes().filter { it.lat in s..n && it.lng in w..e }.map(::bikeFeature)
+        if (layer == Parking.LAYER) return Parking.features(s, w, n, e)
         if (!inSeoul(s, w, n, e)) return emptyList()
         return when (layer) {
             FLOW -> {

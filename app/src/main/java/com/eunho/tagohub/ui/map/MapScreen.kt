@@ -67,6 +67,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.LocalParking
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Check
@@ -597,6 +598,8 @@ private fun MapLayerSheet(
         MapLayerOption(listOf("seoul_acc"), "서울 돌발", Icons.Filled.Warning),
         // 공영자전거 대여소(서울 따릉이·대전 타슈·세종 어울링·창원 누비자 등): 빌릴 수 있는 대수
         MapLayerOption(listOf("seoul_bike"), "공영자전거", Icons.AutoMirrored.Filled.DirectionsBike),
+        // 주차장(전국주차장정보표준데이터): 면 수·요금·운영시간
+        MapLayerOption(listOf("parking"), "주차장", Icons.Filled.LocalParking),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
