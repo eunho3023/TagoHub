@@ -1,10 +1,12 @@
-// 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사), 공영자전거 대여소(빌릴 수 있는 대수, 서울 밖도: 대전 타슈·세종 어울링·창원 누비자 등).
+// 서울 실시간 교통 (서울시 교통정보 TOPIS): 지도 위 도로 소통 색, 돌발(사고·공사), 공영자전거 대여소(빌릴 수 있는 대수, 서울 밖도: 대전 타슈·세종 어울링·창원 누비자 등),
+// 더 확대하면 주차장(전국주차장정보표준데이터, parking.js).
 // 도로 링크 모양은 seoul/links.json (pipeline/build_seoul_links.py), 실시간 값은 서버 /w/topis/… (src/seoultraffic.js)
 import { getJson, esc, onReturn } from "./core.js";
 import { MapView } from "./map.js";
 import { decodePolyline } from "./busdata.js";
 import { offsetRight } from "./bus.js";
 import { BIKE_ZOOM, bikeDots } from "./bikes.js";
+import { PARKING_ZOOM, parkingDots, parkingIn, parkingLines } from "./parking.js";
 
 const SEOUL = { s: 37.41, n: 37.72, w: 126.76, e: 127.19 };
 const SAVE = "tagohub.traffic";
@@ -68,13 +70,13 @@ function seoulLinks() {
 export function trafficLayer(onChange) {
   let on = false;
   try { on = localStorage.getItem(SAVE) === "1"; } catch (e) { /* 못 읽음 */ }
-  let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0;
+  let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0, parks = [];
   const speeds = new Map(); // 링크 id → [km/h, 초]
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
   btn.className = "locbtn trafficbtn" + (on ? " on" : "");
-  btn.title = "실시간 교통 (서울) · 공영자전거";
-  btn.setAttribute("aria-label", "실시간 교통 (서울) · 공영자전거");
+  btn.title = "실시간 교통 (서울) · 공영자전거 · 주차장";
+  btn.setAttribute("aria-label", "실시간 교통 (서울) · 공영자전거 · 주차장");
   btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="7" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/></svg>';
   for (const ev of ["pointerdown", "mousedown", "touchstart", "dblclick"]) btn.addEventListener(ev, (e) => e.stopPropagation());
   btn.addEventListener("click", (e) => {
@@ -96,6 +98,8 @@ export function trafficLayer(onChange) {
       bikeAt = now;
       getJson("w/topis/bike").then((v) => { bikes = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { bikeAt = 0; });
     }
+    // 주차장: 고정 자료라 칸마다 한 번만 받음
+    if (on && b && MapView.zoom() >= PARKING_ZOOM) parkingIn(b).then((v) => { parks = v; if (alive) onChange(); }).catch(() => {});
     if (!on || !inSeoul(b)) { visible = []; onChange(); return; }
     if (now - accAt > 120000) {
       accAt = now;
@@ -155,11 +159,12 @@ export function trafficLayer(onChange) {
       }
       return out;
     },
-    /** 돌발 점(서울일 때), 확대했으면 공영자전거 대여소 점(어디서나) — 켜져 있을 때 */
+    /** 돌발 점(서울일 때), 확대했으면 공영자전거 대여소·주차장 점(어디서나) — 켜져 있을 때 */
     dots() {
       const b = MapView.bounds();
       if (!on || !b) return [];
       const out = inSeoul(b) ? acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 })) : [];
+      if (MapView.zoom() >= PARKING_ZOOM) out.push(...parkingDots(parks, b));
       if (MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
       return out;
     },
@@ -171,6 +176,11 @@ export function trafficLayer(onChange) {
         const kind = [a.type, a.sub].filter(Boolean).join(" · ");
         const when = [a.from && a.from + "부터", a.to && a.to + "까지"].filter(Boolean).join(" ");
         return `<div><b>${esc(kind || "돌발")}</b><small>${esc(a.info.replace(/\n+/g, " "))}</small>${when ? `<small>${esc(when)}</small>` : ""}</div>`;
+      }
+      if (id.startsWith("park:")) {
+        const x = parks.find((v) => "park:" + v.id === id);
+        if (!x) return null;
+        return `<div><b>${esc(x.name)}</b>${parkingLines(x).map((l) => `<small>${esc(l)}</small>`).join("")}</div>`;
       }
       if (id.startsWith("bike:")) {
         const x = bikes.find((v) => "bike:" + v.id === id);

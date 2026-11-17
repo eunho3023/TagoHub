@@ -3406,6 +3406,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             com.eunho.tagohub.data.SeoulTopis.FLOW,
             com.eunho.tagohub.data.SeoulTopis.ACC,
             com.eunho.tagohub.data.SeoulTopis.BIKE,
+            // 주차장 (전국주차장정보표준데이터, data/Parking.kt)
+            com.eunho.tagohub.data.Parking.LAYER,
         )
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L
