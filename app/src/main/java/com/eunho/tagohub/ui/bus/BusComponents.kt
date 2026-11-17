@@ -62,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -151,8 +152,6 @@ internal fun StopRouteItem(
     dirLabel: String? = null,
     bellOn: Boolean = false,
     onBell: (() -> Unit)? = null,
-    /** 짙은 남색 실시간 보드 위에 놓을 때 true: 판 전용 글자색·강조색을 쓴다 */
-    onBoard: Boolean = false,
     onClick: () -> Unit,
 ) {
     // API 가 "정류장 도착"을 계속 주는 지역(전주 등)은 버스가 떠난 뒤에도 몇 분씩 남는다.
@@ -161,78 +160,98 @@ internal fun StopRouteItem(
         val sec = a.arrSeconds
         a.prevStops == 0 && sec != null && sec + STALE_ARRIVED_SEC < elapsedSec
     })
-    // 보드(어두운 판) 위에서는 판 전용 색, 흰 카드에서는 테마 색을 그대로 쓴다
-    val variant = if (onBoard) BoardColor.Muted else MaterialTheme.colorScheme.onSurfaceVariant
-    // 곧 도착 강조색: 보드에서는 라임, 흰 카드에서는 테마 오류색 (라이트 진한 빨강 / 다크 밝은 빨강)
-    val soon = if (onBoard) BoardColor.Live else MaterialTheme.colorScheme.error
-    val strong = if (onBoard) BoardColor.On else MaterialTheme.colorScheme.onSurface
+    val cs = MaterialTheme.colorScheme
+    val variant = cs.onSurfaceVariant
+    // 실시간 값은 빨강(오류색), 위치·배차로 어림한 값은 회색
+    val live = cs.error
+    // 노선 한 칸: 흰 바탕에 [종류 배지][번호 (기점-종점)] / 방향 줄, 오른쪽에 도착 두 줄과 동그란 종 버튼. 칸 사이는 가는 줄
     Row(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 왼쪽: 노선 종류 배지 + 큰 노선번호, 아래에 방면(없으면 기점 → 종점)
         Column(Modifier.weight(1f)) {
-            // 노선 번호: 노선 색 칩에 흰 글씨 (종류는 색으로)
-            Text(
-                row.routeNo,
-                Modifier.background(busRouteColor(row.routeType), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
-                color = Color.White, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                row.routeType?.takeIf { it.isNotBlank() }?.let { t ->
+                    Text(
+                        t.removeSuffix("버스"),
+                        Modifier.background(busRouteColor(t), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                        color = Color.White, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                val ends = listOfNotNull(row.startName, row.endName).joinToString("-")
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.ExtraBold)) { append(row.routeNo) }
+                        if (ends.isNotEmpty()) append("($ends)")
+                    },
+                    color = cs.onSurface, fontSize = 18.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
             val a0 = row.arrivals.firstOrNull()
             val roundTrip = com.eunho.tagohub.data.RouteDirections.isRoundTrip(row.startName, row.endName)
-            // 방면(지역 API, 없으면 순환 노선의 방향) · 현재 정류장(지역 API)
-            val dir = a0?.towards?.let { "$it 방면" } ?: if (roundTrip) dirLabel?.let { "$it 방면" } else null
-            val ends = listOfNotNull(row.startName, row.endName).joinToString(" → ")
-            val sub = listOfNotNull(row.region, dir ?: ends.ifEmpty { null }, a0?.atStop?.let { "현재 $it" })
-                .joinToString("   ").ifEmpty { null }
-            if (sub != null) Text(sub, style = MaterialTheme.typography.bodyMedium, color = variant)
+            // 방향(지역 API, 없으면 순환 노선의 방향) · 다른 시군 · 현재 정류장(지역 API)
+            val dir = a0?.towards?.let { "$it 방향" } ?: if (roundTrip) dirLabel?.let { "$it 방향" } else null
+            val sub = listOfNotNull(row.region, dir, a0?.atStop?.let { "현재 $it" }).joinToString(" · ").ifEmpty { null }
+            if (sub != null) Text(sub, Modifier.padding(top = 3.dp), style = MaterialTheme.typography.bodyMedium, color = variant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.width(8.dp))
-        // 오른쪽: 가장 빠른 버스의 남은 시간을 크게, 정류장 수·저상은 작게. 다음 버스는 그 아래 한 줄
+        Spacer(Modifier.width(10.dp))
+        // 오른쪽: 첫 차·다음 차를 한 줄씩 "4분 17초 (6개 전)"
         Column(horizontalAlignment = Alignment.End) {
             val first = row.arrivals.getOrNull(0)
             val second = row.arrivals.getOrNull(1)
             if (first == null) {
-                Text(if (row.ended) "운행종료" else "도착 정보 없음", style = MaterialTheme.typography.bodyLarge, color = variant)
+                Text(if (row.ended) "운행종료" else "정보없음", style = MaterialTheme.typography.bodyLarge, color = variant)
             } else {
-                AnimatedValueText(arrivalLine(first, elapsedSec), label = "bus-stop-first-arrival") { value ->
-                    val parts = value.split(" · ")
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            parts.first(),
-                            style = MaterialTheme.typography.titleLarge.merge(Tnum),
-                            color = if (first.estimated || (first.arrSeconds ?: 0) - elapsedSec > 180) strong else soon,
-                            fontWeight = FontWeight.Black,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        )
-                        if (parts.size > 1) Text(parts.drop(1).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = variant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                for ((i, a) in listOf(first, second).withIndex()) {
+                    if (a == null) {
+                        if (i == 1) Text("정보없음", style = MaterialTheme.typography.bodyMedium, color = variant)
+                        continue
                     }
-                }
-                if (second != null) AnimatedValueText(arrivalLine(second, elapsedSec), label = "bus-stop-second-arrival") { value ->
-                    Text(
-                        value,
-                        style = MaterialTheme.typography.bodyLarge.merge(Tnum),
-                        color = if (second.estimated || (second.arrSeconds ?: 0) - elapsedSec > 180) variant else soon,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                    )
+                    AnimatedValueText(arrivalLine(a, elapsedSec), label = "bus-stop-arrival-$i") { value ->
+                        Text(
+                            compactArrival(value),
+                            style = (if (i == 0) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium).merge(Tnum),
+                            color = if (a.estimated || a.scheduled) variant else live,
+                            fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Medium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
         if (onBell != null) {
-            IconButton(onClick = onBell, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    if (bellOn) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsNone,
-                    contentDescription = if (bellOn) "승차 알림 끄기" else "승차 알림",
-                    tint = if (bellOn) (if (onBoard) BoardColor.Live else ModeColor.Bus) else variant,
-                    modifier = Modifier.size(22.dp),
-                )
+            Spacer(Modifier.width(10.dp))
+            Surface(
+                onClick = onBell,
+                shape = CircleShape,
+                color = if (bellOn) cs.primaryContainer else Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (bellOn) cs.primary else cs.outlineVariant),
+                modifier = Modifier.size(40.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        if (bellOn) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsNone,
+                        contentDescription = if (bellOn) "승차 알림 끄기" else "승차 알림",
+                        tint = if (bellOn) cs.primary else variant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }
+}
+
+/** "4분 17초 · 6정류장 전 · 저상" → "4분 17초 (6개 전 · 저상)" (정류장 칸 오른쪽에 한 줄로) */
+private fun compactArrival(line: String): String {
+    val parts = line.split(" · ")
+    if (parts.size < 2) return line
+    val rest = parts.drop(1).joinToString(" · ") { it.replace("정류장 전", "개 전") }
+    return "${parts.first()} ($rest)"
 }
 
 /** 도착 문구: 항상 초까지 + 남은 정류장 + 저상 (TAGO 버스도착정보 필드 그대로) */

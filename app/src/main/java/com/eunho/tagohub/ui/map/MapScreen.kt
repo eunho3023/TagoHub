@@ -1376,17 +1376,6 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
         )
         val timetable by vm.stopTimetable.collectAsStateWithLifecycle()
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        androidx.compose.material3.OutlinedButton(
-            onClick = {
-                val saved = VisitLog.addStop(d.stop)
-                android.widget.Toast.makeText(context, if (saved) "방문 장소에 저장했어요." else "이 정류장의 위치 정보가 없어요.", android.widget.Toast.LENGTH_SHORT).show()
-            },
-            enabled = d.stop.lat != null && d.stop.lng != null,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text("방문 장소로 저장", Modifier.padding(start = 8.dp))
-        }
         val admin by com.eunho.tagohub.data.MapEdits.admin.collectAsStateWithLifecycle()
         if (admin && d.stop.lat != null) MapEditLinks(listOf("정류장 위치 고치기" to { vm.startStopFixMode(d.stop) }))
         liveNote?.let {
@@ -1401,23 +1390,12 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                 val companions by d.others.collectAsStateWithLifecycle()
                 com.eunho.tagohub.ui.bus.BoardBellHost(d.stop, companions) { bellOn, onBell ->
                     LoadView(rows, isEmpty = { it.isEmpty() }, emptyText = "이 정류장을 지나는 노선 정보가 없어요.") { list ->
-                        // 도착 정보는 홈과 같은 짙은 남색 판에 담는다 (시안 04 정류소)
-                        LiveBoard(
-                            title = "도착 정보",
-                            sub = "15초마다 갱신",
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
-                            footer = {
-                                BoardUpdated("방금 갱신")
-                                Spacer(Modifier.weight(1f))
-                                BoardLink("시간표", { vm.openStopTimetable() })
-                            },
-                        ) {
-                            LazyColumn(Modifier.weight(1f)) {
-                                items(hideDuplicateNumbers(list)) { row ->
-                                    // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
-                                    StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }, onBoard = true) { vm.showRoute(row) }
-                                    HorizontalDivider(color = BoardColor.Line)
-                                }
+                        // 도착 정보: 따로 판에 담지 않고 패널 바탕에 노선마다 한 칸씩, 칸 사이는 가는 줄 (카카오·네이버 지도 정류장 화면처럼)
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            items(hideDuplicateNumbers(list)) { row ->
+                                // 노선을 누르면 지도에 노선 + 실시간 버스 위치, 종을 누르면 승차 알림
+                                StopRouteItem(row, elapsedSec, direction, bellOn = bellOn(row), onBell = { onBell(row) }) { vm.showRoute(row) }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             }
                         }
                     }
@@ -1441,6 +1419,20 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
                     Icon(if (timetable == null) Icons.Filled.Schedule else Icons.Filled.DirectionsBus, contentDescription = null, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(if (timetable == null) "시간표" else "실시간", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            // 방문 장소로 저장: 목록 위 큰 버튼 대신 아래 바의 동그란 버튼 (목록이 한 덩어리로 보이게)
+            if (d.stop.lat != null && d.stop.lng != null) {
+                Surface(
+                    onClick = {
+                        val saved = VisitLog.addStop(d.stop)
+                        android.widget.Toast.makeText(context, if (saved) "방문 장소에 저장했어요." else "이 정류장의 위치 정보가 없어요.", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Place, contentDescription = "방문 장소로 저장", modifier = Modifier.size(22.dp)) }
                 }
             }
             if (showMap != null) {
