@@ -125,6 +125,7 @@ object SeoulMappers2 {
             arrSeconds = sec,
             atStop = r.str("stationNm$n"),
             towards = r.str("adirection"),
+            crowd = Crowd.seoul(r.str("congestion$n"), r.str("isFullFlag$n")),
         )
     }
 
