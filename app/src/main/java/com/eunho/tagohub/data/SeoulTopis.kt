@@ -32,7 +32,7 @@ object SeoulTopis {
      */
     const val BIKE = "seoul_bike"
     /** 서버 /w/topis 와 같은 길로 받는 층 (주차장은 서버 정적 파일, data/Parking.kt) */
-    val LAYERS = setOf(FLOW, ACC, BIKE, Parking.LAYER)
+    val LAYERS = setOf(FLOW, ACC, BIKE, Parking.LAYER) + Amenity.LAYERS
 
     /** [bikes] 가 null 이면 실시간 대수를 모르는 대여소 (표준데이터), [info] 는 운영시간·요금·전화 */
     data class Bike(val id: String, val name: String, val lat: Double, val lng: Double, val bikes: Int?, val racks: Int, val info: String? = null)
@@ -155,6 +155,7 @@ object SeoulTopis {
         // 공영자전거는 서울 밖(대전·세종·창원 등)도 있음
         if (layer == BIKE) return bikes().filter { it.lat in s..n && it.lng in w..e }.map(::bikeFeature)
         if (layer == Parking.LAYER) return Parking.features(s, w, n, e)
+        if (layer in Amenity.LAYERS) return Amenity.features(layer, s, w, n, e)
         if (!inSeoul(s, w, n, e)) return emptyList()
         return when (layer) {
             FLOW -> {

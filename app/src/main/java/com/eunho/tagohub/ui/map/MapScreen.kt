@@ -68,6 +68,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.LocalParking
+import androidx.compose.material.icons.filled.Wc
+import androidx.compose.material.icons.filled.Hotel
+import androidx.compose.material.icons.filled.TransferWithinAStation
+import androidx.compose.material.icons.filled.Accessible
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Check
@@ -600,6 +604,11 @@ private fun MapLayerSheet(
         MapLayerOption(listOf("seoul_bike"), "공영자전거", Icons.AutoMirrored.Filled.DirectionsBike),
         // 주차장(전국주차장정보표준데이터): 면 수·요금·운영시간
         MapLayerOption(listOf("parking"), "주차장", Icons.Filled.LocalParking),
+        // 편의시설 (표준데이터, data/Amenity.kt): 공중화장실, 교통약자(전동휠체어 충전기·이동지원센터 예약 전화), 졸음쉼터, 환승센터
+        MapLayerOption(listOf("amenity_toilet"), "화장실", Icons.Filled.Wc),
+        MapLayerOption(listOf("amenity_wheel", "amenity_mobility"), "교통약자", Icons.Filled.Accessible),
+        MapLayerOption(listOf("amenity_drowsy"), "졸음쉼터", Icons.Filled.Hotel),
+        MapLayerOption(listOf("amenity_transfer"), "환승센터", Icons.Filled.TransferWithinAStation),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
