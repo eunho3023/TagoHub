@@ -27,6 +27,7 @@
 | 6 | 광주 버스 도착 | 광주광역시 (`6290000/gj_bis`) | 앱 | TAGO 키 | **정상(SUCCESS)** (응답이 `RESPONSE`로 한 겹 더 감싸짐 → 파서 수정함) | — |
 | 7 | 여수 버스 도착 | 여수시 (`4810000/arrive`) | 앱 | TAGO 키 | **실패: `HTTP_ERROR(04)`** (https·http 모두) | 도시 서버 쪽 오류 또는 사용 불가 상태, 확인 필요 |
 | 8 | 울산 버스 도착 | 울산광역시 BIS (`6310000/bis/getBusArrivalInfo`, 공공데이터포털) | 앱·웹(중계) | TAGO 키 | **정상(200)** (2026-11-16 활용신청 후, `_type=xml` 필요, 정류장 ID `USB`+9자리) | 개발계정 하루 1,000건 → 운영계정 신청. 옛 주소 `openapi.its.ulsan.kr` 는 응답 없음 |
+| 8-1 | 대전 버스 도착·위치 | 대전광역시 BIS (`6300000/arrive/getArrInfoByStopID`, `6300000/busposinfo/getBusPosByRtid`, 공공데이터포털) | 앱·웹(중계) | TAGO 키 | **정상(headerCd 0)** (2026-11-17 확인, 정류장 ID `DJB`+7자리·노선 ID `DJB`+8자리) | 개발계정 한도 확인 필요. 같은 순간 TAGO 보다 40~130초 새로워 지자체 먼저. 대전 타슈(`6300000/openapi2022/tasuInfo`)·전국 공영자전거(`B551982/pbdo_v2`)는 활용신청 전이라 키 미등록(30) |
 | 9 | 제주 버스 | 제주도 BIS (`bus.jeju.go.kr`, `busopen.jeju.go.kr`, http) | 앱 | 없음 | 확인 못함 | **키 없이 쓰는 비공식 성격일 수 있음** — 공개 API 약관이 있는지 확인 |
 | 10 | 서울 버스·경로 | 서울시 (`ws.bus.go.kr`, http) | 앱 | 서울 키 | 확인 못함 | http 전용, 키 노출 |
 | 11 | 서울 지하철 실시간 | 서울열린데이터광장 (`swopenapi.seoul.go.kr`, http) | 앱 | `SEOUL_SUBWAY_KEY` | 확인 못함 | 호출 한도, 출처 표기 |

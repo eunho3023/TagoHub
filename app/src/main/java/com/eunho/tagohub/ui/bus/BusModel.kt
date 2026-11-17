@@ -200,11 +200,17 @@ internal const val QUICK_LOCAL_MS = 3_000L
  * - [quickMs] 를 주면(화면을 처음 열 때) 지역 도착이 그 안에 안 오면 TAGO 를 먼저 씀
  *   (전주시 서버가 가끔 6~7초 걸려 첫 화면이 비어 있었음). 다음 새로고침부터는 지역 도착을 끝까지 기다림
  */
+/** TAGO 보다 지자체 도착 자료가 새로워서 지자체를 먼저 쓰는 지역 (못 받거나 비면 TAGO) */
+private val LOCAL_FIRST_KINDS = setOf(com.eunho.tagohub.data.RegionalKind.ULSAN, com.eunho.tagohub.data.RegionalKind.DAEJEON)
+
+/** 대전 노선 ID 접두사 (TAGO 와 같은 번호): 버스 위치를 대전 BIS 에서 먼저 받음 */
+private const val DAEJEON_ROUTE = "DJB"
+
 internal suspend fun arrivalsFor(repo: TagoRepository, s: BusStop, quickMs: Long? = null): TagoResult<List<BusArrival>> = when {
     SeoulBus.isSeoul(s.nodeId) -> s.nodeNo?.let { Graph.seoulBus.arrivals(it) } ?: TagoResult.Success(emptyList())
     Gyeonggi.isGyeonggi(s.nodeId) && com.eunho.tagohub.data.RegionalBus.of(s) == null ||
         Jeonju.isJeonju(s.nodeId) || Jeju.isJeju(s.nodeId) ||
-        com.eunho.tagohub.data.RegionalBus.of(s)?.kind == com.eunho.tagohub.data.RegionalKind.ULSAN -> kotlinx.coroutines.coroutineScope {
+        com.eunho.tagohub.data.RegionalBus.of(s)?.kind in LOCAL_FIRST_KINDS -> kotlinx.coroutines.coroutineScope {
         val localJob = async {
             runCatching {
                 val regional = com.eunho.tagohub.data.RegionalBus.of(s)
@@ -212,7 +218,8 @@ internal suspend fun arrivalsFor(repo: TagoRepository, s: BusStop, quickMs: Long
                     Jeonju.isJeonju(s.nodeId) -> Graph.jeonju.arrivals(s.nodeId)
                     Jeju.isJeju(s.nodeId) -> Graph.jeju.arrivals(s.nodeId)
                     // 울산 BIS: 같은 정류장·같은 순간 TAGO 보다 0~1분 새롭고 버스가 같거나 더 많음 (2026-11-16 실측)
-                    regional?.kind == com.eunho.tagohub.data.RegionalKind.ULSAN -> Graph.regionalBus.arrivals(regional)
+                    // 대전 BIS: 같은 버스가 40~130초 새롭고 버스가 더 많음, 방면도 줌 (2026-11-17 실측)
+                    regional != null && regional.kind in LOCAL_FIRST_KINDS -> Graph.regionalBus.arrivals(regional)
                     else -> Graph.gyeonggi.arrivals(s.nodeId)
                 }
             }.getOrNull()
@@ -779,6 +786,16 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
         }
         return
     }
+    if (d.routeId.startsWith(DAEJEON_ROUTE)) {
+        // 대전 BIS 버스 위치: TAGO 와 같은 정류장 좌표지만 한 정류장쯤 새로움 (2026-11-17 같은 순간 6대 중 4대). 못 받거나 비면 아래 TAGO
+        val dj = Graph.regionalBus.daejeonBuses(d.routeId, d.stops.value.valueOrNull().orEmpty())
+        if (dj is TagoResult.Success && dj.data.isNotEmpty()) {
+            d.buses.value = mergeWithGrace(d, guard(d, dj.data))
+            updateGps(d)
+            d.updated.value = LocalTime.now()
+            return
+        }
+    }
     // 앱에 넣어둔 노선: 실시간 연결 방식에 따라
     val db = StopDb.peek()
     when (db?.let { withContext(Dispatchers.IO) { it.routeRealtime(d.routeId) } }) {
@@ -948,6 +965,8 @@ private suspend fun busOrdsOnRoute(repo: TagoRepository, routeId: String, cityCo
         Jeju.isJeju(routeId) -> (Graph.jeju.buses(routeId, stops) as? TagoResult.Success)?.data
         Jeonju.isJeonju(routeId) -> (Graph.jeonju.positions(routeId) as? TagoResult.Success)?.data?.let { JeonjuMappers.buses(it) { null } }
         SeoulBus.isSeoul(routeId) -> (Graph.seoulBus.buses(routeId) as? TagoResult.Success)?.data
+        routeId.startsWith(DAEJEON_ROUTE) -> (Graph.regionalBus.daejeonBuses(routeId, stops) as? TagoResult.Success)?.data?.takeIf { it.isNotEmpty() }
+            ?: (repo.busLocations(cityCode, routeId) as? TagoResult.Success)?.data
         else -> {
             // 앱에 넣어둔 노선 중 실시간이 없거나 번호로 따로 찾아야 하는 노선(세종·원주·포항)은 판단하지 않음
             val mode = StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.routeRealtime(routeId) } }

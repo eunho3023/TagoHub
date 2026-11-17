@@ -3,6 +3,7 @@ package com.eunho.tagohub
 import com.eunho.tagohub.data.RegionalBus
 import com.eunho.tagohub.data.RegionalKind
 import com.eunho.tagohub.data.RegionalMappers
+import com.eunho.tagohub.data.RouteStop
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -18,6 +19,7 @@ class RegionalBusTest {
         // 경기(GGB)·광주시(경기, 38090) 는 해당 없음
         assertNull(RegionalBus.of("GGB233000001", "31010"))
         assertNull(RegionalBus.of("GJB1", "38090"))
+        assertEquals(RegionalKind.DAEJEON to "8001378", RegionalBus.of("DJB8001378", "25")!!.let { it.kind to it.stdId })
     }
 
     @Test
@@ -112,5 +114,52 @@ class RegionalBusTest {
     @Test(expected = java.io.IOException::class)
     fun gwangjuNestedErrorIsNotSilentlyEmpty() {
         RegionalMappers.gwangjuRows("""{"RESPONSE":{"RESULT":{"RESULT_CODE":"ERROR","RESULT_MSG":"잘못된 요청"}}}""")
+    }
+
+    /** 대전 BIS 정류장 도착 (2026-11-17 실제 응답 모양). MSG_TP 07 은 출발 전 차라 EXTIME_SEC 가 출발 시각(1440 = 14:40) */
+    @Test
+    fun daejeonArrivalsAndWaitingBus() {
+        val xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ServiceResult><msgHeader><currentPage>1</currentPage><headerCd>0</headerCd><headerMsg>정상적으로 처리되었습니다.</headerMsg><itemCnt>2</itemCnt></msgHeader><msgBody>
+            <itemList><BUS_NODE_ID>8001378</BUS_NODE_ID><CAR_REG_NO>대전75자9224</CAR_REG_NO><DESTINATION>탄방역종점</DESTINATION><EXTIME_MIN>3</EXTIME_MIN><EXTIME_SEC>128</EXTIME_SEC><MSG_TP>03</MSG_TP><ROUTE_CD>30300039</ROUTE_CD><ROUTE_NO>104</ROUTE_NO><ROUTE_TP>2  </ROUTE_TP><STATUS_POS>2</STATUS_POS></itemList>
+            <itemList><BUS_NODE_ID>8001378</BUS_NODE_ID><DESTINATION>탑립동</DESTINATION><EXTIME_MIN>1</EXTIME_MIN><EXTIME_SEC>1448</EXTIME_SEC><MSG_TP>07</MSG_TP><ROUTE_CD>30300096</ROUTE_CD><ROUTE_NO>918</ROUTE_NO><ROUTE_TP>2</ROUTE_TP><STATUS_POS>2</STATUS_POS></itemList>
+            </msgBody></ServiceResult>"""
+        val list = RegionalMappers.daejeon(RegionalMappers.xmlRows(xml, "대전"))
+        val a = list.first()
+        assertEquals("DJB30300039", a.routeId)
+        assertEquals("104", a.routeNo)
+        assertEquals("간선버스", a.routeType)
+        assertEquals(128, a.arrSeconds)
+        assertEquals(2, a.prevStops)
+        assertEquals("탄방역종점", a.towards)
+        val waiting = list.last()
+        assertEquals("918", waiting.routeNo)
+        assertNull(waiting.arrSeconds)
+        assertNull(waiting.prevStops)
+        assertEquals("광역버스", RegionalMappers.daejeonType("7"))
+    }
+
+    @Test(expected = java.io.IOException::class)
+    fun daejeonHeaderErrorThrows() {
+        RegionalMappers.xmlRows("<ServiceResult><msgHeader><headerCd>2</headerCd><headerMsg>필수 요청 Parameter가 존재하지 않습니다.</headerMsg></msgHeader><msgBody/></ServiceResult>", "대전")
+    }
+
+    /** 대전 버스 위치: 순번이 없어 정류장 ID 로 찾고, 같은 정류장이 두 번 있으면 DIR 0 앞쪽·1 뒤쪽 */
+    @Test
+    fun daejeonBusesMatchStopsByIdAndDirection() {
+        val xml = """<ServiceResult><msgHeader><headerCd>0</headerCd></msgHeader><msgBody>
+            <itemList><BUS_NODE_ID>8002589</BUS_NODE_ID><DIR>0</DIR><GPS_LATI>36.359108</GPS_LATI><GPS_LONG>127.309164</GPS_LONG><PLATE_NO>대전75자9263</PLATE_NO></itemList>
+            <itemList><BUS_NODE_ID>8002589</BUS_NODE_ID><DIR>1</DIR><GPS_LATI>36.359108</GPS_LATI><GPS_LONG>127.309164</GPS_LONG><PLATE_NO>대전75자9217</PLATE_NO></itemList>
+            <itemList><BUS_NODE_ID>9999999</BUS_NODE_ID><DIR>0</DIR><PLATE_NO>대전75자1</PLATE_NO></itemList>
+            </msgBody></ServiceResult>"""
+        val stops = listOf(
+            RouteStop("DJB8002589", "가", null, 7, null, 36.359108, 127.309164),
+            RouteStop("DJB8001000", "나", null, 30, null, null, null),
+            RouteStop("DJB8002589", "가", null, 64, null, 36.359108, 127.309164),
+        )
+        val b = RegionalMappers.daejeonBuses(RegionalMappers.xmlRows(xml, "대전"), stops)
+        assertEquals(listOf(7, 64, null), b.map { it.ord })
+        assertEquals("DJB8002589", b[0].nodeId)
+        assertEquals("대전75자9263", b[0].vehicleNo)
+        assertEquals(36.359108, b[0].lat!!, 1e-9)
     }
 }

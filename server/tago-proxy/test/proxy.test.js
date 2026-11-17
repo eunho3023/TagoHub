@@ -266,3 +266,17 @@ test("웹 울산 도착: 공공데이터포털 울산 BIS(GW), 한글이 깨지�
   assert.equal(busWebRequest("/w/bus/ulsan/pos/193012313"), null);
   assert.equal(busWebRequest("/w/bus/ulsan/arrival/12345"), null);
 });
+
+test("웹 대전 도착·위치: 대전 BIS(6300000), 앱 /h/ 중계와 같은 저장 이름, 5초 저장", () => {
+  const a = busWebRequest("/w/bus/daejeon/arrival/8001378");
+  assert.equal(a.url, "https://apis.data.go.kr/6300000/arrive/getArrInfoByStopID?BusStopID=8001378&serviceKey=KEY");
+  assert.equal(a.cacheKey, "https/apis.data.go.kr/6300000/arrive/getArrInfoByStopID?serviceKey=TAGOHUB_TAGO_SERVICE_KEY&BusStopID=8001378");
+  assert.equal(a.ttl, 5);
+  const p = busWebRequest("/w/bus/daejeon/pos/30300039");
+  assert.equal(p.url, "https://apis.data.go.kr/6300000/busposinfo/getBusPosByRtid?busRouteId=30300039&serviceKey=KEY");
+  assert.equal(p.cacheKey, "https/apis.data.go.kr/6300000/busposinfo/getBusPosByRtid?serviceKey=TAGOHUB_TAGO_SERVICE_KEY&busRouteId=30300039");
+  for (const x of ["/6300000/arrive/getArrInfoByStopID", "/6300000/busposinfo/getBusPosByRtid"]) assert.equal(ttlFor(x), 5, x);
+  assert.equal(busWebRequest("/w/bus/daejeon/arrival/30300039"), null);  // 정류장은 7자리
+  assert.equal(busWebRequest("/w/bus/daejeon/pos/8001378"), null);       // 노선은 8자리
+  assert.equal(busWebRequest("/w/bus/daejeon/stops/8001378"), null);
+});
