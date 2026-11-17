@@ -122,7 +122,8 @@ export function stopsMap(host, focus) {
         // 고른 정류장은 앱처럼 아이콘 위에 이름
         .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; })],
       (d) => {
-        if (/^acc:/.test(d.id)) {
+        // 돌발·공영자전거·주차장 점은 카드 (topis.js card)
+        if (/^(acc|bike|park):/.test(d.id)) {
           picked = null;
           info = traffic && traffic.card(d.id, (h) => { if (info != null) { info = h; draw(); } });
           draw();
