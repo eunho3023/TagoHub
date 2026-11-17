@@ -194,14 +194,14 @@ private suspend fun withHeadwaySecond(repo: TagoRepository, stop: BusStop, rows:
             }.getOrNull() else null
             if (logged != null) {
                 return@async r.copy(arrivals = r.arrivals + first.copy(
-                    prevStops = null, arrSeconds = logged, vehicleType = null, atStop = null,
+                    prevStops = null, arrSeconds = logged, vehicleType = null, atStop = null, crowd = null,
                     estimated = true, scheduled = true, fromLog = true, behind = emptyList(),
                 ))
             }
             val gap = runCatching { withTimeoutOrNull(ESTIMATE_TIMEOUT_MS) { headwayMinutes(repo, stop, r) } }.getOrNull() ?: return@async r
             val sec = firstSec
             r.copy(arrivals = r.arrivals + first.copy(
-                prevStops = null, arrSeconds = sec + gap * 60, vehicleType = null, atStop = null,
+                prevStops = null, arrSeconds = sec + gap * 60, vehicleType = null, atStop = null, crowd = null,
                 estimated = true, scheduled = true, behind = emptyList(),
             ))
         }

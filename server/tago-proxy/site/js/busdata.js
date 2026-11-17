@@ -473,12 +473,23 @@ export function parseArrMsg(m) {
   return [(min || 0) * 60 + (sec || 0), stops];
 }
 
+// ── 차 안 혼잡·빈자리 (Crowd, ArrivalText.kt 와 같은 규칙). 없으면 null ──
+/** 서울: congestion 0 정보없음 3 여유 4 보통 5 혼잡 6 매우혼잡, isFullFlag 1 만차 */
+export function crowdSeoul(c, full) {
+  if (String(full ?? "").trim() === "1") return "만차";
+  return { 3: "여유", 4: "보통", 5: "혼잡", 6: "매우혼잡" }[String(c ?? "").trim()] || null;
+}
+/** 경기: 빈자리(-1 정보없음, 좌석 없는 시내버스 0)가 1 이상이면 그것만, 아니면 crowded 1 여유 2 보통 3 혼잡 4 매우혼잡 */
+export function crowdGyeonggi(crowded, seats) {
+  if (seats != null && seats > 0) return "빈자리 " + seats;
+  return { 1: "여유", 2: "보통", 3: "혼잡", 4: "매우혼잡" }[crowded] || null;
+}
 function seoulArrivals(body) {
   return findRows(JSON.parse(body), "arrmsg1").flatMap((r) => [1, 2].map((n) => {
     const p = parseArrMsg(r["arrmsg" + n]);
     if (!p) return null;
     return { routeId: "SEB" + r.busRouteId, routeNo: str(r.busRouteAbrv) || String(r.rtNm ?? ""), routeType: SEOUL_TYPES[r.routeType] || null,
-      vehicleType: r["busType" + n] === "1" ? "저상버스" : r["busType" + n] === "2" ? "굴절버스" : null, prevStops: p[1], arrSeconds: p[0], towards: str(r.adirection) };
+      vehicleType: r["busType" + n] === "1" ? "저상버스" : r["busType" + n] === "2" ? "굴절버스" : null, prevStops: p[1], arrSeconds: p[0], towards: str(r.adirection), crowd: crowdSeoul(r["congestion" + n], r["isFullFlag" + n]) };
   }).filter(Boolean));
 }
 function ggArrivals(body) {
@@ -488,7 +499,8 @@ function ggArrivals(body) {
       const sec = int(r["predictTimeSec" + n]) ?? (int(r["predictTime" + n]) != null ? int(r["predictTime" + n]) * 60 : null);
       if (sec == null) return null;
       return { routeId: "GGB" + r.routeId, routeNo: String(r.routeName ?? ""), routeType: str(r.routeTypeName) || GG_TYPES[int(r.routeTypeCd)] || null,
-        vehicleType: GG_VEHICLE[int(r["lowPlate" + n])] || null, prevStops: int(r["locationNo" + n]), arrSeconds: sec, towards: str(r.routeDestName) };
+        vehicleType: GG_VEHICLE[int(r["lowPlate" + n])] || null, prevStops: int(r["locationNo" + n]), arrSeconds: sec, towards: str(r.routeDestName),
+        crowd: crowdGyeonggi(int(r["crowded" + n]), int(r["remainSeatCnt" + n])) };
     }).filter(Boolean);
   });
 }
@@ -1003,8 +1015,8 @@ export function timeText(sec) {
 export function arrivalParts(a, elapsed = 0) {
   const sec = a.arrSeconds == null ? null : Math.max(0, a.arrSeconds - elapsed);
   const low = a.vehicleType && a.vehicleType.includes("저상") ? "저상" : null;
-  if (a.prevStops === 0 && (sec == null || sec <= 30)) return ["정류장 도착", low].filter(Boolean);
-  return [timeText(sec), a.prevStops == null ? null : a.prevStops <= 0 ? "이번 정류장" : a.prevStops + "정류장 전", low].filter(Boolean);
+  if (a.prevStops === 0 && (sec == null || sec <= 30)) return ["정류장 도착", low, a.crowd].filter(Boolean);
+  return [timeText(sec), a.prevStops == null ? null : a.prevStops <= 0 ? "이번 정류장" : a.prevStops + "정류장 전", low, a.crowd].filter(Boolean);
 }
 /** 이미 지나간 버스 (남은 시간이 0 아래로 3초 넘게, 바로 앞이거나 이번 정류장) */
 export const passed = (a, elapsed) => a.arrSeconds != null && a.arrSeconds - elapsed < -3 && (a.prevStops == null || a.prevStops <= 1);

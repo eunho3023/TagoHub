@@ -62,6 +62,8 @@ data class BusArrival(
     val scheduled: Boolean = false,
     /** [scheduled] 인데 배차 간격이 아니라 지난 운행 기록으로 어림함 ("지난 기록 기준") */
     val fromLog: Boolean = false,
+    /** 차 안 혼잡·빈자리 ("여유", "혼잡", "빈자리 22", "만차"). 서울·경기 도착 API 만 줌 ([Crowd]) */
+    val crowd: String? = null,
 )
 
 data class RouteStop(

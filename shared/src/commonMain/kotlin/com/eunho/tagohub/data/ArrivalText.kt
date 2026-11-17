@@ -17,13 +17,35 @@ object ArrivalText {
         val sec = a.arrSeconds?.minus(elapsedSec)?.coerceAtLeast(0)
         // 이번 정류장이면(0정류장 전) 이미 와 있는 것: "곧 도착 · 이번 정류장" 대신 한 마디로
         if (a.prevStops == 0 && (sec == null || sec <= 30)) {
-            return listOfNotNull("정류장 도착", a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" }).joinToString(" · ")
+            return listOfNotNull("정류장 도착", a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" }, a.crowd).joinToString(" · ")
         }
         return listOfNotNull(
             if (a.estimated && sec != null && sec > 30) "약 ${((sec + 30) / 60).coerceAtLeast(1)}분" else time(sec),
             a.prevStops?.let { if (it <= 0) "이번 정류장" else "${it}정류장 전" } ?: if (a.scheduled) (if (a.fromLog) "지난 기록 기준" else "배차 기준") else null,
             a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" },
+            a.crowd,
         ).joinToString(" · ")
+    }
+}
+
+/**
+ * 차 안 혼잡·빈자리 한 마디. 정보가 없으면 null (그러면 아무것도 안 보임).
+ * 웹 busdata.js crowdSeoul·crowdGyeonggi 와 같은 규칙.
+ */
+object Crowd {
+    /** 서울 getStationByUid: congestion 0 정보없음 3 여유 4 보통 5 혼잡 6 매우혼잡, isFullFlag 1 만차 */
+    fun seoul(congestion: String?, full: String?): String? = when {
+        full?.trim() == "1" -> "만차"
+        else -> when (congestion?.trim()) { "3" -> "여유"; "4" -> "보통"; "5" -> "혼잡"; "6" -> "매우혼잡"; else -> null }
+    }
+
+    /**
+     * 경기 getBusArrivalListv2: remainSeatCnt 빈자리(-1 정보없음, 좌석 없는 시내버스는 0), crowded 1 여유 2 보통 3 혼잡 4 매우혼잡.
+     * 빈자리 수가 있으면(1 이상) 그쪽이 더 쓸모 있어 그것만 보임
+     */
+    fun gyeonggi(crowded: Int?, seats: Int?): String? = when {
+        seats != null && seats > 0 -> "빈자리 $seats"
+        else -> when (crowded) { 1 -> "여유"; 2 -> "보통"; 3 -> "혼잡"; 4 -> "매우혼잡"; else -> null }
     }
 }
 

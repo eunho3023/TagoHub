@@ -47,6 +47,7 @@ object GyeonggiMappers {
                 arrSeconds = sec,
                 atStop = r.str("stationNm$n"),
                 towards = r.str("routeDestName"),
+                crowd = Crowd.gyeonggi(r.int("crowded$n"), r.int("remainSeatCnt$n")),
             )
         }
     }
