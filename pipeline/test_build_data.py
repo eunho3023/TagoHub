@@ -84,6 +84,8 @@ def test_full_build():
         rs = db.execute("SELECT seq, stop_id, name, lat, updown FROM route_stops WHERE route_id='BSB5200111000' ORDER BY seq").fetchall()
         assert rs[0] == (1, BUSAN[0], "", None, "0")            # 앱 정류장이면 이름·좌표는 정류장 표에서
         assert rs[2] == (3, "BSB_NEW", "새 정류장", 35.2, "1")     # 앱에 없는 정류장은 이름·좌표 그대로
+        # 앱에 있는 정류장은 이름을 노선 자료의 지금 이름으로 (정류장 표는 예전 자료라 바뀐 이름이 그대로였음)
+        assert db.execute("SELECT name FROM stops WHERE id=?", (BUSAN[0],)).fetchone()[0] == "하나"
         assert db.execute("SELECT * FROM route_info WHERE id='BSB5200111000'").fetchone() == ("BSB5200111000", "05:30", "23:10", 12, 15, 20)
         assert db.execute("SELECT no, start_name FROM gbis_routes WHERE id='GGB216000070'").fetchone() == ("1200", "원시역1번출구")  # 707-1 → 1200
         assert db.execute("SELECT v FROM meta WHERE k='version'").fetchone()[0] == "202610200300"
@@ -281,7 +283,38 @@ def test_helpers():
         pass
 
 
+def test_prune_unserved():
+    """노선 없는 정류장 지우기: 노선 자료가 믿을 만한 지역만, 경기·교통안전공단은 그대로, 전주는 API 로 모은 정류장 기준, 수집이 덜 끝나면 안 지움"""
+    def make():
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE stops(id TEXT PRIMARY KEY, name TEXT)")
+        db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT)")
+        ids = ["BSB1", "BSB2", "BSB3", "BSB_OLD", "GGB1", "GGB2", "GGB_OLD", "TSB_OLD", "JUB1", "JUB2", "JUB3", "JUB4", "JUB_OLD"]
+        db.executemany("INSERT INTO stops VALUES(?, ?)", [(i, i) for i in ids])
+        db.executemany("INSERT INTO route_stops VALUES('R', 1, ?)", [(i,) for i in ["BSB1", "BSB2", "BSB3", "GGB1", "GGB2"]])
+        return db
+    left = lambda db: {r[0] for r in db.execute("SELECT id FROM stops")}
+    db = make()
+    assert bd.prune_unserved(db, complete=False) == 0 and "BSB_OLD" in left(db)        # 수집이 덜 끝나면 그대로
+    served = {k: "" for k in ["JUB1", "JUB2", "JUB3", "JUB4"]}
+    assert bd.prune_unserved(db, True, served, True) == 2
+    assert left(db) == {"BSB1", "BSB2", "BSB3", "GGB1", "GGB2", "GGB_OLD", "TSB_OLD", "JUB1", "JUB2", "JUB3", "JUB4"}
+    db = make()
+    bd.prune_unserved(db, True, served, False)                                          # 전주를 다 못 받았으면 전주는 그대로
+    assert "JUB_OLD" in left(db) and "BSB_OLD" not in left(db)
+
+
+def test_jeonju_served_walk():
+    """전주: 정류장 경유 노선 → 노선 정류장 목록으로 노선이 서는 정류장과 지금 이름을 모음 (중계 서버 응답 모양)"""
+    route = lambda rid: f'<list class="object"><brtStdId type="string">{rid}</brtStdId></list>'
+    stop = lambda sid, nm: f'<list class="object"><stopStandardid type="string">{sid}</stopStandardid><stopKname type="string">{nm}</stopKname></list>'
+    pages = {"stops/R1": stop("305100426", "풍남중") + stop("306101023", "백자삼거리")}
+    got = lambda path: pages.get(path, route("R1") if path.startswith("routes/") else "")
+    served, ok = bd.fetch_jeonju_served(get=got)
+    assert ok and served["JUB306101023"] == "백자삼거리" and "JUB306101039" not in served
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

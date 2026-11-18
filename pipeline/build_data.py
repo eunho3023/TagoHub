@@ -438,12 +438,85 @@ def compare(kotsa, tago_items):
     }
 
 
-def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None):
+# 노선 없는 정류장 지우기: 정류장 id 앞 영문자(지역)마다 노선 정류장 자료가 이만큼 넘게 있으면 그 지역 자료는 믿을 만하다고 보고,
+# 노선이 하나도 안 서는 정류장(폐지·미사용)을 지움. 웹 build_web_data.COVERAGE_MIN 과 같은 값.
+PRUNE_MIN = 0.5
+# 지우지 않는 지역: 경기(GGB)는 GBIS 노선 중 정류장 순서가 있는 것이 일부(약 2/3)뿐, 교통안전공단(TSB)은 정류장 순서가 거의 없음
+PRUNE_KEEP = {"GGB", "TSB"}
+# 노선 자료가 DB 에 없어 그 지역 API 로 노선이 서는 정류장을 모으는 곳 (중계 서버 /w/bus/jeonju/… 를 거쳐 하루 저장본을 씀, 인증키 필요 없음)
+WEB_BASE = os.environ.get("TAGOHUB_WEB", "https://tagohub-proxy.eunho3023.workers.dev").rstrip("/")
+
+
+def prefix(sid):
+    """정류장 id 앞의 영문자 (지역): DJB8001793 → DJB"""
+    i = 0
+    while i < len(sid) and sid[i].isalpha():
+        i += 1
+    return sid[:i]
+
+
+def fetch_jeonju_served(get=None):
+    """
+    전주: 노선마다 정류장 목록을 받아 지금 노선이 서는 정류장 {정류장 id: 지금 이름} 과 다 받았는지.
+    정류장 하나의 경유 노선 → 그 노선들의 정류장 목록 → 아직 안 나온 정류장의 경유 노선 … (노선 340개, 호출 약 800번, 2026-11 실측)
+    """
+    import re, urllib.request
+
+    def fetch(path):
+        for wait in (0, 3, 10):
+            time.sleep(wait)
+            try:
+                # 이름표 없는 파이썬 기본 요청은 서버 앞단에서 403 으로 막힘
+                req = urllib.request.Request(f"{WEB_BASE}/w/bus/jeonju/{path}", headers={"User-Agent": "TagoHub-pipeline"})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return r.read().decode("utf-8")
+            except Exception:
+                pass
+        return None
+    get = get or fetch
+    lists = lambda x: re.findall(r'<list class="object">(.*?)</list>', x or "", re.S)
+    val = lambda m, k: (re.search(rf"<{k}[^>]*>([^<]*)<", m) or [None, None])[1]
+    db = sqlite3.connect(BASE_DB)
+    stops = [r[0] for r in db.execute("SELECT id FROM stops WHERE id LIKE 'JUB%'")]
+    db.close()
+    served, routes, ok = {}, set(), True
+    for sid in stops:
+        if sid in served:
+            continue
+        x = get("routes/" + sid[3:])
+        if x is None:
+            ok = False
+            continue
+        for m in lists(x):
+            rid = val(m, "brtStdId") or val(m, "brtStdid")
+            if not rid or rid in routes:
+                continue
+            routes.add(rid)
+            y = get("stops/" + rid)
+            if y is None:
+                ok = False
+                continue
+            for s in lists(y):
+                std = val(s, "stopStandardid") or val(s, "bnodeId")
+                if std:
+                    served["JUB" + std] = (val(s, "stopKname") or "").strip()
+    print(f"전주 노선이 서는 정류장: {len(served)}곳 (노선 {len(routes)}개, 다 받음 {ok})", flush=True)
+    return served, ok
+
+
+def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
     known = {r[0] for r in db.execute("SELECT id FROM stops")}
     added_routes = added_stops = 0
+    # 정류장 이름 최신화: 노선 정류장 응답(nodenm)이 지금 이름. 정류장 표는 예전 자료라 바뀐 이름이 그대로였음
+    # (예: 부산 동부산관광단지 → 오시리아관광단지, ○○동주민센터 → ○○동행정복지센터; 2026-11 실측 3,106곳)
+    renames = {}
+    def rename(sid, s):
+        nm = str(s.get("nodenm", "") or "").strip()
+        if sid in known and nm:
+            renames[sid] = nm
     for code, c in tago.items():
         if not c["routes"]:
             continue
@@ -460,6 +533,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
             for s in stops:
                 sid = str(s.get("nodeid", "")).strip() or None
                 if sid in known:
+                    rename(sid, s)
                     rows.append((rid, to_int(s.get("nodeord")) or 0, sid, "", None, None, s.get("updowncd") and str(s.get("updowncd"))))
                 else:
                     rows.append((rid, to_int(s.get("nodeord")) or 0, sid, str(s.get("nodenm", "")).strip() or "정류장",
@@ -486,6 +560,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
             sid = str(s_.get("nodeid", "")).strip() or None
             ud = s_.get("updowncd") and str(s_.get("updowncd"))
             if sid in known:
+                rename(sid, s_)
                 rows.append((rid, to_int(s_.get("nodeord")) or 0, sid, "", None, None, ud))
             else:
                 rows.append((rid, to_int(s_.get("nodeord")) or 0, sid, str(s_.get("nodenm", "")).strip() or "정류장",
@@ -513,6 +588,15 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
         first = (old[0] if old and old[0] else None) or (wk[3] if wk else None)
         last = (old[1] if old and old[1] else None) or (wk[4] if wk else None)
         db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)", (rid, first, last, gap("weekday"), gap("sat"), gap("sun")))
+    # 노선 자료가 DB 에 없는 지역(전주): 그 지역 API 로 모은 노선이 서는 정류장의 이름도 지금 이름으로
+    api_served, api_ok = served_api or ({}, False)
+    for sid, nm in api_served.items():
+        if sid in known and nm:
+            renames[sid] = nm
+    db.executemany("UPDATE stops SET name = ? WHERE id = ? AND name <> ?", [(nm, sid, nm) for sid, nm in renames.items()])
+    if renames:
+        print(f"정류장 이름 최신화: 노선 자료에 있는 {len(renames)}곳의 이름을 지금 이름으로", flush=True)
+    prune_unserved(db, complete, api_served, api_ok)
     for rid, no, s, e in gbis_routes:
         db.execute("INSERT OR REPLACE INTO gbis_routes(id,no,start_name,end_name) VALUES(?,?,?,?)", ("GGB" + rid, no, s, e))
     db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('version', ?)", (version,))
@@ -520,6 +604,36 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     db.execute("VACUUM")
     db.close()
     return added_routes, added_stops
+
+
+def prune_unserved(db, complete, api_served=None, api_ok=False):
+    """
+    노선이 하나도 안 서는 정류장(폐지·미사용) 지우기. 지도·검색에 쓰지 않는 정류장이 남아 점이 겹치거나 하나 더 보였음
+    (예: 전주 백자삼거리 옆 '백자동' JUB306101039 — 노선 0개).
+    - 노선 자료가 믿을 만한 지역([PRUNE_MIN] 넘게 노선 정류장 자료가 있음, [PRUNE_KEEP] 제외): 노선 정류장 표에 없는 정류장
+    - 전주: 전주시 API 로 모은 노선이 서는 정류장([fetch_jeonju_served])에 없는 정류장 (다 받았고 3/4 넘게 나왔을 때만)
+    수집이 다 끝나지 않았으면(하루 한도 등) 노선이 빠져 있을 수 있어 지우지 않음.
+    """
+    if not complete:
+        print("노선 없는 정류장 지우기: 수집이 다 끝나지 않아 이번엔 건너뜀", flush=True)
+        return 0
+    used = {r[0] for r in db.execute("SELECT DISTINCT stop_id FROM route_stops WHERE stop_id IS NOT NULL")}
+    ids = [r[0] for r in db.execute("SELECT id FROM stops")]
+    total, served = {}, {}
+    for sid in ids:
+        p = prefix(sid)
+        total[p] = total.get(p, 0) + 1
+        if sid in used:
+            served[p] = served.get(p, 0) + 1
+    covered = {p for p, n in total.items() if p not in PRUNE_KEEP and served.get(p, 0) / n > PRUNE_MIN}
+    gone = [sid for sid in ids if prefix(sid) in covered and sid not in used]
+    jub = [sid for sid in ids if sid.startswith("JUB")]
+    # 다 받았고 정류장의 3/4 넘게 나왔을 때만 (2026-11: 2,913곳 중 2,565곳)
+    if api_ok and api_served and jub and sum(1 for s in jub if s in api_served) / len(jub) > 0.75:
+        gone += [sid for sid in jub if sid not in api_served and sid not in used]
+    db.executemany("DELETE FROM stops WHERE id = ?", [(s,) for s in gone])
+    print(f"노선 없는 정류장 지우기: {len(gone)}곳 (지역 {len(covered)}곳 + 전주)", flush=True)
+    return len(gone)
 
 
 def package(out_db, version, complete, added, report=None):
@@ -588,7 +702,8 @@ def main():
         sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
     tsb = fetch_tsb_stops(fx, BASE_DB)
     print(f"교통안전공단 노선 정류장 순서: {len(tsb)}개 노선", flush=True)
-    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb)
+    jeonju = fetch_jeonju_served()
+    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
