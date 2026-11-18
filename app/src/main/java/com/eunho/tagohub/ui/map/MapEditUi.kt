@@ -93,7 +93,8 @@ internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
                     TextButton(onClick = vm::stopFixJoinStart, enabled = !s.busy) { Text("다른 정류장과 묶기") }
                     val manual = com.eunho.tagohub.data.MapEdits.group(sel.nodeId)
                     if (s.together.isNotEmpty() && manual?.isEmpty() != true) TextButton(onClick = vm::stopFixSplit, enabled = !s.busy) { Text("따로 떼기") }
-                    if (manual != null) TextButton(onClick = vm::stopFixGroupReset, enabled = !s.busy) { Text("손으로 묶은 것 지우기") }
+                    // 다른 정류장 쪽에서 이 정류장을 묶어 둔 것도 여기서 풀 수 있게
+                    if (manual != null || com.eunho.tagohub.data.StopMerge.manual.listedBy(sel.nodeId).isNotEmpty()) TextButton(onClick = vm::stopFixGroupReset, enabled = !s.busy) { Text("손으로 묶은 것 지우기") }
                     if (s.moves.containsKey(sel.nodeId)) TextButton(onClick = vm::stopFixUndo, enabled = !s.busy) { Text("이 정류장 되돌리기") }
                     if (com.eunho.tagohub.data.MapEdits.stop(sel.nodeId) != null) TextButton(onClick = vm::stopFixReset, enabled = !s.busy) { Text("고친 위치 지우기") }
                     TextButton(onClick = vm::stopFixUnpick, enabled = !s.busy) { Text("고르기 취소") }

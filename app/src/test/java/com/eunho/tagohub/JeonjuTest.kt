@@ -145,4 +145,13 @@ class JeonjuTest {
             assertTrue(com.eunho.tagohub.data.PassedByPosition.passed(passedStop, buses))
         }
     }
+
+    /** 전주시 자료는 2번(평화동종점→평화동종점) 같은 도는 노선도 brtClass 0 으로 줌: 기점과 종점이 같으면 순환 */
+    @Test
+    fun loopRouteIsCircular() {
+        assertEquals("순환", JeonjuMappers.routeType("0", "2", "평화동종점", "평화동종점"))
+        assertEquals("일반", JeonjuMappers.routeType("0", "104", "평화동종점", "송천동종점"))
+        assertEquals("순환", JeonjuMappers.routeType("1", "7"))
+        assertEquals("간선", JeonjuMappers.routeType("0", "4000"))
+    }
 }

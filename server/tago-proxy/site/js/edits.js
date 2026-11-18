@@ -70,6 +70,13 @@ export function busFix(id) { return (data && id && data.bus[id]) || null; }
 export function groupEdits() { return (data && data.group) || {}; }
 /** 이 정류장에 손으로 고친 묶음 (없으면 null, 따로 뗀 것이면 []) */
 export function groupFix(id) { const g = groupEdits(); return (id && Array.isArray(g[id]) && g[id]) || null; }
+/** 인천 정류장 id 새·옛 번호(ICB3·4 ↔ ICB1·2)를 같은 것으로 (busdata.js legacyId 와 같음, 순환 import 를 피해 여기 따로) */
+const legacyKey = (id) => { const s = String(id || ""); return /^ICB[34]/.test(s) ? "ICB" + (s[3] === "3" ? "1" : "2") + s.slice(4) : s; };
+/** 다른 정류장 기록에 [id] 를 함께 묶을 정류장으로 적어 둔 정류장 id 들 */
+export function groupListedBy(id) {
+  const k = legacyKey(id);
+  return Object.entries(groupEdits()).filter(([o, v]) => legacyKey(o) !== k && Array.isArray(v) && v.some((x) => legacyKey(x) === k)).map(([o]) => o);
+}
 
 /** 저장 (data 가 null 이면 원래대로). 성공하면 목록을 다시 받음 */
 export async function save(kind, id, payload) {

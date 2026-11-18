@@ -673,7 +673,7 @@ class KakaoCanvas(
     /** 정류장 점을 자기 방향 선(상·하행이면 part 번째, 아니면 하나뿐인 선) 위 가장 가까운 자리로. 선과 60m 넘게 멀면(선형이 어긋남) 원래 좌표 */
     private fun snapToLine(lines: List<List<LatLng>>, p: RoutePin): LatLng {
         val line = (if (lines.size >= 2) lines.getOrNull(p.part) else lines.firstOrNull()) ?: return LatLng(p.lat, p.lng)
-        if (line.size < 2) return LatLng(p.lat, p.lng)
+        if (line.size < 2 || p.fixed) return LatLng(p.lat, p.lng)   // 손으로 옮긴 정류장은 고친 자리 그대로 (선 위로 붙이면 고친 것이 안 보였음)
         val here = LatLng(p.lat, p.lng)
         val (frac, dist) = com.eunho.tagohub.data.Shapes.project(line, here)
         return if (dist <= 60.0) com.eunho.tagohub.data.Shapes.along(line, frac) else here

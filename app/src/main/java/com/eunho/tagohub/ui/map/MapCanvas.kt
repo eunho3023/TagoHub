@@ -10,7 +10,8 @@ enum class BaseMap(val label: String) {
 
 /** ViewModel → 지도. 구현은 KakaoCanvas (카카오맵 SDK v2). 색은 ARGB Int. */
 data class StopPin(val id: String, val name: String, val lat: Double, val lng: Double, val selected: Boolean)
-data class RoutePin(val id: String, val name: String, val lat: Double, val lng: Double, val focus: Boolean, val part: Int = 0)
+/** [fixed]: 지도 고치기로 손으로 옮긴 정류장 — 노선 선 위로 붙이지 않고 고친 자리 그대로 */
+data class RoutePin(val id: String, val name: String, val lat: Double, val lng: Double, val focus: Boolean, val part: Int = 0, val fixed: Boolean = false)
 data class StationPin(val id: String, val name: String, val lat: Double, val lng: Double, val colors: List<Int>)
 data class UticIncidentPin(val id: String, val title: String, val lat: Double, val lng: Double)
 data class UticRoadRiskPin(val id: String, val title: String, val lat: Double, val lng: Double)

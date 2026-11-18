@@ -27,8 +27,16 @@ object StopMerge {
     data class Manual(val joins: Map<String, List<String>> = emptyMap()) {
         private val keyed: Map<String, List<String>> = joins.entries.associate { (k, v) -> TagoIds.legacy(k) to v.map { TagoIds.legacy(it) } }
         val split: Set<String> = keyed.filterValues { it.isEmpty() }.keys
-        /** 손으로 묶은 짝 (id 쌍) */
-        val pairs: List<Pair<String, String>> = keyed.flatMap { (k, v) -> v.map { k to it } }
+        /**
+         * 손으로 묶은 짝 (id 쌍). 따로 뗀 정류장이 낀 짝은 뺌: A 에서 B 를 묶은 뒤 B 를 골라 "따로 떼기"하면
+         * A 쪽 기록 때문에 계속 묶여 있었음 (웹 spotGroups 와 같게)
+         */
+        val pairs: List<Pair<String, String>> = keyed.flatMap { (k, v) -> v.map { k to it } }.filter { (a, b) -> a !in split && b !in split }
+        /** 다른 정류장 기록에 [id] 를 함께 묶을 정류장으로 적어 둔 정류장 id 들 (원래 id 그대로) */
+        fun listedBy(id: String): List<String> {
+            val k = TagoIds.legacy(id)
+            return joins.filter { (o, v) -> TagoIds.legacy(o) != k && v.any { TagoIds.legacy(it) == k } }.keys.toList()
+        }
         /** 이 정류장과 손으로 묶은 정류장 id 들 (어느 쪽에 적혀 있든, 이어진 것까지: A-B, B-C 면 A 는 B·C) */
         fun joinedWith(id: String): Set<String> {
             val k = TagoIds.legacy(id)

@@ -81,12 +81,13 @@ export function spotGroups(stops) {
     for (const c of cities[gone]) cities[keep].add(c);
   };
   // 1) 관리자가 손으로 묶은 것 먼저 (거리·시군 상관없이), 빈 목록은 따로 떼기 (지도 고치기 → 묶기, edits.js)
-  const at = new Map(list.map((x, i) => [legacyId(x.id), i])), apart = new Set();
-  for (const [k, v] of Object.entries(Edits.groupEdits())) {
-    if (!Array.isArray(v)) continue;
-    if (!v.length) { apart.add(legacyId(k)); continue; }
+  // 따로 뗀 정류장이 낀 짝은 뺌: A 에서 B 를 묶은 뒤 B 를 "따로 떼기"하면 A 쪽 기록 때문에 계속 묶여 있었음 (앱 StopMerge.Manual 과 같게)
+  const at = new Map(list.map((x, i) => [legacyId(x.id), i])), g = Object.entries(Edits.groupEdits()).filter(([, v]) => Array.isArray(v));
+  const apart = new Set(g.filter(([, v]) => !v.length).map(([k]) => legacyId(k)));
+  for (const [k, v] of g) {
+    if (apart.has(legacyId(k))) continue;
     const a = at.get(legacyId(k));
-    for (const o of v) { const b = at.get(legacyId(String(o))); if (a != null && b != null) join(a, b); }
+    for (const o of v) { if (apart.has(legacyId(String(o)))) continue; const b = at.get(legacyId(String(o))); if (a != null && b != null) join(a, b); }
   }
   // 2) 가까운 짝부터. 합칠 두 묶음에 같은 시군이 있으면 안 합침
   for (const [a, b] of edges) {
@@ -362,7 +363,7 @@ async function liveStopRoutes(stop, same) {
       const r = {};
       for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
       const no = String(r.brtid ?? "");
-      return { id: "JUB" + (r.brtstdid || ""), no, start: str(r.brtsname), end: str(r.brtename), type: r.brtclass === "1" ? "순환" : /^\d{4}/.test(no) ? "간선" : "일반", city: "35010" };
+      return { id: "JUB" + (r.brtstdid || ""), no, start: str(r.brtsname), end: str(r.brtename), type: jeonjuType(r.brtclass, no, r.brtsname, r.brtename), city: "35010" };
     })));
   }
   for (const [city, node] of (await targets(stop)).tago) {
@@ -600,6 +601,13 @@ async function tagoArrivals(city, node) {
 }
 
 /** 정류장 실시간 도착: {state: "ok"|"unsupported"|"failed", list, at} */
+/** 전주 노선 종류 (앱 JeonjuMappers.routeType): 순환(brtClass 1, 또는 기점과 종점이 같은 노선, 예: 2번 평화동종점→평화동종점) / 간선(4자리 번호) / 일반 */
+export function jeonjuType(cls, no, start, end) {
+  if (cls === "1") return "순환";
+  const s = String(start || "").trim();
+  if (s && s === String(end || "").trim()) return "순환";
+  return /^\d{4}/.test(String(no)) ? "간선" : "일반";
+}
 /** 전주시 버스정보 정류장 도착 (줄 이름 <list>, RTime 초, RStop 남은 정류장) */
 async function jeonjuArrivals(id) {
   const x = await getText("w/bus/jeonju/arrival/" + id.slice(3));
@@ -607,7 +615,7 @@ async function jeonjuArrivals(id) {
     const r = {};
     for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
     const no = String(r.brtid ?? "");
-    return { routeId: "JUB" + (r.brtstdid || ""), routeNo: no, routeType: r.brtclass === "1" ? "순환" : /^\d{4}/.test(no) ? "간선" : "일반",
+    return { routeId: "JUB" + (r.brtstdid || ""), routeNo: no, routeType: jeonjuType(r.brtclass, no, ...(r.brtvianame || "").split("->")),
       vehicleType: r.buslow === "1" ? "저상버스" : null, prevStops: int(r.rstop), arrSeconds: int(r.rtime), city: "35010",
       towards: str((r.brtvianame || "").split("->")[1]) };
   }).filter((a) => a.routeNo && a.arrSeconds != null);

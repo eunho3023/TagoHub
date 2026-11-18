@@ -2974,7 +2974,17 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         if (s.busy) return
         stopFix.value = s.copy(busy = true, msg = null)
         viewModelScope.launch {
-            val err = com.eunho.tagohub.data.MapEdits.saveGroup(id, ids)
+            var err = com.eunho.tagohub.data.MapEdits.saveGroup(id, ids)
+            // 따로 떼기·지우기: 다른 정류장 기록에 이 정류장을 묶어 둔 것도 지움 (A 에서 B 를 묶었으면 B 에서 풀어도 A 쪽 기록이 남아 계속 묶였음).
+            // 그쪽 목록이 비면 지우기(null) — 빈 목록은 "따로 떼기"라는 뜻이라
+            if (err == null && ids.isNullOrEmpty()) {
+                val m = com.eunho.tagohub.data.StopMerge.manual
+                for (o in m.listedBy(id)) {
+                    val rest = m.joins[o].orEmpty().filter { com.eunho.tagohub.data.TagoIds.legacy(it) != com.eunho.tagohub.data.TagoIds.legacy(id) }
+                    err = com.eunho.tagohub.data.MapEdits.saveGroup(o, rest.ifEmpty { null })
+                    if (err != null) break
+                }
+            }
             stopFix.value = stopFix.value?.copy(busy = false, joining = false, joinPick = emptyList(), sel = null, together = emptyList(), msg = err ?: ok)
             applyEdits()
             pushStopFix()
@@ -3238,7 +3248,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         c.setRoute(
             busRouteColor(d.routeType).toArgb(),
             // part: 회차점까지는 0(앞 선), 그 뒤는 1(뒤 선) — 점을 자기 방향 선 위에 붙이는 데 씀
-            all.mapIndexed { i, s -> RoutePin(s.nodeId, s.name, s.lat!!, s.lng!!, s.nodeId == d.focusNodeId, if (t != null && i > t) 1 else 0) },
+            all.mapIndexed { i, s -> RoutePin(s.nodeId, s.name, s.lat!!, s.lng!!, s.nodeId == d.focusNodeId, if (t != null && i > t) 1 else 0, fixed = com.eunho.tagohub.data.MapEdits.stop(s.nodeId) != null) },
             d.shape.value,
             parts,
             // 패널에서 고른 방향은 진하게, 반대 방향은 흐리게
