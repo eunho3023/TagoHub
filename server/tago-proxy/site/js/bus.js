@@ -556,7 +556,8 @@ export function routeScreen(root, p, ctx) {
       const near = pos.buses.map((b) => stopIdx(b)).filter((i) => i >= 0 && i <= fi)
         .map((i) => ({ n: fi - i, m: i === fi ? 0 : B.offsetMinutes(r.stops, ids, i) ?? 0 }))
         .sort((x, y) => x.m - y.m).slice(0, 2);
-      const txt = (a) => (a.n === 0 ? "도착" : `${a.n}정류장 전 · ${a.m < 1 ? "곧 도착" : Math.ceil(a.m) + "분 후"}`);
+      // 기점(첫 정류장)에 서 있는 버스는 출발을 기다리는 중: "도착"이 아니라 "출발 대기"
+      const txt = (a) => (a.n === 0 ? (fi === 0 ? "출발 대기" : "도착") : `${a.n}정류장 전 · ${a.m < 1 ? "곧 도착" : Math.ceil(a.m) + "분 후"}`);
       come = `${r.stops[fi].name}까지 · ` + (near.length ? near.map((a, k) => (k ? "다음 " : "") + txt(a)).join(" / ") : "오는 버스 없음");
     }
     root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${come ? `<small><b>${esc(come)}</b></small>` : ""}${plan ? `<small>${esc(plan)}</small>` : ""}`;

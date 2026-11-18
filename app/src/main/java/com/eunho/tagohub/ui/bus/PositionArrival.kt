@@ -98,7 +98,8 @@ internal suspend fun positionArrivals(repo: TagoRepository, stop: BusStop, row: 
         .mapNotNull { t -> RouteLive.stopsAway(t, pos.at, pos.left)?.takeIf { it <= MAX_ESTIMATE_STOPS }?.let { t to it } }
         .minByOrNull { it.second } ?: return emptyList()
     val target = best.first
-    val behind = RouteLive.allAway(target, pos.at, pos.left)
+    // 기점(첫 정류장)에 서 있는 버스는 출발을 기다리는 중이라 "도착"으로 보이지 않게 뺌
+    val behind = RouteLive.allAway(target, pos.at, pos.left).filterNot { target == 0 && it == 0 }
     return behind.filterIndexed { i, away -> away <= if (i == 0) MAX_ESTIMATE_STOPS else MAX_SECOND_STOPS }.take(2).map { away ->
         val seconds = if (away == 0) 0 else {
             val sec = RouteTravel.travelSec(d.routeId, stops[target - away].ord, stops[target].ord) { a, b ->

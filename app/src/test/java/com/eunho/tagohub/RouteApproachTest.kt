@@ -26,6 +26,14 @@ class RouteApproachTest {
         assertEquals("1정류장 전 · 곧 도착", RouteLive.approachText(RouteLive.approach(4.8f, 5, seg)!!))
     }
 
+    /** 기점에 서 있는 버스는 출발 시각을 기다리는 중: 기점을 고르면 "도착"이 아니라 "출발 대기" */
+    @Test fun waitingAtOrigin() {
+        assertEquals("출발 대기", RouteLive.approachText(RouteLive.approach(0f, 0, seg)!!))
+        // 기점을 떠났으면 고른 기점은 이미 지나감, 다른 정류장은 그대로 셈
+        assertNull(RouteLive.approach(0.3f, 0, seg))
+        assertEquals(3, RouteLive.approach(0f, 3, seg)!!.stops)
+    }
+
     @Test fun arrivedAndPassed() {
         assertEquals("도착", RouteLive.approachText(RouteLive.approach(5f, 5, seg)!!))
         assertNull(RouteLive.approach(5.5f, 5, seg))   // 이미 지나감
