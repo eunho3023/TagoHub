@@ -281,9 +281,11 @@ internal suspend fun tagoCity(repo: TagoRepository, s: BusStop): String {
 
 /** 정류장 경유노선: 지역별 자체 API, 그 외 지역만 TAGO */
 internal suspend fun stopRoutesFor(repo: TagoRepository, s: BusStop): TagoResult<List<BusRoute>> = when {
-    Jeju.isJeju(s.nodeId) -> cachedRoutes(s.nodeId) { Graph.jeju.stopRoutes(s.nodeId) }
+    // 제주·전주: 앱 안 노선 자료(데이터 저장소가 그 지역 API 로 모아 넣음)가 있으면 그것, 없으면(옛 자료) 그 지역 API
+    Jeju.isJeju(s.nodeId) -> (StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(s.nodeId) } }?.takeIf { it.isNotEmpty() }
+        ?.let { TagoResult.Success(it) })
+        ?: cachedRoutes(s.nodeId) { Graph.jeju.stopRoutes(s.nodeId) }
     Gyeonggi.isGyeonggi(s.nodeId) -> gyeonggiStopRoutes(s)
-    // 전주: 앱 안 노선 자료(데이터 저장소가 전주시 API 로 모아 넣음)가 있으면 그것, 없으면(옛 자료) 전주 API
     Jeonju.isJeonju(s.nodeId) -> (StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(s.nodeId) } }?.takeIf { it.isNotEmpty() }
         ?.let { TagoResult.Success(it) })
         ?: cachedRoutes(s.nodeId) { Graph.jeonju.stopRoutes(s.nodeId) }
@@ -574,13 +576,8 @@ internal suspend fun loadDirection(repo: TagoRepository, d: BusDest.Stop) {
 }
 
 private suspend fun nextStopName(repo: TagoRepository, stop: BusStop, r: BusRoute): String? {
-    val list: List<RouteStop> = when {
-        Jeju.isJeju(r.routeId) -> (Graph.jeju.routeStops(r.routeId) as? TagoResult.Success)?.data
-        Gyeonggi.isGyeonggi(r.routeId) -> (Graph.gyeonggi.routeStops(r.routeId) as? TagoResult.Success)?.data
-        Jeonju.isJeonju(r.routeId) -> (Graph.jeonju.routeStopRows(r.routeId) as? TagoResult.Success)?.data
-            ?.let { rows -> JeonjuMappers.routeStops(rows) { null } }
-        else -> (repo.routeStops(stop.cityCode, r.routeId) as? TagoResult.Success)?.data
-    } ?: return null
+    // 앱 안 노선 자료 먼저, 없으면 지역별 API (한 번 받으면 저장) — 노선 화면과 같은 길
+    val list: List<RouteStop> = routeStopsFor(repo, r.routeId, r.cityCode ?: stop.cityCode).takeIf { it.isNotEmpty() } ?: return null
     val i = list.indexOfFirst { it.nodeId == stop.nodeId }
     return if (i >= 0) list.getOrNull(i + 1)?.name else null
 }
@@ -634,7 +631,7 @@ private fun BusDest.Route.publishStops(load: Load<List<RouteStop>>) {
 
 internal suspend fun loadRouteData(repo: TagoRepository, d: BusDest.Route) {
     if (Jeju.isJeju(d.routeId)) {
-        val st = cachedStops(d.routeId) { (Graph.jeju.routeStops(d.routeId) as? TagoResult.Success)?.data }
+        val st = routeStopsFor(repo, d.routeId, Jeju.CITY).takeIf { it.isNotEmpty() }   // 앱 안 노선 자료 먼저
         d.publishStops(if (st != null) Load.Ok(st) else Load.Fail("제주 노선 정류장을 받지 못했어요."))
         d.info.value = Load.Ok(cachedInfo(d.routeId) { Graph.jeju.routeInfo(d.routeId) })
         return

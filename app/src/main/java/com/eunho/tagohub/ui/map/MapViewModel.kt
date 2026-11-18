@@ -1878,7 +1878,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             else (tracked { Graph.gyeonggi.searchRoutes(k) } as? TagoResult.Success)?.data?.let { foundRoutes += it }
             // 제주: 제주 BIS 노선 목록에서 번호로 (TAGO 대신)
             (Graph.jeju.routes() as? TagoResult.Success)?.data
-                ?.filter { it.routeNo.contains(k, ignoreCase = true) }
+                ?.filter { it.routeNo.contains(k, ignoreCase = true) && foundRoutes.none { f -> f.routeId == it.routeId } }   // 앱 안 자료에서 이미 찾은 노선은 빼고
                 ?.let { foundRoutes += it }
             var done = 0
             var failed = 0
