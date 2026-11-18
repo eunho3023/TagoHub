@@ -49,6 +49,8 @@ object AirRoutesClient {
 
     private suspend fun load(): Map<Pair<String, String>, AirRoutes.Route> = table ?: lock.withLock {
         table ?: withContext(Dispatchers.IO) {
+            // 앱 안 파일 먼저 (pipeline/build_api_files.py), 없으면 API 8쪽
+            AssetText.read("air_routes.json")?.let(AirRoutes::parse)?.takeIf { it.isNotEmpty() }?.let { table = it; return@withContext it }
             val raw = BuildConfig.KAC_API_KEY.trim()
             val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
             val out = HashMap<Pair<String, String>, AirRoutes.Route>()

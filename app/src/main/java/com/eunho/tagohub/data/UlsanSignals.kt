@@ -108,7 +108,9 @@ object UlsanSignals {
 
     /** 울산 교차로 (한 번 받아 두고 계속 씀). 못 받으면 빈 목록 */
     suspend fun intersections(): List<SignalIntersection> = cachedIntersections ?: withContext(Dispatchers.IO) {
-        runCatching { parseIntersections(get("crsrd_map_info")) }.getOrDefault(emptyList())
+        // 교차로 위치는 앱 안 파일 먼저 (pipeline/build_api_files.py, 0.8MB 를 매번 받지 않게), 없으면 API
+        AssetText.read("ulsan_crossroads.json")?.let(::parseIntersections)?.takeIf { it.isNotEmpty() }
+            ?: runCatching { parseIntersections(get("crsrd_map_info")) }.getOrDefault(emptyList())
     }.also { if (it.isNotEmpty()) cachedIntersections = it }
 
     /** 지금 신호 상태 (울산 전체). 못 받으면 null */
