@@ -1,4 +1,4 @@
-// 편의시설 점 (공공데이터포털 표준데이터: 공중화장실·전동휠체어 급속충전기·졸음쉼터·교통약자 이동지원센터·환승센터).
+// 편의시설 점 (공공데이터포털 표준데이터: 공중화장실·전동휠체어 급속충전기·졸음쉼터·교통약자 이동지원센터·환승센터·자동차 정비소·버스전용차로 시작점).
 // 자료는 amenity/<종류>/<칸>.json (pipeline/build_amenities.mjs, 위도·경도 0.2도 칸, 적은 종류는 all.json 하나), 그리기는 topis.js 교통 층
 /** 종류마다 글자·색·보이기 시작하는 확대 */
 export const PLACE_KINDS = {
@@ -7,6 +7,8 @@ export const PLACE_KINDS = {
   drowsy: { label: "졸", color: "#ef6c00", zoom: 10 },
   mobility: { label: "약", color: "#ad1457", zoom: 10 },
   transfer: { label: "환", color: "#1565c0", zoom: 11 },
+  repair: { label: "정", color: "#5d4037", zoom: 15 },
+  buslane: { label: "전", color: "#0277bd", zoom: 11 },
 };
 /** 한 종류에서 한 번에 보여 줄 수 (화면 가운데에서 가까운 것부터) */
 export const PLACE_MAX = 120;

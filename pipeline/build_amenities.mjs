@@ -72,6 +72,26 @@ export const KINDS = {
         line(dash(r.USE_CHARGE).slice(0, 40), num(r.CAR_HOLD_CO) > 0 ? `차량 ${num(r.CAR_HOLD_CO)}대` : "")];
     },
   },
+  // 자동차 정비업체 (3만 6천여 곳, 2026-09 기준). 영업 중(영업상태 01)인 곳만
+  repair: {
+    pk: "15028204", tile: true,
+    keep: (r) => +t(r.BSN_STTUS) === 1 && !t(r.CLSBIZ_DATE),   // "01"·"1" 둘 다 영업 (2 휴업·3 폐업)
+    row: (r) => [t(r.INSPOFC_NM) || "자동차 정비소",
+      line(t(r.RDNMADR) || t(r.LNMADR)).slice(0, 40),
+      line(span(r.OPER_OPEN_HM, r.OPER_CLOSE_HM), r.PHONE_NUMBER)],
+  },
+  // 버스전용차로 (140여 구간, 시작점에 점). 지정 해제된 구간은 뺌
+  buslane: {
+    pk: "15028197", tile: false,
+    keep: (r) => !/^n$/i.test(t(r.APPN_RELIS_YN)),
+    pos: (r) => [r.ROAD_BEGIN_LATITUDE, r.ROAD_BEGIN_LONGITUDE],
+    row: (r) => {
+      const wk = laneHours(r.WEEKDAY_OPER_OPEN_HHMM, r.WEEKDAY_OPER_COLSE_HHMM);
+      return [`${t(r.ROAD_ROUTE_NM) || "버스"} 버스전용차로`,
+        line([t(r.ROAD_BEGIN_NM), t(r.ROAD_END_NM)].filter(Boolean).join(" → "), num(r.TOT_ET) > 0 ? `${num(r.TOT_ET)}km` : ""),
+        line(wk && `평일 ${wk}`, r.PHONE_NUMBER)];
+    },
+  },
   // 대중교통 환승센터 (40곳)
   transfer: {
     pk: "15034541", tile: false,
@@ -81,9 +101,21 @@ export const KINDS = {
   },
 };
 
+/** 버스전용차로 운영시간: "출근시각 07:00 + 퇴근시각 17:00" / "출근시각 09:00 + 퇴근시각 19:00" → "07:00~09:00, 17:00~19:00". 00:00~00:00·같은 시각은 "종일" */
+export function laneHours(o, c) {
+  const a = t(o).match(/\d{1,2}:\d{2}/g) || [], b = t(c).match(/\d{1,2}:\d{2}/g) || [];
+  if (!a.length || a.length !== b.length) return "";
+  const p = a.map((x, i) => [hm(x), hm(b[i])]);
+  if (p.every(([x, y]) => x === y || (x === "00:00" && (y === "23:59" || y === "24:00")))) return "종일";
+  return p.map(([x, y]) => `${x}~${y}`).join(", ");
+}
+
 /** 표준데이터 한 줄 → 한 곳 (좌표가 이상하거나 운영 안 하면 null) */
 export function placeRow(kind, r) {
-  const lat = Math.round(+r.LATITUDE * 1e6) / 1e6, lng = Math.round(+r.LONGITUDE * 1e6) / 1e6;
+  const k = KINDS[kind];
+  if (k.keep && !k.keep(r)) return null;
+  const [la, lo] = k.pos ? k.pos(r) : [r.LATITUDE, r.LONGITUDE];
+  const lat = Math.round(+la * 1e6) / 1e6, lng = Math.round(+lo * 1e6) / 1e6;
   if (!(lat > 33 && lat < 39 && lng > 124 && lng < 132)) return null;
   if (r.OPER_YN != null && /^n$/i.test(t(r.OPER_YN))) return null;
   const [name, a, b] = KINDS[kind].row(r);
