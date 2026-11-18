@@ -327,7 +327,39 @@ def test_jeonju_served_walk():
     assert bd.jeonju_type("0", "4000", "a", "b") == "간선" and bd.jeonju_type("0", "100", "a", "b") == "일반"
 
 
+def _route_db():
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+    db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT, name TEXT, lat REAL, lng REAL, updown TEXT, PRIMARY KEY(route_id, seq))")
+    return db
+
+
+def test_jeju_routes_written():
+    """제주: 노선 목록 + 노선 정류장 목록 → DB (실시간은 제주 API)"""
+    pages = {"searchBusRouteList.do": [{"ROUTE_ID": 405410111, "ROUTE_NUM": "101", "ORGT_NM": "공항", "DST_NM": "남원"}],
+             "searchBusRouteStationList.do?route_id=405410111": [{"STATION_ID": 405000153, "STATION_NM": "터미널", "STATION_ORD": 2},
+                                                                 {"STATION_ID": 405002101, "STATION_NM": "공항", "STATION_ORD": 1}]}
+    routes, ok = bd.fetch_jeju(get=pages.get)
+    assert ok and list(routes) == ["405410111"]
+    db = _route_db()
+    assert bd.write_jeju(db, routes, {"JEB405002101"}) == 1
+    assert db.execute("SELECT no, start_node, end_node, city, realtime FROM routes").fetchone() == ("101", "JEB405002101", "JEB405000153", "39", "jeju")
+    assert db.execute("SELECT seq, stop_id, name FROM route_stops ORDER BY seq").fetchall() == [(1, "JEB405002101", ""), (2, "JEB405000153", "터미널")]
+    assert bd.fetch_jeju(get=lambda p: None) == ({}, False)       # 목록을 못 받으면 넣지 않음
+
+
+def test_gbis_stops_written():
+    """경기: 회차점까지 상행 0, 그 뒤 하행 1 (앱 Gyeonggi.routeStops 와 같음)"""
+    rows = [{"stationId": 2, "stationSeq": 2, "turnYn": "Y", "stationName": "회차", "x": 127.1, "y": 37.2},
+            {"stationId": 1, "stationSeq": 1, "turnYn": "N", "stationName": "기점"},
+            {"stationId": 3, "stationSeq": 3, "turnYn": "N", "stationName": "새곳", "x": 127.3, "y": 37.4}]
+    db = _route_db()
+    bd.write_gbis_stops(db, {"GGB9": rows}, {"GGB1", "GGB2"})
+    assert db.execute("SELECT seq, stop_id, name, lat, updown FROM route_stops ORDER BY seq").fetchall() == [
+        (1, "GGB1", "", None, "0"), (2, "GGB2", "", None, "0"), (3, "GGB3", "새곳", 37.4, "1")]
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
