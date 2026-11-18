@@ -1,5 +1,6 @@
 package com.eunho.tagohub.ui.home
 
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -87,14 +88,61 @@ private sealed interface LiveState {
 }
 
 /**
- * 마지막으로 그린 카드 (앱이 켜져 있는 동안). 다른 화면에 갔다 홈으로 돌아오면 빈 막대 대신 이것을 먼저 보여 주고 바로 새로 받음.
- * 오래된 값(2분 넘음)은 버스가 이미 지나갔을 수 있어 쓰지 않음.
+ * 마지막으로 그린 카드. 휴대폰에도 저장해 앱을 닫았다 열어도 회색 막대 대신 이것을 바로 보여 주고, 뒤에서 새로 받아 바꿈.
+ * 10분 안이면 지난 시간만큼 도착 시간을 줄이고(이미 지나갔을 버스는 뺌), 30분 안이면 노선만(시간 없이), 그보다 오래되면 쓰지 않음.
  */
 private object LiveMemory {
-    private const val KEEP_MS = 120_000L
+    private const val AGE_MS = 10 * 60_000L
+    private const val KEEP_MS = 30 * 60_000L
+    private const val PREFS = "home_live"
     @Volatile private var last: Pair<Long, LiveState.Ready>? = null
-    fun get(now: Long = System.currentTimeMillis()): LiveState.Ready? = last?.takeIf { now - it.first < KEEP_MS }?.second
-    fun put(s: LiveState.Ready) { last = System.currentTimeMillis() to s }
+
+    fun get(ctx: Context, now: Long = System.currentTimeMillis()): LiveState.Ready? {
+        val (t, s) = last ?: load(ctx)?.also { last = it } ?: return null
+        val age = now - t
+        if (age < 0 || age >= KEEP_MS) return null
+        val sec = if (age < AGE_MS) (age / 1000).toInt() else null
+        val stops = s.stops.map { it.copy(routes = HomeText.aged(it.routes, sec)) }
+        return if (stops.all { it.routes.isEmpty() }) null else s.copy(stops = stops)
+    }
+
+    fun put(ctx: Context, s: LiveState.Ready) {
+        val now = System.currentTimeMillis()
+        last = now to s
+        runCatching {
+            val js = org.json.JSONObject().put("t", now).put("at", s.at).put("s", org.json.JSONArray().apply {
+                s.stops.forEach { r ->
+                    put(org.json.JSONObject().put("c", r.stop.cityCode).put("id", r.stop.nodeId).put("n", r.stop.name)
+                        .put("no", r.stop.nodeNo).put("la", r.stop.lat).put("lo", r.stop.lng).put("m", r.meters)
+                        .put("r", org.json.JSONArray().apply {
+                            r.routes.forEach { e -> put(org.json.JSONObject().put("no", e.routeNo).put("ty", e.routeType).put("sec", e.seconds)) }
+                        }))
+                }
+            })
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last", js.toString()).apply()
+        }
+    }
+
+    private fun load(ctx: Context): Pair<Long, LiveState.Ready>? = runCatching {
+        val js = org.json.JSONObject(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("last", null) ?: return null)
+        fun org.json.JSONObject.str(k: String) = if (isNull(k)) null else optString(k)
+        fun org.json.JSONObject.num(k: String) = if (isNull(k)) null else optDouble(k)
+        val arr = js.getJSONArray("s")
+        val stops = (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val rs = o.getJSONArray("r")
+            LiveStopRow(
+                BusStop(o.getString("c"), o.getString("id"), o.getString("n"), o.str("no"), o.num("la"), o.num("lo")),
+                o.getInt("m"),
+                (0 until rs.length()).map { j ->
+                    val e = rs.getJSONObject(j)
+                    val sec = if (e.isNull("sec")) null else e.getInt("sec")
+                    RouteEta(e.getString("no"), e.str("ty"), sec?.let(HomeText::shortEta), sec)
+                },
+            )
+        }
+        js.getLong("t") to LiveState.Ready(stops, js.getString("at"))
+    }.getOrNull()
 }
 
 private fun clockNow(): String =
@@ -114,7 +162,7 @@ internal fun LiveArrivalsCard(
     val context = LocalContext.current
     // 「새로고침」을 누르면 이 값이 바뀌어 produceState 가 처음부터 다시 받는다.
     var retry by remember { mutableStateOf(0) }
-    val state by produceState<LiveState>(LiveMemory.get() ?: LiveState.Checking, retry) {
+    val state by produceState<LiveState>(LiveMemory.get(context) ?: LiveState.Checking, retry) {
         if (!hasLocationPermission(context)) {
             value = LiveState.NoPermission
             return@produceState
@@ -156,7 +204,7 @@ internal fun LiveArrivalsCard(
                     clockNow(),
                 )
                 value = s
-                LiveMemory.put(s)
+                LiveMemory.put(context, s)
             }
             coroutineScope {
                 near.forEach { (s, _) ->

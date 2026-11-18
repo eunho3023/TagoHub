@@ -10,6 +10,19 @@ class HomeTextTest {
     private fun arr(no: String, sec: Int?, type: String? = null) = BusArrival("r$no", no, type, null, null, sec)
 
     @Test
+    fun agedCountsDownSavedArrivalsAndDropsPassedBuses() {
+        val saved = HomeText.routeEtas(listOf(arr("5", 100), arr("300", 600), arr("9", null)))
+        val two = HomeText.aged(saved, 120)        // 2분 지남: 5번(100초)은 이미 지나감
+        assertEquals(listOf("300", "9"), two.map { it.routeNo })
+        assertEquals(480, two[0].seconds)
+        assertEquals("8분", two[0].text)
+        assertNull(two[1].text)
+        val old = HomeText.aged(saved, null)       // 너무 오래됨: 노선만, 시간 없이
+        assertEquals(3, old.size)
+        assertNull(old.first { it.routeNo == "300" }.text)
+    }
+
+    @Test
     fun routeEtasListsEveryRouteSoonestFirstWithOneEntryPerRoute() {
         val list = HomeText.routeEtas(listOf(arr("300", 600, "간선"), arr("5", 190, "지선"), arr("5", 400, "지선"), arr("9", null)))
         assertEquals(listOf("5", "300", "9"), list.map { it.routeNo })

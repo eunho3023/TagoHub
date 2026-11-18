@@ -15,6 +15,18 @@ object HomeText {
             RouteEta(k.first, k.second, sec?.let(::shortEta), sec)
         }.sortedWith(compareBy({ it.seconds ?: Int.MAX_VALUE }, { it.routeNo }))
 
+    /**
+     * 저장해 둔 도착을 지난 시간만큼 당겨서: elapsed 초가 지났으면 남은 시간에서 빼고, 이미 지나갔을 버스는 뺌.
+     * elapsed 가 null 이면(너무 오래됨) 시간은 지우고 노선만 남김. 시간을 모르던 노선은 그대로
+     */
+    fun aged(routes: List<RouteEta>, elapsed: Int?): List<RouteEta> =
+        if (elapsed == null) routes.map { it.copy(text = null, seconds = null) }
+        else routes.mapNotNull { r ->
+            val s = r.seconds ?: return@mapNotNull r
+            val left = s - elapsed
+            if (left <= 0) null else r.copy(text = shortEta(left), seconds = left)
+        }.sortedWith(compareBy({ it.seconds ?: Int.MAX_VALUE }, { it.routeNo }))
+
     /** 30초 이하는 "곧", 그 밖은 올림한 분 ("1분", "3분") — 홈 화면은 짧게 */
     fun shortEta(seconds: Int): String = if (seconds <= 30) "곧" else "${(seconds + 59) / 60}분"
 }
