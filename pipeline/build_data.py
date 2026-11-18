@@ -13,7 +13,7 @@ TagoHub 정류장·노선 데이터 만들기 (GitHub Actions 에서 매주 실�
 - 앱이 하던 TAGO 응답 해석과 같은 필드: routeid·routeno·routetp·startnodenm·endnodenm / nodeid·nodenm·nodeno·nodeord·updowncd·gpslati·gpslong /
   startvehicletime·endvehicletime·intervaltime·intervalsattime·intervalsuntime
 """
-import datetime, gzip, hashlib, json, os, pathlib, shutil, sqlite3, sys, threading, time, urllib.parse
+import datetime, gzip, hashlib, json, os, pathlib, re, shutil, sqlite3, sys, threading, time, urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -457,7 +457,8 @@ def prefix(sid):
 
 def fetch_jeonju_served(get=None):
     """
-    전주: 노선마다 정류장 목록을 받아 지금 노선이 서는 정류장 {정류장 id: 지금 이름} 과 다 받았는지.
+    전주: 노선마다 정류장 목록을 받아 지금 노선이 서는 정류장 {정류장 id: 지금 이름}, 다 받았는지, 노선 {노선 std: {"route": 노선 칸, "stops": [(순번, 정류장 std, 이름)]}}.
+    노선·정류장 순서는 DB 에 넣어 앱이 전주 API 를 다시 부르지 않게.
     정류장 하나의 경유 노선 → 그 노선들의 정류장 목록 → 아직 안 나온 정류장의 경유 노선 … (노선 340개, 호출 약 800번, 2026-11 실측)
     """
     import re, urllib.request
@@ -479,7 +480,8 @@ def fetch_jeonju_served(get=None):
     db = sqlite3.connect(BASE_DB)
     stops = [r[0] for r in db.execute("SELECT id FROM stops WHERE id LIKE 'JUB%'")]
     db.close()
-    served, routes, ok = {}, set(), True
+    served, routes, ok, data = {}, set(), True, {}
+    fields = ("brtId", "brtClass", "brtSname", "brtEname", "brtFirstTime", "brtLastTime", "brtMininTerVal")
     for sid in stops:
         if sid in served:
             continue
@@ -496,15 +498,19 @@ def fetch_jeonju_served(get=None):
             if y is None:
                 ok = False
                 continue
+            seq = []
             for s in lists(y):
                 std = val(s, "stopStandardid") or val(s, "bnodeId")
                 if std:
-                    served["JUB" + std] = (val(s, "stopKname") or "").strip()
+                    nm = (val(s, "stopKname") or "").strip()
+                    served["JUB" + std] = nm
+                    seq.append((to_int(val(s, "brsSeqno") or val(s, "brnSeqno")) or len(seq) + 1, std, nm))
+            data[rid] = {"route": {k: (val(m, k) or "").strip() for k in fields}, "stops": sorted(seq)}
     print(f"전주 노선이 서는 정류장: {len(served)}곳 (노선 {len(routes)}개, 다 받음 {ok})", flush=True)
-    return served, ok
+    return served, ok, data
 
 
-def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None):
+def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None, tago_cities=()):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -589,7 +595,9 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
         last = (old[1] if old and old[1] else None) or (wk[4] if wk else None)
         db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)", (rid, first, last, gap("weekday"), gap("sat"), gap("sun")))
     # 노선 자료가 DB 에 없는 지역(전주): 그 지역 API 로 모은 노선이 서는 정류장의 이름도 지금 이름으로
-    api_served, api_ok = served_api or ({}, False)
+    api_served, api_ok, api_routes = (tuple(served_api) + ({},))[:3] if served_api else ({}, False, {})
+    if api_ok and api_routes:
+        added_routes += write_jeonju(db, api_routes, known)
     for sid, nm in api_served.items():
         if sid in known and nm:
             renames[sid] = nm
@@ -597,6 +605,10 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     if renames:
         print(f"정류장 이름 최신화: 노선 자료에 있는 {len(renames)}곳의 이름을 지금 이름으로", flush=True)
     prune_unserved(db, complete, api_served, api_ok)
+    if tago_cities:
+        db.execute("CREATE TABLE IF NOT EXISTS tago_cities(code TEXT PRIMARY KEY, name TEXT NOT NULL) WITHOUT ROWID")
+        db.execute("DELETE FROM tago_cities")
+        db.executemany("INSERT OR REPLACE INTO tago_cities VALUES(?,?)", list(tago_cities))
     for rid, no, s, e in gbis_routes:
         db.execute("INSERT OR REPLACE INTO gbis_routes(id,no,start_name,end_name) VALUES(?,?,?,?)", ("GGB" + rid, no, s, e))
     db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('version', ?)", (version,))
@@ -604,6 +616,47 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     db.execute("VACUUM")
     db.close()
     return added_routes, added_stops
+
+
+def jeonju_type(cls, no, start, end):
+    """전주 노선 종류 (앱 JeonjuMappers.routeType 과 같음): 순환 / 간선(4자리 번호) / 일반"""
+    if cls == "1" or (start and start.strip() == (end or "").strip()):
+        return "순환"
+    return "간선" if re.match(r"^\d{4}", (no or "").strip()) else "일반"
+
+
+def write_jeonju(db, routes, known):
+    """전주 노선·정류장 순서·첫차·막차를 DB 에 (실시간은 전주 API 로: realtime = 'jeonju'). 다 받았을 때만 부름"""
+    db.execute("DELETE FROM route_stops WHERE route_id LIKE 'JUB%'")
+    db.execute("DELETE FROM route_info WHERE id LIKE 'JUB%'")
+    db.execute("DELETE FROM routes WHERE id LIKE 'JUB%'")
+    n = 0
+    for rid, r in routes.items():
+        it, stops = r["route"], r["stops"]
+        if not stops:
+            continue
+        jid = "JUB" + rid
+        rows = [(jid, seq, "JUB" + std, "" if "JUB" + std in known else (nm or "정류장"), None, None, None) for seq, std, nm in stops]
+        db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
+        db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                   (jid, it["brtId"], it["brtSname"] or None, it["brtEname"] or None, rows[0][2], rows[-1][2], "35010", "전주",
+                    jeonju_type(it["brtClass"], it["brtId"], it["brtSname"], it["brtEname"]), "jeonju"))
+        first, last = clock(it["brtFirstTime"] or None), clock(it["brtLastTime"] or None)
+        if first or last:
+            db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)", (jid, first, last, to_int(it["brtMininTerVal"] or None), None, None))
+        n += 1
+    print(f"전주 노선 {n}개를 DB 에 넣음", flush=True)
+    return n
+
+
+def fetch_tago_cities(fx):
+    """TAGO 버스 도시 목록 [(코드, 이름)] (호출 1번). 앱이 처음 켤 때 받던 것을 DB 에 넣음. 못 받으면 빈 목록"""
+    try:
+        got = items(fx.get(f"{TAGO}/getCtyCodeList", {"_type": "json"}, "tago/cities.json", DAY))
+    except Exception as e:  # 도시 목록이 없어도 나머지는 그대로
+        print(f"TAGO 도시 목록 못 받음: {e}", flush=True)
+        return []
+    return [(str(c.get("citycode")), str(c.get("cityname", "")).strip()) for c in got if c.get("citycode")]
 
 
 def prune_unserved(db, complete, api_served=None, api_ok=False):
@@ -703,7 +756,9 @@ def main():
     tsb = fetch_tsb_stops(fx, BASE_DB)
     print(f"교통안전공단 노선 정류장 순서: {len(tsb)}개 노선", flush=True)
     jeonju = fetch_jeonju_served()
-    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju)
+    cities = fetch_tago_cities(fx)
+    print(f"TAGO 도시 목록: {len(cities)}곳", flush=True)
+    added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju, tago_cities=cities)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))

@@ -306,12 +306,25 @@ def test_prune_unserved():
 
 def test_jeonju_served_walk():
     """전주: 정류장 경유 노선 → 노선 정류장 목록으로 노선이 서는 정류장과 지금 이름을 모음 (중계 서버 응답 모양)"""
-    route = lambda rid: f'<list class="object"><brtStdId type="string">{rid}</brtStdId></list>'
-    stop = lambda sid, nm: f'<list class="object"><stopStandardid type="string">{sid}</stopStandardid><stopKname type="string">{nm}</stopKname></list>'
-    pages = {"stops/R1": stop("305100426", "풍남중") + stop("306101023", "백자삼거리")}
+    route = lambda rid: (f'<list class="object"><brtStdId type="string">{rid}</brtStdId><brtId type="string">2</brtId><brtClass type="string">0</brtClass>'
+                         f'<brtSname type="string">평화동종점</brtSname><brtEname type="string">평화동종점</brtEname><brtFirstTime type="string">540</brtFirstTime>'
+                         f'<brtLastTime type="string">2230</brtLastTime><brtMininTerVal type="string">15</brtMininTerVal></list>')
+    stop = lambda sid, nm, q: f'<list class="object"><brsSeqno type="string">{q}</brsSeqno><stopStandardid type="string">{sid}</stopStandardid><stopKname type="string">{nm}</stopKname></list>'
+    pages = {"stops/R1": stop("306101023", "백자삼거리", 2) + stop("305100426", "풍남중", 1)}
     got = lambda path: pages.get(path, route("R1") if path.startswith("routes/") else "")
-    served, ok = bd.fetch_jeonju_served(get=got)
+    served, ok, routes = bd.fetch_jeonju_served(get=got)
     assert ok and served["JUB306101023"] == "백자삼거리" and "JUB306101039" not in served
+    assert routes["R1"]["stops"] == [(1, "305100426", "풍남중"), (2, "306101023", "백자삼거리")]
+    # DB 에 노선·정류장 순서·첫차·막차 (앱이 전주 API 를 다시 부르지 않게)
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+    db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT, name TEXT, lat REAL, lng REAL, updown TEXT, PRIMARY KEY(route_id, seq))")
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    assert bd.write_jeonju(db, routes, {"JUB305100426"}) == 1
+    assert db.execute("SELECT no, rtype, realtime, start_node, end_node, city FROM routes WHERE id='JUBR1'").fetchone() == ("2", "순환", "jeonju", "JUB305100426", "JUB306101023", "35010")
+    assert db.execute("SELECT seq, stop_id, name FROM route_stops ORDER BY seq").fetchall() == [(1, "JUB305100426", ""), (2, "JUB306101023", "백자삼거리")]
+    assert db.execute("SELECT first, last, interval FROM route_info").fetchone() == ("05:40", "22:30", 15)
+    assert bd.jeonju_type("0", "4000", "a", "b") == "간선" and bd.jeonju_type("0", "100", "a", "b") == "일반"
 
 
 if __name__ == "__main__":

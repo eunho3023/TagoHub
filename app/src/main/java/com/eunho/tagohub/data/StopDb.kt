@@ -294,6 +294,11 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
     fun byId(id: String): BusStop? =
         query("SELECT id, name, lat, lng, no, city FROM stops WHERE id = ?", arrayOf(TagoIds.legacy(id))) { it.toStop() }.firstOrNull()
 
+    /** TAGO 버스 도시 목록 (데이터 저장소가 매주 넣음, 옛 자료엔 표가 없어 빈 목록) */
+    fun tagoCities(): List<Pair<String, String>> = runCatching {
+        query("SELECT code, name FROM tago_cities ORDER BY name", emptyArray()) { it.getString(0) to it.getString(1) }
+    }.getOrDefault(emptyList())
+
     fun cityNames(): Map<String, String> =
         query("SELECT code, name FROM cities", emptyArray()) { it.getString(0) to it.getString(1) }.toMap()
 

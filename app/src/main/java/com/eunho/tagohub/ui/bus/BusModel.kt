@@ -283,7 +283,10 @@ internal suspend fun tagoCity(repo: TagoRepository, s: BusStop): String {
 internal suspend fun stopRoutesFor(repo: TagoRepository, s: BusStop): TagoResult<List<BusRoute>> = when {
     Jeju.isJeju(s.nodeId) -> cachedRoutes(s.nodeId) { Graph.jeju.stopRoutes(s.nodeId) }
     Gyeonggi.isGyeonggi(s.nodeId) -> gyeonggiStopRoutes(s)
-    Jeonju.isJeonju(s.nodeId) -> cachedRoutes(s.nodeId) { Graph.jeonju.stopRoutes(s.nodeId) }
+    // 전주: 앱 안 노선 자료(데이터 저장소가 전주시 API 로 모아 넣음)가 있으면 그것, 없으면(옛 자료) 전주 API
+    Jeonju.isJeonju(s.nodeId) -> (StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(s.nodeId) } }?.takeIf { it.isNotEmpty() }
+        ?.let { TagoResult.Success(it) })
+        ?: cachedRoutes(s.nodeId) { Graph.jeonju.stopRoutes(s.nodeId) }
     SeoulBus.isSeoul(s.nodeId) -> TagoResult.Success( // 서울: 앱 안 노선 데이터 (서울 노선 파일)
         StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(s.nodeId) } }.orEmpty())
     else -> (StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { db.stopRoutes(s.nodeId) } }?.takeIf { it.isNotEmpty() }
@@ -323,7 +326,11 @@ internal suspend fun cachedInfo(routeId: String, fetch: suspend () -> BusRoute?)
 }
 
 /** 노선 정보(첫차·막차·배차간격): 지역별 자체 API, 그 외 TAGO. 교통안전공단 노선은 시간 정보가 TAGO 에만 있어 TAGO */
-internal suspend fun routeInfoFor(repo: TagoRepository, routeId: String, cityCode: String): BusRoute? = cachedInfo(routeId) { routeInfoFetch(repo, routeId, cityCode) }
+internal suspend fun routeInfoFor(repo: TagoRepository, routeId: String, cityCode: String): BusRoute? =
+    // 앱 안 노선 자료(route_info)에 첫차·막차·배차가 있으면 서버에 묻지 않음 (데이터 저장소가 매주 같은 API 로 채움)
+    StopDb.peek()?.let { db -> withContext(Dispatchers.IO) { runCatching { db.routeById(routeId) }.getOrNull() } }
+        ?.takeIf { it.firstTime != null || it.interval != null }
+        ?: cachedInfo(routeId) { routeInfoFetch(repo, routeId, cityCode) }
 
 private suspend fun routeInfoFetch(repo: TagoRepository, routeId: String, cityCode: String): BusRoute? = when {
     Jeju.isJeju(routeId) -> Graph.jeju.routeInfo(routeId)
