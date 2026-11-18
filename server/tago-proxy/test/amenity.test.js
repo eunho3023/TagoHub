@@ -43,3 +43,13 @@ test("정비소(영업 중만)·버스전용차로(시작점·운영시간)", as
     WEEKDAY_OPER_OPEN_HHMM: "출근시각 07:00 + 퇴근시각 17:00", WEEKDAY_OPER_COLSE_HHMM: "출근시각 09:00 + 퇴근시각 19:00", PHONE_NUMBER: "051-888-4031" }),
     ["금곡대로 버스전용차로", 35.210546, 129.005204, "덕천역 → 율리역 · 4.35km", "평일 07:00~09:00, 17:00~19:00 · 051-888-4031"]);
 });
+
+test("일방통행(시작점·방향)·횡단보도(신호등 등)", async () => {
+  const { heading } = await import("../../../pipeline/build_amenities.mjs");
+  assert.equal(heading(37.534116, 126.995378, 37.534002, 126.994221), "서쪽");
+  assert.equal(heading(37, 127, 37, 127), "");
+  assert.deepEqual(placeRow("oneway", { ROAD_NM: "보광로60길", START_LATITUDE: "37.534116", START_LONGITUDE: "126.995378", END_LATITUDE: "37.534002", END_LONGITUDE: "126.994221", ROAD_ET: "128", ROAD_BT: "6", CARTRK_CO: "1", PHONE_NUMBER: "02-2199-7755" }),
+    ["보광로60길 일방통행", 37.534116, 126.995378, "서쪽으로 한 방향 · 길이 128m · 폭 6m · 1차로", "02-2199-7755"]);
+  assert.deepEqual(placeRow("crosswalk", { ROAD_NM: "발안로", LATITUDE: "37.146235", LONGITUDE: "127.052512", TFCLGHT_YN: "Y", SOND_SGNGNR_YN: "Y", CARTRK_CO: "2", ET: "7", GREEN_SGNGNR_TIME: "30" }),
+    ["발안로 횡단보도", 37.146235, 127.052512, "보행자 신호등 · 음향신호기", "2차로 · 길이 7m · 녹색 30초"]);
+});

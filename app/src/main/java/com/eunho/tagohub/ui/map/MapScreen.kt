@@ -613,6 +613,9 @@ private fun MapLayerSheet(
         // 자동차 정비소(영업 중), 버스전용차로(시작점·운영시간) — 표준데이터
         MapLayerOption(listOf("amenity_repair"), "정비소", Icons.Filled.Build),
         MapLayerOption(listOf("amenity_buslane"), "버스전용차로", Icons.Filled.DirectionsBus),
+        // 일방통행(시작점·가는 방향), 횡단보도(신호등·음향신호기 등) — 표준데이터
+        MapLayerOption(listOf("amenity_oneway"), "일방통행", Icons.Filled.Warning),
+        MapLayerOption(listOf("amenity_crosswalk"), "횡단보도", Icons.AutoMirrored.Filled.DirectionsWalk),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),
