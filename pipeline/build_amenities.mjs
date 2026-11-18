@@ -92,6 +92,25 @@ export const KINDS = {
         line(wk && `평일 ${wk}`, r.PHONE_NUMBER)];
     },
   },
+  // 일방통행도로 (2,581구간, 2025~2026 기준). 시작점에 점, 카드에 가는 방향·길이·폭
+  oneway: {
+    pk: "15028199", tile: true,
+    pos: (r) => [r.START_LATITUDE, r.START_LONGITUDE],
+    row: (r) => {
+      const dir = heading(+r.START_LATITUDE, +r.START_LONGITUDE, +r.END_LATITUDE, +r.END_LONGITUDE);
+      return [`${t(r.ROAD_NM) || "도로"} 일방통행`,
+        line(dir && `${dir}으로 한 방향`, num(r.ROAD_ET) > 0 ? `길이 ${num(r.ROAD_ET)}m` : "", num(r.ROAD_BT) > 0 ? `폭 ${num(r.ROAD_BT)}m` : "", num(r.CARTRK_CO) > 0 ? `${num(r.CARTRK_CO)}차로` : ""),
+        line(dash(r.APPN_RESN).slice(0, 30), r.PHONE_NUMBER)];
+    },
+  },
+  // 횡단보도 (5만 8천여 곳, 대부분 2026 기준). 신호등·음향신호기·고원식 등
+  crosswalk: {
+    pk: "15028201", tile: true,
+    row: (r) => [`${t(r.ROAD_NM) || dash(r.RDNMADR) || "횡단보도"}`.slice(0, 30) + " 횡단보도",
+      line(yes(r.TFCLGHT_YN) ? "보행자 신호등" : "신호등 없음", yes(r.SOND_SGNGNR_YN) ? "음향신호기" : "", yes(r.FNCTNG_SGNGNR_YN) ? "누름 버튼" : "",
+        yes(r.HIGHLAND_YN) ? "고원식" : "", yes(r.BCYCL_CRSLK_CMBNAT_YN) ? "자전거 겸용" : "", yes(r.BRLL_BLCK_YN) ? "점자블록" : ""),
+      line(num(r.CARTRK_CO) > 0 ? `${num(r.CARTRK_CO)}차로` : "", num(r.ET) > 0 ? `길이 ${num(r.ET)}m` : "", num(r.GREEN_SGNGNR_TIME) > 0 ? `녹색 ${num(r.GREEN_SGNGNR_TIME)}초` : "")],
+  },
   // 대중교통 환승센터 (40곳)
   transfer: {
     pk: "15034541", tile: false,
@@ -100,6 +119,15 @@ export const KINDS = {
       line(num(r.GNRL_PRKCMPRT) > 0 ? `주차 ${num(r.GNRL_PRKCMPRT)}면` : "", yes(r.NO_HANDICAP_ENVRN_YN) ? "무장애" : "", dash(r.CVNTL_TYPE).slice(0, 30))],
   },
 };
+
+/** 시작점 → 끝점 방향 (8방위, 너무 가까우면 "") */
+export function heading(la1, lo1, la2, lo2) {
+  if (![la1, lo1, la2, lo2].every(Number.isFinite)) return "";
+  const dy = (la2 - la1) * 111000, dx = (lo2 - lo1) * 111000 * Math.cos((la1 * Math.PI) / 180);
+  if (Math.hypot(dx, dy) < 5) return "";
+  const deg = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  return ["북쪽", "북동쪽", "동쪽", "남동쪽", "남쪽", "남서쪽", "서쪽", "북서쪽"][Math.round(deg / 45) % 8];
+}
 
 /** 버스전용차로 운영시간: "출근시각 07:00 + 퇴근시각 17:00" / "출근시각 09:00 + 퇴근시각 19:00" → "07:00~09:00, 17:00~19:00". 00:00~00:00·같은 시각은 "종일" */
 export function laneHours(o, c) {
@@ -135,11 +163,14 @@ async function download(pk) {
   const vo = head.tableVO, total = +head.totalCount, per = 10000;
   const cols = Array.isArray(vo.colNmList) ? vo.colNmList : [vo.colNmList];
   const rows = [];
-  for (let page = 1; (page - 1) * per < total; page++) {
+  // 안내 건수(totalCount)가 실제보다 적게 오는 자료가 있어(횡단보도: 50,000 → 실제 58,852) 쪽이 덜 찰 때까지 받음
+  for (let page = 1; page <= 50; page++) {
     const q = new URLSearchParams();
     for (const c of cols) q.append("colNmList", c);
     q.set("totalCount", total); q.set("svcTableNm", vo.svcTableNm); q.set("perPage", per); q.set("page", page); q.set("publicDataPk", pk);
-    rows.push(...(await get(`${BASE}/download/standard.json?${q}`)));
+    const got = await get(`${BASE}/download/standard.json?${q}`);
+    rows.push(...got);
+    if (got.length < per) break;
   }
   return rows;
 }

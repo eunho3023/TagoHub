@@ -29,6 +29,8 @@ object Amenity {
         "amenity_transfer" to Kind("transfer", "환", 0xFF1565C0.toInt()),
         "amenity_repair" to Kind("repair", "정", 0xFF5D4037.toInt()),
         "amenity_buslane" to Kind("buslane", "전", 0xFF0277BD.toInt()),
+        "amenity_oneway" to Kind("oneway", "일", 0xFFC62828.toInt()),
+        "amenity_crosswalk" to Kind("crosswalk", "횡", 0xFF455A64.toInt()),
     )
     val LAYERS: Set<String> get() = KINDS.keys
 
