@@ -158,7 +158,7 @@ internal fun StopRouteItem(
     // 도착 예정 시각이 1분 넘게 지난 "도착"만 화면에서 숨긴다 (값을 새로 만들지는 않음).
     val row = row0.copy(arrivals = row0.arrivals.filterNot { a ->
         val sec = a.arrSeconds
-        a.prevStops == 0 && sec != null && sec + STALE_ARRIVED_SEC < elapsedSec
+        !a.waiting && a.prevStops == 0 && sec != null && sec + STALE_ARRIVED_SEC < elapsedSec
     })
     val cs = MaterialTheme.colorScheme
     val variant = cs.onSurfaceVariant

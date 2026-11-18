@@ -15,6 +15,7 @@ object ArrivalText {
 
     fun line(a: BusArrival, elapsedSec: Int = 0): String {
         val sec = a.arrSeconds?.minus(elapsedSec)?.coerceAtLeast(0)
+        if (a.waiting) return listOfNotNull("출발 대기", a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" }, a.crowd).joinToString(" · ")
         // 이번 정류장이면(0정류장 전) 이미 와 있는 것: "곧 도착 · 이번 정류장" 대신 한 마디로
         if (a.prevStops == 0 && (sec == null || sec <= 30)) {
             return listOfNotNull("정류장 도착", a.vehicleType?.takeIf { it.contains("저상") }?.let { "저상" }, a.crowd).joinToString(" · ")
@@ -59,6 +60,7 @@ object PassedBus {
      * 멀리 있던 버스(정류장 수가 많음)는 예측이 틀렸을 수 있어서 서버가 다시 알려줄 때까지 둔다.
      */
     fun passed(a: BusArrival, elapsedSec: Int): Boolean {
+        if (a.waiting) return false   // 기점에서 출발을 기다리는 버스는 시간이 지나도 그대로 있음
         val sec = a.arrSeconds ?: return false
         return sec - elapsedSec < -GRACE_SEC && (a.prevStops == null || a.prevStops!! <= 1)
     }
@@ -75,11 +77,35 @@ object ArrivedHold {
     /** [since] 는 노선 → "도착"이 처음 보인 시각(ms). 정류장 화면이 들고 있음 */
     fun filter(routeId: String, arrivals: List<BusArrival>, since: MutableMap<String, Long>, nowMs: Long): List<BusArrival> {
         val first = arrivals.firstOrNull()
-        if (first == null || first.prevStops != 0) {
+        if (first == null || first.prevStops != 0 || first.waiting) {
             since.remove(routeId)
             return arrivals
         }
         val at = since.getOrPut(routeId) { nowMs }
         return if (nowMs - at > HOLD_SEC * 1000L) arrivals.drop(1) else arrivals
     }
+}
+
+/**
+ * 기점에서 출발을 기다리는 버스. 도착정보 API 는 기점에 서 있는 버스를 "0정류장 전 · 곧 도착"으로 줘서,
+ * 기점 정류장 화면에 출발도 안 한 버스가 "정류장 도착"으로 보였다. 정류장 이름이 노선 기점과 같으면 "출발 대기"로 표시.
+ * 기점과 종점 이름이 같은 노선(회차)은 그 정류장에 닿는 버스일 수도 있어 그대로 둔다. 웹 busdata.js atOrigin 과 같은 규칙.
+ */
+object OriginWait {
+    private val bracket = Regex("""\[[^\]]*]|\([^)]*\)""")
+    private val space = Regex("""[\s.·]""")
+    private val tail = Regex("(종점|기점|정류장|정류소|가상)$")
+
+    /** 괄호 안·띄어쓰기·끝의 종점/기점 표시를 뺀 이름 */
+    fun norm(s: String?): String = (s ?: "").replace(bracket, "").replace(space, "").replace(tail, "")
+
+    fun atOrigin(stopName: String?, startName: String?, endName: String?): Boolean {
+        val s = norm(stopName)
+        val a = norm(startName)
+        return s.isNotEmpty() && s == a && a != norm(endName)
+    }
+
+    fun mark(stopName: String?, startName: String?, endName: String?, arrivals: List<BusArrival>): List<BusArrival> =
+        if (!atOrigin(stopName, startName, endName)) arrivals
+        else arrivals.map { if (it.prevStops == 0 && !it.estimated && !it.scheduled) it.copy(waiting = true) else it }
 }

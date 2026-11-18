@@ -17,6 +17,7 @@ data class BoardRule(val stops: Int? = null, val minutes: Int? = null) {
     companion object {
         /** 알림 문구: "3정류장 전, 약 4분 뒤 도착" / "곧 도착" / "정류장 도착" */
         fun phrase(a: BusArrival): String {
+            if (a.waiting) return "기점에서 출발 대기 중"
             if (a.prevStops == 0) return "정류장 도착"
             val time = a.arrSeconds?.let { if (it <= 30) "곧 도착" else "약 ${(it + 30) / 60}분 뒤 도착" }
             return listOfNotNull(a.prevStops?.let { "${it}정류장 전" }, time).joinToString(", ").ifEmpty { "곧 도착" }

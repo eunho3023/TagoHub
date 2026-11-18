@@ -1056,8 +1056,20 @@ export function timeText(sec) {
 export function arrivalParts(a, elapsed = 0) {
   const sec = a.arrSeconds == null ? null : Math.max(0, a.arrSeconds - elapsed);
   const low = a.vehicleType && a.vehicleType.includes("저상") ? "저상" : null;
+  if (a.waiting) return ["출발 대기", low, a.crowd].filter(Boolean);
   if (a.prevStops === 0 && (sec == null || sec <= 30)) return ["정류장 도착", low, a.crowd].filter(Boolean);
   return [timeText(sec), a.prevStops == null ? null : a.prevStops <= 0 ? "이번 정류장" : a.prevStops + "정류장 전", low, a.crowd].filter(Boolean);
 }
+/**
+ * 기점에서 출발을 기다리는 버스 (앱 ArrivalText.kt OriginWait): 도착정보는 기점에 서 있는 버스를 "0정류장 전 · 곧 도착"으로 줘서
+ * 기점 정류장에 출발도 안 한 버스가 "정류장 도착"으로 보였음. 정류장 이름이 노선 기점과 같으면 "출발 대기".
+ * 기점과 종점 이름이 같은 노선(회차)은 그 정류장에 닿는 버스일 수도 있어 그대로 둠
+ */
+export function atOrigin(stopName, start, end) {
+  const s = normName(stopName), a = normName(start);
+  return !!s && s === a && a !== normName(end);
+}
+export const markWaiting = (stopName, start, end, list) =>
+  atOrigin(stopName, start, end) ? list.map((x) => (x.prevStops === 0 && !x.estimated ? { ...x, waiting: true } : x)) : list;
 /** 이미 지나간 버스 (남은 시간이 0 아래로 3초 넘게, 바로 앞이거나 이번 정류장) */
-export const passed = (a, elapsed) => a.arrSeconds != null && a.arrSeconds - elapsed < -3 && (a.prevStops == null || a.prevStops <= 1);
+export const passed = (a, elapsed) => !a.waiting && a.arrSeconds != null && a.arrSeconds - elapsed < -3 && (a.prevStops == null || a.prevStops <= 1);

@@ -73,13 +73,15 @@ export function busSearch(root, chipsHtml) {
 
 // ── 정류장 화면 ──
 /** 노선 요약과 실시간 도착을 합친 줄 (실시간 있는 노선 먼저, 없으면 번호순) */
-function mergeRows(sums, arrivals) {
+function mergeRows(sums, arrivals, stopName, infos) {
   const byId = new Map();
   for (const a of arrivals) { const k = a.routeId || a.routeNo; if (!byId.has(k)) byId.set(k, []); byId.get(k).push(a); }
   const rows = sums.map((s) => ({ id: s.id, no: s.no, type: s.type, sum: s, arr: (byId.get(s.id) || arrivals.filter((a) => !a.routeId && a.routeNo === s.no)) }));
   const knownIds = new Set(sums.map((s) => s.id));
   for (const [k, l] of byId) if (!knownIds.has(k) && !rows.some((r) => r.arr.some((a) => a.routeId === k))) rows.push({ id: k, no: l[0].routeNo, type: l[0].routeType, sum: null, arr: l });
   rows.forEach((r) => { r.city = r.arr.find((a) => a.city)?.city || r.sum?.city || null; });
+  // 노선 기점 정류장이면 서 있는 버스는 "출발 대기" (기점·종점은 자료 파일 노선 요약, 없으면 받아 둔 노선 정보)
+  rows.forEach((r) => { const s = r.sum?.start ? r.sum : infos?.get(r.id); if (s) r.arr = B.markWaiting(stopName, s.start, s.end, r.arr); });
   rows.forEach((r) => r.arr.sort((a, b) => (a.arrSeconds ?? 1e9) - (b.arrSeconds ?? 1e9)));
   return rows.sort((x, y) => (x.arr.length ? 0 : 1) - (y.arr.length ? 0 : 1) || (x.arr[0]?.arrSeconds ?? 1e9) - (y.arr[0]?.arrSeconds ?? 1e9) || naturalCompare(x.no, y.no));
 }
@@ -158,7 +160,7 @@ export function stopScreen(root, p) {
     // 도착이 먼저 오고 노선 목록이 늦으면 3초 뒤엔 도착만으로라도 그림
     if (live && sums == null && !liveWait) liveWait = setTimeout(() => { waited = true; draw(); }, 3000);
     const both = waited || sums != null;
-    rows = both ? mergeRows(sums || [], live?.list || []) : [];
+    rows = both ? mergeRows(sums || [], live?.list || [], stop.name, infos) : [];
     let status = "";
     if (!both) status = "불러오는 중...";
     else if (!live) status = "실시간 도착을 받는 중...";

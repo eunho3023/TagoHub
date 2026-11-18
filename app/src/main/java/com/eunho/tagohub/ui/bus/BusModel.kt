@@ -445,7 +445,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
     if (d.rows.value is Load.Loading && d.lastRoutes == null) {
         (stopRoutesFor(repo, d.stop) as? TagoResult.Success)?.data?.takeIf { it.isNotEmpty() }?.let { quick ->
             d.lastRoutes = quick
-            if (d.rows.value is Load.Loading) d.rows.value = Load.Ok(mergeStopRows(emptyList(), quick).map { it.copy(cityCode = d.stop.cityCode) })
+            if (d.rows.value is Load.Loading) d.rows.value = Load.Ok(mergeStopRows(emptyList(), quick, stopName = d.stop.name).map { it.copy(cityCode = d.stop.cityCode) })
         }
     }
     val (arr, routes) = coroutineScope {
@@ -463,7 +463,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
     // 그것을 기다리면 화면이 늦게 바뀐다 (웹과 같이 받은 값을 바로 보여 주고, 아래에서 한 번 더 고침).
     if (arr is TagoResult.Success) {
         d.rows.value = Load.Ok(
-            mergeStopRows(arr.data, d.lastRoutes.orEmpty())
+            mergeStopRows(arr.data, d.lastRoutes.orEmpty(), stopName = d.stop.name)
                 .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
                 .sortedWith(stopRowOrder)
         )
@@ -538,12 +538,12 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
     applyFixed?.invoke()
 
     // 웹과 같게: 도착 정보는 API 가 준 값만 쓴다 (버스 위치로 채우거나 보정하지 않음)
-    val main = mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty())
+    val main = mergeStopRows(d.lastArrivals.orEmpty(), d.lastRoutes.orEmpty(), stopName = d.stop.name)
         .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }
     val mainNos = main.map { it.routeNo }.toSet()
     // 같은 자리의 다른 시군 정류장 노선도 버스 위치·배차로 둘째 버스를 채움 (전에는 이 정류장 노선만)
     val others = entries.flatMap { c ->
-        val rows = mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty())
+        val rows = mergeStopRows(d.compArrivals[entryKey(c)].orEmpty(), d.compRoutes[entryKey(c)].orEmpty(), stopName = d.stop.name)
             .map { it.copy(region = regionLabel(db, c.cityCode), cityCode = c.cityCode) }
             .filter { it.routeNo !in mainNos } // 이미 이 정류장 정보에 있는 노선은 두 번 안 보이게
         rows
@@ -587,10 +587,12 @@ internal fun mergeStopRows(
     arrivals: List<BusArrival>,
     routes: List<BusRoute>,
     nowMin: Int = LocalTime.now().let { it.hour * 60 + it.minute },
+    /** 이 정류장 이름: 노선 기점이면 서 있는 버스를 "출발 대기"로 ([com.eunho.tagohub.data.OriginWait]) */
+    stopName: String? = null,
 ): List<StopRouteRow> {
     val byRoute = arrivals.groupBy { it.routeId }
     val known = routes.map { r ->
-        val a = byRoute[r.routeId].orEmpty().take(2)
+        val a = com.eunho.tagohub.data.OriginWait.mark(stopName, r.startName, r.endName, byRoute[r.routeId].orEmpty().take(2))
         // 도착 정보에는 항상 지금 노선 번호가 와서 그걸 먼저 (앱 안 노선 자료가 예전 번호일 수 있음: 경기 707-1 → 1200)
         val live = a.firstOrNull()
         StopRouteRow(r.routeId, live?.routeNo?.takeIf { it.isNotBlank() } ?: r.routeNo, r.routeType ?: live?.routeType, r.startName, r.endName, a,
