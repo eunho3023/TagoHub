@@ -191,9 +191,10 @@ object ExMapLayers {
         val now = System.currentTimeMillis()
         synchronized(cache) { cache[layer]?.takeIf { now - it.first < cacheMs(layer) }?.let { return it.second } }
         val list = when (layer) {
-            REST -> rest(repo.all("/openapi/locationinfo/locationinfoRest"))
-            TOLL -> toll(repo.all("/openapi/locationinfo/locationinfoUnit"))
-            IC -> ic(repo.all("/openapi/locationinfo/locationinfoIc"))
+            // 위치(휴게소·영업소·IC)는 앱 안 파일 먼저 (pipeline/build_api_files.py), 없으면 API
+            REST -> rest(placeRows(REST) ?: repo.all("/openapi/locationinfo/locationinfoRest"))
+            TOLL -> toll(placeRows(TOLL) ?: repo.all("/openapi/locationinfo/locationinfoUnit"))
+            IC -> ic(placeRows(IC) ?: repo.all("/openapi/locationinfo/locationinfoIc"))
             VMS -> vms(repo.all("/openapi/vms/vmsMessageSrch"))
             CONGEST -> congest(repo.all("/openapi/odtraffic/trafficAmountByCongest"), vdsCoords())
             BURST -> burst(repo.all("/openapi/burstInfo/realTimeSms"))
@@ -204,6 +205,14 @@ object ExMapLayers {
         synchronized(cache) { cache[layer] = now to list }
         return list
     }
+
+    /** assets/ex_places.json 의 [layer] 행 (없거나 비면 null) */
+    private fun placeRows(layer: String): List<Map<String, String>>? = AssetText.read("ex_places.json")?.let { parsePlaces(it, layer) }?.takeIf { it.isNotEmpty() }
+
+    fun parsePlaces(json: String, layer: String): List<Map<String, String>> =
+        ((MiniJson.parse(json) as? Map<*, *>)?.get(layer) as? List<*>).orEmpty().mapNotNull { r ->
+            (r as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to (v?.toString() ?: "") }
+        }
 
     /** {"VDS ID": [위도, 경도, "노선"]} → 아이디별 좌표 */
     private fun vdsCoords(): Map<String, Pair<Double, Double>> {
