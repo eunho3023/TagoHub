@@ -28,8 +28,8 @@ object RouteLive {
         val left: List<Int>,
     )
 
-    /** 고른 정류장까지: 몇 정류장 전인지와 걸리는 초 */
-    data class Approach(val stops: Int, val sec: Double)
+    /** 고른 정류장까지: 몇 정류장 전인지와 걸리는 초. [waiting] 은 기점(첫 정류장)에서 아직 출발하지 않은 버스 */
+    data class Approach(val stops: Int, val sec: Double, val waiting: Boolean = false)
 
     /**
      * 배치도 위치 [fraction](3.0 = 3번째 정류장, 3.5 = 3~4번째 사이)에 있는 버스가 [focus] 번째 정류장까지 몇 정류장·몇 초 남았는지.
@@ -37,6 +37,8 @@ object RouteLive {
      */
     fun approach(fraction: Float, focus: Int, segSec: (Int) -> Double): Approach? {
         if (fraction > focus + 0.001f) return null
+        // 기점에 서 있는 버스는 출발 시각을 기다리는 중: 기점을 고르면 "도착"이 아니라 "출발 대기"
+        if (focus == 0 && fraction < 0.001f) return Approach(0, 0.0, waiting = true)
         val i = kotlin.math.floor(fraction.toDouble()).toInt().coerceAtLeast(0)
         val t = (fraction - i).toDouble().coerceIn(0.0, 1.0)
         var sec = 0.0
@@ -45,8 +47,9 @@ object RouteLive {
         return Approach(focus - i, sec.coerceAtLeast(0.0))
     }
 
-    /** "3정류장 전 · 5분 후" / "1정류장 전 · 곧 도착" / "도착" */
+    /** "3정류장 전 · 5분 후" / "1정류장 전 · 곧 도착" / "도착" / 기점에서 "출발 대기" */
     fun approachText(a: Approach, short: Boolean = false): String {
+        if (a.waiting) return "출발 대기"
         if (a.stops <= 0) return "도착"
         val min = Math.ceil(a.sec / 60.0).toInt()
         val time = if (a.sec < 60) "곧 도착" else if (short) "${min}분" else "${min}분 후"
