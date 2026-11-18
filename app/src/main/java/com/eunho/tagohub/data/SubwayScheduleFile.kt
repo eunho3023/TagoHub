@@ -22,7 +22,7 @@ object SubwayScheduleFile {
         val st = ArrayList<SubwayStation>()
         val tb = HashMap<String, String>()
         for (l in text.lineSequence()) {
-            val p = l.split('\t')
+            val p = l.trimEnd('\r').split('\t')   // Windows 에서 받은 파일은 줄 끝에 \r
             when (p[0]) {
                 "S" -> if (p.size >= 5) st += SubwayStation(id = p[1], name = p[2], routeName = p[3], routeId = p[4])
                 "T" -> if (p.size >= 6) tb["${p[1]}_${p[2]}_${p[3]}"] = p[4] + "\t" + p[5]

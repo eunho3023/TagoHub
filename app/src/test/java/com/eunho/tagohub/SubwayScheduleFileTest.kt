@@ -11,7 +11,7 @@ class SubwayScheduleFileTest {
     fun readsStationsAndDepartures() {
         // 05:20 → 320 = "8w", 25:10(01:10) → 1510 = "15y"
         SubwayScheduleFile.source = {
-            "S\tMTRARA1A01\t서울역\t공항\tMTRARA1\nT\tMTRARA1A01\t01\tD\tMTRARA1A07~검암|MTRARA1A11~인천공항2터미널\t8wb 15yA\nT\tMTRARA1A01\t03\tU\t\t\n"
+            "S\tMTRARA1A01\t서울역\t공항\tMTRARA1\nT\tMTRARA1A01\t01\tD\tMTRARA1A07~검암|MTRARA1A11~인천공항2터미널\t8wb 15yA\r\nT\tMTRARA1A01\t03\tU\t\t\n"
         }
         assertEquals("MTRARA1A01", SubwayScheduleFile.stations("서울")!!.single().id)
         assertNull(SubwayScheduleFile.stations("부산"))
