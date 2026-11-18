@@ -81,6 +81,17 @@ jobs:
           python pipeline/test_build_web_data.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: 앱 파일 새로 만들기 (지하철 시간표·휴게소·항공 소요시간·울산 교차로)
+        # 노선 DB 의 files 표에 넣어 앱이 같이 받음. 실패해도 노선 DB 는 만듦 (앱은 앱 안 파일 그대로)
+        continue-on-error: true
+        env:
+          TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
+          EX_API_KEY: ${{ secrets.EX_API_KEY }}
+        run: |
+          $env:TAGO_CACHE_DIR = Join-Path (Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent) "tagohub-cache"
+          python pipeline/build_subway_schedule.py --refresh --out pipeline/out/files
+          python pipeline/build_api_files.py --out pipeline/out/files
+
       - name: 데이터 만들기
         env:
           TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}

@@ -25,8 +25,10 @@ OUT = HERE / "out"                        # 만드는 중인 DB (올리지 않�
 TAGO = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService"
 GBIS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteListv2"
 GBIS_STOPS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteStationListv2"
-# 경기 노선 정류장 순서: 한 번에 이만큼만 새로 받음 (경기 API 하루 한도 안에서 매주 나눠 채움, 받은 것은 30일 저장)
-GBIS_STOPS_MAX = 800
+# 노선 DB 에 같이 넣는 앱 파일 (pipeline/build_api_files.py·build_subway_schedule.py --out 이 만듦). 앱은 앱 안 파일보다 이것을 먼저 씀
+FILES_DIR = OUT / "files"
+FILES = ("subway_schedule.tsv", "ex_places.json", "air_routes.json", "ulsan_crossroads.json")
+FILE_PART = 300_000   # 한글이 많아도 한 칸 1MB 안쪽
 # 제주 버스정보 (키 없음)
 JEJU = "https://bus.jeju.go.kr/api"
 # 한국교통안전공단_버스 노선 및 시간표 정보 (파일데이터 API, 2026-07-16 기준) — 노선 아이디 = TAGO 의 TSB+번호
@@ -348,8 +350,8 @@ def fetch_gbis(fx):
     return list(out.values())
 
 
-def fetch_gbis_stops(fx, base_db, gbis_routes, limit=GBIS_STOPS_MAX):
-    """경기: 정류장 순서가 DB 에 없는 노선만 노선 정류장 목록을 받음 {GGB 노선 id: [행]}. 하루 한도면 받은 데까지"""
+def fetch_gbis_stops(fx, base_db, gbis_routes):
+    """경기: 정류장 순서가 DB 에 없는 노선의 노선 정류장 목록을 모두 받음 {GGB 노선 id: [행]} (받은 것은 30일 저장). 하루 한도면 받은 데까지"""
     db = sqlite3.connect(base_db)
     have = {r[0] for r in db.execute("SELECT DISTINCT route_id FROM route_stops WHERE route_id LIKE 'GGB%'")}
     db.close()
@@ -361,8 +363,6 @@ def fetch_gbis_stops(fx, base_db, gbis_routes, limit=GBIS_STOPS_MAX):
                 continue
             cache = f"gbis/stops_{rid}.json"
             if not (CACHE / cache).exists():
-                if new >= limit:
-                    continue
                 new += 1
             t = fx.get(GBIS_STOPS, {"format": "json", "routeId": rid}, cache, 30 * DAY)
             try:
@@ -397,6 +397,24 @@ def write_gbis_stops(db, stops, known):
         db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", out)
     if stops:
         print(f"경기 노선 {len(stops)}개의 정류장 순서를 DB 에 넣음", flush=True)
+
+
+def write_files(db, folder):
+    """
+    앱 파일을 DB 의 files 표로 (없는 파일은 넣지 않음 → 앱은 앱 안 파일).
+    안드로이드는 한 칸이 2MB 를 넘으면 못 읽어서(CursorWindow) 30만 글자씩 나눠 넣고 앱이 part 순서로 이어 붙임
+    """
+    db.execute("DROP TABLE IF EXISTS files")
+    db.execute("CREATE TABLE files(name TEXT NOT NULL, part INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(name, part)) WITHOUT ROWID")
+    n = 0
+    for name in FILES:
+        f = pathlib.Path(folder) / name
+        if f.exists() and f.stat().st_size > 1000:
+            text = f.read_text(encoding="utf-8")
+            db.executemany("INSERT INTO files VALUES(?,?,?)", [(name, i // FILE_PART, text[i:i + FILE_PART]) for i in range(0, len(text), FILE_PART)])
+            n += 1
+    print(f"앱 파일 {n}개를 DB 에 넣음", flush=True)
+    return n
 
 
 def fetch_jeju(get=None):
@@ -728,6 +746,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
         db.execute("CREATE TABLE IF NOT EXISTS tago_cities(code TEXT PRIMARY KEY, name TEXT NOT NULL) WITHOUT ROWID")
         db.execute("DELETE FROM tago_cities")
         db.executemany("INSERT OR REPLACE INTO tago_cities VALUES(?,?)", list(tago_cities))
+    write_files(db, FILES_DIR)
     for rid, no, s, e in gbis_routes:
         db.execute("INSERT OR REPLACE INTO gbis_routes(id,no,start_name,end_name) VALUES(?,?,?,?)", ("GGB" + rid, no, s, e))
     db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('version', ?)", (version,))
