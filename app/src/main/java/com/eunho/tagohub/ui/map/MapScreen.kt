@@ -65,6 +65,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.LocalParking
@@ -609,6 +610,9 @@ private fun MapLayerSheet(
         MapLayerOption(listOf("amenity_wheel", "amenity_mobility"), "교통약자", Icons.Filled.Accessible),
         MapLayerOption(listOf("amenity_drowsy"), "졸음쉼터", Icons.Filled.Hotel),
         MapLayerOption(listOf("amenity_transfer"), "환승센터", Icons.Filled.TransferWithinAStation),
+        // 자동차 정비소(영업 중), 버스전용차로(시작점·운영시간) — 표준데이터
+        MapLayerOption(listOf("amenity_repair"), "정비소", Icons.Filled.Build),
+        MapLayerOption(listOf("amenity_buslane"), "버스전용차로", Icons.Filled.DirectionsBus),
         MapLayerOption(listOf("ex_flow"), "고속도로 소통", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_congest"), "정체구간", Icons.Filled.Traffic),
         MapLayerOption(listOf("ex_burst"), "고속도로 돌발", Icons.Filled.Warning),

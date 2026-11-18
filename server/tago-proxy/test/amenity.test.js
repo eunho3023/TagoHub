@@ -30,3 +30,16 @@ test("표준데이터 한 줄 → 카드 두 줄", () => {
   assert.equal(placeRow("transfer", { TRNSITLC_CNTER_NM: "x", LATITUDE: "36.8", LONGITUDE: "126.9", OPER_YN: "N" }), null);
   assert.equal(placeRow("wheel", { FCLTY_NM: "x", LATITUDE: "0", LONGITUDE: "0" }), null);
 });
+
+test("정비소(영업 중만)·버스전용차로(시작점·운영시간)", async () => {
+  const { laneHours } = await import("../../../pipeline/build_amenities.mjs");
+  assert.equal(laneHours("출근시각 07:00 + 퇴근시각 17:00", "출근시각 09:00 + 퇴근시각 19:00"), "07:00~09:00, 17:00~19:00");
+  assert.equal(laneHours("00:00", "00:00"), "종일");
+  assert.deepEqual(placeRow("repair", { INSPOFC_NM: "연암카클리닉", BSN_STTUS: "1", RDNMADR: "충청남도 아산시 음봉면 연암율금로 399", LATITUDE: "36.87435033", LONGITUDE: "127.06587709", PHONE_NUMBER: "041-000-0000" }),
+    ["연암카클리닉", 36.87435, 127.065877, "충청남도 아산시 음봉면 연암율금로 399", "041-000-0000"]);
+  assert.equal(placeRow("repair", { INSPOFC_NM: "x", BSN_STTUS: "3", LATITUDE: "36.8", LONGITUDE: "127" }), null);
+  assert.equal(placeRow("repair", { INSPOFC_NM: "x", BSN_STTUS: "01", CLSBIZ_DATE: "2024-01-01", LATITUDE: "36.8", LONGITUDE: "127" }), null);
+  assert.deepEqual(placeRow("buslane", { ROAD_ROUTE_NM: "금곡대로", ROAD_BEGIN_NM: "덕천역", ROAD_END_NM: "율리역", ROAD_BEGIN_LATITUDE: "35.210546", ROAD_BEGIN_LONGITUDE: "129.005204", TOT_ET: "4.35", APPN_RELIS_YN: "Y",
+    WEEKDAY_OPER_OPEN_HHMM: "출근시각 07:00 + 퇴근시각 17:00", WEEKDAY_OPER_COLSE_HHMM: "출근시각 09:00 + 퇴근시각 19:00", PHONE_NUMBER: "051-888-4031" }),
+    ["금곡대로 버스전용차로", 35.210546, 129.005204, "덕천역 → 율리역 · 4.35km", "평일 07:00~09:00, 17:00~19:00 · 051-888-4031"]);
+});
