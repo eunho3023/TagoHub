@@ -2346,6 +2346,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     /** TAGO 도시 목록 (거의 안 바뀜 → 휴대폰에 저장, 7일) */
     private suspend fun busCitiesCached(): TagoResult<List<City>> {
+        // 앱 안 노선 자료에 있으면 그것 (서버에 묻지 않음)
+        stopDb?.let { db -> withContext(Dispatchers.IO) { db.tagoCities() } }?.takeIf { it.isNotEmpty() }?.let { list ->
+            return TagoResult.Success(list.map { City(it.first, it.second) })
+        }
         withContext(Dispatchers.IO) { com.eunho.tagohub.data.StaticCache.pairs("tago_cities") }?.let { saved ->
             return TagoResult.Success(saved.map { City(it.first, it.second) })
         }
