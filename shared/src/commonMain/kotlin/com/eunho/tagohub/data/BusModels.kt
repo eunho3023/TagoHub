@@ -64,6 +64,8 @@ data class BusArrival(
     val fromLog: Boolean = false,
     /** 차 안 혼잡·빈자리 ("여유", "혼잡", "빈자리 22", "만차"). 서울·경기 도착 API 만 줌 ([Crowd]) */
     val crowd: String? = null,
+    /** 기점에 서서 출발 시각을 기다리는 버스 (도착정보는 "0정류장 전"으로 줌, [OriginWait]) */
+    val waiting: Boolean = false,
 )
 
 data class RouteStop(
