@@ -4,6 +4,7 @@
 가끔(몇 달에 한 번, 휴게소·IC 가 새로 생겼을 때 등) 한 번 돌리면 된다.
 
     python pipeline/build_api_files.py
+    python pipeline/build_api_files.py --out pipeline/out/files   # 매주 데이터 갱신: 노선 DB 에 넣어 앱이 받게
 
 만드는 파일:
   ex_places.json        한국도로공사 휴게소·영업소·IC/JCT 위치 {"ex_rest": [행], "ex_toll": [행], "ex_ic": [행]} (행 = API 그대로의 글자 칸)
@@ -23,7 +24,7 @@ ASSETS = os.path.join(ROOT, "app", "src", "main", "assets")
 UA = "Mozilla/5.0 (Linux; Android 14; Mobile) Chrome/124.0 Mobile Safari/537.36"
 
 
-def key(*names):
+def key(*names, need=True):
     for n in names:
         v = os.environ.get(n, "").strip()
         if v:
@@ -36,7 +37,10 @@ def key(*names):
     for n in names:
         if props.get(n, "").strip():
             return props[n].strip()
-    sys.exit(f"키가 없습니다: {' / '.join(names)}")
+    if need:
+        sys.exit(f"키가 없습니다: {' / '.join(names)}")
+    print(f"키가 없어 건너뜀: {' / '.join(names)}")
+    return None
 
 
 def get(url):
@@ -103,18 +107,26 @@ def write(name, data, n, least):
     if n < least:  # 키 오류·빈 응답으로 파일을 비우지 않게
         print(f"{name}: {n}건뿐이라 쓰지 않음 (예전 파일 그대로)")
         return
-    path = os.path.join(ASSETS, name)
+    path = os.path.join(OUT_DIR, name)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
     print(f"{name}: {n}건, {os.path.getsize(path) // 1024}KB")
 
 
+OUT_DIR = ASSETS
+
+
 def main():
-    ex = key("EX_API_KEY")
-    places = {"ex_rest": ex_all(ex, "/openapi/locationinfo/locationinfoRest"),
-              "ex_toll": ex_all(ex, "/openapi/locationinfo/locationinfoUnit"),
-              "ex_ic": ex_all(ex, "/openapi/locationinfo/locationinfoIc")}
-    write("ex_places.json", places, min(len(v) for v in places.values()), 50)
+    global OUT_DIR
+    if "--out" in sys.argv:
+        OUT_DIR = sys.argv[sys.argv.index("--out") + 1]
+        os.makedirs(OUT_DIR, exist_ok=True)
+    ex = key("EX_API_KEY", need=False)   # 데이터 갱신 러너에 도로공사 키가 없으면 휴게소 파일만 건너뜀 (앱 안 파일 그대로)
+    if ex:
+        places = {"ex_rest": ex_all(ex, "/openapi/locationinfo/locationinfoRest"),
+                  "ex_toll": ex_all(ex, "/openapi/locationinfo/locationinfoUnit"),
+                  "ex_ic": ex_all(ex, "/openapi/locationinfo/locationinfoIc")}
+        write("ex_places.json", places, min(len(v) for v in places.values()), 50)
     air = air_routes(key("KAC_API_KEY", "TAGO_SERVICE_KEY"))
     write("air_routes.json", {"response": {"body": {"totalCount": len(air), "items": {"item": air}}}}, len(air), 100)
     ul = ulsan_crossroads(key("KLID_BUS_KEY", "TAGO_SERVICE_KEY"))

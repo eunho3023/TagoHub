@@ -7,18 +7,25 @@ package com.eunho.tagohub.data
  *   T 역id 요일 방향 종착역(id~이름|…) 출발(36진수 분 + 종착역 글자, 대문자 = 종착만)
  */
 object SubwayScheduleFile {
-    private class Data(val stations: List<SubwayStation>, val tables: Map<String, String>)
+    private class Data(val stations: List<SubwayStation>, val tables: Map<String, String>, val stamp: String = "")
 
     @Volatile private var data: Data? = null
     /** 테스트용: 파일 글자를 바로 넣기 (바꾸면 읽어 둔 것을 비움) */
-    @Volatile var source: () -> String? = { AssetText.read("subway_schedule.tsv") }
-        set(v) { field = v; data = null }
+    @Volatile var source: () -> String? = { AssetText.read(NAME) }
+        set(v) { field = v; data = null; stampOf = { "" } }
+    /** 지금 파일의 판 (노선 DB 를 새로 받으면 바뀜 → 다시 읽음) */
+    @Volatile private var stampOf: () -> String = { AssetText.stamp(NAME) }
+    private const val NAME = "subway_schedule.tsv"
 
-    private fun load(): Data? = data ?: synchronized(this) {
-        data ?: source()?.let(::parse)?.takeIf { it.stations.isNotEmpty() }?.also { data = it }
+    private fun load(): Data? {
+        val now = stampOf()
+        data?.takeIf { it.stamp == now }?.let { return it }
+        return synchronized(this) {
+            data?.takeIf { it.stamp == now } ?: source()?.let { parse(it, now) }?.takeIf { it.stations.isNotEmpty() }?.also { data = it } ?: data
+        }
     }
 
-    private fun parse(text: String): Data {
+    private fun parse(text: String, stamp: String): Data {
         val st = ArrayList<SubwayStation>()
         val tb = HashMap<String, String>()
         for (l in text.lineSequence()) {
@@ -28,7 +35,7 @@ object SubwayScheduleFile {
                 "T" -> if (p.size >= 6) tb["${p[1]}_${p[2]}_${p[3]}"] = p[4] + "\t" + p[5]
             }
         }
-        return Data(st, tb)
+        return Data(st, tb, stamp)
     }
 
     /** 역 이름에 [q] 가 들어간 역 (API 낱말 검색과 같게). 파일이 없거나 하나도 없으면 null */

@@ -299,6 +299,16 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         query("SELECT code, name FROM tago_cities ORDER BY name", emptyArray()) { it.getString(0) to it.getString(1) }
     }.getOrDefault(emptyList())
 
+    /** 데이터 갱신이 넣은 앱 파일 (files 표, 30만 글자씩 나눠 있음 → 이어 붙임. 옛 자료엔 없음 → null) */
+    fun file(name: String): String? = runCatching {
+        query("SELECT body FROM files WHERE name = ? ORDER BY part", arrayOf(name)) { it.getString(0) }
+            .takeIf { it.isNotEmpty() }?.joinToString("")
+    }.getOrNull()
+
+    fun hasFile(name: String): Boolean = runCatching {
+        query("SELECT 1 FROM files WHERE name = ?", arrayOf(name)) { true }.isNotEmpty()
+    }.getOrDefault(false)
+
     fun cityNames(): Map<String, String> =
         query("SELECT code, name FROM cities", emptyArray()) { it.getString(0) to it.getString(1) }.toMap()
 

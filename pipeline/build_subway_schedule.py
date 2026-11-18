@@ -4,7 +4,9 @@ TAGO 지하철 역 목록·역별 시간표(전국 약 1,100역 × 평일·토·
 앱은 이 파일을 먼저 쓰고, 파일에 없는 역·요일·방향만 예전처럼 API (한 번 받으면 저장).
 
     python pipeline/build_subway_schedule.py            # 받은 응답은 pipeline/cache/subway 에 저장 → 하루 한도에 걸리면 다음 날 다시 돌리면 이어서
-    python pipeline/build_subway_schedule.py --refresh  # 저장한 응답을 버리고 새로 (시간표 개편 때)
+    python pipeline/build_subway_schedule.py --refresh  # 모두 새로 받음 (못 받은 것은 저장해 둔 응답 그대로)
+    python pipeline/build_subway_schedule.py --refresh --out pipeline/out/files   # 매주 데이터 갱신: 노선 DB 에 넣어 앱이 받게
+    응답 저장 폴더: 환경변수 TAGO_CACHE_DIR 가 있으면 그 아래 subway (데이터 갱신 러너), 없으면 pipeline/cache/subway
 
 호출: 역 목록 2번 + 역마다 6번 (약 6,700번). 키: TAGO_SERVICE_KEY (환경변수 또는 local.properties, 앱과 같은 키)
 
@@ -24,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "app", "src", "main", "assets", "subway_schedule.tsv")
-CACHE = os.path.join(ROOT, "pipeline", "cache", "subway")
+CACHE = os.path.join(os.environ.get("TAGO_CACHE_DIR") or os.path.join(ROOT, "pipeline", "cache"), "subway")
 BASE = "https://apis.data.go.kr/1613000/SubwayInfo"
 DAYS = ("01", "02", "03")
 DIRS = ("U", "D")
@@ -131,7 +133,12 @@ def line(sid, day, ud, deps):
 
 
 def main():
+    global OUT
     refresh = "--refresh" in sys.argv
+    if "--out" in sys.argv:
+        d = sys.argv[sys.argv.index("--out") + 1]
+        os.makedirs(d, exist_ok=True)
+        OUT = os.path.join(d, "subway_schedule.tsv")
     os.makedirs(CACHE, exist_ok=True)
     k = key()
     stations, page = [], 1

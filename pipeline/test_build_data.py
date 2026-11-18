@@ -359,7 +359,22 @@ def test_gbis_stops_written():
         (1, "GGB1", "", None, "0"), (2, "GGB2", "", None, "0"), (3, "GGB3", "새곳", 37.4, "1")]
 
 
+def test_files_written():
+    """앱 파일(지하철 시간표 등)을 DB files 표로 — 없거나 너무 작은 파일은 넣지 않음"""
+    with tempfile.TemporaryDirectory() as d:
+        (pathlib.Path(d) / "subway_schedule.tsv").write_text("S\tA\t역\t노선\tR\n" * 300, encoding="utf-8")
+        (pathlib.Path(d) / "air_routes.json").write_text("{}", encoding="utf-8")
+        db = sqlite3.connect(":memory:")
+        assert bd.write_files(db, d) == 1
+        assert db.execute("SELECT DISTINCT name FROM files").fetchall() == [("subway_schedule.tsv",)]
+        bd.FILE_PART, part = 1000, bd.FILE_PART                       # 나눠 넣은 것을 이으면 원래 글자
+        bd.write_files(db, d)
+        bd.FILE_PART = part
+        assert "".join(r[0] for r in db.execute("SELECT body FROM files ORDER BY part")) == (pathlib.Path(d) / "subway_schedule.tsv").read_text(encoding="utf-8")
+        assert db.execute("SELECT COUNT(*) FROM files").fetchone()[0] > 1
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
