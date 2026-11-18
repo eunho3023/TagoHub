@@ -22,7 +22,7 @@ object JeonjuMappers {
     fun arrival(r: Row) = BusArrival(
         routeId = Jeonju.tago(r.text("brtStdid")),
         routeNo = r.text("brtId"),
-        routeType = routeType(r.str("brtClass"), r.text("brtId")),
+        routeType = routeType(r.str("brtClass"), r.text("brtId"), r.str("brtVianame")?.substringBefore("->"), r.str("brtVianame")?.substringAfter("->", "")),
         vehicleType = if (r.str("busLow") == "1") "저상버스" else null,
         prevStops = r.int("RStop"),
         arrSeconds = r.int("RTime"),
@@ -34,9 +34,13 @@ object JeonjuMappers {
      * 정류장 경유노선 (busstop/general_busstop_common). 같은 번호라도 기점·종점이 다른 노선이 따로 온다
      * (예: 110 비전대→대성동종점 / 110 혁신전기안전공사→대성동종점).
      */
-    /** 전주 노선 종류: 순환(brtClass 1) / 간선(4자리 번호, 예: 4000·6002) / 일반 */
-    fun routeType(brtClass: String?, routeNo: String): String = when {
+    /**
+     * 전주 노선 종류: 순환(brtClass 1, 또는 기점과 종점이 같은 노선) / 간선(4자리 번호, 예: 4000·6002) / 일반.
+     * 전주시 자료는 2번(평화동종점→평화동종점)처럼 도는 노선도 brtClass 0 으로 줘서 "일반"으로 보였음
+     */
+    fun routeType(brtClass: String?, routeNo: String, start: String? = null, end: String? = null): String = when {
         brtClass == "1" -> "순환"
+        !start.isNullOrBlank() && start.trim() == end?.trim() -> "순환"
         Regex("^\\d{4}").containsMatchIn(routeNo.trim()) -> "간선"
         else -> "일반"
     }
@@ -44,7 +48,7 @@ object JeonjuMappers {
     fun stopRoute(r: Row) = BusRoute(
         routeId = Jeonju.tago(r.text("brtStdId").ifEmpty { r.text("brtStdid") }),
         routeNo = r.text("brtId"),
-        routeType = routeType(r.str("brtClass"), r.text("brtId")),
+        routeType = routeType(r.str("brtClass"), r.text("brtId"), r.str("brtSname"), r.str("brtEname")),
         startName = r.str("brtSname"),
         endName = r.str("brtEname"),
         firstTime = TagoTime.clockText(r.str("brtFirstTime", "brtFirsttime")),
@@ -59,7 +63,7 @@ object JeonjuMappers {
     fun routeInfo(r: Row) = BusRoute(
         routeId = Jeonju.tago(r.text("brtStdid").ifEmpty { r.text("brtStdId") }),
         routeNo = r.text("brtId"),
-        routeType = routeType(r.str("brtClass"), r.text("brtId")),
+        routeType = routeType(r.str("brtClass"), r.text("brtId"), r.str("brtSname")?.substringBefore("->"), r.str("brtEname")?.substringAfter("->")),
         startName = r.str("brtSname")?.substringBefore("->")?.trim(),
         endName = r.str("brtEname")?.substringAfter("->")?.trim(),
         firstTime = TagoTime.clockText(r.str("brtFirstTime")),

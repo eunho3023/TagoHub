@@ -81,7 +81,7 @@ export function fixStopsScreen(root, p, ctx) {
       h += `<div class="toolrow">
         <button class="link" ${act(() => { joining = true; joinPick.clear(); msg = ""; drawAll(); })}>다른 정류장과 묶기</button>
         ${mates.length && !(manual && !manual.length) ? `<button class="link" ${act(() => saveGroup(sel.id, [], `「${sel.name}」을(를) 따로 떼었어요.`))}>따로 떼기</button>` : ""}
-        ${manual ? `<button class="link" ${act(() => saveGroup(sel.id, null, "손으로 고친 묶음을 지웠어요. 자동 규칙대로 보여요."))}>손으로 묶은 것 지우기</button>` : ""}</div>`;
+        ${manual || E.groupListedBy(sel.id).length ? `<button class="link" ${act(() => saveGroup(sel.id, null, "손으로 고친 묶음을 지웠어요. 자동 규칙대로 보여요."))}>손으로 묶은 것 지우기</button>` : ""}</div>`;
       const fixed = E.stopFix(sel.id);
       h += `<div class="toolrow">
         ${moves.has(sel.id) ? `<button class="link" ${act(() => { moves.delete(sel.id); drawAll(); })}>이 정류장 되돌리기</button>` : ""}
@@ -118,7 +118,12 @@ export function fixStopsScreen(root, p, ctx) {
   async function saveGroup(id, ids, ok) {
     if (busy) return;
     busy = true; msg = ""; drawBar();
-    try { await E.save("group", id, ids); msg = ok; sel = null; mates = []; joining = false; joinPick.clear(); }
+    try {
+      await E.save("group", id, ids);
+      // 따로 떼기·지우기: 다른 정류장 기록에 이 정류장을 묶어 둔 것도 지움 (그쪽 목록이 비면 지우기, 빈 목록은 "따로 떼기"라는 뜻이라). 앱과 같음
+      if (!ids || !ids.length) for (const o of E.groupListedBy(id)) { const rest = E.groupFix(o).filter((x) => B.legacyId(String(x)) !== B.legacyId(id)); await E.save("group", o, rest.length ? rest : null); }
+      msg = ok; sel = null; mates = []; joining = false; joinPick.clear();
+    }
     catch (e) { msg = e.message || "저장하지 못했어요"; }
     busy = false; load(); drawAll();
   }

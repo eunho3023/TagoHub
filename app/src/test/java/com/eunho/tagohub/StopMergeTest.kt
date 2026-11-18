@@ -78,6 +78,11 @@ class StopMergeTest {
             // 따로 떼기: 자동으로 묶이던 T1 이 혼자
             StopMerge.manual = StopMerge.Manual(mapOf("T1" to emptyList()))
             assertEquals(2, StopMerge.merge(listOf(x, y)).size)
+
+            // J1 에서 JAB1 을 묶은 뒤 JAB1 쪽에서 "따로 떼기": J1 쪽 기록이 남아 있어도 풀려야 함
+            StopMerge.manual = StopMerge.Manual(mapOf("J1" to listOf("JAB1"), "JAB1" to emptyList()))
+            assertEquals(2, StopMerge.merge(listOf(x, far)).size)
+            assertEquals(listOf("J1"), StopMerge.Manual(mapOf("J1" to listOf("JAB1"))).listedBy("JAB1"))
         } finally {
             StopMerge.manual = StopMerge.Manual()
         }

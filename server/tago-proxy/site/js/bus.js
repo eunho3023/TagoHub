@@ -516,7 +516,8 @@ export function routeScreen(root, p, ctx) {
     const dots = lineArrows(drawn);
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
     if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; }
-    const at = (i) => (road && snapped ? (snapped.full[i] ? toRight(snapped.full[i].pt, snapped.full[i].seg) : null) : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
+    // 지도 고치기로 손으로 옮긴 정류장은 고친 자리 그대로 (앱 RoutePin.fixed; 선 위로 붙이면 고친 것이 안 보였음)
+    const at = (i) => (r.stops[i].id && (Edits.stopFix(r.stops[i].id) || Edits.stopFix(B.legacyId(r.stops[i].id))) && r.stops[i].lat != null ? [r.stops[i].lat, r.stops[i].lng] : road && snapped ? (snapped.full[i] ? toRight(snapped.full[i].pt, snapped.full[i].seg) : null) : r.stops[i].lat == null ? null : [r.stops[i].lat, r.stops[i].lng]);
     r.stops.forEach((s, i) => {
       const xy = at(i);
       if (!xy) return;
