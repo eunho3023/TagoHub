@@ -28,4 +28,14 @@ class AssetFilesTest {
         assertTrue(AirRoutes.find(air, "GMP", "CJU") != null)
         assertTrue(UlsanSignals.parseIntersections(asset("ulsan_crossroads.json")).size > 300)
     }
+
+    @Test
+    fun subwayScheduleFileHasNationwideTimetables() {
+        val text = asset("subway_schedule.tsv")
+        com.eunho.tagohub.data.SubwayScheduleFile.source = { text }
+        assertTrue(com.eunho.tagohub.data.SubwayScheduleFile.stations("서울역")!!.isNotEmpty())
+        val d = com.eunho.tagohub.data.SubwayScheduleFile.schedule("MTRARA1A01", "01", "D")!!   // 공항철도 서울역 평일 하행
+        assertTrue(d.size > 100 && d.zipWithNext().all { (a, b) -> a.serviceMinute <= b.serviceMinute })
+        assertTrue(d.all { it.endStationName.isNotEmpty() && it.serviceMinute in 180 until 1620 })
+    }
 }

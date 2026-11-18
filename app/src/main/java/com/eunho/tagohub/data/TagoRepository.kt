@@ -216,6 +216,8 @@ class TagoRepository(private val api: TagoApi) {
     // 역 ID·시간표·출구는 잘 안 바뀌어서 한 번 받으면 휴대폰에 계속 저장 (앱 업데이트 때 새로 받음)
 
     suspend fun subwayStations(q: String): TagoResult<List<SubwayStation>> {
+        // 앱 안 파일(subway_schedule.tsv) 먼저 → 휴대폰 저장 → API
+        withContext(Dispatchers.IO) { SubwayScheduleFile.stations(q) }?.let { return TagoResult.Success(it) }
         withContext(Dispatchers.IO) { StaticCache.subwayStations(q) }?.let { return TagoResult.Success(it) }
         val r = run {
             all(listOf(100), 2) { p, n -> api.subwayStations(q, p, n) }
@@ -226,6 +228,8 @@ class TagoRepository(private val api: TagoApi) {
     }
 
     suspend fun subwaySchedule(stationId: String, dailyType: String, upDown: String): TagoResult<List<SubwayDeparture>> {
+        // 앱 안 파일(전국 시간표) 먼저 → 휴대폰 저장 → API
+        withContext(Dispatchers.IO) { SubwayScheduleFile.schedule(stationId, dailyType, upDown) }?.let { return TagoResult.Success(it) }
         withContext(Dispatchers.IO) { StaticCache.schedule(stationId, dailyType, upDown) }?.let { return TagoResult.Success(it) }
         val r = run { Mappers.cleanSchedule(all(maxPages = 10) { p, n -> api.subwaySchedule(stationId, dailyType, upDown, p, n) }) }
         if (r is TagoResult.Success) withContext(Dispatchers.IO) { StaticCache.putSchedule(stationId, dailyType, upDown, r.data) }
