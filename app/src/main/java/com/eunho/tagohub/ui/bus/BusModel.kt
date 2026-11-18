@@ -109,6 +109,8 @@ sealed class BusDest {
         /** 경유노선은 바뀌지 않으니 한 번만 받는다 (새로고침이 빨라짐) */
         internal var lastRoutes: List<BusRoute>? = null
         internal var emptyStreak = 0
+        /** 실시간 도착을 한 번이라도 보여 줬는지 (새로고침해도 안 비움) — 그 뒤로는 지역 도착을 끝까지 기다림 */
+        internal var shownLive = false
 
         /** 서버가 마지막으로 준 도착 목록 (새로고침해도 안 비움: 직전과 같은 정보인지 알아보는 데 씀) */
         internal var lastServer: List<BusArrival>? = null
@@ -459,8 +461,9 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
         }
     }
     val (arr, routes) = coroutineScope {
-        // 처음 열 때만 지역 도착이 3초 넘게 걸리면 TAGO 를 먼저 (지도 화면이 곧 다시 받아 지역 도착으로 바꿈)
-        val a = async { arrivalsFor(repo, d.stop, quickMs = if (d.lastArrivals == null) QUICK_LOCAL_MS else null) }
+        // 처음 열 때만 지역 도착이 3초 넘게 걸리면 TAGO 를 먼저 (지도 화면이 곧 다시 받아 지역 도착으로 바꿈).
+        // 새로고침(이미 도착을 보여 줌)은 끝까지 기다림: 전엔 새로고침마다 전주시 서버가 늦으면 TAGO 로 바뀌어 버스·방면이 달라 보였음
+        val a = async { arrivalsFor(repo, d.stop, quickMs = if (!d.shownLive) QUICK_LOCAL_MS else null) }
         val r = if (d.lastRoutes == null) async { stopRoutesFor(repo, d.stop) } else null
         a.await() to r?.await()
     }
@@ -472,6 +475,7 @@ internal suspend fun loadStopBoard(repo: TagoRepository, d: BusDest.Stop) {
     // 갱신할 때마다 API 도착 정보를 먼저 그린다. 버스 위치 확인(dropPassedByPosition)은 몇 초 걸려서
     // 그것을 기다리면 화면이 늦게 바뀐다 (웹과 같이 받은 값을 바로 보여 주고, 아래에서 한 번 더 고침).
     if (arr is TagoResult.Success) {
+        if (arr.data.isNotEmpty()) d.shownLive = true
         d.rows.value = Load.Ok(
             mergeStopRows(arr.data, d.lastRoutes.orEmpty(), stopName = d.stop.name)
                 .map { it.copy(cityCode = d.stop.cityCode, region = regionLabel(db, d.stop.cityCode)) }

@@ -195,7 +195,8 @@ internal fun LiveArrivalsCard(
             val before = (value as? LiveState.Ready)?.stops.orEmpty().associate { it.stop.nodeId to it.routes }
             val got = LinkedHashMap<String, List<RouteEta>>()
             var failed = false
-            val quick = if (first) com.eunho.tagohub.ui.bus.QUICK_LOCAL_MS else null
+            // 이미 보여 준 도착이 있으면(새로고침·저장본) 지역 도착을 끝까지 기다림 — 늦을 때마다 TAGO 로 바뀌어 정보가 달라 보이지 않게
+            val quick = if (first && before.values.all { it.isEmpty() }) com.eunho.tagohub.ui.bus.QUICK_LOCAL_MS else null
             first = false
             // 받은 정류장부터 바로 그림 (예전엔 두 곳을 다 받을 때까지 회색 막대만 보였음). 아직 못 받은 곳은 지난번 것
             fun show() {
