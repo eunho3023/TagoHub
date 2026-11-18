@@ -86,6 +86,17 @@ private sealed interface LiveState {
     data class Problem(val text: String) : LiveState
 }
 
+/**
+ * 마지막으로 그린 카드 (앱이 켜져 있는 동안). 다른 화면에 갔다 홈으로 돌아오면 빈 막대 대신 이것을 먼저 보여 주고 바로 새로 받음.
+ * 오래된 값(2분 넘음)은 버스가 이미 지나갔을 수 있어 쓰지 않음.
+ */
+private object LiveMemory {
+    private const val KEEP_MS = 120_000L
+    @Volatile private var last: Pair<Long, LiveState.Ready>? = null
+    fun get(now: Long = System.currentTimeMillis()): LiveState.Ready? = last?.takeIf { now - it.first < KEEP_MS }?.second
+    fun put(s: LiveState.Ready) { last = System.currentTimeMillis() to s }
+}
+
 private fun clockNow(): String =
     java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA).format(java.util.Date())
 
@@ -103,12 +114,14 @@ internal fun LiveArrivalsCard(
     val context = LocalContext.current
     // 「새로고침」을 누르면 이 값이 바뀌어 produceState 가 처음부터 다시 받는다.
     var retry by remember { mutableStateOf(0) }
-    val state by produceState<LiveState>(LiveState.Checking, retry) {
+    val state by produceState<LiveState>(LiveMemory.get() ?: LiveState.Checking, retry) {
         if (!hasLocationPermission(context)) {
             value = LiveState.NoPermission
             return@produceState
         }
         var fails = 0
+        // 처음 한 번은 지자체 도착이 3초 넘게 걸리는 정류장은 TAGO 도착을 먼저 (정류장 화면을 처음 열 때와 같음). 다음 갱신부터 지자체 도착
+        var first = true
         while (true) {
             AppState.awaitForeground()
             val place = lastKnownLocation(context) ?: currentLocation(context)
@@ -134,20 +147,30 @@ internal fun LiveArrivalsCard(
             val before = (value as? LiveState.Ready)?.stops.orEmpty().associate { it.stop.nodeId to it.routes }
             val got = LinkedHashMap<String, List<RouteEta>>()
             var failed = false
+            val quick = if (first) com.eunho.tagohub.ui.bus.QUICK_LOCAL_MS else null
+            first = false
+            // 받은 정류장부터 바로 그림 (예전엔 두 곳을 다 받을 때까지 회색 막대만 보였음). 아직 못 받은 곳은 지난번 것
+            fun show() {
+                val s = LiveState.Ready(
+                    near.map { (s, meters) -> LiveStopRow(s, meters.toInt(), got[s.nodeId] ?: before[s.nodeId].orEmpty()) },
+                    clockNow(),
+                )
+                value = s
+                LiveMemory.put(s)
+            }
             coroutineScope {
                 near.forEach { (s, _) ->
                     launch {
-                        got[s.nodeId] = when (val r = runCatching { arrivalsFor(Graph.repo, s) }.getOrNull()) {
+                        got[s.nodeId] = when (val r = runCatching { arrivalsFor(Graph.repo, s, quickMs = quick) }.getOrNull()) {
                             is TagoResult.Success -> HomeText.routeEtas(r.data)
                             else -> { failed = true; before[s.nodeId].orEmpty() }
                         }
+                        // 도착이 하나라도 생기면 그림. 둘 다 비면 다 받은 뒤 한 번 ("도착 정보 없음"이 잠깐 깜박이지 않게)
+                        if (got[s.nodeId].orEmpty().isNotEmpty() || got.size == near.size) show()
                     }
                 }
             }
-            value = LiveState.Ready(
-                near.map { (s, meters) -> LiveStopRow(s, meters.toInt(), got[s.nodeId].orEmpty()) },
-                clockNow(),
-            )
+            show()
             // 못 받은 정류장이 있으면 2·4·6초 뒤 다시, 다른 앱에 갔다 오면 바로
             fails = if (failed) fails + 1 else 0
             AppState.pause(AppState.retryMs(fails, 15_000L))   // 정류장 화면과 같은 15초 (예전엔 30초)
