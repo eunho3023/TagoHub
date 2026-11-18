@@ -15,6 +15,12 @@ class HideDuplicateNumbersTest {
         assertEquals(listOf("a", "c"), hideDuplicateNumbers(rows).map { it.routeId })
     }
 
+    /** 도착이 오기 전과 뒤에 줄 수가 같아야 함 (같은 번호의 운행종료·정보없음 줄이 사라지지 않게) */
+    @Test fun 도착_없는_같은_번호_줄은_남김() {
+        val rows = listOf(row("a", "165", arr(false)), row("b", "165"), row("c", "165").copy(ended = true))
+        assertEquals(listOf("a", "b", "c"), hideDuplicateNumbers(rows).map { it.routeId })
+    }
+
     @Test fun 실시간이_둘_다_있으면_두_줄_유지() {
         val rows = listOf(row("a", "165", arr(false)), row("b", "165", arr(false)))
         assertEquals(2, hideDuplicateNumbers(rows).size)
