@@ -284,24 +284,27 @@ def test_helpers():
 
 
 def test_prune_unserved():
-    """노선 없는 정류장 지우기: 노선 자료가 믿을 만한 지역만, 경기·교통안전공단은 그대로, 전주는 API 로 모은 정류장 기준, 수집이 덜 끝나면 안 지움"""
+    """노선 없는 정류장 지우기: 노선 자료가 거의 다 있는 지역은 표로, 일부만 있는 지역은 TAGO 경유노선 0개인 곳만, 전주는 API 로 모은 정류장 기준, 수집이 덜 끝나면 안 지움"""
+    bsb = [f"BSB{i}" for i in range(20)]
     def make():
         db = sqlite3.connect(":memory:")
         db.execute("CREATE TABLE stops(id TEXT PRIMARY KEY, name TEXT)")
         db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT)")
-        ids = ["BSB1", "BSB2", "BSB3", "BSB_OLD", "GGB1", "GGB2", "GGB_OLD", "TSB_OLD", "JUB1", "JUB2", "JUB3", "JUB4", "JUB_OLD"]
+        ids = bsb + ["BSB_OLD", "GGB1", "GGB2", "GGB_OLD", "GGB_USED", "TSB_OLD", "GYB_OLD", "JUB1", "JUB2", "JUB3", "JUB4", "JUB_OLD"]
         db.executemany("INSERT INTO stops VALUES(?, ?)", [(i, i) for i in ids])
-        db.executemany("INSERT INTO route_stops VALUES('R', 1, ?)", [(i,) for i in ["BSB1", "BSB2", "BSB3", "GGB1", "GGB2"]])
+        db.executemany("INSERT INTO route_stops VALUES('R', 1, ?)", [(i,) for i in bsb + ["GGB1", "GGB2"]])
         return db
     left = lambda db: {r[0] for r in db.execute("SELECT id FROM stops")}
     db = make()
     assert bd.prune_unserved(db, complete=False) == 0 and "BSB_OLD" in left(db)        # 수집이 덜 끝나면 그대로
     served = {k: "" for k in ["JUB1", "JUB2", "JUB3", "JUB4"]}
-    assert bd.prune_unserved(db, True, served, True) == 2
-    assert left(db) == {"BSB1", "BSB2", "BSB3", "GGB1", "GGB2", "GGB_OLD", "TSB_OLD", "JUB1", "JUB2", "JUB3", "JUB4"}
+    counts = {"GGB_OLD": 0, "GGB_USED": 3, "TSB_OLD": 2, "GYB_OLD": 0}
+    # BSB 는 20/21 이 표에 있어 표로 지움, 경기는 TAGO 0개인 곳만, 교통안전공단은 TAGO 에 노선이 있어 그대로, 경산은 TAGO 답을 못 믿는 지역이라 그대로
+    assert bd.prune_unserved(db, True, served, True, counts, {"GGB", "TSB"}) == 3
+    assert left(db) == set(bsb) | {"GGB1", "GGB2", "GGB_USED", "TSB_OLD", "GYB_OLD", "JUB1", "JUB2", "JUB3", "JUB4"}
     db = make()
     bd.prune_unserved(db, True, served, False)                                          # 전주를 다 못 받았으면 전주는 그대로
-    assert "JUB_OLD" in left(db) and "BSB_OLD" not in left(db)
+    assert "JUB_OLD" in left(db) and "BSB_OLD" not in left(db) and "GGB_OLD" in left(db)
 
 
 def test_jeonju_served_walk():
@@ -387,7 +390,23 @@ def test_tsb_info_written():
     assert db.execute("SELECT first FROM route_info WHERE id='TSB_OLD'").fetchone() == ("06:00",)
 
 
+def test_jeonju_retry_failed():
+    """전주: 한 번 실패한 요청은 끝에 다시 받아 '다 받음' (예전엔 한 번 실패로 전주 정류장 지우기를 통째로 건너뜀)"""
+    route = '<list class="object"><brtStdId type="string">R1</brtStdId><brtId type="string">5</brtId></list>'
+    stop = '<list class="object"><stopStandardid type="string">306101023</stopStandardid><stopKname type="string">백자삼거리</stopKname></list>'
+    tries = {}
+    def got(path):
+        tries[path] = tries.get(path, 0) + 1
+        if path == "stops/R1" and tries[path] == 1:
+            return None
+        return stop if path.startswith("stops/") else route
+    served, ok, routes = bd.fetch_jeonju_served(get=got)
+    assert ok and "JUB306101023" in served and tries["stops/R1"] == 2
+    served, ok, _ = bd.fetch_jeonju_served(get=lambda p: None if p.startswith("stops/") else route)
+    assert not ok                                                    # 끝까지 못 받으면 '다 받음' 아님
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
