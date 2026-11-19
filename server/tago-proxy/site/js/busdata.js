@@ -1082,3 +1082,27 @@ export const markWaiting = (stopName, start, end, list) =>
   atOrigin(stopName, start, end) ? list.map((x) => (x.prevStops === 0 && !x.estimated ? { ...x, waiting: true } : x)) : list;
 /** 이미 지나간 버스 (남은 시간이 0 아래로 3초 넘게, 바로 앞이거나 이번 정류장) */
 export const passed = (a, elapsed) => !a.waiting && a.arrSeconds != null && a.arrSeconds - elapsed < -3 && (a.prevStops == null || a.prevStops <= 1);
+
+// ── 실시간 도착이 없는 노선 줄: "정보없음" 대신 첫차·막차·배차(기점 출발)로 (앱 NoLiveText 와 같은 규칙) ──
+// 운행 시간 밖이면 "운행종료" + 첫차까지 남은 시간, 운행 중이면 다음 출발 어림(배차를 알면)·막차. 첫차·막차를 모르면 null
+const toMin = (t) => { const m = /(\d{1,2}):(\d{2})/.exec(t || ""); return m ? +m[1] * 60 + +m[2] : null; };
+const clockOf = (m) => { const x = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`; };
+/** 분 → "곧" / "25분" / "1시간" / "8시간 20분" */
+export function waitText(m) { return m <= 0 ? "곧" : m < 60 ? `${m}분` : m % 60 === 0 ? `${m / 60}시간` : `${Math.floor(m / 60)}시간 ${m % 60}분`; }
+const afterText = (m) => (m <= 0 ? "곧" : `${waitText(m)} 후`);
+export function noLive(first, last, interval, nowMin) {
+  const f = toMin(first);
+  let l = toMin(last), n = nowMin;
+  if (f == null || l == null) return null;
+  if (l < f) { l += 1440; if (n < f) n += 1440; }
+  const fc = clockOf(f);
+  if (n < f - 30) return { main: "운행종료", sub: `첫차 ${fc} · ${afterText(f - n)}`, ended: true };
+  if (n > l + 90) return { main: "운행종료", sub: `내일 첫차 ${fc} · ${afterText(f + 1440 - n)}`, ended: true };
+  if (n > l) return { main: "막차 출발함", sub: `내일 첫차 ${fc} · ${afterText(f + 1440 - n)}`, ended: false };
+  if (n < f) return { main: `첫차 ${fc}`, sub: `${afterText(f - n)} · 기점`, ended: false };
+  if (interval > 0) {
+    const t = f + Math.ceil((n - f) / interval) * interval;
+    if (t <= l) return { main: `다음 출발 약 ${clockOf(t)}`, sub: `${afterText(t - n)} · 기점`, ended: false };
+  }
+  return { main: `막차 ${clockOf(l)}`, sub: `${afterText(l - n)} · 기점`, ended: false };
+}

@@ -46,3 +46,13 @@ test("위치로 지나감: 3정류장 지난 버스의 낡은 '도착'은 뺌", 
   assert.equal(verdict(18, [21, 16], 2), "keep");
   assert.equal(verdict(18, [30], 0), "keep");
 });
+
+test("도착 없음 → 운행종료·첫차까지·다음 출발 (앱 NoLiveText 와 같음)", async () => {
+  const { noLive, waitText } = await import("../site/js/busdata.js");
+  assert.deepEqual(noLive("06:10", "19:30", 290, 101), { main: "운행종료", sub: "첫차 06:10 · 4시간 29분 후", ended: true });
+  assert.equal(noLive("06:10", "19:30", null, 21 * 60 + 30).sub, "내일 첫차 06:10 · 8시간 40분 후");
+  assert.equal(noLive("06:00", "22:00", 20, 14 * 60 + 25).main, "다음 출발 약 14:40");
+  assert.equal(noLive("05:30", "00:30", null, 23 * 60 + 50).main, "막차 00:30");
+  assert.equal(noLive(null, "22:00", 10, 600), null);
+  assert.equal(waitText(60), "1시간");
+});
