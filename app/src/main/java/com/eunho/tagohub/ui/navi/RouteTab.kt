@@ -21,9 +21,11 @@ import com.eunho.tagohub.ui.map.PlannerPage
 /**
  * 길찾기 탭: 처음 화면은 출발·도착을 정해 경로를 찾는 길찾기(대중교통·자동차·도보·자전거),
  * 위쪽 두 번째 칩은 예전 내비게이션 탭 내용(목적지 안내·자유주행·최근 목적지).
+ * 출시용(BuildConfig.NAVI=false)은 내비게이션이 없어 칩 없이 경로 찾기만.
  */
 @Composable
 fun RouteTab(vm: MapViewModel, onShowMap: () -> Unit, navi: @Composable () -> Unit) {
+    if (!com.eunho.tagohub.BuildConfig.NAVI) { PlannerPage(vm, onShowMap); return }
     var page by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
