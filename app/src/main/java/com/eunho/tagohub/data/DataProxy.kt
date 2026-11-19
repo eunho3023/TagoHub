@@ -39,6 +39,8 @@ data class DataProxy(val url: String, val token: String) {
             "swopenapi.seoul.go.kr", "t-data.seoul.go.kr", "data.ex.co.kr",
             // 서울 버스: 빠져 있어서 자리표시 키("TAGOHUB_TAGO_SERVICE_KEY")가 그대로 가 HTTP 401 이 났음
             "ws.bus.go.kr",
+            // 기상청 API허브(해양 관측), 한국전력 전력데이터 개방포털(전기차 충전소)
+            "apihub.kma.go.kr", "bigdata.kepco.co.kr",
         )
 
         /** 앱 설정의 서버 (local.properties 의 TAGO_PROXY_URL·TAGO_PROXY_TOKEN). 없으면 null */

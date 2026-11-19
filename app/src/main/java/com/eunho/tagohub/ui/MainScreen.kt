@@ -204,6 +204,7 @@ fun MainScreen() {
                             train = { TrainScreen() },
                             coach = { CoachScreen() },
                             air = { AirScreen() },
+                            ferry = { com.eunho.tagohub.ui.timetable.FerryScreen() },
                         )
                     }
                     Dest.Navi -> TabScaffold("길찾기", androidx.compose.ui.graphics.Color(0xFF294653), AppTab.Navi, ::onTab) {

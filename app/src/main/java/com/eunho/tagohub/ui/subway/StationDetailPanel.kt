@@ -364,13 +364,68 @@ private fun stationOperatorLabel(operator: String): String = when {
 @Composable
 private fun FacilitiesTab(d: StationDetail) {
     val facilities by d.facilities.collectAsStateWithLifecycle()
-    if (facilities.isEmpty()) {
+    // 서울교통공사 역이면 승강기 실시간 가동 현황 (멈춘 것만 위에 따로)
+    val lifts by androidx.compose.runtime.produceState(emptyList<com.eunho.tagohub.data.SeoulTopis.Lift>(), d.group.name) {
+        value = runCatching { com.eunho.tagohub.data.SeoulTopis.liftsAt(d.group.name) }.getOrDefault(emptyList())
+    }
+    val fastExit by androidx.compose.runtime.produceState(emptyList<com.eunho.tagohub.data.FastExit.Group>(), d.group.name) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.eunho.tagohub.data.FastExit.at(d.group.name) }.getOrDefault(emptyList()) }
+    }
+    if (facilities.isEmpty() && lifts.isEmpty() && fastExit.isEmpty()) {
         MessageBox("등록된 역 편의정보가 없어요.")
         return
     }
     Column(Modifier.fillMaxSize()) {
         StationInfoCard(d)
         LazyColumn(Modifier.weight(1f)) {
+            if (lifts.isNotEmpty()) {
+                val stopped = lifts.filter { !it.ok }
+                item(key = "lift-head") {
+                    Text(
+                        "승강기 실시간",
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = subwayLineColor(d.group.displayLines.first()),
+                    )
+                }
+                item(key = "lift-sum") {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            if (stopped.isEmpty()) "${lifts.size}대 모두 운행 중" else "${lifts.size}대 중 ${stopped.size}대 보수 중",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (stopped.isEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                        )
+                        Text("서울교통공사 · 5분마다 갱신", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                items(stopped, key = { "lift-" + it.kind + it.place + it.section }) { l ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("${l.kindName} · 보수 중", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        Text(listOf(l.place, l.section).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+            if (fastExit.isNotEmpty()) {
+                item(key = "fast-head") {
+                    Text(
+                        "빠른 하차",
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = subwayLineColor(d.group.displayLines.first()),
+                    )
+                }
+                items(fastExit, key = { "fast-" + it.title }) { g ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(g.title, style = MaterialTheme.typography.labelMedium)
+                        Text(g.text, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
             facilities.groupBy { it.category }.forEach { (category, records) ->
                 item(key = "facility-$category") {
                     Text(

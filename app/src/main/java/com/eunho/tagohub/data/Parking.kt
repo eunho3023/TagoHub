@@ -85,7 +85,87 @@ object Parking {
         }.awaitAll().flatten()
         val cla = (s + n) / 2
         val clo = (w + e) / 2
-        lots.filter { it.lat in s..n && it.lng in w..e }
-            .sortedBy { hypot(it.lat - cla, (it.lng - clo) * 0.8) }.take(MAX).map(::feature)
+        // 실시간 빈자리를 주는 주차장(한국교통안전공단)은 그 점으로 보이고, 같은 자리(약 60m)의 표준데이터 점은 뺌
+        val live = ParkingLive.lots().filter { it.lat in s..n && it.lng in w..e }
+        val counts = if (live.isEmpty()) emptyMap() else ParkingLive.counts()
+        val near = { l: Lot -> live.any { hypot(it.lat - l.lat, (it.lng - l.lng) * 0.8) < 0.00055 } }
+        val std = lots.filter { it.lat in s..n && it.lng in w..e && !near(it) }.map { (it.lat to it.lng) to feature(it) }
+        val now = live.map { (it.lat to it.lng) to ParkingLive.feature(it, counts[it.id]) }
+        (now + std).sortedBy { (p, _) -> hypot(p.first - cla, (p.second - clo) * 0.8) }.take(MAX).map { it.second }
+    }
+}
+
+/**
+ * 실시간 빈자리 주차장 (한국교통안전공단 주차정보 제공 API, 공공데이터포털 키 = TAGO_SERVICE_KEY).
+ * 주차장 이름·위치·면 수는 앱 파일 parking_live.json (pipeline/build_api_files.py, 매주), 빈자리는 1분마다 한 번에 전국(약 4,700곳)을 받음
+ */
+object ParkingLive {
+    private const val URL = "https://apis.data.go.kr/B553881/Parking_v1/PrkRealtimeInfo_v1"
+
+    data class Lot(val id: String, val name: String, val lat: Double, val lng: Double, val spaces: Int, val owner: String, val fee: String)
+
+    /** 빈자리·전체 면 */
+    data class Count(val free: Int, val total: Int)
+
+    /** 앱 파일 [[ID, 이름, 위도, 경도, 면 수, 공영/민영, 유료/무료]] */
+    fun parseLots(text: String?): List<Lot> =
+        (text?.let { runCatching { com.eunho.tagohub.core.MiniJson.parse(it) }.getOrNull() } as? List<*>).orEmpty().mapNotNull { v ->
+            val a = v as? List<*> ?: return@mapNotNull null
+            val s = { k: Int -> a.getOrNull(k)?.toString().orEmpty() }
+            val lat = s(2).toDoubleOrNull() ?: return@mapNotNull null
+            val lng = s(3).toDoubleOrNull() ?: return@mapNotNull null
+            if (s(0).isEmpty()) null else Lot(s(0), s(1).ifBlank { "주차장" }, lat, lng, s(4).toDoubleOrNull()?.toInt() ?: 0, s(5), s(6))
+        }
+
+    /** API 응답 → 주차장 ID 별 빈자리 */
+    fun parseCounts(body: String?): Map<String, Count> {
+        val root = body?.let { runCatching { com.eunho.tagohub.core.MiniJson.parse(it) }.getOrNull() } as? Map<*, *> ?: return emptyMap()
+        return (root["PrkRealtimeInfo"] as? List<*>).orEmpty().mapNotNull { v ->
+            val m = v as? Map<*, *> ?: return@mapNotNull null
+            val id = m["prk_center_id"]?.toString().orEmpty()
+            val free = m["pkfc_Available_ParkingLots_total"]?.toString()?.toDoubleOrNull()?.toInt()
+            val total = m["pkfc_ParkingLots_total"]?.toString()?.toDoubleOrNull()?.toInt()
+            if (id.isEmpty() || free == null || total == null || total <= 0) null else id to Count(free.coerceIn(0, total), total)
+        }.toMap()
+    }
+
+    /** 지도 점: "빈자리 12면 / 49면 · 공영 · 유료 · 실시간". 빈자리를 못 받으면 면 수만 */
+    fun feature(l: Lot, c: Count?) = ItsRoadFeature(
+        "${Parking.LAYER}:live:${c?.free ?: "-"}:${l.id}", Parking.LAYER, l.name,
+        listOf(
+            c?.let { if (it.free == 0) "만차 (${it.total}면)" else "빈자리 ${it.free}면 / ${it.total}면" } ?: if (l.spaces > 0) "${l.spaces}면" else "",
+            l.owner, l.fee, if (c != null) "실시간" else "",
+        ).filter { it.isNotBlank() }.joinToString(" · "),
+        l.lat, l.lng,
+    )
+
+    private var stamp: String? = null
+    private var cache: List<Lot> = emptyList()
+
+    @Synchronized
+    fun lots(): List<Lot> {
+        val s = AssetText.stamp("parking_live.json")
+        if (s != stamp) { cache = parseLots(AssetText.read("parking_live.json")); stamp = s }
+        return cache
+    }
+
+    private val client by lazy { Http.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build() }
+    private val lock = Mutex()
+    private var at = 0L
+    private var counts: Map<String, Count> = emptyMap()
+
+    suspend fun counts(): Map<String, Count> = lock.withLock {
+        if (System.currentTimeMillis() - at < 60_000) return@withLock counts
+        val got = withContext(Dispatchers.IO) {
+            runCatching {
+                val raw = com.eunho.tagohub.BuildConfig.TAGO_SERVICE_KEY.trim()
+                val key = if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
+                client.newCall(Request.Builder().url("$URL?serviceKey=$key&pageNo=1&numOfRows=10000&format=2").build()).execute()
+                    .use { r -> if (r.isSuccessful) parseCounts(r.body?.string()) else emptyMap() }
+            }.getOrDefault(emptyMap())
+        }
+        if (got.isNotEmpty()) { counts = got; at = System.currentTimeMillis() }
+        else at = System.currentTimeMillis() - 45_000   // 실패하면 15초 뒤 다시
+        counts
     }
 }

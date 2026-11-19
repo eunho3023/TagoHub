@@ -443,7 +443,12 @@ class KakaoCanvas(
         pointFeatures.forEach { feature ->
             // 고속도로 소통은 등급(id 의 두 번째 칸)마다 색이 다른 점
             // 공영자전거는 대여 가능 대수(id 의 두 번째 칸)를 글자로
-            val flowGrade = if (feature.layer == "ex_flow" || feature.layer == "seoul_bike") feature.id.split(':').getOrNull(1) else null
+            val flowGrade = when {
+                feature.layer == "ex_flow" || feature.layer == "seoul_bike" || feature.layer == "ev" -> feature.id.split(':').getOrNull(1)
+                // 실시간 빈자리 주차장 "parking:live:<빈자리>:<ID>"
+                feature.layer == "parking" && feature.id.startsWith("parking:live:") -> feature.id.split(':').getOrNull(2)
+                else -> null
+            }
             val st = styles("itsRoad:${feature.layer}${flowGrade.orEmpty()}") {
                 val marker = when (feature.layer) {
                     "ex_flow" -> icons.routeDot(
@@ -466,7 +471,13 @@ class KakaoCanvas(
                     "seoul_acc" -> icons.triangleBadge(0xFFD32F2F.toInt())
                     // 공영자전거 대여소: 빌릴 수 있는 대수 (0대면 회색)
                     "seoul_bike" -> icons.letterBadge(when (flowGrade) { "0" -> 0xFF9E9E9E.toInt(); "-" -> 0xFF607D8B.toInt(); else -> 0xFF2E7D32.toInt() }, flowGrade ?: "따")
-                    "parking" -> icons.letterBadge(0xFF1565C0.toInt(), "P")
+                    "parking" -> when (flowGrade) {
+                        null, "-" -> icons.letterBadge(0xFF1565C0.toInt(), "P")
+                        "0" -> icons.letterBadge(0xFFD32F2F.toInt(), "만")   // 만차
+                        else -> icons.letterBadge(0xFF1565C0.toInt(), flowGrade)
+                    }
+                    // 전기차 충전소: 지금 충전 가능한 대수 (0대면 회색)
+                    "ev" -> icons.letterBadge(if (flowGrade == "0") 0xFF9E9E9E.toInt() else 0xFF00897B.toInt(), flowGrade ?: "충")
                     in com.eunho.tagohub.data.Amenity.KINDS -> com.eunho.tagohub.data.Amenity.KINDS.getValue(feature.layer).let { icons.letterBadge(it.color, it.label) }
                     else -> icons.letterBadge(ITS_CCTV_COLOR, "I")
                 }

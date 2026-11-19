@@ -91,12 +91,15 @@ export const HOSTS = [
   "t-data.seoul.go.kr",    // 서울 신호등
   "data.ex.co.kr",         // 한국도로공사
   "ws.bus.go.kr",          // 서울 버스 (공공데이터포털 키. 빠져 있어 앱이 자리표시 키를 그대로 보내 HTTP 401 이 났음)
+  "apihub.kma.go.kr",      // 기상청 API허브 (해양 관측: 여객선 출항지 근처 파고·바람, 키 authKey)
+  "bigdata.kepco.co.kr",   // 한국전력 전력데이터 개방포털 (전기차 충전소, 키 apiKey)
 ];
 
 // 서버 비밀 값으로 둘 수 있는 키 이름 (자리표시 TAGOHUB_<이름>)
 export const KEY_NAMES = [
   "TAGO_SERVICE_KEY", "KLID_BUS_KEY", "KAC_API_KEY", "KRIC_SUBWAY_KEY",
   "SEOUL_SIGNAL_KEY", "EX_API_KEY", "SEOUL_SUBWAY_KEY", "KAKAO_REST_KEY",
+  "KMA_HUB_KEY", "KEPCO_API_KEY",
 ];
 export const PLACEHOLDER = /TAGOHUB_([A-Z_]+?_KEY)/g;
 

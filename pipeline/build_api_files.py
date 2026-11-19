@@ -43,11 +43,11 @@ def key(*names, need=True):
     return None
 
 
-def get(url):
+def get(url, timeout=40):
     for wait in (0, 3, 10):
         time.sleep(wait)
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=40) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout) as r:
                 return r.read().decode("utf-8")
         except Exception as e:  # 잠깐 끊김은 다시
             err = e
@@ -103,6 +103,105 @@ def ulsan_crossroads(k):
     return [{c: r.get(c) for c in ("crsrdId", "crsrdNm", "mapCtptIntLat", "mapCtptIntLot")} for r in rows]
 
 
+KOMSA = "https://apis.data.go.kr/B554035"
+
+
+def komsa_all(k, path):
+    """한국해양교통안전공단 여객선 자료: 한 번에 1만 건까지"""
+    rows, _ = datago_items(get(f"{KOMSA}/{path}?serviceKey={encoded(k)}&pageNo=1&numOfRows=10000&dataType=JSON"))
+    return rows
+
+
+def ferry_files(k):
+    """
+    여객선 기항지(항구 이름·위치)와 운항노선(항로마다 들르는 기항지 순서·정방향/역방향 정박 여부·소요 분).
+    앱은 이것으로 그날 운항 스케줄(실시간 API)의 출항지 → 도착 항구 사이를 찾음
+    """
+    ports = [[r["portcl_cd"], r["portcl_nm"], r.get("lat"), r.get("lot"), r.get("admdst_ctpv_nm") or ""]
+             for r in komsa_all(k, "port-call-info-v2/get-port-call-info-v2")]
+    rts = {(r["lcns_seawy_cd"], r["nvg_seawy_cd"]): r for r in komsa_all(k, "oprt-rt-info-v3/get-oprt-rt-info-v3")}
+    lines = {}
+    for r in sorted(komsa_all(k, "oprt-line-info-v2/get-oprt-line-info-v2"), key=lambda r: int(r.get("portcl_sn") or 0)):
+        key = (r["lcns_seawy_cd"], r["nvg_seawy_cd"])
+        rt = rts.get(key) or {}
+        line = lines.setdefault("|".join(key), {
+            "n": r.get("nvg_seawy_nm") or rt.get("nvg_seawy_nm") or "", "c": 1 if rt.get("seawy_se_cd") == "2" else 0,
+            "f": int(float(rt.get("fwd_nvg_req_hr") or 0)), "r": int(float(rt.get("rev_nvg_req_hr") or 0)), "s": []})
+        line["s"].append([r["portcl_cd"], (r.get("fwd_stp_yn") or "Y") + (r.get("rev_stp_yn") or "Y")])
+    return ports, lines
+
+
+PARKING = "https://apis.data.go.kr/B553881/Parking_v1"
+
+
+def parking_live_lots(k, minutes=40, size=1000):
+    """
+    한국교통안전공단 주차정보: 실시간 빈자리를 주는 주차장(약 4,700곳)의 이름·위치·면 수.
+    위치는 주차장 기본정보(약 170만 행)에 섞여 있는데, 서버가 한 쪽(1천 행)에 50초쯤 걸리고 큰 쪽은 60초 뒤 504 로 끊음.
+    그래서 정한 시간만큼만 4쪽씩 동시에 보고, 예전 파일에서 찾았던 위치와 합침. 날마다 다른 쪽부터 봐서 갱신할수록 더 찾음
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    live = json.loads(get(f"{PARKING}/PrkRealtimeInfo_v1?serviceKey={encoded(k)}&pageNo=1&numOfRows=10000&format=2")).get("PrkRealtimeInfo") or []
+    want = {r["prk_center_id"] for r in live}
+    out = {}
+    for path in (os.path.join(OUT_DIR, "parking_live.json"), os.path.join(ASSETS, "parking_live.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                for v in json.load(f):
+                    if v[0] in want:
+                        out.setdefault(v[0], v)
+        except (OSError, ValueError):
+            pass
+    known = len(out)
+    total = int(json.loads(get(f"{PARKING}/PrkSttusInfo_v1?serviceKey={encoded(k)}&pageNo=1&numOfRows=1&format=2")).get("totalCount") or 0)
+    pages = (total + size - 1) // size
+    start = int(time.time() // 86400 * 7919) % max(pages, 1)
+    order = [(start + i) % pages + 1 for i in range(pages)]
+    until = time.time() + minutes * 60
+    fails = []
+
+    def one(page):
+        if time.time() > until:
+            return None
+        try:
+            return json.loads(get(f"{PARKING}/PrkSttusInfo_v1?serviceKey={encoded(k)}&pageNo={page}&numOfRows={size}&format=2", timeout=100)).get("PrkSttusInfo") or []
+        except (Exception, SystemExit):  # 한 쪽 실패는 건너뜀 (다음 갱신 때 다시)
+            fails.append(page)
+            return []
+
+    done = 0
+    with ThreadPoolExecutor(4) as ex:
+        for rows in ex.map(one, order):
+            if rows is None:
+                continue
+            done += 1
+            for r in rows:
+                i = r.get("prk_center_id")
+                if i in want:  # 새로 받은 것으로 바꿈 (이름·면 수가 바뀌었을 수 있음)
+                    out[i] = [i, r.get("prk_plce_nm") or "주차장", float(r.get("prk_plce_entrc_la") or 0), float(r.get("prk_plce_entrc_lo") or 0),
+                              int(float(r.get("prk_cmprt_co") or 0)), r.get("prk_manage_agent_nm") or "", r.get("parkng_chrge_se_nm") or ""]
+            if done % 50 == 0:
+                print(f"주차장 기본정보 {done}/{pages}쪽 봄 (실패 {len(fails)}), 위치 {len(out)}/{len(want)}곳", flush=True)
+    lots = [v for v in out.values() if 33 < v[2] < 39 and 124 < v[3] < 132]
+    print(f"실시간 주차장 {len(want)}곳 중 위치 {len(lots)}곳 (예전 파일 {known}곳, {done}/{pages}쪽 봄, 실패 {len(fails)}쪽)")
+    return lots
+
+
+def fast_exit(k):
+    """서울교통공사 빠른하차: 역마다 방면별로 엘리베이터·에스컬레이터·계단에 가까운 칸-문 번호 {역: [[호선, 방면, 칸-문, 시설]]}"""
+    out, rows_n = {}, 0
+    for page in range(1, 30):
+        rows, total = datago_items(get(f"https://apis.data.go.kr/B553766/inout/getFstExit?serviceKey={encoded(k)}&pageNo={page}&numOfRows=1000&dataType=JSON"))
+        for r in rows:
+            stn = (r.get("stnNm") or "").strip()
+            if stn and r.get("qckgffVhclDoorNo"):
+                out.setdefault(stn, []).append([r.get("lineNm") or "", r.get("drtnInfo") or "", r["qckgffVhclDoorNo"], r.get("plfmCmgFac") or ""])
+        rows_n += len(rows)
+        if not rows or rows_n >= total:
+            break
+    return out, rows_n
+
+
 def write(name, data, n, least):
     if n < least:  # 키 오류·빈 응답으로 파일을 비우지 않게
         print(f"{name}: {n}건뿐이라 쓰지 않음 (예전 파일 그대로)")
@@ -129,6 +228,13 @@ def main():
         write("ex_places.json", places, min(len(v) for v in places.values()), 50)
     air = air_routes(key("KAC_API_KEY", "TAGO_SERVICE_KEY"))
     write("air_routes.json", {"response": {"body": {"totalCount": len(air), "items": {"item": air}}}}, len(air), 100)
+    ports, lines = ferry_files(key("TAGO_SERVICE_KEY"))
+    write("ferry_ports.json", ports, len(ports), 100)
+    write("ferry_lines.json", lines, len(lines), 300)
+    lots = parking_live_lots(key("TAGO_SERVICE_KEY"))
+    write("parking_live.json", lots, len(lots), 300)
+    fx, fx_n = fast_exit(key("TAGO_SERVICE_KEY"))
+    write("subway_fast_exit.json", fx, fx_n, 500)
     ul = ulsan_crossroads(key("KLID_BUS_KEY", "TAGO_SERVICE_KEY"))
     write("ulsan_crossroads.json", {"body": {"items": {"item": ul}}}, len(ul), 100)
 
