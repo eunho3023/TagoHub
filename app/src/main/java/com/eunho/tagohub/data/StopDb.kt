@@ -190,11 +190,26 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
      * 정류장을 지나는 노선 (앱에 넣어둔 노선 중 실시간이 같은 ID 이거나 없는 것: 서울·인천).
      * 번호로 연결하는 노선(세종·원주·포항)은 실시간 도착 노선 ID 와 달라서 서버 목록을 쓴다.
      */
-    fun stopRoutes(stopId: String): List<BusRoute> = query(
-        """SELECT DISTINCT ro.id, ro.no, ro.start_name, ro.end_name, ro.city, ro.rtype FROM route_stops r
-           JOIN routes ro ON ro.id = r.route_id WHERE r.stop_id = ? AND ro.realtime IN ('tago', 'none')""",
-        arrayOf(TagoIds.legacy(stopId)),
-    ) { it.toRoute() }
+    fun stopRoutes(stopId: String): List<BusRoute> = runCatching {
+        // 첫차·막차·배차(route_info)도 같이: 도착 정보가 없을 때 운행종료·다음 출발을 보여 줌.
+        // 전주·제주(데이터 갱신이 그 지역 API 로 넣은 노선, realtime jeonju·jeju)도 (예전엔 빠져 늘 지역 API 로 다시 물었음)
+        query(
+            """SELECT DISTINCT ro.id, ro.no, ro.start_name, ro.end_name, ro.city, ro.rtype, i.first, i.last, i.interval, i.int_sat, i.int_sun FROM route_stops r
+               JOIN routes ro ON ro.id = r.route_id LEFT JOIN route_info i ON i.id = ro.id
+               WHERE r.stop_id = ? AND ro.realtime IN ('tago', 'none', 'jeonju', 'jeju')""",
+            arrayOf(TagoIds.legacy(stopId)),
+        ) { c ->
+            fun str(i: Int) = if (c.isNull(i)) null else c.getString(i)
+            fun int(i: Int) = if (c.isNull(i)) null else c.getInt(i)
+            c.toRoute().copy(firstTime = str(6), lastTime = str(7), interval = int(8), intervalSat = int(9), intervalSun = int(10))
+        }
+    }.getOrElse { // route_info 표가 없는 옛 자료
+        query(
+            """SELECT DISTINCT ro.id, ro.no, ro.start_name, ro.end_name, ro.city, ro.rtype FROM route_stops r
+               JOIN routes ro ON ro.id = r.route_id WHERE r.stop_id = ? AND ro.realtime IN ('tago', 'none', 'jeonju', 'jeju')""",
+            arrayOf(TagoIds.legacy(stopId)),
+        ) { it.toRoute() }
+    }
 
     /** 앱 안 경기 노선 번호 (경기도_BMS노선인가정보 5,260개 + 노선 정류장 순서의 첫·끝 정류장) */
     fun gyeonggiFileRoutes(): List<BusRoute> = query("SELECT id, no, start_name, end_name FROM gbis_routes", emptyArray()) {

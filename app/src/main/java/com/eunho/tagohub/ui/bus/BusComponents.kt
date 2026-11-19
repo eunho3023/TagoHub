@@ -203,12 +203,16 @@ internal fun StopRouteItem(
         Column(horizontalAlignment = Alignment.End) {
             val first = row.arrivals.getOrNull(0)
             val second = row.arrivals.getOrNull(1)
+            // 도착 정보가 없으면 "정보없음" 대신 첫차·막차·배차로: 운행종료 + 첫차까지 남은 시간, 운행 중이면 다음 출발 어림 (첫차·막차를 모를 때만 정보없음)
+            val noLive = if (first == null) com.eunho.tagohub.data.NoLiveText.describe(row.firstTime, row.lastTime, row.interval, java.time.LocalTime.now().let { it.hour * 60 + it.minute }) else null
             if (first == null) {
-                Text(if (row.ended) "운행종료" else "정보없음", style = MaterialTheme.typography.bodyLarge, color = variant)
+                Text(noLive?.main ?: if (row.ended) "운행종료" else "정보없음", style = MaterialTheme.typography.bodyLarge, color = variant, maxLines = 1)
+                noLive?.sub?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = variant, maxLines = 1) }
             } else {
                 for ((i, a) in listOf(first, second).withIndex()) {
                     if (a == null) {
-                        if (i == 1) Text("정보없음", style = MaterialTheme.typography.bodyMedium, color = variant)
+                        // 다음 차: 막차 시각을 알면 그것, 모르면 정보없음
+                        if (i == 1) Text(row.lastTime?.let { "막차 $it" } ?: "정보없음", style = MaterialTheme.typography.bodyMedium, color = variant)
                         continue
                     }
                     AnimatedValueText(arrivalLine(a, elapsedSec), label = "bus-stop-arrival-$i") { value ->

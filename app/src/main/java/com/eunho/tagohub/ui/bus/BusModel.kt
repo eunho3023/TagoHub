@@ -60,6 +60,8 @@ data class StopRouteRow(
     /** 첫차·막차 (기점 출발 시각). 같은 번호의 변형 노선이 버스 위치를 공유할 때 지금 달리는 노선인지 가리는 데 씀 */
     val firstTime: String? = null,
     val lastTime: String? = null,
+    /** 오늘 배차 간격(분, 모르면 null) — 도착이 없을 때 다음 출발 어림 ([com.eunho.tagohub.data.NoLiveText]) */
+    val interval: Int? = null,
 )
 
 /**
@@ -300,7 +302,10 @@ internal suspend fun stopRoutesFor(repo: TagoRepository, s: BusStop): TagoResult
         val db = StopDb.peek()
         if (r is TagoResult.Success && db != null) {
             TagoResult.Success(withContext(Dispatchers.IO) {
-                r.data.map { route -> db.routeById(route.routeId)?.let { k -> route.copy(startName = k.startName ?: route.startName, endName = k.endName ?: route.endName) } ?: route }
+                // 첫차·막차·배차도 앱 안 자료로 채움 (TAGO 정류장 경유노선 응답엔 없음 → 도착이 없을 때 운행종료·다음 출발)
+                r.data.map { route -> db.routeById(route.routeId)?.let { k -> route.copy(startName = k.startName ?: route.startName, endName = k.endName ?: route.endName,
+                    firstTime = route.firstTime ?: k.firstTime, lastTime = route.lastTime ?: k.lastTime, interval = route.interval ?: k.interval,
+                    intervalSat = route.intervalSat ?: k.intervalSat, intervalSun = route.intervalSun ?: k.intervalSun) } ?: route }
             })
         } else r
     }
@@ -605,7 +610,9 @@ internal fun mergeStopRows(
         // 도착 정보에는 항상 지금 노선 번호가 와서 그걸 먼저 (앱 안 노선 자료가 예전 번호일 수 있음: 경기 707-1 → 1200)
         val live = a.firstOrNull()
         StopRouteRow(r.routeId, live?.routeNo?.takeIf { it.isNotBlank() } ?: r.routeNo, r.routeType ?: live?.routeType, r.startName, r.endName, a,
-            ended = a.isEmpty() && outsideService(r.firstTime, r.lastTime, nowMin), firstTime = r.firstTime, lastTime = r.lastTime)
+            ended = a.isEmpty() && outsideService(r.firstTime, r.lastTime, nowMin), firstTime = r.firstTime, lastTime = r.lastTime,
+            // 제주 노선 정보의 intervalSun 칸은 최대 배차간격이라 요일 구분에 쓰지 않음 (PositionArrival 과 같음)
+            interval = com.eunho.tagohub.data.JeonjuTimetable.intervalFor(com.eunho.tagohub.data.DayKind.today(), r.interval, r.intervalSat, if (Jeju.isJeju(r.routeId)) null else r.intervalSun))
     }
     val ids = routes.map { it.routeId }.toSet()
     // 경유노선 목록에 없지만 도착정보에는 있는 노선도 놓치지 않게

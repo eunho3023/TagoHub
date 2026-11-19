@@ -108,6 +108,10 @@ export function stopScreen(root, p) {
     const f = r.arr.find((a) => !B.passed(a, elapsed));
     if (!f) {
       const s = r.sum && (r.sum.first || r.sum.last || r.sum.interval) ? r.sum : infos.get(r.id) || r.sum;
+      // "도착 정보 없음" 대신 첫차·막차·배차로: 운행종료 + 첫차까지 남은 시간, 운행 중이면 다음 출발 어림 (앱과 같음)
+      const sn = seoulNow();
+      const nl = s && live && live.state === "ok" ? B.noLive(s.first, s.last, B.intervalOn(s, day), sn.h * 60 + sn.mi) : null;
+      if (nl) return `<span class="muted">${esc(nl.main)}</span><small>${esc(nl.sub)}</small>`;
       const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, day) > 0 && "배차 " + B.intervalOn(s, day) + "분"].filter(Boolean).join(" · ") : "";
       return `<span class="muted">${live && live.state === "ok" ? "도착 정보 없음" : ""}</span>${plan ? `<small>${esc(plan)}</small>` : ""}`;
     }
