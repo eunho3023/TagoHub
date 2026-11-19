@@ -21,7 +21,7 @@ import kotlin.math.sin
 /**
  * 홈 위쪽에 보이는 지금 날씨·미세먼지 (공공데이터포털 키 = TAGO_SERVICE_KEY).
  *  - 날씨: 기상청 초단기실황 (기온·강수 형태, 5km 격자)
- *  - 미세먼지: 에어코리아 시·도별 실시간 측정 (측정소 위치를 주는 API 가 없어 내 위치가 든 시·도 측정소들의 가운데 값)
+ *  - 미세먼지: 에어코리아 측정소정보로 가장 가까운 측정소(30km 안)의 실시간 값. 못 받으면 내 위치가 든 시·도 측정소들의 가운데 값
  */
 object HomeWeather {
     data class Now(val temp: Double?, val rain: String?, val air: String?)
@@ -64,6 +64,29 @@ object HomeWeather {
         return airGrade(median(num("pm10Value")), median(num("pm25Value")))
     }
 
+    data class Station(val name: String, val lat: Double, val lng: Double)
+
+    /** 측정소 목록(getMsrstnList) → 측정소들. dmX·dmY 중 33~39 인 쪽을 위도로 */
+    fun parseStations(body: String?): List<Station> = body?.let { AirportLive.rows(it) }.orEmpty().mapNotNull { r ->
+        val name = r["stationName"]?.toString()?.trim().orEmpty().ifEmpty { return@mapNotNull null }
+        val x = r["dmX"]?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+        val y = r["dmY"]?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+        val (lat, lng) = if (x in 33.0..39.0) x to y else y to x
+        if (lat !in 33.0..39.0 || lng !in 124.0..132.0) null else Station(name, lat, lng)
+    }
+
+    /** 가장 가까운 측정소 (30km 안) */
+    fun nearestStation(list: List<Station>, lat: Double, lng: Double): Station? =
+        list.minByOrNull { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) }
+            ?.takeIf { com.eunho.tagohub.core.Geo.meters(lat, lng, it.lat, it.lng) < 30_000 }
+
+    /** 측정소 실시간(getMsrstnAcctoRltmMesureDnsty) → 맨 앞(가장 최근) 값 등급 */
+    fun parseStationAir(body: String?): String? {
+        val r = body?.let { AirportLive.rows(it) }.orEmpty().firstOrNull { it["pm10Value"]?.toString()?.toDoubleOrNull() != null || it["pm25Value"]?.toString()?.toDoubleOrNull() != null }
+            ?: return null
+        return airGrade(r["pm10Value"]?.toString()?.toDoubleOrNull(), r["pm25Value"]?.toString()?.toDoubleOrNull())
+    }
+
     /** 초단기실황 응답 → (기온, 강수) */
     fun parseNow(body: String?): Pair<Double?, String?> {
         val rows = body?.let { AirportLive.rows(it) }.orEmpty()
@@ -97,6 +120,26 @@ object HomeWeather {
         return if ('%' in raw) raw else java.net.URLEncoder.encode(raw, "UTF-8")
     }
 
+    private var stationsAt = 0L
+    private var stations: List<Station> = emptyList()
+
+    /** 측정소 목록 (하루 기억, 못 받으면 1시간 뒤 다시) */
+    private fun stationList(): List<Station> {
+        synchronized(this) { if (System.currentTimeMillis() - stationsAt < (if (stations.isEmpty()) 3_600_000L else 86_400_000L)) return stations }
+        val got = parseStations(get("https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getMsrstnList?serviceKey=${key()}&returnType=json&numOfRows=1000&pageNo=1"))
+        synchronized(this) { stationsAt = System.currentTimeMillis(); if (got.isNotEmpty()) stations = got }
+        return stations
+    }
+
+    /** 가장 가까운 측정소 값 등급 (못 받으면 null) */
+    private fun nearestAir(lat: Double, lng: Double): String? {
+        val st = nearestStation(stationList(), lat, lng) ?: return null
+        val url = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty".toHttpUrl().newBuilder()
+            .addEncodedQueryParameter("serviceKey", key()).addQueryParameter("returnType", "json").addQueryParameter("numOfRows", "3")
+            .addQueryParameter("pageNo", "1").addQueryParameter("stationName", st.name).addQueryParameter("dataTerm", "DAILY").addQueryParameter("ver", "1.3").build()
+        return parseStationAir(get(url.toString()))
+    }
+
     private fun get(url: String): String? = runCatching {
         client.newCall(Request.Builder().url(url).build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
     }.getOrNull()
@@ -105,7 +148,7 @@ object HomeWeather {
     suspend fun now(lat: Double, lng: Double): Now? = withContext(Dispatchers.IO) {
         val (nx, ny) = grid(lat, lng)
         val sido = sidoOf(lat, lng)
-        val k = "$nx,$ny,$sido"
+        val k = "%.2f,%.2f".format(lat, lng)
         synchronized(this@HomeWeather) { if (k == key && System.currentTimeMillis() - at < 10 * 60_000) return@withContext last }
         // 실황은 매시 정시 자료가 40분쯤 뒤에 나옴
         val base = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusMinutes(40)
@@ -115,7 +158,7 @@ object HomeWeather {
                     "&base_date=${base.format(DateTimeFormatter.BASIC_ISO_DATE)}&base_time=${base.format(DateTimeFormatter.ofPattern("HH"))}00&nx=$nx&ny=$ny"))
             }
             val a = async {
-                sido?.let {
+                nearestAir(lat, lng) ?: sido?.let {
                     val url = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty".toHttpUrl().newBuilder()
                         .addEncodedQueryParameter("serviceKey", key()).addQueryParameter("returnType", "json").addQueryParameter("numOfRows", "200")
                         .addQueryParameter("pageNo", "1").addQueryParameter("sidoName", it).addQueryParameter("ver", "1.0").build()
