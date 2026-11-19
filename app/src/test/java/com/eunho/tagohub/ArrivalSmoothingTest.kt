@@ -72,6 +72,16 @@ class PassedByPositionTest {
         assertEquals(false, p.passed(listOf(3, 40), listOf(41)))     // 순환 노선: 정류장이 두 번 나와 판단 안 함
     }
 
+    /** 곡성-원달 봉조입구(18): 버스는 3정류장 지난 압록사거리(21)인데 도착 정보는 "정류장 도착"으로 계속 남았음 */
+    @Test
+    fun busFewStopsPastIsPassed() {
+        val v = com.eunho.tagohub.data.PassedByPosition.Verdict.PASSED
+        assertEquals(v, p.verdict(listOf(18), listOf(21), 0))
+        assertEquals(v, p.verdict(listOf(18), listOf(24), 1))
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(18), listOf(21, 16), 2))   // 오는 버스가 따로 있음
+        assertEquals(com.eunho.tagohub.data.PassedByPosition.Verdict.KEEP, p.verdict(listOf(18), listOf(30), 0))       // 너무 멀리 → 모름
+    }
+
     /** 도착 정보는 "3정류장 전"인데 위치로는 이미 정류장에 와 있거나 지나간 경우 (전주 104번) */
     @Test
     fun staleArrivalIsCorrectedByPosition() {
