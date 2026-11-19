@@ -134,14 +134,14 @@ def ferry_files(k):
 PARKING = "https://apis.data.go.kr/B553881/Parking_v1"
 
 
-def parking_live_lots(k, minutes=40, size=1000):
+def parking_live_lots(k, minutes=40, size=1000, quiet=8):
     """
     한국교통안전공단 주차정보: 실시간 빈자리를 주는 주차장(약 4,700곳)의 이름·위치·면 수.
-    위치는 주차장 기본정보(약 170만 행)에 섞여 있는데, 서버가 한 쪽(1천 행)에 50초쯤 걸리고 큰 쪽은 60초 뒤 504 로 끊음.
-    그래서 정한 시간만큼만 4쪽씩 동시에 보고, 예전 파일에서 찾았던 위치와 합침. 날마다 다른 쪽부터 봐서 갱신할수록 더 찾음
+    위치는 주차장 기본정보(약 170만 행)에 있는데, 실시간 주차장은 앞쪽에 몰려 있음(1쪽 156곳, 2쪽 71곳, 20쪽 0곳, 2026-11).
+    앞쪽은 빠르고(5~15초) 뒤쪽은 느려서(1천 행에 1~3분, 큰 쪽은 504) 1쪽부터 차례로 보다가
+    새로 찾는 곳 없이 quiet 쪽이 이어지거나 정한 시간이 지나면 멈춤. 예전 파일에서 찾았던 위치와 합침
     """
-    from concurrent.futures import ThreadPoolExecutor
-    live = json.loads(get(f"{PARKING}/PrkRealtimeInfo_v1?serviceKey={encoded(k)}&pageNo=1&numOfRows=10000&format=2")).get("PrkRealtimeInfo") or []
+    live = json.loads(get(f"{PARKING}/PrkRealtimeInfo_v1?serviceKey={encoded(k)}&pageNo=1&numOfRows=10000&format=2", timeout=120)).get("PrkRealtimeInfo") or []
     want = {r["prk_center_id"] for r in live}
     out = {}
     for path in (os.path.join(OUT_DIR, "parking_live.json"), os.path.join(ASSETS, "parking_live.json")):
@@ -153,37 +153,30 @@ def parking_live_lots(k, minutes=40, size=1000):
         except (OSError, ValueError):
             pass
     known = len(out)
-    total = int(json.loads(get(f"{PARKING}/PrkSttusInfo_v1?serviceKey={encoded(k)}&pageNo=1&numOfRows=1&format=2")).get("totalCount") or 0)
-    pages = (total + size - 1) // size
-    start = int(time.time() // 86400 * 7919) % max(pages, 1)
-    order = [(start + i) % pages + 1 for i in range(pages)]
     until = time.time() + minutes * 60
-    fails = []
-
-    def one(page):
-        if time.time() > until:
-            return None
+    page, empty, fails, seen = 0, 0, 0, set()
+    while time.time() < until and empty < quiet and len(seen) < len(want):
+        page += 1
         try:
-            return json.loads(get(f"{PARKING}/PrkSttusInfo_v1?serviceKey={encoded(k)}&pageNo={page}&numOfRows={size}&format=2", timeout=100)).get("PrkSttusInfo") or []
-        except (Exception, SystemExit):  # 한 쪽 실패는 건너뜀 (다음 갱신 때 다시)
-            fails.append(page)
-            return []
-
-    done = 0
-    with ThreadPoolExecutor(4) as ex:
-        for rows in ex.map(one, order):
-            if rows is None:
-                continue
-            done += 1
-            for r in rows:
-                i = r.get("prk_center_id")
-                if i in want:  # 새로 받은 것으로 바꿈 (이름·면 수가 바뀌었을 수 있음)
-                    out[i] = [i, r.get("prk_plce_nm") or "주차장", float(r.get("prk_plce_entrc_la") or 0), float(r.get("prk_plce_entrc_lo") or 0),
-                              int(float(r.get("prk_cmprt_co") or 0)), r.get("prk_manage_agent_nm") or "", r.get("parkng_chrge_se_nm") or ""]
-            if done % 50 == 0:
-                print(f"주차장 기본정보 {done}/{pages}쪽 봄 (실패 {len(fails)}), 위치 {len(out)}/{len(want)}곳", flush=True)
+            rows = json.loads(get(f"{PARKING}/PrkSttusInfo_v1?serviceKey={encoded(k)}&pageNo={page}&numOfRows={size}&format=2", timeout=120)).get("PrkSttusInfo") or []
+        except (Exception, SystemExit):  # 한 쪽 실패는 건너뜀
+            fails += 1
+            continue
+        if not rows:
+            break
+        new = 0
+        for r in rows:
+            i = r.get("prk_center_id")
+            if i in want:  # 새로 받은 것으로 바꿈 (이름·면 수가 바뀌었을 수 있음)
+                new += i not in seen
+                seen.add(i)
+                out[i] = [i, r.get("prk_plce_nm") or "주차장", float(r.get("prk_plce_entrc_la") or 0), float(r.get("prk_plce_entrc_lo") or 0),
+                          int(float(r.get("prk_cmprt_co") or 0)), r.get("prk_manage_agent_nm") or "", r.get("parkng_chrge_se_nm") or ""]
+        empty = 0 if new else empty + 1
+        if page % 5 == 0:
+            print(f"주차장 기본정보 {page}쪽 봄 (실패 {fails}), 위치 {len(out)}/{len(want)}곳", flush=True)
     lots = [v for v in out.values() if 33 < v[2] < 39 and 124 < v[3] < 132]
-    print(f"실시간 주차장 {len(want)}곳 중 위치 {len(lots)}곳 (예전 파일 {known}곳, {done}/{pages}쪽 봄, 실패 {len(fails)}쪽)")
+    print(f"실시간 주차장 {len(want)}곳 중 위치 {len(lots)}곳 (예전 파일 {known}곳, {page}쪽 봄, 실패 {fails}쪽)")
     return lots
 
 
