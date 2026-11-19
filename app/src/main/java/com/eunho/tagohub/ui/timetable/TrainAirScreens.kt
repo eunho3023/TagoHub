@@ -71,6 +71,36 @@ class AirViewModel : ViewModel() {
     )
 }
 
+/** 연안여객선: 항구 → 항구, 오늘·내일 운항 스케줄과 통제(풍랑주의보 등) 여부 */
+class FerryViewModel : ViewModel() {
+    val table = TimetableController(
+        scope = viewModelScope,
+        placeLoader = { q -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.eunho.tagohub.core.TagoResult.Success(com.eunho.tagohub.data.PlaceFilter.filter(com.eunho.tagohub.data.FerryClient.places(), q)) } },
+        gradeLoader = null,
+        tripLoader = { d, a, date, _ -> com.eunho.tagohub.data.FerryClient.trips(d.id, a.id, date) },
+        geo = com.eunho.tagohub.data.FerryPortGeo,
+        connectedNames = { fixed, _ ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val codes = com.eunho.tagohub.data.Ferry.connected(com.eunho.tagohub.data.FerryClient.lines(), fixed.id)
+                com.eunho.tagohub.data.FerryClient.ports().filter { it.code in codes }.map { it.name }
+            }
+        },
+    )
+}
+
+@Composable
+fun FerryScreen(vm: FerryViewModel = viewModel()) {
+    Column(Modifier.fillMaxSize()) {
+        TimetablePane(
+            vm.table, ModeColor.Ferry,
+            recentKey = "ferry",
+            pickerNoun = "항구",
+            gradeAllLabel = "전체",
+            idleText = "출발 항구와 도착 항구를 고르면 오늘·내일 여객선 운항편이 표시돼요. 풍랑주의보 등으로 통제된 배도 함께 알려 줘요.",
+        )
+    }
+}
+
 @Composable
 fun TrainScreen(vm: TrainViewModel = viewModel()) {
     // 지도에서 고른 역·공항으로 출발지·도착지 채우기

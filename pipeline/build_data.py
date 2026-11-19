@@ -27,7 +27,7 @@ GBIS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteListv2"
 GBIS_STOPS = "https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteStationListv2"
 # 노선 DB 에 같이 넣는 앱 파일 (pipeline/build_api_files.py·build_subway_schedule.py --out 이 만듦). 앱은 앱 안 파일보다 이것을 먼저 씀
 FILES_DIR = OUT / "files"
-FILES = ("subway_schedule.tsv", "ex_places.json", "air_routes.json", "ulsan_crossroads.json")
+FILES = ("subway_schedule.tsv", "ex_places.json", "air_routes.json", "ulsan_crossroads.json", "ferry_ports.json", "ferry_lines.json", "parking_live.json", "subway_fast_exit.json")
 FILE_PART = 300_000   # 한글이 많아도 한 칸 1MB 안쪽
 # 제주 버스정보 (키 없음)
 JEJU = "https://bus.jeju.go.kr/api"

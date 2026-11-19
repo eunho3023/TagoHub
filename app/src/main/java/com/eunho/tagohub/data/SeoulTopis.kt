@@ -32,7 +32,7 @@ object SeoulTopis {
      */
     const val BIKE = "seoul_bike"
     /** 서버 /w/topis 와 같은 길로 받는 층 (주차장은 서버 정적 파일, data/Parking.kt) */
-    val LAYERS = setOf(FLOW, ACC, BIKE, Parking.LAYER) + Amenity.LAYERS
+    val LAYERS = setOf(FLOW, ACC, BIKE, Parking.LAYER, EvCharger.LAYER) + Amenity.LAYERS
 
     /** [bikes] 가 null 이면 실시간 대수를 모르는 대여소 (표준데이터), [info] 는 운영시간·요금·전화 */
     data class Bike(val id: String, val name: String, val lat: Double, val lng: Double, val bikes: Int?, val racks: Int, val info: String? = null)
@@ -155,6 +155,7 @@ object SeoulTopis {
         // 공영자전거는 서울 밖(대전·세종·창원 등)도 있음
         if (layer == BIKE) return bikes().filter { it.lat in s..n && it.lng in w..e }.map(::bikeFeature)
         if (layer == Parking.LAYER) return Parking.features(s, w, n, e)
+        if (layer == EvCharger.LAYER) return EvCharger.features(s, w, n, e)
         if (layer in Amenity.LAYERS) return Amenity.features(layer, s, w, n, e)
         if (!inSeoul(s, w, n, e)) return emptyList()
         return when (layer) {
@@ -268,4 +269,78 @@ object SeoulTopis {
     private const val ON_ROUTE_M = 25.0
     private const val SAME_DIR_DEG = 60.0
     private const val MAX_ROUTE_LINKS = 400
+
+    // ── 지하철역 승강기 가동 현황 (서울교통공사, 서버 /w/topis/elevator 5분 저장) ──
+
+    data class Lift(val kind: String, val place: String, val section: String, val ok: Boolean, val line: String) {
+        val kindName: String get() = when (kind) { "EV" -> "엘리베이터"; "ES" -> "에스컬레이터"; "WL" -> "휠체어리프트"; "MW" -> "무빙워크"; else -> "승강기" }
+    }
+
+    /** 서버 응답 {역 이름: [[구분, 설치 위치, 운행 구간, 1/0, 호선]]} */
+    fun parseLifts(body: String?): Map<String, List<Lift>> {
+        val root = body?.let { runCatching { com.eunho.tagohub.core.MiniJson.parse(it) }.getOrNull() } as? Map<*, *> ?: return emptyMap()
+        return root.entries.associate { (k, v) ->
+            k.toString() to (v as? List<*>).orEmpty().mapNotNull { r ->
+                val a = r as? List<*> ?: return@mapNotNull null
+                val s = { i: Int -> a.getOrNull(i)?.toString().orEmpty() }
+                Lift(s(0), s(1), s(2), s(3).toDoubleOrNull() == 1.0, s(4))
+            }
+        }
+    }
+
+    /** 역 이름 맞추기: "서울역" ↔ "서울", 괄호(호선) 무시 */
+    fun liftKey(name: String) = name.replace(Regex("\\(.*?\\)"), "").trim().removeSuffix("역")
+
+    private var liftsAt = 0L
+    private var lifts: Map<String, List<Lift>> = emptyMap()
+
+    /** 이 역(서울교통공사 1~8호선)의 승강기. 서울교통공사 역이 아니거나 못 받으면 빈 목록 */
+    suspend fun liftsAt(station: String): List<Lift> {
+        if (System.currentTimeMillis() - liftsAt > 5 * 60_000 || lifts.isEmpty()) {
+            val got = parseLifts(get("elevator"))
+            if (got.isNotEmpty()) { lifts = got; liftsAt = System.currentTimeMillis() }
+        }
+        return lifts[liftKey(station)].orEmpty()
+    }
+
+}
+
+/**
+ * 서울교통공사 빠른하차 (공공데이터포털 B553766/inout/getFstExit → 앱 파일 subway_fast_exit.json, 매주 새로 만듦):
+ * 방면마다 엘리베이터·에스컬레이터·계단에 가까운 칸-문 번호
+ */
+object FastExit {
+    data class Row(val line: String, val toward: String, val door: String, val facility: String)
+
+    /** 한 줄로 보여 줄 묶음: "2호선 역삼 방면" → "엘리베이터 8-1 · 계단 2-4, 4-3" */
+    data class Group(val title: String, val text: String)
+
+    fun parse(text: String?): Map<String, List<Row>> {
+        val root = text?.let { runCatching { com.eunho.tagohub.core.MiniJson.parse(it) }.getOrNull() } as? Map<*, *> ?: return emptyMap()
+        return root.entries.associate { (k, v) ->
+            SeoulTopis.liftKey(k.toString()) to (v as? List<*>).orEmpty().mapNotNull { r ->
+                val a = r as? List<*> ?: return@mapNotNull null
+                val s = { i: Int -> a.getOrNull(i)?.toString()?.trim().orEmpty() }
+                if (s(2).isEmpty()) null else Row(s(0), s(1), s(2), s(3))
+            }
+        }
+    }
+
+    fun groups(rows: List<Row>): List<Group> =
+        rows.groupBy { it.line to it.toward }.map { (k, list) ->
+            val text = list.groupBy { it.facility.ifBlank { "가까운 문" } }.entries
+                .sortedBy { listOf("엘리베이터", "에스컬레이터", "계단").indexOf(it.key).let { i -> if (i < 0) 9 else i } }
+                .joinToString(" · ") { (f, r) -> f + " " + r.map { it.door }.distinct().joinToString(", ") }
+            Group(listOf(k.first, k.second.takeIf { it.isNotBlank() }?.let { "$it 방면" }).filterNotNull().joinToString(" "), text)
+        }.sortedBy { it.title }
+
+    private var stamp: String? = null
+    private var table: Map<String, List<Row>> = emptyMap()
+
+    @Synchronized
+    fun at(station: String): List<Group> {
+        val s = AssetText.stamp("subway_fast_exit.json")
+        if (s != stamp) { table = parse(AssetText.read("subway_fast_exit.json")); stamp = s }
+        return groups(table[SeoulTopis.liftKey(station)].orEmpty())
+    }
 }

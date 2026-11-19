@@ -3422,6 +3422,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             com.eunho.tagohub.data.SeoulTopis.BIKE,
             // 주차장 (전국주차장정보표준데이터, data/Parking.kt)
             com.eunho.tagohub.data.Parking.LAYER,
+            // 전기차 충전소 (한국전력, data/EvCharger.kt): 지금 충전 가능한 대수
+            com.eunho.tagohub.data.EvCharger.LAYER,
         ) + com.eunho.tagohub.data.Amenity.LAYERS // 편의시설 (화장실·전동휠체어 충전기·졸음쉼터·교통약자 이동지원센터·환승센터, data/Amenity.kt)
         val STATIC_ITS_ROAD_LAYERS = setOf("its_vds", "its_ice_sections")
         const val UTIC_REFRESH_INTERVAL_MS = 60_000L

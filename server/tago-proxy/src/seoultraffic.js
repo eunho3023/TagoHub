@@ -5,6 +5,7 @@
 //  GET /w/topis/bike                   공영자전거 대여소 실시간 [{id, name, lat, lng, bikes, racks}] (1분 저장)
 //                                      서울 따릉이(서울 키, 거치대 수 있음) + 그 밖 10곳(한국지역정보개발원 전국 공영자전거, 공공데이터 키)
 //                                      + 실시간 대수 없는 대여소(전국자전거대여소표준데이터, src/bikestations.js): bikes 가 null, info 에 운영시간·요금
+//  GET /w/topis/elevator               서울교통공사 역 승강기 가동 현황 {역 이름: [[구분 EV·ES·WL·MW, 설치 위치, 운행 구간, 사용 가능 1/0, 호선]]} (5분 저장)
 //  GET /w/topis/status                 확인용: 서울 API 에 닿는지
 
 import { STD_BIKES } from "./bikestations.js";
@@ -221,6 +222,33 @@ export function stdBikes(live, seoulOk, list = STD_BIKES) {
 }
 
 /** /w/topis/… */
+/** "강남(2)" → ["강남", "2"] (역 이름 뒤 괄호는 호선) */
+export function elevatorStation(name) {
+  const m = /^(.*?)\((\d+)\)\s*$/.exec(String(name || "").trim());
+  return m ? [m[1].trim().replace(/역$/, ""), m[2]] : [String(name || "").trim().replace(/역$/, ""), ""];
+}
+
+/** 서울교통공사 교통약자 이용시설 승강기 가동 현황 (SeoulMetroFaciInfo, 2026-11 약 2,800대 → 1,000대씩 3쪽) */
+export async function elevators(key, ctx, fetcher = fetch) {
+  return memo(ctx, "elevator", 300, async () => {
+    const page = async (a) => {
+      const r = await fetcher(BASE + [encodeURIComponent(key), "json", "SeoulMetroFaciInfo", a, a + 999].join("/") + "/");
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => null);
+      return j?.SeoulMetroFaciInfo || null;
+    };
+    const pages = await Promise.all([1, 1001, 2001, 3001].map((a) => page(a).catch(() => null)));
+    if (!Array.isArray(pages[0]?.row)) return null;
+    const out = {};
+    for (const r of pages.flatMap((p) => (Array.isArray(p?.row) ? p.row : []))) {
+      const [stn, line] = elevatorStation(r.STN_NM);
+      if (!stn) continue;
+      (out[stn] ||= []).push([r.ELVTR_SE || "", r.INSTL_PSTN || "", r.OPR_SEC || "", r.USE_YN === "사용가능" ? 1 : 0, line]);
+    }
+    return out;
+  });
+}
+
 export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
   const key = (env.SEOUL_SUBWAY_KEY || "").trim();
   const json = (v, maxAge) => new Response(JSON.stringify(v), { headers: { ...HEAD, "Cache-Control": `public, max-age=${maxAge}` } });
@@ -240,6 +268,7 @@ export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
       const v = [...live, ...stdBikes(live, !!seoul)];
       return json(v, seoul && (kr || !dg) ? 60 : 30);
     }
+    if (op === "elevator") { const v = await elevators(key, ctx, fetcher); return v ? json(v, 300) : json({}, 30); }
     if (op === "status") {
       const x = await getXml(fetcher, seoulUrl(key, "RoadDivInfo", 1, 5)).catch((e) => "ERR " + (e && e.message));
       return json({ reach: okXml(x), sample: okXml(x) ? rows(x).length : String(x).replace(key, "").slice(0, 120) }, 0);

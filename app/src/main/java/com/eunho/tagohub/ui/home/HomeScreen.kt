@@ -148,10 +148,30 @@ fun HomeTopCard(modifier: Modifier = Modifier) {
         shadowElevation = 6.dp,
     ) {
         Column(Modifier.padding(horizontal = 14.dp).padding(bottom = 12.dp)) {
-            BrandHeader(Modifier.riseIn(0))
+            BrandHeader(Modifier.riseIn(0), trailing = { WeatherNow() })
             Spacer(Modifier.height(10.dp))
             Box(Modifier.riseIn(2)) { SearchBarButton() }
         }
+    }
+}
+
+/** 홈 위쪽 오른쪽: 내 위치의 지금 기온·비/눈과 미세먼지 (기상청 초단기실황·에어코리아, data/HomeWeather.kt). 위치 권한이 없거나 못 받으면 비움 */
+@Composable
+private fun WeatherNow() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val now by androidx.compose.runtime.produceState<com.eunho.tagohub.data.HomeWeather.Now?>(null) {
+        while (true) {
+            if (com.eunho.tagohub.ui.bus.hasLocationPermission(context)) {
+                val loc = com.eunho.tagohub.ui.bus.lastKnownLocation(context) ?: com.eunho.tagohub.ui.bus.currentLocation(context)
+                if (loc != null) value = runCatching { com.eunho.tagohub.data.HomeWeather.now(loc.latitude, loc.longitude) }.getOrNull() ?: value
+            }
+            kotlinx.coroutines.delay(10 * 60_000L)
+        }
+    }
+    val (a, b) = now?.let(com.eunho.tagohub.data.HomeWeather::lines) ?: return
+    Column(horizontalAlignment = Alignment.End) {
+        if (a != null) Text(a, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+        if (b != null) Text(b, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -281,7 +301,7 @@ fun HomeSheet(
 
 /** 위쪽 로고: 앱 아이콘(접힌 지도 + 위치 핀) + 앱 이름 */
 @Composable
-internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
+internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}, trailing: (@Composable () -> Unit)? = null) {
     Row(modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         // 아이콘 그림은 둘레에 여백이 있어 조금 크게 그리고 잘라 냄
         Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
@@ -295,6 +315,10 @@ internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, 
         Column {
             Text("모두의 지도", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
             Text("원하는 곳 어디든지!", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (trailing != null && action == null) {
+            Spacer(Modifier.weight(1f))
+            trailing()
         }
         if (action != null) {
             Spacer(Modifier.weight(1f))

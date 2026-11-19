@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName, nationalBikes, stdBikes } from "../src/seoultraffic.js";
+import { tmToWgs84, rows, trafficFor, accidents, handleSeoulTraffic, bikes, bikeName, nationalBikes, stdBikes, elevators, elevatorStation } from "../src/seoultraffic.js";
 
 /** caches.default 흉내 */
 function fakeCaches() {
@@ -141,4 +141,27 @@ test("표준데이터 대여소: 실시간 대여소 80m 안·서울(따릉이 �
   const live = [{ id: "3611000000:A1", lat: 36.48, lng: 127.28, bikes: 4 }];
   assert.deepEqual(stdBikes(live, true, std), [{ id: "std:1", name: "세종 먼 곳", lat: 36.49, lng: 127.29, bikes: null, racks: 8, info: "" }]);
   assert.deepEqual(stdBikes([], false, std).map((b) => b.id), ["std:0", "std:1", "std:2"]);
+});
+
+test("승강기 가동 현황: 역 이름 괄호는 호선, 쪽을 합쳐 역별로", async () => {
+  assert.deepEqual(elevatorStation("강남(2)"), ["강남", "2"]);
+  assert.deepEqual(elevatorStation("서울역(1)"), ["서울", "1"]);
+  assert.deepEqual(elevatorStation("구파발"), ["구파발", ""]);
+  fakeCaches();
+  const asked = [];
+  const fetcher = async (u) => {
+    asked.push(u);
+    const a = +u.split("/")[6];
+    const row = a === 1
+      ? [{ STN_NM: "강남(2)", ELVTR_SE: "EV", INSTL_PSTN: "1번 출입구", OPR_SEC: "B1-1F", USE_YN: "사용가능" },
+         { STN_NM: "강남(2)", ELVTR_SE: "ES", INSTL_PSTN: "2번 출입구", OPR_SEC: "B1-1F", USE_YN: "보수중" }]
+      : a === 1001 ? [{ STN_NM: "구파발", ELVTR_SE: "ES", INSTL_PSTN: "3번 출입구", OPR_SEC: "B1-1F", USE_YN: "보수중" }] : [];
+    return new Response(JSON.stringify(row.length ? { SeoulMetroFaciInfo: { row } } : { RESULT: { CODE: "INFO-200" } }));
+  };
+  const v = await elevators("K", ctx, fetcher);
+  assert.deepEqual(v["강남"], [["EV", "1번 출입구", "B1-1F", 1, "2"], ["ES", "2번 출입구", "B1-1F", 0, "2"]]);
+  assert.deepEqual(v["구파발"], [["ES", "3번 출입구", "B1-1F", 0, ""]]);
+  assert.equal(asked.length, 4);
+  // 다시 물으면 저장본
+  await elevators("K", ctx, async () => { throw new Error("안 불러야 함"); });
 });

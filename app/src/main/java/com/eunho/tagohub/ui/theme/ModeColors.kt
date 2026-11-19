@@ -11,6 +11,7 @@ object ModeColor {
     val Coach = Color(0xFF0A7E8C)
     val Suburb = Color(0xFF7A4FB5)
     val Air = Color(0xFFB86A12)
+    val Ferry = Color(0xFF1565A8)
 }
 
 /** routetp 문자열 → 노선 색 (전국 공통 관행: 간선 파랑, 지선 초록, 광역·급행 빨강 …) */

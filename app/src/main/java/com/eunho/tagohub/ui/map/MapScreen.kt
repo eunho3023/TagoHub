@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.LocalParking
+import androidx.compose.material.icons.filled.EvStation
 import androidx.compose.material.icons.filled.Wc
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.TransferWithinAStation
@@ -605,6 +606,8 @@ private fun MapLayerSheet(
         MapLayerOption(listOf("seoul_bike"), "공영자전거", Icons.AutoMirrored.Filled.DirectionsBike),
         // 주차장(전국주차장정보표준데이터): 면 수·요금·운영시간
         MapLayerOption(listOf("parking"), "주차장", Icons.Filled.LocalParking),
+        // 전기차 충전소(한국전력): 지금 충전 가능한 대수
+        MapLayerOption(listOf("ev"), "전기차 충전", Icons.Filled.EvStation),
         // 편의시설 (표준데이터, data/Amenity.kt): 공중화장실, 교통약자(전동휠체어 충전기·이동지원센터 예약 전화), 졸음쉼터, 환승센터
         MapLayerOption(listOf("amenity_toilet"), "화장실", Icons.Filled.Wc),
         MapLayerOption(listOf("amenity_wheel", "amenity_mobility"), "교통약자", Icons.Filled.Accessible),

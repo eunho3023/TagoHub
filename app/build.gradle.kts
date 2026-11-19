@@ -65,6 +65,10 @@ android {
         buildConfigField("String", "SEOUL_SIGNAL_KEY", "\"${apiKey("SEOUL_SIGNAL_KEY")}\"")
         // 한국도로공사 고속도로 공공데이터(data.ex.co.kr) 인증키
         buildConfigField("String", "EX_API_KEY", "\"${apiKey("EX_API_KEY")}\"")
+        // 기상청 API허브 인증키 (해양 관측: 여객선 출항지 근처 파고·바람)
+        buildConfigField("String", "KMA_HUB_KEY", "\"${apiKey("KMA_HUB_KEY")}\"")
+        // 한국전력 전력데이터 개방포털 인증키 (전기차 충전소 위치·상태)
+        buildConfigField("String", "KEPCO_API_KEY", "\"${apiKey("KEPCO_API_KEY")}\"")
         // 기상청 CCTV 기반 도로날씨 인증키 (공공데이터포털 RoadWthrInfoService)
         buildConfigField("String", "KMA_ROAD_KEY", "\"${localProps.getProperty("KMA_ROAD_KEY", "")}\"")
         // 국가교통정보센터는 9443 포트라 Cloudflare 가 못 불러서 중계 서버를 써도 앱에 둠
