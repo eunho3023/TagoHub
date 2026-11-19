@@ -163,13 +163,15 @@ fun MorePage(
                 com.eunho.tagohub.ui.common.SettingsGroup("화면", "테마와 지도 표시") {
                     com.eunho.tagohub.ui.common.SettingsField("화면 모드") { ThemeModePicker() }
                     com.eunho.tagohub.ui.common.SettingsDivider()
-                    com.eunho.tagohub.ui.common.SettingsField("야간 주행 모드") { NightModePicker() }
-                    com.eunho.tagohub.ui.common.SettingsDivider()
+                    if (com.eunho.tagohub.BuildConfig.NAVI) {
+                        com.eunho.tagohub.ui.common.SettingsField("야간 주행 모드") { NightModePicker() }
+                        com.eunho.tagohub.ui.common.SettingsDivider()
+                    }
                     com.eunho.tagohub.ui.common.SettingsField("내 위치 아이콘") { VehiclePicker() }
                 }
 
-                // 길안내: 바로 켜고 끄는 것 → 음성 크기 → 알릴 항목
-                com.eunho.tagohub.ui.common.SettingsGroup("길안내", "안내 음성과 알릴 항목") {
+                // 길안내: 바로 켜고 끄는 것 → 음성 크기 → 알릴 항목 (출시용은 길안내가 없어 숨김)
+                if (com.eunho.tagohub.BuildConfig.NAVI) com.eunho.tagohub.ui.common.SettingsGroup("길안내", "안내 음성과 알릴 항목") {
                     QuickToggles()
                     com.eunho.tagohub.ui.common.SettingsDivider()
                     GuidanceSettings()
