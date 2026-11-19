@@ -551,6 +551,53 @@ def fetch_tsb_stops(fx, base_db):
     return {rid: r["stops"] for _, rid, r in jobs if r["stops"]}
 
 
+def fetch_tsb_info(fx, base_db):
+    """
+    교통안전공단 노선(TSB) 중 첫차·막차가 DB 에 없는 노선의 TAGO 노선 정보 {routeid: item} (2026-11: 7,239개 중 약 5,200개, 구례 67개 모두 없었음).
+    교통안전공단 시간표 자료에 없는 지역(구례 등)도 TAGO 노선 정보에는 첫차·막차·배차가 있음. 받은 것은 7일 저장
+    """
+    db = sqlite3.connect(base_db)
+    has_sched = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE name = 'route_schedule'")}
+    sql = ("SELECT r.id, r.city FROM routes r WHERE r.id LIKE 'TSB%' AND r.city NOT LIKE 'TS%' "
+           "AND NOT EXISTS (SELECT 1 FROM route_info i WHERE i.id = r.id AND (i.first IS NOT NULL OR i.last IS NOT NULL))")
+    if has_sched:
+        sql += " AND NOT EXISTS (SELECT 1 FROM route_schedule s WHERE s.id = r.id)"
+    jobs = [(city, rid, {}) for rid, city in db.execute(sql)]
+    db.close()
+
+    def one(job):
+        code, rid, r = job
+        t = fx.get(f"{TAGO}/getRouteInfoIem", {"_type": "json", "cityCode": code, "routeId": rid}, f"tago/{code}/info_{rid}.json", 7 * DAY)
+        got = items(t)
+        if got:
+            r.update(got[0])
+    try:
+        run_parallel(fx, jobs, one, "교통안전공단 노선 첫차·막차")
+    except (Limit, KeyError_):
+        print("교통안전공단 노선 첫차·막차: 한도 — 받은 데까지만", flush=True)
+    out = {rid: r for _, rid, r in jobs if r}
+    print(f"교통안전공단 노선 첫차·막차: {len(jobs)}개 중 {len(out)}개 받음", flush=True)
+    return out
+
+
+def write_tsb_info(db, info):
+    """TAGO 노선 정보의 첫차·막차·배차를 route_info 에 (이미 시간이 있는 노선은 그대로). 넣은 수"""
+    n = 0
+    for rid, it in info.items():
+        first, last = clock(it.get("startvehicletime")), clock(it.get("endvehicletime"))
+        gap = to_int(it.get("intervaltime")) or None
+        if not (first or last or gap):
+            continue
+        old = db.execute("SELECT first, last FROM route_info WHERE id = ?", (rid,)).fetchone()
+        if old and (old[0] or old[1]):
+            continue
+        db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)",
+                   (rid, first, last, gap, to_int(it.get("intervalsattime")) or None, to_int(it.get("intervalsuntime")) or None))
+        n += 1
+    print(f"교통안전공단 노선 {n}개의 첫차·막차를 넣음", flush=True)
+    return n
+
+
 def compare(kotsa, tago_items):
     """같은 노선(TSB+번호 = TAGO routeid)의 평일 기점 첫차·막차가 일치하는 비율"""
     week = {"TSB" + str(r.get("노선 아이디")): r for r in kotsa if r.get("요일") == "평일"}
@@ -643,7 +690,7 @@ def fetch_jeonju_served(get=None):
 
 
 def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None, tago_cities=(),
-             gbis_stops=None, jeju=None):
+             gbis_stops=None, jeju=None, tsb_info=None):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -727,6 +774,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
         first = (old[0] if old and old[0] else None) or (wk[3] if wk else None)
         last = (old[1] if old and old[1] else None) or (wk[4] if wk else None)
         db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)", (rid, first, last, gap("weekday"), gap("sat"), gap("sun")))
+    write_tsb_info(db, tsb_info or {})
     # 노선 자료가 DB 에 없는 지역(전주): 그 지역 API 로 모은 노선이 서는 정류장의 이름도 지금 이름으로
     api_served, api_ok, api_routes = (tuple(served_api) + ({},))[:3] if served_api else ({}, False, {})
     if api_ok and api_routes:
@@ -893,13 +941,14 @@ def main():
         sys.exit("TAGO 노선을 하나도 받지 못했습니다 — 데이터를 올리지 않습니다. 위 '노선 0개 — 마지막 응답' 을 확인하세요.")
     tsb = fetch_tsb_stops(fx, BASE_DB)
     print(f"교통안전공단 노선 정류장 순서: {len(tsb)}개 노선", flush=True)
+    tsb_info = fetch_tsb_info(fx, BASE_DB)
     jeonju = fetch_jeonju_served()
     cities = fetch_tago_cities(fx)
     gbis_stops = fetch_gbis_stops(fx, BASE_DB, gbis)
     jeju = fetch_jeju()
     print(f"TAGO 도시 목록: {len(cities)}곳", flush=True)
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju, tago_cities=cities,
-                            gbis_stops=gbis_stops, jeju=jeju)
+                            gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
