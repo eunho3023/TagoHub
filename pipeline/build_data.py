@@ -423,20 +423,32 @@ def fetch_jeju(get=None):
     """
     import urllib.request
 
+    err = [""]
+
+    def via_proxy(path):
+        """중계 서버로 (데이터 갱신 PC 서비스 계정에서 제주 서버에 바로 못 붙던 적이 있음: '제주 노선 목록을 받지 못함')"""
+        if path == "searchBusRouteList.do":
+            return f"{WEB_BASE}/w/bus/jeju/routes/all"
+        m = re.match(r"searchBusRouteStationList\.do\?route_id=(\d{9})$", path)
+        return f"{WEB_BASE}/w/bus/jeju/stops/{m.group(1)}" if m else None
+
     def fetch(path):
-        for wait in (0, 3, 10):
-            time.sleep(wait)
-            try:
-                req = urllib.request.Request(f"{JEJU}/{path}", headers={"User-Agent": "Mozilla/5.0 TagoHub-pipeline"})
-                with urllib.request.urlopen(req, timeout=30) as r:
-                    return json.loads(r.read().decode("utf-8"))
-            except Exception:
-                pass
+        for url in (f"{JEJU}/{path}", via_proxy(path)):
+            if not url:
+                continue
+            for wait in (0, 3, 10):
+                time.sleep(wait)
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 TagoHub-pipeline"})
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        return json.loads(r.read().decode("utf-8"))
+                except Exception as e:
+                    err[0] = f"{type(e).__name__}: {str(e)[:120]}"
         return None
     get = get or fetch
     routes = get("searchBusRouteList.do")
     if not isinstance(routes, list) or not routes:
-        print("제주 노선 목록을 받지 못함", flush=True)
+        print(f"제주 노선 목록을 받지 못함 ({err[0]})", flush=True)
         return {}, False
     out, ok = {}, True
     for r in routes:

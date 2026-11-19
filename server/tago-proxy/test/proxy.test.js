@@ -250,6 +250,11 @@ test("제주 노선 정류장 차례: 제주 버스정보 (키 없음, 하루 �
   assert.equal(a.url, "https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=405000153");
   assert.equal(a.ttl, 5);
   assert.equal(busWebRequest("/w/bus/jeju/pos/405130002"), null);
+  // 노선 전체 목록 (데이터 갱신이 제주 서버에 바로 못 붙을 때)
+  const l = busWebRequest("/w/bus/jeju/routes/all");
+  assert.equal(l.url, "https://bus.jeju.go.kr/api/searchBusRouteList.do");
+  assert.equal(l.ttl, 86400);
+  assert.equal(busWebRequest("/w/bus/jeju/routes/405130002"), null);
   assert.equal(busWebRequest("/w/bus/jeju/stops/12"), null);
 });
 
@@ -279,4 +284,9 @@ test("웹 대전 도착·위치: 대전 BIS(6300000), 앱 /h/ 중계와 같은 �
   assert.equal(busWebRequest("/w/bus/daejeon/arrival/30300039"), null);  // 정류장은 7자리
   assert.equal(busWebRequest("/w/bus/daejeon/pos/8001378"), null);       // 노선은 8자리
   assert.equal(busWebRequest("/w/bus/daejeon/stops/8001378"), null);
+});
+
+test("'all' 은 제주 노선 목록만", () => {
+  assert.equal(busWebRequest("/w/bus/seoul/pos/all"), null);
+  assert.equal(busWebRequest("/w/bus/jeonju/routes/all"), null);
 });

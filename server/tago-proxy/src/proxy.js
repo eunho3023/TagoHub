@@ -282,9 +282,11 @@ export function signalWebRequest(pathname) {
  * 서울 도착은 정류장 번호(arsId 5자리), 경기 도착은 정류소 ID(9자리), 위치는 노선 ID. → { url(키 자리 KEY), cacheKey, ttl }
  */
 export function busWebRequest(pathname) {
-  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan|daejeon)\/(arrival|pos|stops|routes)\/(\d{1,12})$/.exec(pathname);
+  // "all" 은 제주 노선 전체 목록(/w/bus/jeju/routes/all)만
+  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan|daejeon)\/(arrival|pos|stops|routes)\/(\d{1,12}|all)$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
+  if (id === "all" && !(area === "jeju" && op === "routes")) return null;
   // 대전 정류장 도착(정류장 ID 7자리)·노선 버스 위치(노선 ID 8자리) (대전 BIS, 공공데이터포털 6300000, 5초 저장).
   // 같은 순간 TAGO 보다 같은 버스가 40~130초 새롭고 버스가 더 많음, 방면(DESTINATION)도 줌 (2026-11-17 실측).
   // 저장 이름은 앱이 /h/ 중계로 같은 것을 물을 때와 똑같이 (앱 RegionalBus: serviceKey 자리표시 → 나머지 순서) → 앱·웹이 한 번만 물음
@@ -302,6 +304,8 @@ export function busWebRequest(pathname) {
   // 제주 노선 정류장 차례 (제주 버스정보 bus.jeju.go.kr, 키 없음, 앱과 같은 자료, 하루 저장).
   // TAGO 노선정보 하루 한도가 찼을 때 웹이 제주 노선을 여는 데 씀
   if (area === "jeju") {
+    // 제주 노선 전체 목록 (하루 저장): 데이터 갱신(pipeline/build_data.py fetch_jeju)이 제주 서버에 바로 못 붙을 때 씀
+    if (op === "routes" && id === "all") return { area, url: "https://bus.jeju.go.kr/api/searchBusRouteList.do", cacheKey: "bus/jeju/routes/all", ttl: 86400 };
     if (!/^\d{9}$/.test(id)) return null;
     // 정류장 도착 예정 (제주 버스정보, 앱과 같은 자료, 5초 저장): TAGO 보다 새롭고 버스가 더 많이 나옴
     if (op === "arrival") return { area, url: `https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=${id}`, cacheKey: `bus/jeju/arrival/${id}`, ttl: 5 };
