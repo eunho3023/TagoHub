@@ -432,8 +432,10 @@ def fetch_jeju(get=None):
         m = re.match(r"searchBusRouteStationList\.do\?route_id=(\d{9})$", path)
         return f"{WEB_BASE}/w/bus/jeju/stops/{m.group(1)}" if m else None
 
+    direct = [True]  # 제주 서버에 바로 붙기가 한 번 다 실패하면 남은 노선은 처음부터 중계 서버로 (노선마다 100초씩 기다리면 갱신이 시간 한도에 걸림)
+
     def fetch(path):
-        for url in (f"{JEJU}/{path}", via_proxy(path)):
+        for url in (f"{JEJU}/{path}" if direct[0] else None, via_proxy(path)):
             if not url:
                 continue
             for wait in (0, 3, 10):
@@ -444,6 +446,9 @@ def fetch_jeju(get=None):
                         return json.loads(r.read().decode("utf-8"))
                 except Exception as e:
                     err[0] = f"{type(e).__name__}: {str(e)[:120]}"
+            if url.startswith(JEJU) and via_proxy(path):
+                direct[0] = False
+                print(f"제주 서버에 바로 못 붙음 ({err[0]}), 이제부터 중계 서버로", flush=True)
         return None
     get = get or fetch
     routes = get("searchBusRouteList.do")
