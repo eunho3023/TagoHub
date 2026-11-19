@@ -33,7 +33,7 @@ export function commitBody(project, id, uid, r) {
   };
 }
 
-function androidHeaders(env) {
+export function androidHeaders(env) {
   const cert = (env.FIREBASE_ANDROID_CERT || "").replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
   return cert ? { "X-Android-Package": PACKAGE, "X-Android-Cert": cert } : {};
 }

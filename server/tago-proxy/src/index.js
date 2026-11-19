@@ -12,6 +12,7 @@ import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
+import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
 import { healthCron, handleHealth } from "./health.js";
 
@@ -47,7 +48,7 @@ export default {
   },
 };
 
-const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type, X-TagoHub-Admin" };
+const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type, X-TagoHub-Admin, Authorization" };
 
 /** 웹 버전: 토큰 없이 실시간 버스 도착·위치만 (proxy.js webRequest), 주소(IP)마다 분당 요청 수 제한 */
 async function web(request, url, env, ctx) {
@@ -61,6 +62,8 @@ async function web(request, url, env, ctx) {
     return handleReport(request, env, ctx);
   }
   // 지도 고치기 (노선 모양·정류장·역 위치, src/edits.js). 저장(POST)은 주소마다 분당 제한
+  // 아이디 회원 (src/auth.js)
+  if (url.pathname.startsWith("/w/auth/")) return handleAuth(request, url, env, ctx);
   if (url.pathname === "/w/edits" || url.pathname === "/w/edits/check") {
     if ((request.method === "POST" || url.pathname === "/w/edits/check") && env.WEB_LIMIT) {
       const { success } = await env.WEB_LIMIT.limit({ key: "edit:" + (request.headers.get("CF-Connecting-IP") || "unknown") });

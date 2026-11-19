@@ -163,15 +163,16 @@ fun MorePage(
                 com.eunho.tagohub.ui.common.SettingsGroup("화면", "테마와 지도 표시") {
                     com.eunho.tagohub.ui.common.SettingsField("화면 모드") { ThemeModePicker() }
                     com.eunho.tagohub.ui.common.SettingsDivider()
-                    if (com.eunho.tagohub.BuildConfig.NAVI) {
+                    val developer by com.eunho.tagohub.data.IdAccount.developer.collectAsStateWithLifecycle()
+                    if (developer) {
                         com.eunho.tagohub.ui.common.SettingsField("야간 주행 모드") { NightModePicker() }
                         com.eunho.tagohub.ui.common.SettingsDivider()
                     }
                     com.eunho.tagohub.ui.common.SettingsField("내 위치 아이콘") { VehiclePicker() }
                 }
 
-                // 길안내: 바로 켜고 끄는 것 → 음성 크기 → 알릴 항목 (출시용은 길안내가 없어 숨김)
-                if (com.eunho.tagohub.BuildConfig.NAVI) com.eunho.tagohub.ui.common.SettingsGroup("길안내", "안내 음성과 알릴 항목") {
+                // 길안내: 바로 켜고 끄는 것 → 음성 크기 → 알릴 항목 (길안내는 개발자만: 일반 사용자는 숨김)
+                if (com.eunho.tagohub.data.IdAccount.developer.collectAsStateWithLifecycle().value) com.eunho.tagohub.ui.common.SettingsGroup("길안내", "안내 음성과 알릴 항목") {
                     QuickToggles()
                     com.eunho.tagohub.ui.common.SettingsDivider()
                     GuidanceSettings()
@@ -308,7 +309,12 @@ private fun AccountRow() {
         c as? android.app.Activity
     }
     val email = account.email ?: account.phone
+    val me by com.eunho.tagohub.data.IdAccount.me.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxWidth().padding(14.dp)) {
+        me.username?.let {
+            Text("아이디: $it" + if (me.dev) " · 개발자" else "", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+        }
         Text(
             if (email != null) "$email 연결됨 · 즐겨찾기와 설정이 계정에 저장돼요" else "구글 계정을 연결하면 앱을 지우거나 폰을 바꿔도 즐겨찾기와 설정이 이어져요",
             fontSize = 13.sp,
@@ -350,6 +356,12 @@ private fun AccountRow() {
                     add = true,
                 )
             }
+        }
+        // 아이디 로그인·회원가입 (아이디 찾기·비밀번호 찾기 포함)
+        if (email == null) {
+            var showId by remember { mutableStateOf(false) }
+            androidx.compose.material3.TextButton(onClick = { showId = true }) { Text("아이디로 로그인·회원가입") }
+            if (showId) com.eunho.tagohub.ui.common.IdAuthDialog(onDismiss = { showId = false })
         }
         // 이메일 회원가입·로그인 (가입하면 지금 저장된 즐겨찾기·설정이 그대로 이어짐)
         if (email == null) {

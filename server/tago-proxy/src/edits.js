@@ -6,6 +6,7 @@
 // 고친 기록은 모두 edit_log 에 남김 (잘못 고친 것을 되돌릴 수 있게, 주소(IP)는 해시만)
 
 import { decode, encode } from "./shape.js";
+import { isDevRequest } from "./auth.js";
 
 // group: 같은 자리 정류장 손으로 묶기. id 정류장과 data 의 정류장들을 한 점으로. data 가 [] 이면 그 정류장은 자동으로 묶지 않음(따로 떼기)
 export const KINDS = ["bus", "rail", "stop", "station", "group"];
@@ -13,7 +14,7 @@ const MAX_GROUP = 8;
 const ID_RE = /^[0-9A-Za-z가-힣_().,·:\- ]{1,40}$/;
 const LINE_KINDS = new Set(["bus", "rail"]);
 const MAX_POINTS = 3000;
-const HEAD = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type, X-TagoHub-Admin" };
+const HEAD = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type, X-TagoHub-Admin, Authorization" };
 export const ADMIN_HEADER = "X-TagoHub-Admin";
 
 /** 관리자 키가 맞는지 (서버에 키가 없으면 아무도 못 고침). 글자 비교 시간이 키에 따라 달라지지 않게 */
@@ -93,7 +94,8 @@ export async function handleEdits(request, env, ctx, path = "/w/edits") {
     return new Response(body, { headers: { ...HEAD, "Cache-Control": "no-store" } });
   }
   if (request.method !== "POST") return new Response("GET, POST only", { status: 405, headers: HEAD });
-  if (!isAdmin(request, env)) return new Response("admin only", { status: 403, headers: HEAD });
+  // 관리자 키 또는 개발자 아이디로 로그인한 앱 (Authorization: Bearer <Firebase 토큰>, src/auth.js)
+  if (!isAdmin(request, env) && !(await isDevRequest(request, env))) return new Response("admin only", { status: 403, headers: HEAD });
   let body;
   try {
     const text = await request.text();
