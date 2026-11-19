@@ -374,7 +374,20 @@ def test_files_written():
         assert db.execute("SELECT COUNT(*) FROM files").fetchone()[0] > 1
 
 
+def test_tsb_info_written():
+    """교통안전공단 노선: TAGO 노선 정보의 첫차·막차·배차를 넣고, 이미 시간이 있는 노선은 그대로 (구례 7-4: 0610~1930, 290분)"""
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    db.execute("INSERT INTO route_info VALUES('TSB_OLD', '06:00', '20:00', NULL, NULL, NULL)")
+    n = bd.write_tsb_info(db, {"TSB331000060": {"startvehicletime": "0610", "endvehicletime": 1930, "intervaltime": 290},
+                               "TSB_OLD": {"startvehicletime": "0700", "endvehicletime": "2100"},
+                               "TSB_NONE": {"startvehicletime": "", "endvehicletime": "", "intervaltime": 0}})
+    assert n == 1
+    assert db.execute("SELECT first, last, interval FROM route_info WHERE id='TSB331000060'").fetchone() == ("06:10", "19:30", 290)
+    assert db.execute("SELECT first FROM route_info WHERE id='TSB_OLD'").fetchone() == ("06:00",)
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
