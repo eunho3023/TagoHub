@@ -39,3 +39,10 @@ test("전주 노선 종류: 기점과 종점이 같으면 순환 (2번 평화동
   assert.equal(jeonjuType("1", "7"), "순환");
   assert.equal(jeonjuType("0", "4000"), "간선");
 });
+
+test("위치로 지나감: 3정류장 지난 버스의 낡은 '도착'은 뺌", async () => {
+  const { verdict } = await import("../site/js/busdata.js");
+  assert.equal(verdict(18, [21], 0), "passed");
+  assert.equal(verdict(18, [21, 16], 2), "keep");
+  assert.equal(verdict(18, [30], 0), "keep");
+});

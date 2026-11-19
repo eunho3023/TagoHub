@@ -737,7 +737,8 @@ export async function arrivals(stop, { quickMs = null, reuse = null } = {}) {
 // ── 버스 위치로 도착 정보 고치기 (앱 PassedByPosition 과 같은 규칙) ──
 // 도착 예측은 늦게 갱신되고 버스 위치가 더 새로운 경우가 많아서: 막 지나간 버스는 빼고, 위치가 더 가까우면 남은 정류장·시간을 줄임
 // 다가오는 모든 노선의 버스 위치를 봄 (예전엔 한도를 아끼려고 6개 노선까지만 → 나머지 노선은 막 지나간 버스가 남아 보였음)
-const APPROACH_STOPS = 6, JUST_PASSED_STOPS = 2;
+// 지난 것으로 보는 범위: 앞쪽에 오는 버스가 없고 이만큼 안에 지나간 버스가 있으면 낡은 도착 (예전 2 → 3정류장 지난 버스가 "도착"으로 남았음)
+const APPROACH_STOPS = 6, JUST_PASSED_STOPS = APPROACH_STOPS;
 const memo = new Map();
 function remembered(key, ms, make) {
   const hit = memo.get(key);

@@ -8,8 +8,11 @@ object PassedByPosition {
     /** 이 정류장 앞 이만큼(정류장 수) 안에 버스가 있으면 아직 오는 중 */
     const val APPROACH_STOPS = 6
 
-    /** 이 정류장을 막 지난 것으로 보는 범위(정류장 수) */
-    const val JUST_PASSED_STOPS = 2
+    /**
+     * 이 정류장을 지난 것으로 보는 범위(정류장 수). 앞쪽([APPROACH_STOPS] 안)에 오는 버스가 하나도 없고 이만큼 안에서 지나간 버스가 있으면
+     * 도착 정보가 그 버스의 낡은 값 (예전 2 → 곡성 봉조입구: 3정류장 지난 버스가 "정류장 도착"으로 계속 남았음)
+     */
+    const val JUST_PASSED_STOPS = APPROACH_STOPS
 
     enum class Verdict { KEEP, AT_STOP, PASSED }
 
