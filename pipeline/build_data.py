@@ -598,6 +598,82 @@ def write_tsb_info(db, info):
     return n
 
 
+STTN = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService"
+# TAGO 정류장 경유노선으로 지울지 정할 때: 노선이 있는 걸로 아는 정류장을 이만큼 물어 보고, 이 비율 넘게 노선이 나와야 그 지역 답을 믿음
+TAGO_CHECK_SAMPLE = 15
+TAGO_CHECK_TRUST = 0.8
+# 지역 API 로 노선을 모으는 곳(TAGO 가 정류장 경유노선을 주지 않음)
+LOCAL_ROUTE_PREFIX = {"JUB", "JEB"}
+
+
+def sttn_route_count(fx, city, sid):
+    """TAGO 정류장 경유노선 수 (정상 응답이면 0 이상, 오류·못 받음이면 None). 30일 저장"""
+    t = fx.get(f"{STTN}/getSttnThrghRouteList", {"_type": "json", "cityCode": city, "nodeid": sid, "numOfRows": 1, "pageNo": 1},
+               f"tago/{city}/sttnroutes_{sid}.json", 30 * DAY)
+    try:
+        j = json.loads(t or "")
+    except ValueError:
+        return None
+    resp = j.get("response", {}) if isinstance(j, dict) else {}
+    code = str(resp.get("header", {}).get("resultCode", ""))
+    if code == "22":
+        raise Limit()
+    if code != "00":
+        return None
+    total = (resp.get("body") or {}).get("totalCount")
+    return to_int(total) if total is not None else None
+
+
+def fetch_unserved_check(fx, base_db, extra_used=()):
+    """
+    노선 정류장 표에 없는 정류장마다 TAGO 에 경유노선을 물어 {정류장 id: 노선 수} 와 믿을 만한 지역 접두사 목록을 돌려줌.
+    노선 자료가 일부만 있는 지역(경기·교통안전공단·경산·원주·세종 …)은 표에 없다고 지우면 쓰는 정류장까지 지워져서, TAGO 가 0 이라고 할 때만 지움.
+    지역마다 노선이 있는 걸로 아는 정류장 몇 곳을 먼저 물어 TAGO 답을 믿을 수 있는지 봄 (TAGO 가 경유노선을 안 주는 지역은 빼려고).
+    """
+    db = sqlite3.connect(base_db)
+    alias = {a: t for a, t in db.execute("SELECT code, tago FROM city_alias")} if db.execute(
+        "SELECT 1 FROM sqlite_master WHERE name = 'city_alias'").fetchone() else {}
+    # 이번에 새로 받은 노선 정류장(TAGO·교통안전공단·경기·제주)도 '노선 있음'으로 (물을 필요 없음)
+    used = {r[0] for r in db.execute("SELECT DISTINCT stop_id FROM route_stops WHERE stop_id IS NOT NULL")} | set(extra_used)
+    stops = [(sid, alias.get(city, city)) for sid, city in db.execute("SELECT id, city FROM stops")]
+    db.close()
+    stops = [(sid, city) for sid, city in stops if prefix(sid) not in LOCAL_ROUTE_PREFIX and city and not str(city).startswith("TS")]
+    by_prefix = {}
+    for sid, city in stops:
+        by_prefix.setdefault(prefix(sid), []).append((sid, city))
+    todo = {p for p, lst in by_prefix.items() if any(sid not in used for sid, _ in lst)}
+    counts, sample_ok, sample_n = {}, {}, {}
+    lock = threading.Lock()
+
+    def one(job):
+        kind, p, sid, city = job
+        n = sttn_route_count(fx, city, sid)
+        with lock:
+            if kind == "sample":
+                if n is not None:
+                    sample_n[p] = sample_n.get(p, 0) + 1
+                    sample_ok[p] = sample_ok.get(p, 0) + (n > 0)
+            elif n is not None:
+                counts[sid] = n
+    samples = [("sample", p, sid, city) for p in sorted(todo) for sid, city in [x for x in by_prefix[p] if x[0] in used][:TAGO_CHECK_SAMPLE]]
+    checks = [("check", prefix(sid), sid, city) for p in sorted(todo) for sid, city in by_prefix[p] if sid not in used]
+    try:
+        run_parallel(fx, samples, one, "TAGO 경유노선 믿을 만한지")
+        run_parallel(fx, checks, one, "노선 없는 정류장 TAGO 확인")
+    except (Limit, KeyError_):
+        print("노선 없는 정류장 TAGO 확인: 한도 — 받은 데까지만 (못 물어본 정류장은 지우지 않음)", flush=True)
+    # 노선이 있는 걸로 아는 정류장이 하나도 없는 지역(칠곡처럼 노선 자료가 아예 없음)은 그 지역 정류장 중 노선이 나온 비율로 봄
+    for p in todo:
+        if p not in sample_n:
+            got = [counts[sid] for sid, _ in by_prefix[p] if sid in counts]
+            if got:
+                sample_n[p], sample_ok[p] = len(got), sum(1 for n in got if n > 0)
+    trusted = {p for p in todo if sample_n.get(p, 0) >= 5 and sample_ok.get(p, 0) / sample_n[p] >= TAGO_CHECK_TRUST}
+    zero = sum(1 for sid, n in counts.items() if n == 0 and prefix(sid) in trusted)
+    print(f"노선 없는 정류장 TAGO 확인: {len(checks)}곳 중 {len(counts)}곳 답 받음, 믿을 만한 지역 {len(trusted)}/{len(todo)}, 노선 0개 {zero}곳", flush=True)
+    return counts, trusted
+
+
 def compare(kotsa, tago_items):
     """같은 노선(TSB+번호 = TAGO routeid)의 평일 기점 첫차·막차가 일치하는 비율"""
     week = {"TSB" + str(r.get("노선 아이디")): r for r in kotsa if r.get("요일") == "평일"}
@@ -618,8 +694,9 @@ def compare(kotsa, tago_items):
 
 
 # 노선 없는 정류장 지우기: 정류장 id 앞 영문자(지역)마다 노선 정류장 자료가 이만큼 넘게 있으면 그 지역 자료는 믿을 만하다고 보고,
-# 노선이 하나도 안 서는 정류장(폐지·미사용)을 지움. 웹 build_web_data.COVERAGE_MIN 과 같은 값.
-PRUNE_MIN = 0.5
+# 노선이 하나도 안 서는 정류장(폐지·미사용)을 지움. 그보다 덜 덮인 지역은 정류장마다 TAGO 경유노선으로 확인([fetch_unserved_check]).
+# (예전 0.5 → 노선 자료가 70% 남짓인 지역에서 쓰는 정류장까지 지워질 수 있었음)
+PRUNE_MIN = 0.95
 # 지우지 않는 지역: 경기(GGB)는 GBIS 노선 중 정류장 순서가 있는 것이 일부(약 2/3)뿐, 교통안전공단(TSB)은 정류장 순서가 거의 없음
 PRUNE_KEEP = {"GGB", "TSB"}
 # 노선 자료가 DB 에 없어 그 지역 API 로 노선이 서는 정류장을 모으는 곳 (중계 서버 /w/bus/jeonju/… 를 거쳐 하루 저장본을 씀, 인증키 필요 없음)
@@ -649,48 +726,74 @@ def fetch_jeonju_served(get=None):
                 # 이름표 없는 파이썬 기본 요청은 서버 앞단에서 403 으로 막힘
                 req = urllib.request.Request(f"{WEB_BASE}/w/bus/jeonju/{path}", headers={"User-Agent": "TagoHub-pipeline"})
                 with urllib.request.urlopen(req, timeout=30) as r:
-                    return r.read().decode("utf-8")
+                    body = r.read().decode("utf-8")
+                # 한도 초과·키 오류 응답은 "노선 없음"이 아니라 실패 (예전엔 빈 목록으로 읽어 그 정류장을 노선 없는 곳으로 봤음)
+                if re.search(r"LIMITED_NUMBER_OF_SERVICE|SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|returnAuthMsg|<code[^>]*>(?!000)\d+</code>", body):
+                    limited[0] += "LIMITED" in body
+                    continue
+                return body
             except Exception:
                 pass
         return None
+    limited = [0]
     get = get or fetch
     lists = lambda x: re.findall(r'<list class="object">(.*?)</list>', x or "", re.S)
     val = lambda m, k: (re.search(rf"<{k}[^>]*>([^<]*)<", m) or [None, None])[1]
     db = sqlite3.connect(BASE_DB)
     stops = [r[0] for r in db.execute("SELECT id FROM stops WHERE id LIKE 'JUB%'")]
     db.close()
-    served, routes, ok, data = {}, set(), True, {}
+    served, routes, data = {}, {}, {}
     fields = ("brtId", "brtClass", "brtSname", "brtEname", "brtFirstTime", "brtLastTime", "brtMininTerVal")
-    for sid in stops:
-        if sid in served:
-            continue
+    failed_stops, failed_routes = [], []
+
+    def walk_stop(sid):
         x = get("routes/" + sid[3:])
         if x is None:
-            ok = False
-            continue
+            failed_stops.append(sid)
+            return
         for m in lists(x):
             rid = val(m, "brtStdId") or val(m, "brtStdid")
-            if not rid or rid in routes:
-                continue
-            routes.add(rid)
-            y = get("stops/" + rid)
-            if y is None:
-                ok = False
-                continue
-            seq = []
-            for s in lists(y):
-                std = val(s, "stopStandardid") or val(s, "bnodeId")
-                if std:
-                    nm = (val(s, "stopKname") or "").strip()
-                    served["JUB" + std] = nm
-                    seq.append((to_int(val(s, "brsSeqno") or val(s, "brnSeqno")) or len(seq) + 1, std, nm))
-            data[rid] = {"route": {k: (val(m, k) or "").strip() for k in fields}, "stops": sorted(seq)}
-    print(f"전주 노선이 서는 정류장: {len(served)}곳 (노선 {len(routes)}개, 다 받음 {ok})", flush=True)
+            if rid and rid not in routes:
+                routes[rid] = m
+                walk_route(rid)
+
+    def walk_route(rid):
+        y = get("stops/" + rid)
+        if y is None:
+            failed_routes.append(rid)
+            return
+        seq = []
+        for s in lists(y):
+            std = val(s, "stopStandardid") or val(s, "bnodeId")
+            if std:
+                nm = (val(s, "stopKname") or "").strip()
+                served["JUB" + std] = nm
+                seq.append((to_int(val(s, "brsSeqno") or val(s, "brnSeqno")) or len(seq) + 1, std, nm))
+        data[rid] = {"route": {k: (val(routes[rid], k) or "").strip() for k in fields}, "stops": sorted(seq)}
+
+    for sid in stops:
+        if sid not in served:
+            walk_stop(sid)
+    # 실패한 요청은 끝에 다시 (전주시 서버가 잠깐 늦을 때가 있어 한두 번 실패로 '다 받음'이 안 되면 정류장 지우기·노선 넣기를 통째로 건너뛰었음)
+    for wait in (20, 60):
+        if not failed_stops and not failed_routes:
+            break
+        print(f"전주: 실패한 요청 다시 (정류장 {len(failed_stops)}·노선 {len(failed_routes)}, {wait}초 뒤)", flush=True)
+        time.sleep(wait if get is fetch else 0)
+        again_stops, again_routes = failed_stops[:], failed_routes[:]
+        failed_stops.clear(); failed_routes.clear()
+        for rid in again_routes:
+            walk_route(rid)
+        for sid in again_stops:
+            if sid not in served:
+                walk_stop(sid)
+    ok = not failed_stops and not failed_routes
+    print(f"전주 노선이 서는 정류장: {len(served)}곳 (노선 {len(routes)}개, 다 받음 {ok}, 한도 초과 응답 {limited[0]}번)", flush=True)
     return served, ok, data
 
 
 def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None, tago_cities=(),
-             gbis_stops=None, jeju=None, tsb_info=None):
+             gbis_stops=None, jeju=None, tsb_info=None, unserved_check=None):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -789,7 +892,8 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     db.executemany("UPDATE stops SET name = ? WHERE id = ? AND name <> ?", [(nm, sid, nm) for sid, nm in renames.items()])
     if renames:
         print(f"정류장 이름 최신화: 노선 자료에 있는 {len(renames)}곳의 이름을 지금 이름으로", flush=True)
-    prune_unserved(db, complete, api_served, api_ok)
+    t_counts, t_trusted = unserved_check or ({}, set())
+    prune_unserved(db, complete, api_served, api_ok, t_counts, t_trusted)
     if tago_cities:
         db.execute("CREATE TABLE IF NOT EXISTS tago_cities(code TEXT PRIMARY KEY, name TEXT NOT NULL) WITHOUT ROWID")
         db.execute("DELETE FROM tago_cities")
@@ -845,7 +949,7 @@ def fetch_tago_cities(fx):
     return [(str(c.get("citycode")), str(c.get("cityname", "")).strip()) for c in got if c.get("citycode")]
 
 
-def prune_unserved(db, complete, api_served=None, api_ok=False):
+def prune_unserved(db, complete, api_served=None, api_ok=False, tago_counts=None, tago_trusted=()):
     """
     노선이 하나도 안 서는 정류장(폐지·미사용) 지우기. 지도·검색에 쓰지 않는 정류장이 남아 점이 겹치거나 하나 더 보였음
     (예: 전주 백자삼거리 옆 '백자동' JUB306101039 — 노선 0개).
@@ -866,12 +970,16 @@ def prune_unserved(db, complete, api_served=None, api_ok=False):
             served[p] = served.get(p, 0) + 1
     covered = {p for p, n in total.items() if p not in PRUNE_KEEP and served.get(p, 0) / n > PRUNE_MIN}
     gone = [sid for sid in ids if prefix(sid) in covered and sid not in used]
+    # 노선 자료가 일부만 있는 지역(경기·교통안전공단 등)과 아예 없는 지역: TAGO 가 이 정류장 경유노선이 0개라고 한 곳만
+    counts = tago_counts or {}
+    by_tago = [sid for sid in ids if sid not in used and prefix(sid) not in covered and prefix(sid) in tago_trusted and counts.get(sid) == 0]
+    gone += by_tago
     jub = [sid for sid in ids if sid.startswith("JUB")]
     # 다 받았고 정류장의 3/4 넘게 나왔을 때만 (2026-11: 2,913곳 중 2,565곳)
     if api_ok and api_served and jub and sum(1 for s in jub if s in api_served) / len(jub) > 0.75:
         gone += [sid for sid in jub if sid not in api_served and sid not in used]
     db.executemany("DELETE FROM stops WHERE id = ?", [(s,) for s in gone])
-    print(f"노선 없는 정류장 지우기: {len(gone)}곳 (지역 {len(covered)}곳 + 전주)", flush=True)
+    print(f"노선 없는 정류장 지우기: {len(gone)}곳 (노선 자료로 지역 {len(covered)}곳 + TAGO 확인 {len(by_tago)}곳 + 전주)", flush=True)
     return len(gone)
 
 
@@ -945,10 +1053,15 @@ def main():
     jeonju = fetch_jeonju_served()
     cities = fetch_tago_cities(fx)
     gbis_stops = fetch_gbis_stops(fx, BASE_DB, gbis)
+    new_used = {str(st.get("nodeid", "")).strip() for c in tago.values() for r in c["routes"].values() for st in r["stops"]}
+    new_used |= {str(st.get("nodeid", "")).strip() for lst in tsb.values() for st in lst}
+    new_used |= {"GGB" + str(r.get("stationId", "")).split(".")[0] for lst in gbis_stops.values() for r in lst}
+    unserved_check = fetch_unserved_check(fx, BASE_DB, new_used)
     jeju = fetch_jeju()
     print(f"TAGO 도시 목록: {len(cities)}곳", flush=True)
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju, tago_cities=cities,
-                            gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info)
+                            gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info,
+                            unserved_check=unserved_check)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
