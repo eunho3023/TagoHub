@@ -101,3 +101,50 @@ class HomeWeatherTest {
         assertEquals("7° 비" to "미세먼지 좋음", w.lines(com.eunho.tagohub.data.HomeWeather.Now(7.4, "비", "좋음")))
     }
 }
+
+/** 전기차 충전소 (환경부): 충전기 정보·상태 변경 해석과 덧입히기 */
+class EvMinistryTest {
+    private val ev = com.eunho.tagohub.data.EvCharger
+
+    @Test
+    fun parseInfoChangesAndText() {
+        val info = """{"items":{"item":[
+            {"statNm":"세종호수공원제2주차장","statId":"ME183162","chgerId":"01","chgerType":"06","addr":"세종특별자치시 어진동 621","lat":"36.5002765","lng":"127.2691866","useTime":"24시간 이용가능","busiNm":"기후에너지환경부","stat":"2","statUpdDt":"20261120070322","parkingFree":"Y","limitYn":"N","delYn":"N"},
+            {"statNm":"세종호수공원제2주차장","statId":"ME183162","chgerId":"02","chgerType":"02","addr":"세종특별자치시 어진동 621","lat":"36.5002765","lng":"127.2691866","useTime":"24시간 이용가능","busiNm":"기후에너지환경부","stat":"3","statUpdDt":"20261120070000","parkingFree":"Y","limitYn":"N","delYn":"N"},
+            {"statNm":"없어진 곳","statId":"X1","chgerId":"01","chgerType":"02","addr":"","lat":"36.5","lng":"127.2","stat":"2","statUpdDt":"","delYn":"Y"}
+        ]},"totalCount":3,"resultCode":"00"}"""
+        val (rows, total) = ev.parseMe(info)!!
+        assertEquals(3, total)
+        assertEquals(2, rows.size)
+        assertEquals(ev.FREE, rows[0].state)
+        assertTrue(rows[0].fast && !rows[1].fast)
+        // 오류 응답은 null (한전으로 넘어가게)
+        assertEquals(null, ev.parseMe("""{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}"""))
+
+        val ch = ev.parseChanges("""{"items":{"item":[{"statId":"ME183162","chgerId":"02","stat":"2","statUpdDt":"20261120071500"},{"statId":"ME183162","chgerId":"01","stat":"5","statUpdDt":"20261120060000"}]},"totalCount":2}""")!!
+        val now = ev.applyChanges(rows, ch)
+        assertEquals(ev.FREE, now[1].state)   // 07:15 에 충전 끝남
+        assertEquals(ev.FREE, now[0].state)   // 06:00 변경은 받아 둔 것(07:03)보다 오래돼서 무시
+        val f = ev.feature(ev.stations(now).single())
+        assertEquals("ev:2:ME183162", f.id)
+        assertEquals("충전 가능 2/2대 · 급속 1대 · 기후에너지환경부 · 세종특별자치시 어진동 621 · 24시간 · 주차 무료", f.details)
+    }
+}
+
+/** 미세먼지: 가까운 측정소 */
+class AirStationTest {
+    private val w = com.eunho.tagohub.data.HomeWeather
+
+    @Test
+    fun nearestStationAndValue() {
+        val list = w.parseStations("""{"response":{"body":{"items":[
+            {"stationName":"중구","addr":"서울 중구 덕수궁길 15","dmX":"37.564639","dmY":"126.975961"},
+            {"stationName":"강남구","addr":"서울 강남구 학동로 426","dmX":"37.517528","dmY":"127.047470"},
+            {"stationName":"좌표없음","dmX":"","dmY":""}
+        ]}}}""")
+        assertEquals(2, list.size)
+        assertEquals("중구", w.nearestStation(list, 37.5665, 126.9780)!!.name)
+        assertEquals(null, w.nearestStation(list, 35.18, 129.08))   // 부산: 30km 안에 없음
+        assertEquals("나쁨", w.parseStationAir("""{"response":{"body":{"items":[{"pm10Value":"-","pm25Value":"-"},{"pm10Value":"95","pm25Value":"20"}]}}}"""))
+    }
+}
