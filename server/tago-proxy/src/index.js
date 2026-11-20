@@ -206,7 +206,7 @@ const MOBILE_UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Ch
  * 웹 버전 JSON 중계 공통: 저장해 둔 것이 있으면 바로, 없으면 주소마다 분당 제한을 지나 [upstream] 에 묻고
  * [ok] 를 통과한 응답만 [ttl] 초 저장. 키가 든 주소는 응답·오류에 내보내지 않음
  */
-async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraHeaders = {}, allowXml = false) {
+async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraHeaders = {}, allowXml = false, post = null) {
   const cache = caches.default;
   const key = new Request(cacheUrl);
   const hit = await cache.match(key);
@@ -224,7 +224,9 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   const headers = { "Content-Type": "application/json; charset=utf-8", "X-Cache": "MISS", ...WEB_HEADERS };
   let res, body;
   try {
-    res = await fetch(upstream, { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } });
+    // post: 폼 내용을 POST 로 (제주 누리집 노선 정보처럼 GET 으로는 답하지 않는 곳)
+    res = await fetch(upstream, post == null ? { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } }
+      : { method: "POST", body: post, headers: { "User-Agent": MOBILE_UA, Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", ...extraHeaders } });
     body = await res.text();
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
@@ -281,8 +283,8 @@ async function busWeb(request, url, env, ctx) {
   const raw = env.DATA_GO_KR_KEY;
   const ok = r.area === "seoul" ? (b) => /"headerCd"\s*:\s*"[04]"/.test(b)
     : r.area === "jeonju" ? (b) => /<code[^>]*>000</.test(b)
-    // 제주는 배열로 답함 (노선 정류장·정류장 도착 모두. 도착은 STATION_ID 대신 ARRV_STATION_ID, 버스가 없으면 [])
-    : r.area === "jeju" ? (b) => b.trimStart().startsWith("[")
+    // 제주는 배열로 답함 (노선 정류장·정류장 도착 모두. 도착은 STATION_ID 대신 ARRV_STATION_ID, 버스가 없으면 []). 노선 정보(line)만 객체
+    : r.area === "jeju" ? (r.post ? (b) => /"routeId"\s*:/.test(b) : (b) => b.trimStart().startsWith("["))
     // 울산 BIS 는 XML(tableInfo), 정상은 resultCode 200
     : r.area === "ulsan" ? (b) => /<resultCode>200<\/resultCode>/.test(b)
     // 대전 BIS 도 XML(ServiceResult), 정상은 headerCd 0 (4 = 결과 없음)
@@ -290,7 +292,7 @@ async function busWeb(request, url, env, ctx) {
     : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
   const upstream = !r.url.includes("KEY") ? r.url : raw ? r.url.replace("KEY", encodeKey(raw)) : null;
   return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, upstream, r.ttl, ok,
-    r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju" || r.area === "ulsan" || r.area === "daejeon");
+    r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju" || r.area === "ulsan" || r.area === "daejeon", r.post ?? null);
 }
 
 /** 웹 버전 인천공항 운항 (proxy.js icnWebRequest). 정상(resultCode 00)만 1분 저장 */

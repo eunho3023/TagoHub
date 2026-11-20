@@ -255,6 +255,13 @@ test("제주 노선 정류장 차례: 제주 버스정보 (키 없음, 하루 �
   assert.equal(l.url, "https://bus.jeju.go.kr/api/searchBusRouteList.do");
   assert.equal(l.ttl, 86400);
   assert.equal(busWebRequest("/w/bus/jeju/routes/405130002"), null);
+  // 노선 종류 (누리집 노선 정보, POST): 제주만
+  const ln = busWebRequest("/w/bus/jeju/line/405410111");
+  assert.equal(ln.url, "https://bus.jeju.go.kr/data/search/getLineInfoByLineId");
+  assert.equal(ln.post, "lineId=405410111");
+  assert.equal(ln.ttl, 86400);
+  assert.equal(busWebRequest("/w/bus/seoul/line/100100118"), null);
+  assert.equal(busWebRequest("/w/bus/gg/line/233000031"), null);
   assert.equal(busWebRequest("/w/bus/jeju/stops/12"), null);
 });
 
