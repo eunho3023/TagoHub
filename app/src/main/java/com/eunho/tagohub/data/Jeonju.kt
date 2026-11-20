@@ -21,7 +21,7 @@ object JeonjuMappers {
     /** 정류장 도착 예정 (RTime = 초, RStop = 남은 정류장 수, viaStopname = 버스가 지금 있는 정류장) */
     fun arrival(r: Row) = BusArrival(
         routeId = Jeonju.tago(r.text("brtStdid")),
-        routeNo = r.text("brtId"),
+        routeNo = routeNo(r.text("brtId"), r.str("brtClass")),
         routeType = routeType(r.str("brtClass"), r.text("brtId"), r.str("brtVianame")?.substringBefore("->"), r.str("brtVianame")?.substringAfter("->", "")),
         vehicleType = if (r.str("busLow") == "1") "저상버스" else null,
         prevStops = r.int("RStop"),
@@ -39,6 +39,13 @@ object JeonjuMappers {
      * 간선을 먼저 봄: 6001·6002 는 비전대학교→비전대학교로 오가는 간선이라 기점·종점이 같아도 순환이 아님.
      * brtClass 는 종류가 아니라 번호 뒤 가지 번호(1 → 3-1, 2 → 3-2, 5 → 5-5, 전주시 누리집 BRT_NO)라 쓰지 않음.
      */
+    /** 화면에 보일 번호: brtId 에 가지 번호를 붙임 (3 + brtClass 1 → 3-1, 0·빈 값은 그대로, 전주시 누리집 BRT_NO 와 같음) */
+    fun routeNo(brtId: String, brtClass: String?): String {
+        val no = brtId.trim()
+        val cls = brtClass?.trim().orEmpty()
+        return if (no.isEmpty() || cls.isEmpty() || cls == "0" || "-" in no) no else "$no-$cls"
+    }
+
     @Suppress("UNUSED_PARAMETER")
     fun routeType(brtClass: String?, routeNo: String, start: String? = null, end: String? = null): String = when {
         Regex("^\\d{4}").containsMatchIn(routeNo.trim()) -> "간선"
@@ -48,7 +55,7 @@ object JeonjuMappers {
 
     fun stopRoute(r: Row) = BusRoute(
         routeId = Jeonju.tago(r.text("brtStdId").ifEmpty { r.text("brtStdid") }),
-        routeNo = r.text("brtId"),
+        routeNo = routeNo(r.text("brtId"), r.str("brtClass")),
         routeType = routeType(r.str("brtClass"), r.text("brtId"), r.str("brtSname"), r.str("brtEname")),
         startName = r.str("brtSname"),
         endName = r.str("brtEname"),
@@ -63,7 +70,7 @@ object JeonjuMappers {
     /** 노선 정보 (nosun/bus_location_busstop_info_common). 기점·종점은 "A->B" 형태라 앞뒤를 나눈다 */
     fun routeInfo(r: Row) = BusRoute(
         routeId = Jeonju.tago(r.text("brtStdid").ifEmpty { r.text("brtStdId") }),
-        routeNo = r.text("brtId"),
+        routeNo = routeNo(r.text("brtId"), r.str("brtClass")),
         routeType = routeType(r.str("brtClass"), r.text("brtId"), r.str("brtSname")?.substringBefore("->"), r.str("brtEname")?.substringAfter("->")),
         startName = r.str("brtSname")?.substringBefore("->")?.trim(),
         endName = r.str("brtEname")?.substringAfter("->")?.trim(),

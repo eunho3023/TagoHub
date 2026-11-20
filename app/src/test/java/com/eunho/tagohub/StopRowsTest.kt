@@ -33,7 +33,7 @@ class StopRowsTest {
     fun jeonjuRouteInfo_splitsArrowNames() {
         val info = JeonjuMappers.routeInfo(rows("jeonju_routeinfo.xml").single())
         assertEquals("JUB305001271", info.routeId)
-        assertEquals("3", info.routeNo)
+        assertEquals("3-1", info.routeNo)   // brtClass 1 = 가지 번호
         assertEquals("전주대학교", info.startName)
         assertEquals("전주대학교", info.endName)
         assertEquals("06:00", info.firstTime)

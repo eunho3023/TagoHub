@@ -933,6 +933,12 @@ def jeonju_type(cls, no, start, end):
     return "순환" if start and start.strip() == (end or "").strip() else "일반"
 
 
+def jeonju_no(no, cls):
+    """화면에 보일 전주 노선 번호 (앱 JeonjuMappers.routeNo 와 같음): brtId 에 가지 번호를 붙임 (3 + brtClass 1 → 3-1, 0·빈 값은 그대로)"""
+    no, cls = (no or "").strip(), (cls or "").strip()
+    return no if not no or not cls or cls == "0" or "-" in no else f"{no}-{cls}"
+
+
 def write_jeonju(db, routes, known):
     """전주 노선·정류장 순서·첫차·막차를 DB 에 (실시간은 전주 API 로: realtime = 'jeonju'). 다 받았을 때만 부름"""
     db.execute("DELETE FROM route_stops WHERE route_id LIKE 'JUB%'")
@@ -947,7 +953,7 @@ def write_jeonju(db, routes, known):
         rows = [(jid, seq, "JUB" + std, "" if "JUB" + std in known else (nm or "정류장"), None, None, None) for seq, std, nm in stops]
         db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
         db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                   (jid, it["brtId"], it["brtSname"] or None, it["brtEname"] or None, rows[0][2], rows[-1][2], "35010", "전주",
+                   (jid, jeonju_no(it["brtId"], it["brtClass"]), it["brtSname"] or None, it["brtEname"] or None, rows[0][2], rows[-1][2], "35010", "전주",
                     jeonju_type(it["brtClass"], it["brtId"], it["brtSname"], it["brtEname"]), "jeonju"))
         first, last = clock(it["brtFirstTime"] or None), clock(it["brtLastTime"] or None)
         if first or last:

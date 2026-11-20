@@ -362,7 +362,7 @@ async function liveStopRoutes(stop, same) {
     jobs.push(getText("w/bus/jeonju/routes/" + j).then((x) => [...new DOMParser().parseFromString(x, "text/xml").getElementsByTagName("list")].map((el) => {
       const r = {};
       for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
-      const no = String(r.brtid ?? "");
+      const no = jeonjuNo(r.brtid, r.brtclass);
       return { id: "JUB" + (r.brtstdid || ""), no, start: str(r.brtsname), end: str(r.brtename), type: jeonjuType(r.brtclass, no, r.brtsname, r.brtename), city: "35010" };
     })));
   }
@@ -603,6 +603,11 @@ async function tagoArrivals(city, node) {
 /** 정류장 실시간 도착: {state: "ok"|"unsupported"|"failed", list, at} */
 /** 전주 노선 종류 (앱 JeonjuMappers.routeType): 간선(4자리 번호, 6001·6002 처럼 기점=종점이어도) / 순환(기점과 종점이 같은 노선, 예: 2번) / 일반.
  *  cls(brtClass)는 종류가 아니라 가지 번호(3-1 의 1)라 쓰지 않음 */
+/** 화면에 보일 전주 노선 번호 (앱 JeonjuMappers.routeNo): brtid 에 가지 번호를 붙임 (3 + brtclass 1 → 3-1, 0·빈 값은 그대로) */
+export function jeonjuNo(no, cls) {
+  const n = String(no ?? "").trim(), c = String(cls ?? "").trim();
+  return !n || !c || c === "0" || n.includes("-") ? n : `${n}-${c}`;
+}
 export function jeonjuType(cls, no, start, end) {
   if (/^\d{4}/.test(String(no || "").trim())) return "간선";
   const s = String(start || "").trim();
@@ -614,7 +619,7 @@ async function jeonjuArrivals(id) {
   return [...new DOMParser().parseFromString(x, "text/xml").getElementsByTagName("list")].map((el) => {
     const r = {};
     for (const c of el.children) r[c.tagName.toLowerCase()] = c.textContent.trim();
-    const no = String(r.brtid ?? "");
+    const no = jeonjuNo(r.brtid, r.brtclass);
     return { routeId: "JUB" + (r.brtstdid || ""), routeNo: no, routeType: jeonjuType(r.brtclass, no, ...(r.brtvianame || "").split("->")),
       vehicleType: r.buslow === "1" ? "저상버스" : null, prevStops: int(r.rstop), arrSeconds: int(r.rtime), city: "35010",
       towards: str((r.brtvianame || "").split("->")[1]) };

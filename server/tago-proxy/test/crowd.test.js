@@ -9,7 +9,7 @@ globalThis.window = noop;
 // edits.js 가 불러올 때 거는 주기 확인(setInterval)이 테스트를 끝나지 못하게 붙잡지 않게
 const realInterval = globalThis.setInterval;
 globalThis.setInterval = (...a) => { const t = realInterval(...a); t.unref?.(); return t; };
-const { crowdSeoul, crowdGyeonggi, arrivalParts, atOrigin, markWaiting, passed, jeonjuType } = await import("../site/js/busdata.js");
+const { crowdSeoul, crowdGyeonggi, arrivalParts, atOrigin, markWaiting, passed, jeonjuType, jeonjuNo } = await import("../site/js/busdata.js");
 
 test("혼잡·빈자리: 서울 congestion·isFullFlag, 경기 crowded·remainSeatCnt (앱 Crowd 와 같게)", () => {
   assert.equal(crowdSeoul(3, 0), "여유");
@@ -36,6 +36,10 @@ test("기점에 서 있는 버스는 '정류장 도착'이 아니라 '출발 대
 test("전주 노선 종류: 기점과 종점이 같으면 순환 (2번 평화동종점→평화동종점, 앱 JeonjuMappers 와 같게)", () => {
   assert.equal(jeonjuType("0", "2", "평화동종점", "평화동종점"), "순환");
   assert.equal(jeonjuType("0", "104", "평화동종점", "송천동종점"), "일반");
+  assert.equal(jeonjuNo("3", "1"), "3-1");   // 가지 번호 붙임
+  assert.equal(jeonjuNo(3, 2), "3-2");
+  assert.equal(jeonjuNo("2", "0"), "2");
+  assert.equal(jeonjuNo("104", undefined), "104");
   assert.equal(jeonjuType("1", "7"), "일반");   // brtClass 1 은 가지 번호(7-1)
   assert.equal(jeonjuType("0", "6001", "비전대학교", "비전대학교"), "간선");   // 간선이 먼저
   assert.equal(jeonjuType("0", "4000"), "간선");
