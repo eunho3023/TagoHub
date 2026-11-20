@@ -36,16 +36,26 @@ object MapEdits {
     /** 관리자 키를 넣은 기기인지 (고치기 단추를 보일지) */
     val admin = MutableStateFlow(false)
 
+    /** 개발자 아이디로 로그인했는지 ([IdAccount]). 관리자 키 없이도 고칠 수 있음 (서버가 로그인 토큰을 확인) */
+    @Volatile private var devAccount = false
+
+    fun adminKeySet(): Boolean = adminKey.length >= 16
+
+    fun setDeveloper(on: Boolean) {
+        devAccount = on
+        admin.value = adminKeySet() || on
+    }
+
     fun loadAdmin(context: android.content.Context) {
         adminKey = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(ADMIN_PREF, null).orEmpty()
-        admin.value = adminKey.length >= 16
+        admin.value = adminKeySet() || devAccount
     }
 
     /** 키가 서버와 맞으면 저장하고 true. 빈 글자면 지우고(관리자 끄기) false */
     suspend fun setAdminKey(context: android.content.Context, key: String): Boolean {
         val k = key.trim()
         val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-        if (k.isEmpty()) { prefs.edit().remove(ADMIN_PREF).apply(); adminKey = ""; admin.value = false; return false }
+        if (k.isEmpty()) { prefs.edit().remove(ADMIN_PREF).apply(); adminKey = ""; admin.value = devAccount; return false }
         val b = base() ?: return false
         val ok = withContext(Dispatchers.IO) {
             runCatching { client.newCall(Request.Builder().url("$b/w/edits/check").header(ADMIN_HEADER, k).build()).execute().use { it.code == 200 } }.getOrDefault(false)
@@ -147,16 +157,18 @@ object MapEdits {
     private suspend fun post(kind: Kind, id: String, data: Any): String? {
         val b = base() ?: return "서버 주소가 없어 저장할 수 없어요"
         val json = JSONObject().put("kind", kind.key).put("id", id).put("data", data).toString()
+        // 관리자 키가 없으면 개발자 아이디 로그인 토큰으로
+        val token = if (adminKeySet()) null else IdAccount.devToken()
         val code = withContext(Dispatchers.IO) {
             runCatching {
-                client.newCall(Request.Builder().url("$b/w/edits").header(ADMIN_HEADER, adminKey).post(json.toRequestBody("application/json".toMediaType())).build()).execute().use { r ->
+                client.newCall(Request.Builder().url("$b/w/edits").apply { if (token != null) header("Authorization", "Bearer $token") else header(ADMIN_HEADER, adminKey) }.post(json.toRequestBody("application/json".toMediaType())).build()).execute().use { r ->
                     // 서버 판 번호를 맞춰 둠 (내가 고친 것을 다시 받지 않게)
                     if (r.code == 200) runCatching { JSONObject(r.body.string()).optLong("v", -1) }.getOrNull()?.takeIf { it >= 0 }?.let { serverV = it }
                     r.code
                 }
             }.getOrDefault(-1)
         }
-        return if (code == 200) null else when (code) { 429 -> "잠시 뒤에 다시 저장해 주세요"; 403 -> "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요"; -1 -> "인터넷 연결을 확인해 주세요"; else -> "저장하지 못했어요 ($code)" }
+        return if (code == 200) null else when (code) { 429 -> "잠시 뒤에 다시 저장해 주세요"; 403 -> "개발자만 고칠 수 있어요. 개발자 아이디로 로그인하거나 설정에서 관리자 키를 확인해 주세요"; -1 -> "인터넷 연결을 확인해 주세요"; else -> "저장하지 못했어요 ($code)" }
     }
 
     private fun round(v: Double, d: Int): Double = Math.round(v * Math.pow(10.0, d.toDouble())) / Math.pow(10.0, d.toDouble())

@@ -800,14 +800,15 @@ private fun DriveStartBar(plan: RidePlan, onOverview: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
             ) { Text("전체경로", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             // 모의주행은 개발자용 시험 기능: 개발자 모드에서만
-            // 출시용(NAVI=false)은 길안내가 없어 「전체경로」만
-            if (com.eunho.tagohub.BuildConfig.NAVI && com.eunho.tagohub.core.DevMode.on) Button(
+            // 길안내는 개발자만 (개발자 아이디로 로그인·관리자 키): 일반 사용자는 「전체경로」만
+            val developer = com.eunho.tagohub.data.IdAccount.developer.collectAsStateWithLifecycle().value
+            if (developer && com.eunho.tagohub.core.DevMode.on) Button(
                 onClick = { begin(true) },
                 modifier = Modifier.weight(1f).height(58.dp),
                 shape = RoundedCornerShape(0.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
             ) { Text("모의주행", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-            if (com.eunho.tagohub.BuildConfig.NAVI) Button(
+            if (developer) Button(
                 onClick = { begin(false) },
                 modifier = Modifier.weight(2f).height(58.dp),
                 shape = RoundedCornerShape(0.dp),
