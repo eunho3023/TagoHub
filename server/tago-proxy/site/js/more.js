@@ -5,6 +5,7 @@ import { go } from "./nav.js";
 import { Theme } from "./store.js";
 import { busSearch } from "./bus.js";
 import * as Edits from "./edits.js";
+import * as Account from "./account.js";
 import { directionsScreen } from "./places.js";
 
 // ── 대중교통 탭: 버스·지하철·기차·고속시외·항공·도로 ──
@@ -49,7 +50,14 @@ export function settings(root) {
       note((bad ? `${bad}곳이 지금 잘 안 돼요. 그곳 정보는 늦거나 보이지 않을 수 있어요. ` : "모든 제공처와 잘 연결돼 있어요. ") + (health.at ? ago(health.at) + " 확인 · 30분마다 확인해요" : ""));
   };
   // 관리자 키: 맞는 키를 넣은 브라우저에서만 노선 모양·정류장 위치 고치기 단추가 보임 (키는 배포한 컴퓨터의 local.properties EDIT_ADMIN_KEY)
-  const adminHtml = () => sectionHead("관리자") + (Edits.isAdmin()
+  // 아이디 계정: 폰 앱과 같은 아이디. 개발자 아이디면 지도 고치기
+  const accountHtml = () => {
+    const a = Account.current();
+    return sectionHead("계정") + (a
+      ? `<div class="list"><div class="row"><span class="grow"><b>아이디: ${esc(a.username)}${a.dev ? " · 개발자" : ""}</b><small>${a.dev ? "노선·정류장 화면에서 지도 고치기를 할 수 있어요" : "폰 앱과 같은 아이디로 로그인했어요"}</small></span>${a.dev ? `<button class="link" ${act(() => go("fixstops"))}>지도 고치기</button>` : ""}<button class="link" ${act(() => { Account.logout(); draw(); })}>로그아웃</button></div></div>`
+      : `<div class="list"><button class="row" ${act(() => go("login"))}><span class="grow"><b>아이디로 로그인·회원가입</b><small>폰 앱과 같은 아이디를 써요</small></span></button></div>`);
+  };
+  const adminHtml = () => sectionHead("관리자") + (Edits.hasAdminKey()
     ? `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장 화면에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(() => go("fixstops"))}>지도 고치기 열기</button><button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 모드를 껐어요"; draw(); })}>끄기</button></div></div>`
     : `<div class="searchbox"><input id="adminkey" type="password" autocomplete="off" placeholder="관리자 키"><div class="flexrow"><small class="grow">지도 고치기는 관리자만 할 수 있어요</small><button class="btn" ${checking ? "disabled" : ""} ${act(async () => {
         const v = root.querySelector("#adminkey")?.value || "";
@@ -64,6 +72,7 @@ export function settings(root) {
       sectionHead("정보") +
       `<div class="list"><button class="row" ${act(() => go("notices"))}><b class="grow">공지사항</b></button>
        <button class="row" ${act(() => go("report"))}><span class="grow"><b>앱 제보</b><small>불편한 점이나 틀린 정보를 알려 주세요</small></span></button></div>` +
+      accountHtml() +
       healthHtml() +
       adminHtml() +
       sectionHead("약관 및 정책") +
@@ -72,6 +81,7 @@ export function settings(root) {
       note("웹 버전 · 폰 앱과 같은 공공 자료를 씁니다. 즐겨찾기·집·회사·최근 기록은 이 기기(브라우저)에만 저장돼요. 교통 정보는 제공처 사정으로 늦거나 실제와 다를 수 있어요.");
   };
   draw();
+  return Account.onChange(draw);
 }
 
 // ── 앱 제보: 폰 앱과 같은 곳(Firebase, 서버 /w/report)으로. 못 보내면 깃허브 이슈로 ──
