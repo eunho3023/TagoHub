@@ -39,4 +39,13 @@ test("열차 자리: 도착은 그 역, 출발은 행선지 쪽 다음 역으로
   const s2 = placeTrain(real, a2, { statnNm: "을지로입구", statnTnm: "성수종착", trainSttus: "2", trainNo: "2", updnLine: "0", directAt: "0", lstcarAt: "0" });
   assert.equal(s2.dest, "성수");
   assert.notDeepEqual([s2.lat, s2.lng], real.stations[s2.at].slice(1, 3));
+  // 이름이 다른 역·행선지: 성수종착(역), 신도림지선·응암순환(상선)(행선지), 지제·뚝섬유원지·세종왕릉
+  const R = (st, de) => ({ statnNm: st, statnTnm: de, trainSttus: "1", trainNo: "3", updnLine: "0", directAt: "0", lstcarAt: "0" });
+  const at = (id, r) => { const l = lines[id], t2 = placeTrain(l, adjacency(l), r); return t2 && [l.stations[t2.at][0], t2.dest]; };
+  assert.deepEqual(at("1002", R("성수종착", "신도림지선")), ["성수", "신도림"]);
+  assert.deepEqual(at("1006", R("역촌", "응암순환(상선)")), ["역촌", "응암"]);
+  assert.deepEqual(at("1001", R("지제", "신창")), ["평택지제", "신창"]);
+  assert.deepEqual(at("1007", R("뚝섬유원지", "장암")), ["자양", "장암"]);
+  assert.deepEqual(at("1081", R("세종왕릉", "판교")), ["세종대왕릉", "판교"]);
+  assert.deepEqual(at("1001", R("지행", "광운대행")), ["지행", "광운대"]);   // 역 이름 끝 '행'은 그대로
 });
