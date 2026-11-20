@@ -19,3 +19,22 @@ export function reconcile(prev, items, keyOf, make, remove) {
   for (const o of prev.values()) remove(o);
   return next;
 }
+
+/** 점이 이보다 많으면 솎음 (서울 줌 15: 정류장 400·공영자전거 151·편의시설 146 = 697개에 확대·축소 뒤 0.68초 멈춤) */
+export const THIN_OVER = 300;
+/**
+ * 빽빽한 점 솎기: [ds] 가 [over] 개보다 많으면 화면 [cellPx]px 칸마다 처음 점 하나만 (앞에 있는 점이 먼저).
+ * 고른 점(위에 이름이 뜨는 labelUp: 고른 정류장)은 늘 남김. [mpp]: 1px 이 몇 m
+ */
+export function thinDots(ds, mpp, cellPx = 22, over = THIN_OVER) {
+  if (!mpp || ds.length <= over) return ds;
+  const cell = mpp * cellPx, seen = new Set(), out = [];
+  for (const d of ds) {
+    if (d.labelUp) { out.push(d); continue; }
+    const k = Math.floor((d.lat * 110540) / cell) + ":" + Math.floor((d.lng * 111320 * Math.cos((d.lat * Math.PI) / 180)) / cell);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(d);
+  }
+  return out;
+}
