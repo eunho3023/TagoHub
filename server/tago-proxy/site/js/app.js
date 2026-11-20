@@ -138,8 +138,8 @@ export function stopsMap(host, focus) {
     // 점이 빽빽하면(300개 넘게) 화면 22px 칸마다 하나만 (mapdiff.js thinDots): 확대·축소 때 카카오 지도가 점 수백 개를 다시 맞추느라 멈췄음.
     // 정류장을 먼저 (교통 점보다 앞에), 고른 정류장(이름표)은 늘 남김
     MapView.dots(thinDots(
-      // 지하철역이 맨 앞 (솎을 때 남게): 흰 점에 노선 색 테두리, 고르면 이름
-      [...stations.map((g, i) => ({ id: "sub:" + i, lat: g.lat, lng: g.lng, color: "#fff", ring: subwayColor(g.lines[0]), r: 6, label: MapView.zoom() >= 15 ? g.name : null })),
+      // 지하철역이 맨 앞 (솎을 때 남게): 노선 색 점(정류장보다 크게), 줌 14부터 노선 색 이름표 (흰 점·흰 이름표는 지도에 묻혀 안 보였음)
+      [...stations.map((g, i) => ({ id: "sub:" + i, lat: g.lat, lng: g.lng, color: subwayColor(g.lines[0]), ring: "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null })),
       ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
         .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
