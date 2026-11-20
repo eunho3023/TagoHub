@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -54,6 +55,16 @@ def get(k, op, params):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "TagoHub-pipeline"}), timeout=30) as r:
                 t = r.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            # 하루 한도가 차면 HTTP 429 + LIMITED_NUMBER… 로 답함 (200 이 아님). 전에는 이것을 잠깐 끊김으로 보고
+            # 요청마다 네 번씩 다시 물어 6,648개를 10시간 넘게 붙잡고 있었음 (2026-11-20 데이터 갱신이 3시간 넘게 멈춤)
+            try:
+                body = e.read().decode("utf-8", "replace")
+            except Exception:
+                body = ""
+            if e.code == 429 or "LIMITED_NUMBER_OF_SERVICE_REQUESTS" in body:
+                raise Limit()
+            continue
         except Exception:
             continue
         if "LIMITED_NUMBER_OF_SERVICE_REQUESTS" in t:
