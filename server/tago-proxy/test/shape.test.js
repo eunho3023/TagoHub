@@ -173,13 +173,13 @@ test("예약 작업: 노선 묶음을 줄에 넣고, 1분마다 하나씩 만들
   assert.equal(r2.saved, true);
   assert.ok(shapes.get("R1").sig.startsWith("v7:"));
   assert.ok(!queue.has("R1"));
-  assert.equal(meta.get("ver"), "10");
+  assert.equal(meta.get("ver"), "11");
   // 모양 만드는 방식이 바뀌면(판) 노선 묶음을 처음부터 다시 훑고, 지금 방식이 아닌(v8) 모양은 다시 만듦
   meta.set("bucket", "1024"); meta.set("ver", "8");
   shapes.set("R1", { sig: "v8:2:36.0000,127.0000:36.0100,127.0000:k", poly: "x" });
   const r3 = await shapeCron(env, osrm);
   assert.equal(r3.bucket, 0);
-  assert.equal(meta.get("ver"), "10");
+  assert.equal(meta.get("ver"), "11");
   assert.ok(queue.has("R1"));
 });
 
@@ -273,4 +273,16 @@ test("OSRM 이 정류장에서 직진만 하다 빙 돌아가면 U턴을 허락�
   assert.deepEqual(asked.slice(0, 2), ["true", "false"]);
   assert.ok(shape && shape.every((p) => p[0] < 34.25 && p[0] > 34.23), "60km 돌아가는 길이 아님");
   assert.ok(shape.length > stops.length, "직선이 아니라 길");
+});
+
+test("예전 방식으로 만든 긴 직선 모양은 다시 만들 것으로 봄 (버스 자리 모양·새로 만든 모양은 아님)", async () => {
+  const { longStraight, staleStraight, STRAIGHT_FIX_AT } = await import("../src/shape.js");
+  const straight = encode([[34.2382, 127.2499], [34.2244, 127.2522]], 5);   // 상촌 → 의성 1.5km 직선
+  const road = encode(Array.from({ length: 20 }, (_, i) => [34.2382 - i * 0.0007, 127.2499 + i * 0.0001]), 5);
+  assert.equal(longStraight(straight), true);
+  assert.equal(longStraight(road), false);
+  assert.equal(staleStraight({ sig: "v7:a:k", poly: straight, made: STRAIGHT_FIX_AT - 100 }), true);
+  assert.equal(staleStraight({ sig: "v7:a:k", poly: straight, made: STRAIGHT_FIX_AT + 100 }), false);   // 고친 뒤 만들었는데도 직선: 길이 없음
+  assert.equal(staleStraight({ sig: "v7:a:k:g", poly: straight, made: 0 }), false);
+  assert.equal(staleStraight({ sig: "v7:a:k", poly: road, made: 0 }), false);
 });
