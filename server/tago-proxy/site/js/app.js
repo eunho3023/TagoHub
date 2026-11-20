@@ -1,6 +1,7 @@
 // 틀: 주소(#…)로 화면 바꾸기(브라우저 뒤로 가기도 됨), 아래 탭, 넓은 화면은 왼쪽 목록 + 오른쪽 지도.
 // 지도 탭은 없음: 홈에 지도가 바로 보임 (좁으면 홈 안, 넓으면 오른쪽)
 import { MapView } from "./map.js";
+import { thinDots } from "./mapdiff.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
 import { applyTheme } from "./store.js";
@@ -120,10 +121,13 @@ export function stopsMap(host, focus) {
   const draw = () => {
     const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
     MapView.lines(traffic ? traffic.lines() : []);
-    MapView.dots(
-      [...(traffic ? traffic.dots() : []), ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
+    // 점이 빽빽하면(300개 넘게) 화면 22px 칸마다 하나만 (mapdiff.js thinDots): 확대·축소 때 카카오 지도가 점 수백 개를 다시 맞추느라 멈췄음.
+    // 정류장을 먼저 (교통 점보다 앞에), 고른 정류장(이름표)은 늘 남김
+    MapView.dots(thinDots(
+      [...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
-        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; })],
+        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
+      ...(traffic ? traffic.dots() : [])], MapView.metersPerPx()),
       (d) => {
         // 돌발·공영자전거·주차장·편의시설 점은 카드 (topis.js card)
         if (/^(acc|bike|park|pl):/.test(d.id)) {
