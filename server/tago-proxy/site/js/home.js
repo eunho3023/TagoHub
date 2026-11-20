@@ -22,7 +22,7 @@ const st = {
 export function render(root, _p, ctx) {
   let alive = true;
   root.innerHTML = `<div class="homecard">
-      <div class="brand">${logo()}<div class="grow"><b>모두의 지도</b><small>원하는 곳 어디든지!</small></div></div>
+      <div class="brand">${logo()}<div class="grow"><b>모두의 지도</b><small>원하는 곳 어디든지! 모두가 함께 만들어가는 지도!</small></div></div>
       <label class="bigsearch">${icon("pin", 20)}<input id="q" type="search" placeholder="정류장 이름으로 찾기" value="${esc(st.q)}" autocomplete="off"></label>
     </div>${ctx && !ctx.wide ? `<div class="map-slot home-map"></div>` : ""}<div id="body"></div>`;
   const body = root.querySelector("#body");
