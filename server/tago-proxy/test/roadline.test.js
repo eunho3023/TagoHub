@@ -102,6 +102,11 @@ test("곧은 길 펴기: 시골길의 완만한 굽이·회전교차로·터미�
   // 들어온·나간 방향이 같은 C자 굽이 (꼭짓점 듬성듬성, 15m 벗어남): 그대로
   const bend = [at(-100, 0), at(0, 0), at(70, 8), at(140, 15), at(210, 8), at(280, 0), at(380, 0)];
   assert.deepEqual(straighten(bend), bend);
+  // 촘촘한 산길 굽이 (8m 넘게, 구간 거의 전체가 한쪽으로 벗어남, 꼭짓점에서 크게 안 꺾임): 그대로 (전주 공식 그림 산길)
+  const hill = [at(-100, 0), at(-50, 0)];
+  for (let x = 0; x <= 120; x += 10) hill.push(at(x, -15 * Math.sin((x / 120) * Math.PI)));
+  hill.push(at(170, 0), at(250, 0));
+  assert.ok(straighten(hill).some((p) => yOf(p) < -10), "산길 굽이를 남김");
   // 작은 회전교차로를 반 바퀴만 돌고 같은 방향으로 나감 (반지름 12m, 도아삼거리): 그대로
   const ring = [at(-100, 0), at(-50, 0), at(-12, 0)];
   for (let d = 180; d >= 0; d -= 20) ring.push(at(12 * Math.cos((d * Math.PI) / 180), -12 * Math.sin((d * Math.PI) / 180)));

@@ -182,6 +182,10 @@ class ShapeTest {
     fun straighten_keepsRealBendsRoundaboutsAndTerminals() {
         val bend = listOf(at(-100.0, 0.0), at(0.0, 0.0), at(70.0, 8.0), at(140.0, 15.0), at(210.0, 8.0), at(280.0, 0.0), at(380.0, 0.0))
         assertEquals(bend, Shapes.straighten(bend))
+        val hill = mutableListOf(at(-100.0, 0.0), at(-50.0, 0.0))
+        for (x in 0..120 step 10) hill += at(x.toDouble(), -15 * Math.sin(x / 120.0 * Math.PI))
+        hill += listOf(at(170.0, 0.0), at(250.0, 0.0))
+        assertTrue("산길 굽이를 남김", Shapes.straighten(hill).any { yOf(it) < -10 })
         val ring = mutableListOf(at(-100.0, 0.0), at(-50.0, 0.0), at(-12.0, 0.0))
         for (d in 180 downTo 0 step 20) ring += at(12 * Math.cos(Math.toRadians(d.toDouble())), -12 * Math.sin(Math.toRadians(d.toDouble())))
         ring += listOf(at(50.0, 0.0), at(100.0, 0.0))
