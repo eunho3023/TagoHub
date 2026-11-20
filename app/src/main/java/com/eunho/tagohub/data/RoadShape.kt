@@ -46,9 +46,10 @@ object Osrm {
     /** 한 번에 보내는 경유지 수 (공개 서버 부담을 줄이려고 나눠서 요청) */
     const val CHUNK = 25
 
-    fun url(points: List<LatLng>): String =
+    /** straight=false: 경유지(정류장)에서 U턴을 허락 (항구·종점처럼 들어갔다 되돌아 나오는 정류장, 웹 서버 shape.js osrmPath 와 같음) */
+    fun url(points: List<LatLng>, straight: Boolean = true): String =
         BASE + points.joinToString(";") { String.format(Locale.ROOT, "%.6f,%.6f", it.lng, it.lat) } +
-            "?overview=full&geometries=polyline6&continue_straight=true"
+            "?overview=full&geometries=polyline6&continue_straight=$straight"
 
     /** 앞 구간 끝 정류소를 다음 구간 시작으로 겹쳐서 나눈다 */
     /**
