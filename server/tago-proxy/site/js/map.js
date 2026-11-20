@@ -50,7 +50,7 @@ function dotEl(d) {
     const t = document.createElement("div");
     t.className = d.labelUp ? "mdot-label up" : "mdot-label";
     t.textContent = d.label;
-    t.style.cssText = d.labelUp ? `bottom:${d.r + 8}px;background:${d.color}` : `left:${d.r + 6}px;background:${d.color}`;
+    t.style.cssText = d.labelUp ? `bottom:${d.r + 8}px;background:${d.labelColor || d.color}` : `left:${d.r + 6}px;background:${d.labelColor || d.color}`;
     wrap.appendChild(t);
   }
   // 카카오 지도는 마우스 누름을 지도 끌기로 가져가서, 점을 누른 것은 직접 받음 (끌다가 놓은 것은 무시)
@@ -100,7 +100,8 @@ async function kakaoImpl() {
     lines(ls) {
       lineObjs = reconcile(lineObjs, ls, lineKey, (l) => {
         const path = l.pts.map((p) => new K.LatLng(p[0], p[1]));
-        return [new K.Polyline({ map, path, strokeWeight: l.width + 4, strokeColor: "#ffffff", strokeOpacity: 0.9 }),
+        // 흰 테두리는 l.casing === false 면 빼고 하나만 (서울 소통 선 수백 개: 그리는 수를 반으로)
+        return [...(l.casing === false ? [] : [new K.Polyline({ map, path, strokeWeight: l.width + 4, strokeColor: "#ffffff", strokeOpacity: 0.9 })]),
           new K.Polyline({ map, path, strokeWeight: l.width, strokeColor: l.color, strokeOpacity: 1, strokeStyle: l.dash ? "shortdash" : "solid" })];
       }, (o) => o.forEach((x) => x.setMap(null)));
     },
@@ -142,7 +143,7 @@ async function leafletImpl() {
     fit(pts) { if (pts.length) map.fitBounds(pts, { padding: [40, 40] }); },
     lines(ls) {
       lineObjs = reconcile(lineObjs, ls, lineKey, (l) => [
-        L.polyline(l.pts, { color: "#fff", weight: l.width + 4, opacity: 0.9 }).addTo(lineLayer),
+        ...(l.casing === false ? [] : [L.polyline(l.pts, { color: "#fff", weight: l.width + 4, opacity: 0.9 }).addTo(lineLayer)]),
         L.polyline(l.pts, { color: l.color, weight: l.width, dashArray: l.dash ? "6 6" : null }).addTo(lineLayer),
       ], (o) => o.forEach((x) => lineLayer.removeLayer(x)));
     },
