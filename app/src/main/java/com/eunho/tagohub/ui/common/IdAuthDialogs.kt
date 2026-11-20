@@ -50,11 +50,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eunho.tagohub.data.CloudAccount
 import com.eunho.tagohub.data.IdAccount
+import com.eunho.tagohub.data.MapEdits
 import com.eunho.tagohub.data.PhoneNumber
 import kotlinx.coroutines.launch
 
 /** 아이디 회원 창의 화면들 */
-private enum class IdPage { Login, SignUp, FindId, Reset }
+private enum class IdPage { Login, SignUp, FindId, Reset, Admin }
 
 private const val ASKED_PREF = "id_login_asked"
 
@@ -108,9 +109,11 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
     var smsFailed by rememberSaveable { mutableStateOf(false) }
     var byPhone by rememberSaveable { mutableStateOf(true) }
     var found by remember { mutableStateOf<List<String>?>(null) }
+    var adminKey by remember { mutableStateOf("") }
+    val isAdmin by MapEdits.admin.collectAsStateWithLifecycle()
     var resetStep by rememberSaveable { mutableStateOf(0) }   // 0 확인 전, 1 문자 보냄(새 비밀번호), 2 메일 보냄
 
-    fun go(p: IdPage) { page = p; error = null; info = null; password = ""; confirm = ""; code = ""; codeSent = false; smsFailed = false; found = null; resetStep = 0 }
+    fun go(p: IdPage) { page = p; adminKey = ""; error = null; info = null; password = ""; confirm = ""; code = ""; codeSent = false; smsFailed = false; found = null; resetStep = 0 }
     fun run(block: suspend () -> Unit) { busy = true; error = null; scope.launch { try { block() } finally { busy = false } } }
     fun toast(msg: String) = android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
 
@@ -127,7 +130,7 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
     val field = Modifier.fillMaxWidth()
     val pwKeyboard = KeyboardOptions(keyboardType = KeyboardType.Password)
 
-    val title = when (page) { IdPage.Login -> "로그인"; IdPage.SignUp -> "회원가입"; IdPage.FindId -> "아이디 찾기"; IdPage.Reset -> "비밀번호 찾기" }
+    val title = when (page) { IdPage.Login -> "로그인"; IdPage.SignUp -> "회원가입"; IdPage.FindId -> "아이디 찾기"; IdPage.Reset -> "비밀번호 찾기"; IdPage.Admin -> "관리자로 로그인" }
     fun back() { if (!busy) { if (page == IdPage.Login) onDismiss() else go(IdPage.Login) } }
 
     // 따로 된 전체 화면 창: 위에 뒤로·제목, 가운데 입력칸, 아래 큰 버튼
@@ -151,6 +154,16 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                             OutlinedTextField(username, { username = it }, field, label = { Text("아이디") }, singleLine = true)
                             OutlinedTextField(password, { password = it }, field, label = { Text("비밀번호") }, singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwKeyboard)
+                        }
+
+                        IdPage.Admin -> {
+                            if (isAdmin && MapEdits.adminKeySet()) Text("관리자 모드가 켜져 있어요. 노선·정류장 화면에서 지도 고치기를 할 수 있어요.")
+                            else {
+                                OutlinedTextField(adminKey, { adminKey = it }, field, label = { Text("관리자 키") }, singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwKeyboard)
+                                Text("관리자 키를 넣으면 이 기기에서 지도 고치기(노선 모양·정류장·역 위치)를 할 수 있어요.",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
 
                         IdPage.SignUp -> {
@@ -243,6 +256,17 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                             }
                         }) { Text(if (busy) "가입 중…" else "가입") }
 
+                        IdPage.Admin -> if (isAdmin && MapEdits.adminKeySet()) {
+                            Button(modifier = field.height(52.dp), enabled = !busy, onClick = { onDismiss() }) { Text("닫기") }
+                            TextButton(modifier = field, enabled = !busy, onClick = {
+                                run { MapEdits.setAdminKey(context, ""); toast("관리자 모드를 껐어요"); go(IdPage.Admin) }
+                            }) { Text("관리자 모드 끄기") }
+                        } else Button(modifier = field.height(52.dp), enabled = !busy && adminKey.isNotBlank(), onClick = {
+                            run {
+                                if (MapEdits.setAdminKey(context, adminKey)) { toast("관리자 모드를 켰어요"); onDismiss() } else error = "키가 맞지 않아요"
+                            }
+                        }) { Text(if (busy) "확인 중…" else "관리자로 로그인") }
+
                         IdPage.FindId -> Button(modifier = field.height(52.dp), enabled = !busy, onClick = {
                             run {
                                 IdAccount.find(phone.takeIf { byPhone }, email.takeIf { !byPhone })
@@ -277,6 +301,9 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                             TextButton(enabled = !busy, onClick = { go(IdPage.FindId) }) { Text("아이디 찾기", fontSize = 13.sp) }
                             TextButton(enabled = !busy, onClick = { go(IdPage.Reset) }) { Text("비밀번호 찾기", fontSize = 13.sp) }
                             TextButton(enabled = !busy, onClick = { go(IdPage.SignUp) }) { Text("회원가입", fontSize = 13.sp) }
+                        }
+                        TextButton(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = { go(IdPage.Admin) }) {
+                            Text(if (isAdmin && MapEdits.adminKeySet()) "관리자 모드 켜짐" else "관리자로 로그인", fontSize = 13.sp)
                         }
                     }
                 }

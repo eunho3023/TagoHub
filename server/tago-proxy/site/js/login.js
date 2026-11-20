@@ -3,18 +3,19 @@
 import { esc } from "./core.js";
 import { act, header } from "./ui.js";
 import { go } from "./nav.js";
+import * as Edits from "./edits.js";
 import { MIN_PASSWORD, NET, post, phoneOk, emailOk, current, logout, login, signUp, onChange } from "./account.js";
 
 // ── 화면 ──
 
-const TITLES = { login: "로그인", signup: "회원가입", findid: "아이디 찾기", reset: "비밀번호 찾기" };
+const TITLES = { login: "로그인", signup: "회원가입", findid: "아이디 찾기", reset: "비밀번호 찾기", admin: "관리자로 로그인" };
 // 입력값은 화면을 오가도 남김 (비밀번호는 화면을 바꾸면 지움)
-const form = { username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
+const form = { adminkey: "", username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
 
 export function loginScreen(root, p) {
   const page = TITLES[p.id] ? p.id : "login";
   let busy = false, error = "", info = "", found = null, mailSent = false;
-  form.password = ""; form.confirm = "";
+  form.password = ""; form.confirm = ""; form.adminkey = "";
 
   const input = (name, label, type = "text", extra = "") =>
     `<label class="authfield"><span>${label}</span><input name="${name}" type="${type}" value="${esc(form[name])}" ${extra}></label>`;
@@ -35,16 +36,28 @@ export function loginScreen(root, p) {
   const done = (msg) => { info = msg; history.length > 1 ? history.back() : go("settings"); };
 
   function body() {
+    if (page === "admin") {
+      if (Edits.hasAdminKey()) return `<p class="authhint">관리자 모드가 켜져 있어요. 노선·정류장 화면에서 지도 고치기를 할 수 있어요.</p>` +
+        `<button class="btn authbtn" ${act(() => go("fixstops"))}>지도 고치기 열기</button>` +
+        `<button class="link authlink" ${act(async () => { await Edits.setAdminKey(""); info = "관리자 모드를 껐어요"; draw(); })}>관리자 모드 끄기</button>`;
+      return input("adminkey", "관리자 키", "password", 'autocomplete="off"') +
+        `<p class="authhint">관리자 키를 넣으면 이 브라우저에서 지도 고치기(노선 모양·정류장·역 위치)를 할 수 있어요.</p>` +
+        submit("관리자로 로그인", () => doing(async () => {
+          if (await Edits.setAdminKey(form.adminkey)) { form.adminkey = ""; done("관리자 모드를 켰어요"); } else error = "키가 맞지 않아요";
+        }), !!form.adminkey.trim());
+    }
     if (current() && page === "login") {
       return `<p class="authhint">${esc(current().username)} 아이디로 로그인했어요${current().dev ? " · 개발자" : ""}.</p>` +
         `<button class="btn authbtn" ${act(() => go("settings"))}>설정으로</button>` +
-        `<button class="link authlink" ${act(() => { logout(); draw(); })}>로그아웃</button>`;
+        `<button class="link authlink" ${act(() => { logout(); draw(); })}>로그아웃</button>` +
+        `<button class="link authlink" ${act(() => go("login", "admin"))}>${Edits.hasAdminKey() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`;
     }
     if (page === "login") {
       return input("username", "아이디", "text", 'autocomplete="username" autocapitalize="none"') +
         input("password", "비밀번호", "password", 'autocomplete="current-password"') +
         submit("로그인", () => doing(async () => { const m = await login(form.username, form.password); if (m) error = m; else done("로그인했어요"); })) +
-        `<div class="authlinks"><button class="link" ${act(() => go("login", "findid"))}>아이디 찾기</button><button class="link" ${act(() => go("login", "reset"))}>비밀번호 찾기</button><button class="link" ${act(() => go("login", "signup"))}>회원가입</button></div>`;
+        `<div class="authlinks"><button class="link" ${act(() => go("login", "findid"))}>아이디 찾기</button><button class="link" ${act(() => go("login", "reset"))}>비밀번호 찾기</button><button class="link" ${act(() => go("login", "signup"))}>회원가입</button></div>` +
+        `<button class="link authlink" ${act(() => go("login", "admin"))}>${Edits.hasAdminKey() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`;
     }
     if (page === "signup") {
       return input("username", "아이디 (영어 소문자·숫자 4~20자)", "text", 'autocomplete="username" autocapitalize="none"') +
@@ -101,6 +114,7 @@ export function loginScreen(root, p) {
       form[n] = n === "username" && page !== "login" ? e.target.value.toLowerCase() : e.target.value;
       if (e.target.value !== form[n]) e.target.value = form[n];
       // 찾기·확인 단추가 켜질지 바뀌는 경우만 다시 그림
+      if (page === "admin" && n === "adminkey") { const b = f.querySelector(".authbtn"); if (b) b.disabled = busy || !form.adminkey.trim(); }
       if (page === "reset" && n === "username") { const b = f.querySelector(".authbtn"); if (b) b.disabled = busy || !form.username.trim(); }
     });
     // 엔터 = 맨 아래 큰 단추
