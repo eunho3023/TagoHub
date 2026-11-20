@@ -551,7 +551,10 @@ export function routeScreen(root, p, ctx) {
     const color = busColor(r.type);
     const at = B.busAtStops(r.stops, pos?.buses || []);
     const status = !pos ? "버스 위치를 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
-      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 10초마다 새로` : "지금 운행 중인 버스가 없어요";
+      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 10초마다 새로` :
+      // 운행 시간 안인데 버스가 없음: 위치를 보내지 않는 노선일 수 있음 (여수 365-5 초도처럼 버스가 다녀도 위치 자료가 아예 안 옴)
+      r.sum && B.inService(r.sum.first, r.sum.last, B.kstMinute()) ? `실시간 위치가 들어오지 않아요 · 시간표상 운행 시간이에요 (${r.sum.first}~${r.sum.last})` :
+      "지금 운행 중인 버스가 없어요";
     const s = r.sum;
     const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, isoDay()) > 0 && "배차 " + B.intervalOn(s, isoDay()) + "분"].filter(Boolean).join(" · ") : "";
     const list = root.querySelector("#stops");

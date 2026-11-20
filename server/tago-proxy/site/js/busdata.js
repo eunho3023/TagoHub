@@ -167,6 +167,24 @@ function sumOf(id, a) {
   return { id, no: String(a[0]), start: str(a[1]), end: str(a[2]), type: str(a[3]), first: str(a[4]), last: str(a[5]), interval: int(a[6]), intervalSat: int(a[7]), intervalSun: int(a[8]) };
 }
 /** 오늘(요일 1~7) 배차 간격 */
+/** "07:40" → 운행일 기준 분 (03시 전은 전날 운행의 연장, 앱 TagoTime.serviceMinute 와 같음). 못 읽으면 null */
+function serviceMin(t) {
+  const d = String(t || "").replace(/\D/g, "").padStart(4, "0");
+  if (d.length !== 4) return null;
+  const h = +d.slice(0, 2), m = +d.slice(2);
+  if (m >= 60 || h >= 30) return null;
+  const v = h * 60 + m;
+  return v < 180 ? v + 1440 : v;
+}
+/** 시간표상 운행 시간(첫차~막차) 안인지 (앱 TagoTime.inService 와 같음). [nowMin]: 자정 기준 지금 분 (한국 시각) */
+export function inService(first, last, nowMin) {
+  const f = serviceMin(first), l = serviceMin(last);
+  if (f == null || l == null || nowMin == null) return false;
+  const n = nowMin < 180 ? nowMin + 1440 : nowMin;
+  return f <= n && n <= l;
+}
+/** 지금 한국 시각 (자정 기준 분) */
+export const kstMinute = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 export function intervalOn(s, day) { return day === 6 ? s.intervalSat ?? s.interval : day === 7 ? s.intervalSun ?? s.intervalSat ?? s.interval : s.interval; }
 
 export async function routeSums(ids) {
