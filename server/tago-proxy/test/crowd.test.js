@@ -9,7 +9,7 @@ globalThis.window = noop;
 // edits.js 가 불러올 때 거는 주기 확인(setInterval)이 테스트를 끝나지 못하게 붙잡지 않게
 const realInterval = globalThis.setInterval;
 globalThis.setInterval = (...a) => { const t = realInterval(...a); t.unref?.(); return t; };
-const { crowdSeoul, crowdGyeonggi, arrivalParts, atOrigin, markWaiting, passed, jeonjuType, jeonjuNo } = await import("../site/js/busdata.js");
+const { crowdSeoul, crowdGyeonggi, arrivalParts, atOrigin, markWaiting, passed, jeonjuType, jeonjuNo, inService, kstMinute } = await import("../site/js/busdata.js");
 
 test("혼잡·빈자리: 서울 congestion·isFullFlag, 경기 crowded·remainSeatCnt (앱 Crowd 와 같게)", () => {
   assert.equal(crowdSeoul(3, 0), "여유");
@@ -60,4 +60,15 @@ test("도착 없음 → 운행종료·첫차까지·다음 출발 (앱 NoLiveTex
   assert.equal(noLive("05:30", "00:30", null, 23 * 60 + 50).main, "막차 00:30");
   assert.equal(noLive(null, "22:00", 10, 600), null);
   assert.equal(waitText(60), "1시간");
+});
+
+test("시간표상 운행 시간 안인지 (실시간 위치가 안 오는 노선 문구, 앱 TagoTime.inService 와 같음)", () => {
+  assert.equal(inService("07:40", "18:00", 17 * 60 + 58), true);    // 여수 365-5 오후 5시 58분
+  assert.equal(inService("07:40", "18:00", 18 * 60 + 30), false);
+  assert.equal(inService("07:40", "18:00", 7 * 60), false);
+  assert.equal(inService("05:30", "00:30", 23 * 60 + 50), true);    // 막차가 자정 넘어
+  assert.equal(inService("05:30", "00:30", 10), true);
+  assert.equal(inService("05:30", "00:30", 4 * 60), false);
+  assert.equal(inService(null, "18:00", 600), false);
+  assert.equal(kstMinute(Date.UTC(2026, 10, 20, 8, 58)), 17 * 60 + 58);
 });

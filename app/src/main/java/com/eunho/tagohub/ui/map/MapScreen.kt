@@ -1722,9 +1722,13 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
     val info by d.info.collectAsStateWithLifecycle()
     val stops by d.stops.collectAsStateWithLifecycle()
     val buses by d.buses.collectAsStateWithLifecycle()
+    val busesAt by d.updated.collectAsStateWithLifecycle()
     val r = info.valueOrNull()
     val color = busRouteColor(d.routeType ?: r?.routeType)
     var showTimetableStopPicker by rememberSaveable(d.routeId) { mutableStateOf(false) }
+    // 운행 시간 안인데 위치를 받아도 버스가 없음: 위치를 보내지 않는 노선일 수 있음 (여수 365-5 초도, 웹 bus.js 와 같은 문구)
+    val noLive = buses.isEmpty() && busesAt != null && r?.firstTime != null && r.lastTime != null &&
+        TagoTime.inService(r.firstTime, r.lastTime, LocalTime.now().let { it.hour * 60 + it.minute })
 
     PanelSurface {
         RouteBandHeader(
@@ -1733,7 +1737,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             line = listOfNotNull(r?.startName, r?.endName).joinToString(" → "),
             detail = listOfNotNull(
                 r?.interval?.let { "배차 ${it}분" },
-                "운행 중 ${buses.size}대",
+                if (noLive) "실시간 위치가 들어오지 않아요 (운행 시간 ${r?.firstTime}~${r?.lastTime})" else "운행 중 ${buses.size}대",
             ).joinToString(" · "),
             color = color,
             onClose = vm::closePanel,

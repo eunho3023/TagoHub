@@ -70,4 +70,12 @@ object TagoTime {
 
     /** 지하철 운행일 기준 분: 03시 이전은 전날 운행의 연장으로 보고 +24h */
     fun serviceMinute(minutes: Int): Int = if (minutes < 180) minutes + 1440 else minutes
+
+    /** 시간표상 운행 시간(첫차~막차) 안인지 (웹 busdata.js inService 와 같음). [nowMinutes]: 자정 기준 지금 분 */
+    fun inService(first: String?, last: String?, nowMinutes: Int): Boolean {
+        val f = minutesOfDay(first)?.let(::serviceMinute) ?: return false
+        val l = minutesOfDay(last)?.let(::serviceMinute) ?: return false
+        val n = serviceMinute(nowMinutes)
+        return n in f..l
+    }
 }
