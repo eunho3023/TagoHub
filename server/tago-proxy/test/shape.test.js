@@ -286,3 +286,31 @@ test("예전 방식으로 만든 긴 직선 모양은 다시 만들 것으로 �
   assert.equal(staleStraight({ sig: "v7:a:k:g", poly: straight, made: 0 }), false);
   assert.equal(staleStraight({ sig: "v7:a:k", poly: road, made: 0 }), false);
 });
+
+test("예전 방식으로 직선이 든 저장 모양은 열 때 다시 만들어 저장 (여수 365-5)", async () => {
+  globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+  const route = { stops: [[1, "A", "가", 36.0, 127.0, "0"], [2, "B", "나", 36.01, 127.0, "0"]] };
+  const store = new Map();
+  const db = {
+    prepare: (sql) => ({
+      bind: (...a) => ({
+        first: async () => (sql.includes("FROM shapes") ? store.get(a[0]) || null : null),   // 앱 모양(app_shapes)은 없음
+        run: async () => { if (sql.startsWith("INSERT OR REPLACE INTO shapes")) store.set(a[0], { sig: a[1], poly: a[2], made: a[3] }); },
+      }),
+      run: async () => {},
+    }),
+  };
+  const env = { DB: db, ASSETS: { fetch: async () => ({ ok: true, json: async () => ({ R1: route }) }) } };
+  const stops = route.stops.map((s) => [s[3], s[4], s[2]]);
+  const old = encode([[36.0, 127.0], [36.01, 127.0]], 5);   // 1.1km 직선
+  store.set("R1", { sig: signature(stops), poly: old, made: 1 });
+  const road = Array.from({ length: 12 }, (_, i) => [36.0 + i * 0.01 / 11, 127.0 + (i % 2) * 0.0001]);
+  const waits = [];
+  const osrm = async () => ({ ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode(road, 6) }] }) });
+  const r = await handleShape(null, new URL("https://x/w/shape/R1"), env, { waitUntil: (p) => waits.push(p) }, osrm);
+  await Promise.all(waits);
+  const poly = (await r.json()).poly;
+  assert.notEqual(poly, old);
+  assert.equal(store.get("R1").poly, poly);
+  assert.ok(store.get("R1").made > 1);
+});

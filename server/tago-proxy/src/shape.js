@@ -616,16 +616,16 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops) + (useKakao ? ":k" : "");
-  let poly = null, partial = false;
+  let poly = null, partial = false, old = null;
   if (env.DB) {
     await ensureTable(env.DB);
     const got = await storedShape(env.DB, id, sig);
-    if (got) {
+    // 예전 방식으로 직선이 든 모양(stale)은 지금 다시 만들어 봄 (예약 작업 줄은 차례가 늦게 옴, 여수 365-5). 못 만들면 그것을 그대로
+    if (got && got.stale) old = got.poly;
+    else if (got) {
       poly = got.poly;
-      // 다시 만들 모양은 짧게만 저장 (예약 작업이 새로 만들면 곧 그것이 나오게)
-      if (got.stale) partial = true;
-      // 임시 모양이거나 예전 방식으로 직선이 든 모양이면 예약 작업이 다시 만들게 줄에 (사람이 연 노선이라 먼저, 이미 있으면 그대로)
-      if (got.interim || got.stale) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
+      // 임시 모양이면 예약 작업이 카카오로 다시 만들게 줄에 (이미 있으면 그대로)
+      if (got.interim) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
     }
   }
   if (!poly) {
@@ -633,16 +633,18 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
     const made = await makeShape(id, stops, routeNo, env, fetcher);
     if (!made.shape) {
       if (env.DB) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
-      return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
-    }
-    poly = encode(made.shape, 5);
-    partial = made.partial;
-    if (env.DB) {
-      if (!partial) {
-        ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)")
-          .bind(id, made.interim ? sig + ":o" : sig, poly, Math.floor(Date.now() / 1000)).run());
-        if (made.interim) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
-      } else ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
+      if (!old) return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
+      poly = old; partial = true; // 다시 못 만듦: 예전 모양을 잠깐만 (예약 작업이 이어서)
+    } else {
+      poly = encode(made.shape, 5);
+      partial = made.partial;
+      if (env.DB) {
+        if (!partial) {
+          ctx.waitUntil(env.DB.prepare("INSERT OR REPLACE INTO shapes (route_id, sig, poly, made) VALUES (?, ?, ?, ?)")
+            .bind(id, made.interim ? sig + ":o" : sig, poly, Math.floor(Date.now() / 1000)).run());
+          if (made.interim) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
+        } else ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
+      }
     }
   }
   const res = new Response(JSON.stringify({ poly }), { headers: { ...HEAD, "Cache-Control": "public, max-age=" + (partial ? 600 : 86400) } });
