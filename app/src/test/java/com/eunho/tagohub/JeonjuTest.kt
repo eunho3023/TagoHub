@@ -154,5 +154,9 @@ class JeonjuTest {
         assertEquals("일반", JeonjuMappers.routeType("1", "7"))   // brtClass 1 은 가지 번호(7-1)지 순환이 아님
         assertEquals("간선", JeonjuMappers.routeType("0", "6001", "비전대학교", "비전대학교"))   // 간선이 먼저
         assertEquals("간선", JeonjuMappers.routeType("0", "4000"))
+        assertEquals("3-1", JeonjuMappers.routeNo("3", "1"))   // 가지 번호 붙임 (전주시 누리집 BRT_NO)
+        assertEquals("3-2", JeonjuMappers.routeNo(" 3 ", "2"))
+        assertEquals("2", JeonjuMappers.routeNo("2", "0"))
+        assertEquals("104", JeonjuMappers.routeNo("104", null))
     }
 }
