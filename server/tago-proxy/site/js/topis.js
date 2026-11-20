@@ -162,11 +162,15 @@ export function trafficLayer(onChange) {
     /** 그릴 소통 선 [{pts, color, width}] (한 방향 링크라 진행 방향 오른쪽으로 비켜 상·하행이 나란히) */
     lines() {
       if (!on || !visible.length) return [];
-      const side = (MapView.metersPerPx() || 1) * 3;
+      // 비키는 거리는 0.5m 단위로: 지도를 옮기기만 해도 1px 당 m 가 아주 조금씩 바뀌어 선 꼭짓점이 달라지면
+      // 지도가 같은 선을 매번 지우고 새로 그림 (map.js 는 꼭짓점이 같은 선을 그대로 둠)
+      const side = Math.max(0.5, Math.round((MapView.metersPerPx() || 1) * 3 * 2) / 2);
       const out = [];
       for (const l of visible) {
         const s = speeds.get(l.id), color = s ? speedColor(l.div, s[0]) : null;
-        if (color) out.push({ pts: offsetRight(l.pts, side), color, width: 4 });
+        if (!color) continue;
+        if (l.offAt !== side) { l.off = offsetRight(l.pts, side); l.offAt = side; }   // 같은 거리면 지난번에 비킨 선 그대로
+        out.push({ pts: l.off, color, width: 4 });
       }
       return out;
     },
