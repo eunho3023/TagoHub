@@ -83,7 +83,9 @@ object RoadShapeClient {
             }
             if (piece == null) {
                 // OSRM 이 블록을 한 바퀴 도는 구간도 실제 도로일 수 있어 직선으로 바꾸지 않는다
-                piece = fetch(part)?.takeIf { Shapes.length(it) <= Shapes.length(part) * 3 + 300 }
+                // 정류장에서 직진만 허락하면 항구·종점에서 되돌아 나오는 노선이 수십 km 를 돌아감 → U턴을 허락해 한 번 더 (여수 365-5 초도 대동항)
+                val ok = { p: List<LatLng>? -> p?.takeIf { Shapes.length(it) <= Shapes.length(part) * 3 + 300 } }
+                piece = ok(fetch(part)) ?: ok(fetch(part, straight = false))
             }
             if (piece != null) anyRoad = true
             val seg = piece ?: part
@@ -95,9 +97,9 @@ object RoadShapeClient {
     /** 카카오 경로는 정류장 6개(5구간)씩 — 너무 길면 카카오가 다른 노선·환승을 먼저 제안함 */
     private const val KAKAO_CHUNK = 6
 
-    private suspend fun fetch(points: List<LatLng>): List<LatLng>? = withContext(Dispatchers.IO) {
+    private suspend fun fetch(points: List<LatLng>, straight: Boolean = true): List<LatLng>? = withContext(Dispatchers.IO) {
         runCatching {
-            val req = Request.Builder().url(Osrm.url(points)).header("User-Agent", "TagoHub-Android").build()
+            val req = Request.Builder().url(Osrm.url(points, straight)).header("User-Agent", "TagoHub-Android").build()
             client.newCall(req).execute().use { res ->
                 if (!res.isSuccessful) null else Osrm.parseGeometry(res.body?.string())
             }

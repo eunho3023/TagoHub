@@ -154,10 +154,13 @@ export function removeDetours(shape, stops) {
   return out;
 }
 
-export function osrmUrl(points) {
+/** straight=false: 경유지(정류장)에서 U턴을 허락 (항구·종점처럼 들어갔다 되돌아 나오는 정류장) */
+export function osrmUrl(points, straight = true) {
   return OSRM + points.map(([la, lo]) => `${lo.toFixed(6)},${la.toFixed(6)}`).join(";") +
-    "?overview=full&geometries=polyline6&continue_straight=true";
+    `?overview=full&geometries=polyline6&continue_straight=${straight}`;
 }
+/** 구간 길이로 보아 쓸 만한 길 (빙 돌아가는 길은 아님) */
+const usable = (path, part) => !!path && path.length >= 2 && length(path) <= length(part) * 3 + 300;
 
 /** 점 p 에서 선까지 가장 가까운 거리(m) */
 export function distToPath(p, path) {
@@ -217,9 +220,9 @@ export async function build(stops, fetcher, st = {}) {
 const MAX_CHECKS = 12;
 
 /** OSRM 길 한 번 (실패하면 null) */
-async function osrmPath(points, fetcher) {
+async function osrmOnce(points, fetcher, straight) {
   try {
-    const r = await fetcher(osrmUrl(points), { headers: { "User-Agent": "TagoHub-proxy" } });
+    const r = await fetcher(osrmUrl(points, straight), { headers: { "User-Agent": "TagoHub-proxy" } });
     if (!r.ok) return null;
     const j = await r.json();
     const g = j.code === "Ok" && j.routes && j.routes[0] && j.routes[0].geometry;
@@ -227,24 +230,25 @@ async function osrmPath(points, fetcher) {
     return shape && shape.length >= 2 ? shape : null;
   } catch (_) { return null; }
 }
+/**
+ * OSRM 길. 먼저 정류장에서 직진(continue_straight)으로 묻고, 못 받거나 빙 돌아가는 길이면 U턴을 허락해 한 번 더.
+ * 섬·항구처럼 정류장에서 되돌아 나오는 노선은 직진만 허락하면 수십 km 를 돌아가는 길이 나와 직선으로 그려졌음
+ * (여수 365-5 초도 대동항: 직진 60.4km → U턴 허락 399m)
+ */
+async function osrmPath(points, fetcher) {
+  const a = await osrmOnce(points, fetcher, true);
+  if (usable(a, points)) return a;
+  const b = await osrmOnce(points, fetcher, false);
+  return usable(b, points) ? b : a;
+}
 
 /** 구간마다 OSRM 길을 이음 (다듬기 전). 구간 실패·너무 긴 구간은 직선, 하나도 못 받으면 null */
 async function buildRaw(stops, fetcher, st = {}) {
   const out = [];
   let anyRoad = false, straight = 0;
   for (const part of chunks(stops)) {
-    let piece = null;
-    try {
-      const r = await fetcher(osrmUrl(part), { headers: { "User-Agent": "TagoHub-proxy" } });
-      if (r.ok) {
-        const j = await r.json();
-        const g = j.code === "Ok" && j.routes && j.routes[0] && j.routes[0].geometry;
-        if (g) {
-          const shape = decode(g, 6);
-          if (shape.length >= 2 && length(shape) <= length(part) * 3 + 300) piece = shape;
-        }
-      }
-    } catch (_) { /* 이 구간은 직선 */ }
+    const o = await osrmPath(part, fetcher);
+    const piece = usable(o, part) ? o : null; // 못 받으면 이 구간은 직선
     if (piece) anyRoad = true;
     if (!piece) straight++;
     const seg = piece || part;

@@ -257,3 +257,20 @@ test("다시 만들 모양: 회차가 있고 500m 넘는 직선이 든 것만", 
   assert.equal(turnStraight(turnStops, road), false);
   assert.equal(turnStraight([[35.60, 127.15], [35.61, 127.15], [35.62, 127.15]].map(st), straight), false);
 });
+
+test("OSRM 이 정류장에서 직진만 하다 빙 돌아가면 U턴을 허락해 다시 물음 (여수 365-5 초도 대동항)", async () => {
+  // 예교 → 대동항(되돌아 나옴) → 복지회관: 직진만 허락하면 60km, U턴을 허락하면 정류장 길 그대로
+  const stops = [[34.245655, 127.250049], [34.241584, 127.244288], [34.239566, 127.247163]];
+  const far = [stops[0], [34.5, 127.6], [34.0, 127.0], stops[2]];
+  const near = [stops[0], [34.2435, 127.2470], stops[1], [34.2405, 127.2460], stops[2]];
+  const asked = [];
+  const fetcher = async (u) => {
+    const straight = new URL(u).searchParams.get("continue_straight");
+    asked.push(straight);
+    return { ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode(straight === "true" ? far : near, 6) }] }) };
+  };
+  const shape = await build(stops, fetcher);
+  assert.deepEqual(asked.slice(0, 2), ["true", "false"]);
+  assert.ok(shape && shape.every((p) => p[0] < 34.25 && p[0] > 34.23), "60km 돌아가는 길이 아님");
+  assert.ok(shape.length > stops.length, "직선이 아니라 길");
+});
