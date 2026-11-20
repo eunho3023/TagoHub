@@ -7,6 +7,15 @@ export const TRAIN_STATUS = { 0: "진입", 1: "도착", 2: "출발", 3: "전역 
 const norm = (s) => { const t = String(s || "").replace(/\(.*?\)/g, "").replace(/ /g, "").trim(); return t.length >= 3 && t.endsWith("역") ? t.slice(0, -1) : t; };
 
 /** 노선 이음 → 역마다 이웃 역 목록 */
+/** 서울 실시간 API 역 이름 ↔ 노선 자료(한국철도공단) 이름이 다른 곳 (2026-11 19개 노선 실제 응답으로 찾음) */
+const ALIASES = { 지제: "평택지제", 뚝섬유원지: "자양", 세종왕릉: "세종대왕릉" };
+/** API 역·행선지 이름 → 노선 자료 이름: "성수종착"·"신도림지선"·"응암순환(상선)" → 성수·신도림·응암 */
+const apiName = (s, dest = false) => {
+  const raw = String(s || "").trim();
+  const n = norm(dest ? raw.replace(/행$/, "") : raw).replace(/(종착|지선|순환)$/, "");   // '행'은 행선지에서만 (역 이름 '지행')
+  return ALIASES[n] || n;
+};
+
 export function adjacency(line) {
   const adj = line.stations.map(() => []);
   for (const [i, j] of line.edges) { adj[i].push(j); adj[j].push(i); }
@@ -26,11 +35,11 @@ function hops(adj, from) {
  */
 export function placeTrain(line, adj, r) {
   const idx = new Map(line.stations.map((s, i) => [s[0], i]));
-  const at = idx.get(norm(String(r.statnNm || "")));
+  const at = idx.get(apiName(r.statnNm));
   if (at == null) return null;
   // 행선지: 2호선은 "성수종착"·"신도림종착"처럼 옴 → "성수"
-  const destName = String(r.statnTnm || "").trim().replace(/종착$/, "").replace(/행$/, "");
-  const dest = idx.get(norm(destName));
+  const destName = apiName(r.statnTnm, true);
+  const dest = idx.get(destName);
   const status = parseInt(r.trainSttus, 10);
   let next = null, prev = null;
   if (dest != null && dest !== at) {
