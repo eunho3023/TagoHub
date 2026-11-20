@@ -254,7 +254,7 @@ object Shapes {
     }
 
     /** i~j 에 회전교차로를 도는 길이 있음: 같은 쪽으로 꼭짓점마다 60도 안씩 이어서 돌아 모두 180도 넘게 돎 (들어가고 나오는 곳은 크게 꺾여도 됨) */
-    private fun roundabout(p: List<LatLng>, i: Int, j: Int): Boolean {
+    private fun roundabout(p: List<LatLng>, i: Int, j: Int, minTurn: Double = Math.PI): Boolean {
         var run = 0.0
         var prev: Double? = null
         for (k in i until j) {
@@ -267,7 +267,7 @@ object Shapes {
                 run = if (Math.abs(t) > Math.PI / 3) 0.0
                     else if (run != 0.0 && Math.signum(t) != Math.signum(run) && Math.abs(t) > 0.05) t
                     else run + t
-                if (Math.abs(run) >= Math.PI) return true
+                if (Math.abs(run) >= minTurn) return true
             }
             prev = b
         }
@@ -351,6 +351,78 @@ object Shapes {
             }
             if (turn >= 0 && turn >= cut) { keepTo = turn; i++; continue }   // 회차는 통째로 남김
             i = if (cut >= 0) cut else i + 1
+        }
+        return out
+    }
+
+    /** 곧은 길 펴기 기준 (웹 site/js/roadline.js STRAIGHT 와 같음) */
+    private object Straight {
+        const val MAX_DEG = 8.0; const val MAX_DEV_M = 16.0; const val JITTER_M = 3.0; const val BUMP_RATIO = 8.0; const val MAX_BUMP_M = 150.0
+        const val MAX_GAP_M = 60.0; const val TWIST_DEG_PER_M = 6.0; const val ROUND_DEG = 100.0; const val MIN_M = 30.0; const val MAX_M = 300.0; const val MAX_STRETCH = 1.15
+    }
+
+    /**
+     * i~j 사이 점이 i–j 선분에서 떨림(3m) 안이거나, 그보다 벗어난 곳이 짧고 들쭉날쭉한 혹: 16m 안으로 벗어나고,
+     * 벗어난 구간(i→j 방향으로 잰 길이)이 가장 많이 벗어난 거리의 8배·150m 안, 꼭짓점 사이가 모두 60m 안(촘촘한 도시 길),
+     * 꼭짓점마다 꺾인 각을 모두 더한 것이 벗어난 거리 1m 에 6도 넘음. 산길·시골길의 진짜 굽이는 완만해서(1m 에 3~6도) 펴지 않음
+     */
+    private fun bumpOnly(p: List<LatLng>, i: Int, j: Int): Boolean {
+        val a = p[i]; val b = p[j]
+        val kx = 111_320.0 * Math.cos(Math.toRadians(a.lat)); val ky = 110_540.0
+        val ux = (b.lng - a.lng) * kx; val uy = (b.lat - a.lat) * ky; val len = Math.hypot(ux, uy).takeIf { it > 0 } ?: 1.0
+        var gap = 0.0; var twist = 0.0; var prev = bearing(a, b)
+        for (k in i until j) {
+            val d = m(p[k], p[k + 1])
+            gap = maxOf(gap, d)
+            if (d < 2) continue
+            val h = bearing(p[k], p[k + 1])
+            twist += angleBetween(prev, h); prev = h
+        }
+        var dev = 0.0; var lo = Double.POSITIVE_INFINITY; var hi = Double.NEGATIVE_INFINITY
+        for (k in i + 1 until j) {
+            val d = toSeg(p[k], a, b)
+            if (d > Straight.MAX_DEV_M) return false
+            dev = maxOf(dev, d)
+            if (d > Straight.JITTER_M) {
+                val t = ((p[k].lng - a.lng) * kx * ux + (p[k].lat - a.lat) * ky * uy) / len
+                lo = minOf(lo, t); hi = maxOf(hi, t)
+            }
+        }
+        return dev <= Straight.JITTER_M ||
+            (gap <= Straight.MAX_GAP_M && hi - lo <= minOf(Straight.MAX_BUMP_M, dev * Straight.BUMP_RATIO) && Math.toDegrees(twist) >= dev * Straight.TWIST_DEG_PER_M)
+    }
+
+    /**
+     * 곧은 길 펴기 (웹 roadline.js straighten 과 같은 규칙): 곧은 큰길에서 옆으로 잠깐 빠졌다 같은 방향으로 돌아오는 꺾임·떨림을 곧게
+     * (카카오 길이 큰길 옆 정류장·차로 바꾸기 때문에 3~16m 틀어졌다 돌아오는 것, 전주 104 거마평로 등).
+     * i → j: 들어온 방향(30m 앞)·나가는 방향(30m 뒤)·i→j 방향이 모두 8도 안, 곧은 거리 30~300m, 길을 따라 잰 거리가 1.15배 안, [bumpOnly].
+     * 그대로: 굽은 길·교차로, 회전교차로(같은 쪽으로 이어서 100도 넘게), 터미널·차고지·종점·회차 정류장 곁, 노선 처음·끝
+     */
+    fun straighten(path: List<LatLng>, stops: List<Pair<LatLng, String?>> = emptyList()): List<LatLng> {
+        if (path.size < 3) return path
+        val maxA = Math.toRadians(Straight.MAX_DEG)
+        val out = ArrayList<LatLng>(path.size)
+        out += path[0]
+        var i = 0
+        while (i < path.size - 1) {
+            var best = -1
+            val before = pointAlong(path, i, 30.0, -1)
+            if (i > 0 && m(before, path[i]) >= 20) {
+                val hin = bearing(before, path[i])
+                var walked = 0.0
+                for (j in i + 1 until path.size) {
+                    walked += m(path[j - 1], path[j])
+                    if (walked > Straight.MAX_M * Straight.MAX_STRETCH) break
+                    val d = m(path[i], path[j])
+                    if (j < i + 2 || d < Straight.MIN_M || d > Straight.MAX_M || walked > d * Straight.MAX_STRETCH) continue
+                    val after = pointAlong(path, j, 30.0, 1)
+                    if (m(path[j], after) < 20) break   // 노선 끝
+                    val ch = bearing(path[i], path[j])
+                    if (angleBetween(hin, ch) > maxA || angleBetween(bearing(path[j], after), ch) > maxA) continue
+                    if (bumpOnly(path, i, j) && !roundabout(path, i, j, Math.toRadians(Straight.ROUND_DEG)) && !servesStop(path, i, j, stops)) best = j
+                }
+            }
+            if (best > 0) { out += path[best]; i = best } else { i++; out += path[i] }
         }
         return out
     }

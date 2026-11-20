@@ -3195,12 +3195,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun located(d: BusDest.Route) = d.stops.value.valueOrNull().orEmpty().filter { it.lat != null && it.lng != null }
 
-    /** 노선 선 다듬기: 큰길 옆 정류장 때문에 생긴 골목 들르기만 곧게 (회차·회전교차로·터미널 들르기는 남김, Shapes.despike) */
+    /** 노선 선 다듬기: 큰길 옆 정류장 때문에 생긴 골목 들르기를 곧게(Shapes.despike), 곧은 길의 짧은 꺾임·떨림을 폄(Shapes.straighten). 회차·회전교차로·터미널 들르기는 남김 */
     private fun tidyShape(d: BusDest.Route, shape: List<LatLng>): List<LatLng> {
         val st = located(d)
+        val named = st.map { LatLng(it.lat!!, it.lng!!) to it.name }
         // 정류장 사이 길 고치기(회차 길 등)를 먼저 끼우고 다듬음
         val fixed = com.eunho.tagohub.data.SegFixes.apply(shape, st.map { it.nodeId to LatLng(it.lat!!, it.lng!!) })
-        return com.eunho.tagohub.data.Shapes.despike(fixed, st.map { LatLng(it.lat!!, it.lng!!) to it.name })
+        return com.eunho.tagohub.data.Shapes.straighten(com.eunho.tagohub.data.Shapes.despike(fixed, named), named)
     }
 
     /** 회차 정류장 순번 (패널 목록에 회차 표시). 나눌 수 없으면 null */

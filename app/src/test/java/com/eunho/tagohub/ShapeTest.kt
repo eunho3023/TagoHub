@@ -159,4 +159,35 @@ class ShapeTest {
         val (f2, _) = Shapes.project(path, LatLng(35.80, 127.20))       // 끝을 한참 지난 점
         assertEquals(1.0, f2, 1e-9)
     }
+
+    // 곧은 길 펴기 (웹 roadline.test.js 와 같은 경우): x m 동쪽, y m 북쪽
+    private val kx = 111_320.0 * Math.cos(Math.toRadians(35.8))
+    private fun at(x: Double, y: Double) = LatLng(35.8 + y / 110_540.0, 127.1 + x / kx)
+    private fun yOf(p: LatLng) = (p.lat - 35.8) * 110_540.0
+
+    @Test
+    fun straighten_flattensJaggedBumpOnStraightRoad() {
+        val bump = listOf(0.0, 6.0, 12.0, 5.0, 11.0, 4.0, 12.0)
+        val line = (0..40).map { n ->
+            val x = n * 15.0
+            val y = if (x in 250.0..340.0) bump.getOrElse(Math.round((x - 250) / 15).toInt()) { 0.0 } else if (n % 2 == 1) 2.0 else -1.0
+            at(x, y)
+        }
+        val s = Shapes.straighten(line)
+        assertTrue("점 ${s.size}개", s.size < line.size / 3)
+        s.drop(1).dropLast(1).forEach { assertTrue("y ${yOf(it)}", abs(yOf(it)) <= 3.0) }
+    }
+
+    @Test
+    fun straighten_keepsRealBendsRoundaboutsAndTerminals() {
+        val bend = listOf(at(-100.0, 0.0), at(0.0, 0.0), at(70.0, 8.0), at(140.0, 15.0), at(210.0, 8.0), at(280.0, 0.0), at(380.0, 0.0))
+        assertEquals(bend, Shapes.straighten(bend))
+        val ring = mutableListOf(at(-100.0, 0.0), at(-50.0, 0.0), at(-12.0, 0.0))
+        for (d in 180 downTo 0 step 20) ring += at(12 * Math.cos(Math.toRadians(d.toDouble())), -12 * Math.sin(Math.toRadians(d.toDouble())))
+        ring += listOf(at(50.0, 0.0), at(100.0, 0.0))
+        assertTrue(Shapes.straighten(ring).any { yOf(it) < -8 })
+        val hump = listOf(0.0, 8.0, 12.0, 8.0, 0.0)
+        val visit = (0..26).map { n -> val x = n * 15.0; at(x, if (x in 180.0..240.0) hump[Math.round((x - 180) / 15).toInt()] else 0.0) }
+        assertTrue(Shapes.straighten(visit, listOf(at(210.0, 18.0) to "임실터미널")).any { yOf(it) > 10 })
+    }
 }

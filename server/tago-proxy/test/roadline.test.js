@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { despike, roundCorners, tidyRoad } from "../site/js/roadline.js";
+import { despike, roundCorners, tidyRoad, straighten } from "../site/js/roadline.js";
 
 // 큰길: 서쪽에서 동쪽으로 (a → b → c)
 const a = [35.80, 127.10], b = [35.80, 127.1010], c = [35.80, 127.1020], e = [35.80, 127.1035];
@@ -78,4 +78,38 @@ test("정류장 사이 길 고치기: 이어지는 두 정류장(id) 사이를 �
   // 차례가 다르거나(B → A) 선에서 멀면 그대로
   assert.deepEqual(applySegFixes(line, [stops[2], stops[1]], [fix]), line);
   assert.deepEqual(applySegFixes(line, [[36.0, 127.0, "", "A"], [36.0, 127.001, "", "B"]], [fix]), line);
+});
+
+// 곧은 길 펴기: 동쪽으로 가는 큰길 (x m 동쪽, y m 북쪽)
+const KX = 111320 * Math.cos((35.8 * Math.PI) / 180), KY = 110540;
+const at = (x, y) => [35.8 + y / KY, 127.1 + x / KX];
+const yOf = (p) => (p[0] - 35.8) * KY;
+
+test("곧은 길 펴기: 큰길에서 차로 쪽으로 들쭉날쭉 틀어졌다 돌아오는 혹(전주 104 거마평로)·3m 떨림을 곧게", () => {
+  const line = [];
+  for (let x = 0; x <= 600; x += 15) {
+    // 250~340m: 4번 꺾이며 동쪽으로 12m 불룩 (카카오 길이 차로를 바꿨다 돌아옴), 나머지는 ±2m 떨림
+    const y = x >= 250 && x <= 340 ? [0, 6, 12, 5, 11, 4, 12][Math.round((x - 250) / 15)] ?? 0 : (x / 15) % 2 ? 2 : -1;
+    line.push(at(x, y));
+  }
+  const s = straighten(line);
+  assert.ok(s.length < line.length / 3, `점 ${s.length}개`);
+  // 처음·끝 30m 를 뺀 가운데는 모두 큰길 3m 안
+  for (const p of s.slice(1, -1)) assert.ok(Math.abs(yOf(p)) <= 3, `y ${yOf(p).toFixed(1)}`);
+});
+
+test("곧은 길 펴기: 시골길의 완만한 굽이·회전교차로·터미널 들르기는 그대로", () => {
+  // 들어온·나간 방향이 같은 C자 굽이 (꼭짓점 듬성듬성, 15m 벗어남): 그대로
+  const bend = [at(-100, 0), at(0, 0), at(70, 8), at(140, 15), at(210, 8), at(280, 0), at(380, 0)];
+  assert.deepEqual(straighten(bend), bend);
+  // 작은 회전교차로를 반 바퀴만 돌고 같은 방향으로 나감 (반지름 12m, 도아삼거리): 그대로
+  const ring = [at(-100, 0), at(-50, 0), at(-12, 0)];
+  for (let d = 180; d >= 0; d -= 20) ring.push(at(12 * Math.cos((d * Math.PI) / 180), -12 * Math.sin((d * Math.PI) / 180)));
+  ring.push(at(50, 0), at(100, 0));
+  const r = straighten(ring);
+  assert.ok(r.some((p) => yOf(p) < -8), "회전교차로를 돎");
+  // 터미널 곁으로 들르는 혹: 그대로
+  const visit = [];
+  for (let x = 0; x <= 400; x += 15) visit.push(at(x, x >= 180 && x <= 240 ? [0, 8, 12, 8, 0][Math.round((x - 180) / 15)] : 0));
+  assert.ok(straighten(visit, [[...at(210, 18), "임실터미널"]]).some((p) => yOf(p) > 10));
 });

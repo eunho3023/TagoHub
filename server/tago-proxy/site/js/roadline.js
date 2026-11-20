@@ -43,7 +43,7 @@ function hasSharpTurn(line, i, j) {
  * i~j 에 회전교차로를 도는 길이 있음: 같은 쪽으로 꼭짓점마다 60도 안씩 이어서 돌아 모두 180도 넘게 돎
  * (들어가고 나오는 곳은 크게 꺾여도 됨. 골목 블록은 모서리마다 90도로 꺾여 끊기고, 가시는 끝에서 되돌아감)
  */
-function roundabout(line, i, j) {
+function roundabout(line, i, j, minTurn = Math.PI) {
   let run = 0, prev = null;
   for (let k = i; k < j; k++) {
     if (meters(line[k], line[k + 1]) < 1) continue;
@@ -54,7 +54,7 @@ function roundabout(line, i, j) {
       while (t < -Math.PI) t += 2 * Math.PI;
       if (Math.abs(t) > Math.PI / 3 || (run !== 0 && Math.sign(t) !== Math.sign(run) && Math.abs(t) > 0.05)) run = Math.abs(t) > Math.PI / 3 ? 0 : t;
       else run += t;
-      if (Math.abs(run) >= Math.PI) return true;
+      if (Math.abs(run) >= minTurn) return true;
     }
     prev = b;
   }
@@ -148,6 +148,73 @@ export function despike(line, stops = []) {
   }
   return out;
 }
+/** 곧은 길 펴기 기준 (앱 Shapes.straighten 과 같음) */
+export const STRAIGHT = { maxDeg: 8, maxDevM: 16, jitterM: 3, bumpRatio: 8, maxBumpM: 150, maxGapM: 60, twistDegPerM: 6, roundDeg: 100, minM: 30, maxM: 300, maxStretch: 1.15 };
+/**
+ * i~j 사이 점이 i–j 선분에서 떨림(3m) 안이거나, 그보다 벗어난 곳이 짧고 들쭉날쭉한 혹: 16m 안으로 벗어나고,
+ * 벗어난 구간(i→j 방향으로 잰 길이)이 가장 많이 벗어난 거리의 8배·150m 안, 꼭짓점 사이가 모두 60m 안(촘촘한 도시 길),
+ * 꼭짓점마다 꺾인 각을 모두 더한 것이 벗어난 거리 1m 에 6도 넘음(갔다 돌아오며 여러 번 꺾임).
+ * 산길·시골길의 진짜 굽이(S자·C자, 들어온·나간 방향이 같아도)는 완만하게 돌아서(1m 에 3~6도) 펴지 않음
+ * (2026-11 전주 104 도시 떨림 1m 에 6~16도, 임실 201·202 호숫가·산길 굽이 2.6~5.8도)
+ */
+function bumpOnly(line, i, j, o) {
+  const a = line[i], b = line[j];
+  const kx = 111320 * Math.cos((a[0] * Math.PI) / 180), ky = 110540;
+  const ux = (b[1] - a[1]) * kx, uy = (b[0] - a[0]) * ky, L = Math.hypot(ux, uy) || 1;
+  let dev = 0, lo = Infinity, hi = -Infinity, gap = 0, twist = 0, prev = bearing(a, b);
+  for (let k = i; k < j; k++) {
+    gap = Math.max(gap, meters(line[k], line[k + 1]));
+    if (meters(line[k], line[k + 1]) < 2) continue;
+    const h = bearing(line[k], line[k + 1]);
+    twist += angleBetween(prev, h); prev = h;
+  }
+  for (let k = i + 1; k < j; k++) {
+    const d = toSeg(line[k], a, b);
+    if (d > o.maxDevM) return false;
+    dev = Math.max(dev, d);
+    if (d > o.jitterM) {
+      const t = ((line[k][1] - a[1]) * kx * ux + (line[k][0] - a[0]) * ky * uy) / L;
+      lo = Math.min(lo, t); hi = Math.max(hi, t);
+    }
+  }
+  return dev <= o.jitterM || (gap <= o.maxGapM && hi - lo <= Math.min(o.maxBumpM, dev * o.bumpRatio) && (twist * 180) / Math.PI >= dev * o.twistDegPerM);
+}
+/**
+ * 곧은 길 펴기: 곧은 큰길에서 옆으로 잠깐(25m 안) 빠졌다 같은 방향으로 돌아오는 꺾임·떨림을 곧게
+ * (카카오·OSRM 길이 큰길 옆 정류장이나 차로 바꾸기 때문에 3~20m 틀어졌다 돌아오는 것. 전주 104 거마평로 풍남중 앞 등).
+ * i → j 를 곧게 잇는 조건: 들어온 방향(30m 앞)·나가는 방향(30m 뒤)·i→j 방향이 모두 8도 안, 곧은 거리 30~300m,
+ * 사이 점이 모두 i–j 선분에서 25m 안, 길을 따라 잰 거리가 곧은 거리의 1.15배 안 (되돌아가는 고리·회차 아님).
+ * 그대로 두는 것: 굽은 길·교차로(들어온·나간 방향이 다름), 회전교차로(같은 쪽으로 이어서 100도 넘게 돎: 반 바퀴만 돌고 나가는 작은 회전교차로도, 도아삼거리), 이름에 터미널·차고지·종점·회차가 든 정류장 곁, 노선 처음·끝
+ */
+export function straighten(line, stops = [], o = STRAIGHT) {
+  if (!line || line.length < 3) return line;
+  const st = (stops || []).filter((s) => s && s[0] != null && s[1] != null);
+  const maxA = (o.maxDeg * Math.PI) / 180;
+  const out = [line[0]];
+  let i = 0;
+  while (i < line.length - 1) {
+    let best = -1;
+    const before = pointAlong(line, i, 30, -1);
+    if (i > 0 && meters(before, line[i]) >= 20) {
+      const hin = bearing(before, line[i]);
+      let walked = 0;
+      for (let j = i + 1; j < line.length; j++) {
+        walked += meters(line[j - 1], line[j]);
+        if (walked > o.maxM * o.maxStretch) break;
+        const d = meters(line[i], line[j]);
+        if (j < i + 2 || d < o.minM || d > o.maxM || walked > d * o.maxStretch) continue;
+        const after = pointAlong(line, j, 30, 1);
+        if (meters(line[j], after) < 20) break; // 노선 끝
+        const ch = bearing(line[i], line[j]);
+        if (angleBetween(hin, ch) > maxA || angleBetween(bearing(line[j], after), ch) > maxA) continue;
+        if (bumpOnly(line, i, j, o) && !roundabout(line, i, j, (o.roundDeg * Math.PI) / 180) && !servesStop(line, i, j, st)) best = j;
+      }
+    }
+    if (best > 0) { out.push(line[best]); i = best; } else { i++; out.push(line[i]); }
+  }
+  return out;
+}
+
 /** 같은 점(0.5m 안) 겹침과, 5m 안에서 앞뒤로 떨리는 점(150도 넘게 되돌아감)을 뺌 (한 번만, 이어서 빼지 않음) */
 function dropJitter(line) {
   const pts = [];
@@ -277,7 +344,7 @@ export function applySegFixes(line, stops = [], fixes = SEG_FIXES) {
   return out;
 }
 
-/** 그리기 전 다듬기 (정류장 사이 길 고치기를 끼우고, 골목 들르기 없애고, 모서리 둥글게). [stops]: 노선 정류장 [[위도, 경도, 이름, id]...] */
+/** 그리기 전 다듬기 (정류장 사이 길 고치기를 끼우고, 골목 들르기 없애고, 곧은 길 펴고, 모서리 둥글게). [stops]: 노선 정류장 [[위도, 경도, 이름, id]...] */
 export function tidyRoad(line, stops = []) {
-  return line && line.length >= 2 ? roundCorners(despike(applySegFixes(line, stops), stops)) : line;
+  return line && line.length >= 2 ? roundCorners(straighten(despike(applySegFixes(line, stops), stops), stops)) : line;
 }
