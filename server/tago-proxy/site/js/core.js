@@ -150,6 +150,25 @@ export function cached(path) {
   return memo.get(path);
 }
 
+/**
+ * 자료 파일 글자(data/files/… 지하철역·노선 모양·시간표 같은 자주 안 바뀌는 것). 이 브라우저에 저장해 두고 다음부터 바로
+ * (서버 자료가 새로 만들어지면 위 dataChecked 가 통째로 지움)
+ */
+export function cachedText(path) {
+  const k = "text:" + path;
+  if (!memo.has(k)) {
+    const load = async () => {
+      const have = await cacheGet(path, DATA_STORE);
+      if (typeof have === "string") return have;
+      const t = await getText(path);
+      dataChecked.then(() => cachePut(path, t, DATA_STORE));
+      return t;
+    };
+    memo.set(k, load().catch((e) => { memo.delete(k); throw e; }));
+  }
+  return memo.get(k);
+}
+
 /** 공공데이터 XML(<item>…</item>) → 행 목록 [{소문자 키: 값}] */
 export function xmlRows(text) {
   // 공공데이터포털이 바쁠 때는 XML 을 요청해도 JSON 오류({"response":{"header":{"resultCode":99,…}}})가 옴.

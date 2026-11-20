@@ -1,5 +1,5 @@
 // 항공: 국내선 시간표(서버에 올린 운항 파일) + 한국공항공사 실시간 운항, 공항 화면(실시간 혼잡도·출발·도착·기본 정보), 인천공항 운항.
-import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn } from "./core.js";
+import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, cachedText } from "./core.js";
 import { act, header, note, sectionHead, chips } from "./ui.js";
 import { go } from "./nav.js";
 import { clock } from "./subway.js";
@@ -13,7 +13,7 @@ const LOT_AIRPORT = { GMP: "김포", PUS: "김해", CJU: "제주", TAE: "대구"
 // ── 시간표 파일 ──
 let dataP = null;
 function load() {
-  if (!dataP) dataP = Promise.all(["air_schedule.tsv", "air_airports.tsv", "air_airlines.tsv"].map((f) => getText("data/files/" + f))).then(([s, a, l]) => {
+  if (!dataP) dataP = Promise.all(["air_schedule.tsv", "air_airports.tsv", "air_airlines.tsv"].map((f) => cachedText("data/files/" + f))).then(([s, a, l]) => {
     const names = (t) => Object.fromEntries(t.split("\n").map((x) => x.split("\t")).filter((f) => f.length >= 2 && f[0].trim()).map((f) => [f[0].trim(), f[1].trim()]));
     const min = (t) => { const [h, m] = t.split(":").map((x) => parseInt(x, 10)); return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null; };
     const rows = s.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 10).map((f) => ({

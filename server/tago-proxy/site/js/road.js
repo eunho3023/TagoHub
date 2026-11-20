@@ -1,5 +1,5 @@
 // 도로: 한국도로공사 돌발·정체·휴게소 주유 가격(서버 /w/ex/), 실시간 신호등(서울·울산, /w/signal/).
-import { getText, esc, onReturn } from "./core.js";
+import { getText, esc, onReturn, cachedText } from "./core.js";
 import { act, header, note, bindInput } from "./ui.js";
 import { MapView } from "./map.js";
 
@@ -34,7 +34,7 @@ async function incidents() {
 }
 let vdsP = null;
 async function jams() {
-  if (!vdsP) vdsP = getText("data/files/ex_vds.json").then(JSON.parse).catch(() => ({}));
+  if (!vdsP) vdsP = cachedText("data/files/ex_vds.json").then(JSON.parse).catch(() => ({}));
   const [rows, vds] = await Promise.all([allRows("odtraffic/trafficAmountByCongest"), vdsP]);
   const groups = new Map();
   for (const r of rows) { const k = (r.conzoneId || r.vdsId) + ":" + (r.updownTypeCode || ""); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
@@ -70,7 +70,7 @@ function ulsanItems(j) { const b = j.body || j.response?.body; const it = b?.ite
 let spotsP = null;
 function spots() {
   if (!spotsP) spotsP = Promise.all([
-    getText("data/files/seoul_signals.tsv").then((t) => t.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 4 && f[0].trim() && Number.isFinite(+f[2]))
+    cachedText("data/files/seoul_signals.tsv").then((t) => t.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 4 && f[0].trim() && Number.isFinite(+f[2]))
       .map((f) => ({ id: "seoul:" + f[0].trim(), name: f[1].trim() || "교차로", lat: +f[2], lng: +f[3] }))).catch(() => []),
     getText("w/signal/ulsan/map").then((t) => ulsanItems(JSON.parse(t)).filter((m) => m.crsrdId && Number.isFinite(+m.mapCtptIntLat))
       .map((m) => ({ id: "ulsan:" + m.crsrdId, name: m.crsrdNm || "교차로", lat: +m.mapCtptIntLat, lng: +m.mapCtptIntLot }))).catch(() => []),
