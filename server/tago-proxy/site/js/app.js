@@ -14,6 +14,7 @@ import * as subway from "./subway.js";
 import * as air from "./air.js";
 import { fixScreen } from "./fix.js";
 import { fixStopsScreen } from "./fixstops.js";
+import { loginScreen } from "./login.js";
 import * as Edits from "./edits.js";
 import "./modes.js";
 
@@ -41,6 +42,7 @@ const SCREENS = {
   report: more.reportScreen,
   fix: fixScreen,
   fixstops: fixStopsScreen,
+  login: loginScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */
 export function addScreen(name, fn) { SCREENS[name] = fn; }

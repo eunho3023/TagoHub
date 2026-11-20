@@ -8,6 +8,12 @@
 // POST /w/auth/reset    {username, phone|email}     → {ok, phoneOk}                비밀번호 바꾸기 전에 아이디와 연락처가 맞는지
 // POST /w/auth/me       {idToken}                   → {username, dev}              로그인한 계정의 아이디·개발자인지
 //
+// 웹(브라우저)은 Firebase 를 직접 못 부르므로(키가 안드로이드 전용) 이 서버가 대신:
+// POST /w/auth/login     {username, password, web:true} → 위 + {username, dev, idToken, refreshToken}
+// POST /w/auth/signup    {username, password, email, phone} → {username, dev, email, idToken, refreshToken}  (전화번호는 문자 인증 없이)
+// POST /w/auth/refresh   {refreshToken}              → {idToken, refreshToken}      한 시간마다 토큰 새로
+// POST /w/auth/resetmail {username, email}           → {ok}                         아이디·이메일이 맞으면 비밀번호 바꾸는 메일
+//
 // 개발자: 비밀 값 DEV_IDS(쉼표로 아이디들)에 든 아이디. 개발자는 앱에서 내비·지도 고치기를 쓸 수 있음(src/edits.js 도 이 토큰을 받음).
 // 전화번호는 해시만 저장. 로그인 실패는 아이디마다 15분에 10번까지.
 
@@ -124,20 +130,38 @@ export async function isDevRequest(request, env, fetcher = fetch) {
   return !!row && devIds(env).has(row.username);
 }
 
-// ── 비밀번호 확인 (Firebase REST) ──
+// ── Firebase REST (비밀번호 확인, 웹 가입·토큰) ──
 
-async function passwordOk(email, password, env, fetcher) {
+function fbKey(env) {
   const key = String(env.FIREBASE_API_KEY || "").trim();
   if (!key) throw new Error("no firebase key");
-  const r = await fetcher("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + encodeURIComponent(key), {
+  return key;
+}
+
+/** identitytoolkit accounts:<path> 부르기 → {ok, status, j, t} */
+async function firebase(path, payload, env, fetcher) {
+  const r = await fetcher("https://identitytoolkit.googleapis.com/v1/accounts:" + path + "?key=" + encodeURIComponent(fbKey(env)), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...androidHeaders(env) },
-    body: JSON.stringify({ email, password, returnSecureToken: false }),
+    body: JSON.stringify(payload),
   });
-  if (r.ok) return true;
   const t = await r.text();
-  if (/INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|EMAIL_NOT_FOUND|USER_DISABLED/.test(t)) return false;
+  let j = {};
+  try { j = JSON.parse(t); } catch { /* 글자 응답 */ }
+  return { ok: r.ok, status: r.status, j, t };
+}
+
+/** 비밀번호가 맞으면 Firebase 응답(웹은 토큰을 씀), 틀리면 null */
+async function passwordOk(email, password, env, fetcher) {
+  const r = await firebase("signInWithPassword", { email, password, returnSecureToken: true }, env, fetcher);
+  if (r.ok) return r.j;
+  if (/INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|EMAIL_NOT_FOUND|USER_DISABLED/.test(r.t)) return null;
   throw new Error("firebase " + r.status);
+}
+
+/** 앱과 같은 비밀번호 규칙: 영어와 숫자를 섞어 8자 이상 */
+export function passwordOkRule(pw) {
+  return typeof pw === "string" && pw.length >= 8 && pw.length <= 128 && /[A-Za-z]/.test(pw) && /\d/.test(pw);
 }
 
 async function failed(db, key, now) {
@@ -194,17 +218,34 @@ export async function handleAuth(request, url, env, ctx, fetcher = fetch) {
     if (!u || !pw) return json({ error: "wrong" }, 401);
     if (await failed(db, "login:" + u, now)) return json({ error: "too many" }, 429);
     const row = await db.prepare("SELECT email FROM accounts WHERE username = ?").bind(u).first();
-    let ok = false;
+    let ok = null;
     if (row) {
       try { ok = await passwordOk(row.email, pw, env, fetcher); } catch { return json({ error: "server" }, 502); }
     }
     if (!ok) { await noteFail(db, "login:" + u, now); return json({ error: "wrong" }, 401); }
     await db.prepare("DELETE FROM auth_fail WHERE key = ?").bind("login:" + u).run();
-    return json({ email: row.email });
+    if (!body.web) return json({ email: row.email });
+    return json({ email: row.email, username: u, dev: devIds(env).has(u), idToken: ok.idToken, refreshToken: ok.refreshToken });
+  }
+
+  if (op === "refresh") {
+    const rt = String(body.refreshToken || "");
+    if (!rt || rt.length > 2000) return json({ error: "bad token" }, 401);
+    let r;
+    try {
+      r = await fetcher("https://securetoken.googleapis.com/v1/token?key=" + encodeURIComponent(fbKey(env)), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", ...androidHeaders(env) },
+        body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(rt),
+      });
+    } catch { return json({ error: "server" }, 502); }
+    if (!r.ok) return json({ error: "bad token" }, r.status >= 500 ? 502 : 401);
+    const j = await r.json();
+    return json({ idToken: j.id_token, refreshToken: j.refresh_token });
   }
 
   // 아이디 찾기·비밀번호 확인은 주소(IP)마다 15분에 30번까지 (남의 연락처로 아이디를 훑지 못하게)
-  if (op === "find" || op === "reset") {
+  if (op === "find" || op === "reset" || op === "resetmail" || op === "signup") {
     const ip = "look:" + (await sha(request.headers.get("CF-Connecting-IP") || "unknown")).slice(0, 16);
     const row = await db.prepare("SELECT n, until FROM auth_fail WHERE key = ?").bind(ip).first();
     if (row && row.until > now && row.n >= LOOK_MAX) return json({ error: "too many" }, 429);
@@ -230,6 +271,45 @@ export async function handleAuth(request, url, env, ctx, fetcher = fetch) {
     const email = normEmail(body.email);
     const ok = phone ? row.phone === (await phoneHash(phone)) : !!email && row.email === email;
     return json({ ok, phoneOk: ok && !!phone && row.phone_ok === 1 });
+  }
+
+  if (op === "resetmail") {
+    const u = normUsername(body.username);
+    const email = normEmail(body.email);
+    const row = u && email ? await db.prepare("SELECT email FROM accounts WHERE username = ?").bind(u).first() : null;
+    if (!row || row.email !== email) return json({ ok: false });
+    let r;
+    try { r = await firebase("sendOobCode", { requestType: "PASSWORD_RESET", email }, env, fetcher); } catch { return json({ error: "server" }, 502); }
+    return r.ok ? json({ ok: true }) : json({ error: "server" }, 502);
+  }
+
+  // 웹 가입: Firebase 이메일 계정을 만들고 아이디를 붙임. 전화번호는 문자 인증 없이(아이디 찾기에만, 비밀번호는 이메일로 바꿈)
+  if (op === "signup") {
+    const u = normUsername(body.username);
+    if (!u) return json({ error: "bad username" }, 400);
+    const pw = body.password;
+    if (!passwordOkRule(pw)) return json({ error: "weak" }, 400);
+    const email = normEmail(body.email);
+    if (!email) return json({ error: "bad email" }, 400);
+    const phone = normPhone(body.phone);
+    if (!phone) return json({ error: "bad phone" }, 400);
+    if (await db.prepare("SELECT 1 AS x FROM accounts WHERE username = ?").bind(u).first()) return json({ error: "taken" }, 409);
+    let r;
+    try { r = await firebase("signUp", { email, password: pw, returnSecureToken: true }, env, fetcher); } catch { return json({ error: "server" }, 502); }
+    if (!r.ok) {
+      if (/EMAIL_EXISTS/.test(r.t)) return json({ error: "email" }, 409);
+      if (/WEAK_PASSWORD/.test(r.t)) return json({ error: "weak" }, 400);
+      if (/INVALID_EMAIL/.test(r.t)) return json({ error: "bad email" }, 400);
+      return json({ error: "server" }, 502);
+    }
+    const ins = await db.prepare("INSERT INTO accounts (username, uid, email, phone, phone_ok, created) VALUES (?, ?, ?, ?, 0, ?) ON CONFLICT DO NOTHING")
+      .bind(u, r.j.localId, email, await phoneHash(phone), now).run();
+    if (!ins.meta || ins.meta.changes !== 1) {
+      // 그사이 누가 같은 아이디를 가져감: 방금 만든 Firebase 계정은 지움
+      await firebase("delete", { idToken: r.j.idToken }, env, fetcher).catch(() => null);
+      return json({ error: "taken" }, 409);
+    }
+    return json({ username: u, dev: devIds(env).has(u), email, idToken: r.j.idToken, refreshToken: r.j.refreshToken });
   }
 
   if (op === "me") {

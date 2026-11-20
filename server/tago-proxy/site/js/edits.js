@@ -2,14 +2,17 @@
 // 화면을 열 때 받아 두고, 페이지가 보이는 동안 15초마다 판 번호로 바뀌었는지 확인(안 바뀌면 서버가 204 로 짧게).
 // 바뀌면 바로 다시 받아 열린 화면이 다시 그림 (onChange). 노선 모양·정류장 좌표를 그릴 때 고친 것이 있으면 그것을 씀.
 import { BASE } from "./core.js";
+import * as Account from "./account.js";
 
 let data = null, at = 0, loading = null;
 
 // ── 관리자 키: 고치기는 관리자만 (서버 비밀 값 EDIT_ADMIN_KEY 와 같아야 저장됨). 이 브라우저에만 저장 ──
 const ADMIN_KEY = "tagohub.adminKey";
 export function adminKey() { try { return localStorage.getItem(ADMIN_KEY) || ""; } catch (e) { return ""; } }
-/** 관리자 키를 넣은 기기인지 (고치기 단추를 보일지) */
-export const isAdmin = () => adminKey().length >= 16;
+/** 관리자 키를 넣었거나 개발자 아이디로 로그인한 브라우저인지 (고치기 단추를 보일지) */
+export const isAdmin = () => adminKey().length >= 16 || Account.isDev();
+/** 관리자 키를 넣은 브라우저인지 (설정의 관리자 키 칸) */
+export const hasAdminKey = () => adminKey().length >= 16;
 /** 키 저장 전 서버에 맞는지 물어봄 → true/false (빈 글자면 지우고 false) */
 export async function setAdminKey(k) {
   k = String(k || "").trim();
@@ -80,7 +83,9 @@ export function groupListedBy(id) {
 
 /** 저장 (data 가 null 이면 원래대로). 성공하면 목록을 다시 받음 */
 export async function save(kind, id, payload) {
-  const r = await fetch(BASE + "w/edits", { method: "POST", headers: { "Content-Type": "application/json", "X-TagoHub-Admin": adminKey() }, body: JSON.stringify({ kind, id, data: payload }) });
+  // 관리자 키가 없으면 개발자 아이디의 로그인 토큰으로 (서버 src/edits.js 가 둘 다 받음)
+  const auth = adminKey() ? { "X-TagoHub-Admin": adminKey() } : { Authorization: "Bearer " + ((await Account.token()) || "") };
+  const r = await fetch(BASE + "w/edits", { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ kind, id, data: payload }) });
   if (!r.ok) throw new Error(r.status === 429 ? "잠시 뒤에 다시 저장해 주세요" : r.status === 403 ? "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요" : "저장하지 못했어요 (" + r.status + ")");
   // 방금 고친 것을 이 화면에 바로 반영 (서버 판 번호도 맞춰 다시 받지 않게)
   const res = await r.json().catch(() => ({}));

@@ -11,7 +11,7 @@ import * as E from "./edits.js";
 const MIN_ZOOM = 15;
 
 export function fixStopsScreen(root, p, ctx) {
-  if (!E.isAdmin()) { root.innerHTML = header("지도 고치기", null, { back: true }) + note("지도 고치기는 관리자만 할 수 있어요. 설정에서 관리자 키를 넣어 주세요."); return () => {}; }
+  if (!E.isAdmin()) { root.innerHTML = header("지도 고치기", null, { back: true }) + note("지도 고치기는 개발자만 할 수 있어요. 설정에서 개발자 아이디로 로그인하거나 관리자 키를 넣어 주세요."); return () => {}; }
   let alive = true, stops = [], sel = null, busy = false, msg = "", routes = null, timer = null, preset = false;
   /** 같은 자리 정류장 묶기: 고른 정류장과 한 점으로 묶인 것, 묶기 중이면 함께 묶을 정류장 */
   let mates = [], joining = false;

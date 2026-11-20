@@ -83,7 +83,7 @@ export function fixScreen(root, p, ctx) {
     catch (e) { msg = e.message || "지우지 못했어요"; }
     busy = false; drawAll();
   }
-  if (!E.isAdmin()) { root.innerHTML = header(title, null, { back: true }) + note("지도 고치기는 관리자만 할 수 있어요. 설정에서 관리자 키를 넣어 주세요."); return () => {}; }
+  if (!E.isAdmin()) { root.innerHTML = header(title, null, { back: true }) + note("지도 고치기는 개발자만 할 수 있어요. 설정에서 개발자 아이디로 로그인하거나 관리자 키를 넣어 주세요."); return () => {}; }
   root.innerHTML = header(title, p.name || p.no || null, { back: true }) + `<div class="map-slot full"></div><div id="fixbar"></div>`;
   ctx.useMap(root.querySelector(".map-slot"));
   root.querySelector("#fixbar").innerHTML = note("불러오는 중...");

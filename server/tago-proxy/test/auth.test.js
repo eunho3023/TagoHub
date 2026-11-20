@@ -24,6 +24,8 @@ async function firebase() {
   const kid = "k" + Math.random().toString(36).slice(2);
   const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid, alg: "RS256", use: "sig" };
   const passwords = new Map();
+  const mails = [];
+  let seq = 0;
   const token = async (claims) => {
     const now = Math.floor(Date.now() / 1000);
     const head = enc({ alg: "RS256", kid });
@@ -35,11 +37,22 @@ async function firebase() {
     if (String(url).includes("jwk")) return new Response(JSON.stringify({ keys: [jwk] }));
     if (String(url).includes("signInWithPassword")) {
       const { email, password } = JSON.parse(init.body);
-      return passwords.get(email) === password ? new Response("{}") : new Response('{"error":{"message":"INVALID_LOGIN_CREDENTIALS"}}', { status: 400 });
+      return passwords.get(email) === password ? new Response(JSON.stringify({ idToken: "ID:" + email, refreshToken: "RT:" + email })) : new Response('{"error":{"message":"INVALID_LOGIN_CREDENTIALS"}}', { status: 400 });
+    }
+    if (String(url).includes("accounts:signUp")) {
+      const { email, password } = JSON.parse(init.body);
+      if (passwords.has(email)) return new Response('{"error":{"message":"EMAIL_EXISTS"}}', { status: 400 });
+      passwords.set(email, password);
+      return new Response(JSON.stringify({ localId: "W" + ++seq, idToken: "ID:" + email, refreshToken: "RT:" + email }));
+    }
+    if (String(url).includes("sendOobCode")) { mails.push(JSON.parse(init.body).email); return new Response("{}"); }
+    if (String(url).includes("securetoken.googleapis.com/v1/token")) {
+      const rt = new URLSearchParams(init.body).get("refresh_token");
+      return rt.startsWith("RT:") ? new Response(JSON.stringify({ id_token: "ID2", refresh_token: rt })) : new Response("{}", { status: 400 });
     }
     return new Response("?", { status: 404 });
   };
-  return { token, fetcher, passwords };
+  return { token, fetcher, passwords, mails };
 }
 
 function call(env, fb, op, body, ip = "1.2.3.4") {
@@ -104,6 +117,33 @@ test("가입 → 아이디 로그인 → 아이디 찾기 → 비밀번호 확�
   const req = (t) => new Request("https://x/w/edits", { method: "POST", headers: { Authorization: "Bearer " + t } });
   assert.equal(await isDevRequest(req(tok), env, fb.fetcher), true);
   assert.equal(await isDevRequest(req(tok2), env, fb.fetcher), false);
+});
+
+test("웹: 가입 → 로그인(토큰) → 토큰 새로 → 비밀번호 메일", async () => {
+  const fb = await firebase();
+  const env = { DB: d1(), FIREBASE_PROJECT_ID: PROJECT, FIREBASE_API_KEY: "k", DEV_IDS: "webdev" };
+  const join = (b) => call(env, fb, "signup", { username: "webdev", password: "abcd1234", email: "w@x.com", phone: "010-2222-3333", ...b });
+  assert.equal((await join({ password: "short1" }))[0], 400);
+  assert.equal((await join({ password: "onlyletters" }))[0], 400);
+  assert.equal((await join({ email: "nope" }))[0], 400);
+  assert.equal((await join({ phone: "12" }))[0], 400);
+  assert.deepEqual(await join({}), [200, { username: "webdev", dev: true, email: "w@x.com", idToken: "ID:w@x.com", refreshToken: "RT:w@x.com" }]);
+  assert.deepEqual(await join({}), [409, { error: "taken" }]);
+  assert.deepEqual(await join({ username: "other1" }), [409, { error: "email" }]);   // 이미 쓰는 이메일
+
+  assert.deepEqual(await call(env, fb, "login", { username: "webdev", password: "abcd1234" }), [200, { email: "w@x.com" }]);   // 앱은 그대로
+  assert.deepEqual(await call(env, fb, "login", { username: "webdev", password: "abcd1234", web: true }),
+    [200, { email: "w@x.com", username: "webdev", dev: true, idToken: "ID:w@x.com", refreshToken: "RT:w@x.com" }]);
+  assert.deepEqual(await call(env, fb, "refresh", { refreshToken: "RT:w@x.com" }), [200, { idToken: "ID2", refreshToken: "RT:w@x.com" }]);
+  assert.equal((await call(env, fb, "refresh", { refreshToken: "bad" }))[0], 401);
+
+  // 전화번호는 인증 안 된 것으로: 아이디 찾기는 되고, 문자로 비밀번호 바꾸기는 안 됨
+  assert.deepEqual(await call(env, fb, "find", { phone: "01022223333" }), [200, { ids: ["we***v"] }]);
+  assert.deepEqual(await call(env, fb, "reset", { username: "webdev", phone: "01022223333" }), [200, { ok: true, phoneOk: false }]);
+  assert.deepEqual(await call(env, fb, "resetmail", { username: "webdev", email: "x@x.com" }), [200, { ok: false }]);
+  assert.deepEqual(fb.mails, []);
+  assert.deepEqual(await call(env, fb, "resetmail", { username: "webdev", email: "W@x.com" }), [200, { ok: true }]);
+  assert.deepEqual(fb.mails, ["w@x.com"]);
 });
 
 test("로그인 실패 10번이면 15분 막힘, 아이디 찾기는 주소마다 30번", async () => {
