@@ -149,24 +149,27 @@ export function despike(line, stops = []) {
   return out;
 }
 /** 곧은 길 펴기 기준 (앱 Shapes.straighten 과 같음) */
-export const STRAIGHT = { maxDeg: 8, maxDevM: 16, jitterM: 3, bumpRatio: 8, maxBumpM: 150, maxGapM: 60, twistDegPerM: 6, roundDeg: 100, minM: 30, maxM: 300, maxStretch: 1.15 };
+export const STRAIGHT = { maxDeg: 8, maxDevM: 16, jitterM: 3, bumpRatio: 8, maxBumpM: 150, maxGapM: 60, twistDegPerM: 6, roundDeg: 100, bigM: 8, sharpDeg: 25, bigFrac: 0.6, minM: 30, maxM: 300, maxStretch: 1.15 };
 /**
  * i~j 사이 점이 i–j 선분에서 떨림(3m) 안이거나, 그보다 벗어난 곳이 짧고 들쭉날쭉한 혹: 16m 안으로 벗어나고,
  * 벗어난 구간(i→j 방향으로 잰 길이)이 가장 많이 벗어난 거리의 8배·150m 안, 꼭짓점 사이가 모두 60m 안(촘촘한 도시 길),
  * 꼭짓점마다 꺾인 각을 모두 더한 것이 벗어난 거리 1m 에 6도 넘음(갔다 돌아오며 여러 번 꺾임).
  * 산길·시골길의 진짜 굽이(S자·C자, 들어온·나간 방향이 같아도)는 완만하게 돌아서(1m 에 3~6도) 펴지 않음
  * (2026-11 전주 104 도시 떨림 1m 에 6~16도, 임실 201·202 호숫가·산길 굽이 2.6~5.8도)
+ * 8m 넘게 벗어나면 더: 한 꼭짓점에서 25도 넘게 확 꺾이고(차로 바꾸기·교차로), 벗어난 구간이 i–j 의 60% 안
+ * (전주 공식 노선 그림의 천변길·산길 굽이는 완만하게 꺾이거나 구간 거의 전체가 벗어남: 천변 23도, 상관 13도, 산길 82%)
  */
 function bumpOnly(line, i, j, o) {
   const a = line[i], b = line[j];
   const kx = 111320 * Math.cos((a[0] * Math.PI) / 180), ky = 110540;
   const ux = (b[1] - a[1]) * kx, uy = (b[0] - a[0]) * ky, L = Math.hypot(ux, uy) || 1;
-  let dev = 0, lo = Infinity, hi = -Infinity, gap = 0, twist = 0, prev = bearing(a, b);
+  let dev = 0, lo = Infinity, hi = -Infinity, gap = 0, twist = 0, sharp = 0, prev = bearing(a, b), first = true;
   for (let k = i; k < j; k++) {
     gap = Math.max(gap, meters(line[k], line[k + 1]));
     if (meters(line[k], line[k + 1]) < 2) continue;
-    const h = bearing(line[k], line[k + 1]);
-    twist += angleBetween(prev, h); prev = h;
+    const h = bearing(line[k], line[k + 1]), t = angleBetween(prev, h);
+    twist += t; if (!first) sharp = Math.max(sharp, t);
+    prev = h; first = false;
   }
   for (let k = i + 1; k < j; k++) {
     const d = toSeg(line[k], a, b);
@@ -177,7 +180,9 @@ function bumpOnly(line, i, j, o) {
       lo = Math.min(lo, t); hi = Math.max(hi, t);
     }
   }
-  return dev <= o.jitterM || (gap <= o.maxGapM && hi - lo <= Math.min(o.maxBumpM, dev * o.bumpRatio) && (twist * 180) / Math.PI >= dev * o.twistDegPerM);
+  if (dev <= o.jitterM) return true;
+  if (gap > o.maxGapM || hi - lo > Math.min(o.maxBumpM, dev * o.bumpRatio) || (twist * 180) / Math.PI < dev * o.twistDegPerM) return false;
+  return dev <= o.bigM || ((sharp * 180) / Math.PI >= o.sharpDeg && hi - lo <= L * o.bigFrac);
 }
 /**
  * 곧은 길 펴기: 곧은 큰길에서 옆으로 잠깐(25m 안) 빠졌다 같은 방향으로 돌아오는 꺾임·떨림을 곧게

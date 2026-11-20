@@ -358,25 +358,28 @@ object Shapes {
     /** 곧은 길 펴기 기준 (웹 site/js/roadline.js STRAIGHT 와 같음) */
     private object Straight {
         const val MAX_DEG = 8.0; const val MAX_DEV_M = 16.0; const val JITTER_M = 3.0; const val BUMP_RATIO = 8.0; const val MAX_BUMP_M = 150.0
-        const val MAX_GAP_M = 60.0; const val TWIST_DEG_PER_M = 6.0; const val ROUND_DEG = 100.0; const val MIN_M = 30.0; const val MAX_M = 300.0; const val MAX_STRETCH = 1.15
+        const val MAX_GAP_M = 60.0; const val TWIST_DEG_PER_M = 6.0; const val ROUND_DEG = 100.0
+        const val BIG_M = 8.0; const val SHARP_DEG = 25.0; const val BIG_FRAC = 0.6; const val MIN_M = 30.0; const val MAX_M = 300.0; const val MAX_STRETCH = 1.15
     }
 
     /**
      * i~j 사이 점이 i–j 선분에서 떨림(3m) 안이거나, 그보다 벗어난 곳이 짧고 들쭉날쭉한 혹: 16m 안으로 벗어나고,
      * 벗어난 구간(i→j 방향으로 잰 길이)이 가장 많이 벗어난 거리의 8배·150m 안, 꼭짓점 사이가 모두 60m 안(촘촘한 도시 길),
-     * 꼭짓점마다 꺾인 각을 모두 더한 것이 벗어난 거리 1m 에 6도 넘음. 산길·시골길의 진짜 굽이는 완만해서(1m 에 3~6도) 펴지 않음
+     * 꼭짓점마다 꺾인 각을 모두 더한 것이 벗어난 거리 1m 에 6도 넘음. 산길·시골길의 진짜 굽이는 완만해서(1m 에 3~6도) 펴지 않음.
+     * 8m 넘게 벗어나면 더: 한 꼭짓점에서 25도 넘게 확 꺾이고(차로 바꾸기·교차로), 벗어난 구간이 i–j 의 60% 안 (천변길·산길 굽이는 그대로)
      */
     private fun bumpOnly(p: List<LatLng>, i: Int, j: Int): Boolean {
         val a = p[i]; val b = p[j]
         val kx = 111_320.0 * Math.cos(Math.toRadians(a.lat)); val ky = 110_540.0
         val ux = (b.lng - a.lng) * kx; val uy = (b.lat - a.lat) * ky; val len = Math.hypot(ux, uy).takeIf { it > 0 } ?: 1.0
-        var gap = 0.0; var twist = 0.0; var prev = bearing(a, b)
+        var gap = 0.0; var twist = 0.0; var sharp = 0.0; var prev = bearing(a, b); var first = true
         for (k in i until j) {
             val d = m(p[k], p[k + 1])
             gap = maxOf(gap, d)
             if (d < 2) continue
-            val h = bearing(p[k], p[k + 1])
-            twist += angleBetween(prev, h); prev = h
+            val h = bearing(p[k], p[k + 1]); val t = angleBetween(prev, h)
+            twist += t; if (!first) sharp = maxOf(sharp, t)
+            prev = h; first = false
         }
         var dev = 0.0; var lo = Double.POSITIVE_INFINITY; var hi = Double.NEGATIVE_INFINITY
         for (k in i + 1 until j) {
@@ -388,8 +391,9 @@ object Shapes {
                 lo = minOf(lo, t); hi = maxOf(hi, t)
             }
         }
-        return dev <= Straight.JITTER_M ||
-            (gap <= Straight.MAX_GAP_M && hi - lo <= minOf(Straight.MAX_BUMP_M, dev * Straight.BUMP_RATIO) && Math.toDegrees(twist) >= dev * Straight.TWIST_DEG_PER_M)
+        if (dev <= Straight.JITTER_M) return true
+        if (gap > Straight.MAX_GAP_M || hi - lo > minOf(Straight.MAX_BUMP_M, dev * Straight.BUMP_RATIO) || Math.toDegrees(twist) < dev * Straight.TWIST_DEG_PER_M) return false
+        return dev <= Straight.BIG_M || (Math.toDegrees(sharp) >= Straight.SHARP_DEG && hi - lo <= len * Straight.BIG_FRAC)
     }
 
     /**
