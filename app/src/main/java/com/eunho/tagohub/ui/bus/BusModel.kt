@@ -876,10 +876,14 @@ private fun updateGps(d: BusDest.Route) {
     d.gps.keys.retainAll(seen)
 }
 
+/** 번호 비교용: 끝의 '번'은 빼고 (원주 앱 안 파일은 '52-1번', TAGO 는 '52-1') */
+internal fun plainRouteNo(no: String): String = no.trim().removeSuffix("번").trim()
+
 /** 번호로 TAGO 노선 찾기: 같은 번호 중 기점·종점 이름이 맞는 것, 없으면 첫 번째 */
 private suspend fun resolveTagoRoute(repo: TagoRepository, d: BusDest.Route, db: StopDb): String? {
     val local = withContext(Dispatchers.IO) { db.routeById(d.routeId) } ?: return null
-    val cands = (repo.routesByNo(d.cityCode, local.routeNo) as? TagoResult.Success)?.data.orEmpty().filter { it.routeNo == local.routeNo }
+    val no = plainRouteNo(local.routeNo)
+    val cands = (repo.routesByNo(d.cityCode, no) as? TagoResult.Success)?.data.orEmpty().filter { plainRouteNo(it.routeNo) == no }
     fun same(a: String?, b: String?) = !a.isNullOrBlank() && !b.isNullOrBlank() && (a.contains(b) || b.contains(a))
     return (cands.firstOrNull { same(it.startName, local.startName) && same(it.endName, local.endName) }
         ?: cands.firstOrNull { same(it.startName, local.startName) || same(it.endName, local.endName) }

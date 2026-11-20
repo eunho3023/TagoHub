@@ -31,6 +31,7 @@ FILES = ("subway_schedule.tsv", "ex_places.json", "air_routes.json", "ulsan_cros
 FILE_PART = 300_000   # 한글이 많아도 한 칸 1MB 안쪽
 # 제주 버스정보 (키 없음)
 JEJU = "https://bus.jeju.go.kr/api"
+JEJU_WEB = "https://bus.jeju.go.kr"
 # 한국교통안전공단_버스 노선 및 시간표 정보 (파일데이터 API, 2026-07-16 기준) — 노선 아이디 = TAGO 의 TSB+번호
 KOTSA_TT = "https://api.odcloud.kr/api/15150451/v1/uddi:8711dcd0-1fb8-456f-95a4-95659499de14"
 KOTSA_DAYS = {"평일": "weekday", "토요일": "sat", "공휴일": "sun", "일요일": "sun"}
@@ -430,23 +431,36 @@ def fetch_jeju(get=None):
         if path == "searchBusRouteList.do":
             return f"{WEB_BASE}/w/bus/jeju/routes/all"
         m = re.match(r"searchBusRouteStationList\.do\?route_id=(\d{9})$", path)
-        return f"{WEB_BASE}/w/bus/jeju/stops/{m.group(1)}" if m else None
+        if m:
+            return f"{WEB_BASE}/w/bus/jeju/stops/{m.group(1)}"
+        m = re.match(r"line/(\d{9})$", path)
+        return f"{WEB_BASE}/w/bus/jeju/line/{m.group(1)}" if m else None
+
+    def direct_url(path):
+        """제주 서버 주소와 보낼 내용. 노선 종류(급행·간선·지선…)는 제주 버스정보 누리집 노선 정보(POST)에만 있음 (API 노선 목록에는 없음)"""
+        m = re.match(r"line/(\d{9})$", path)
+        if m:
+            return JEJU_WEB + "/data/search/getLineInfoByLineId", f"lineId={m.group(1)}".encode()
+        return f"{JEJU}/{path}", None
 
     direct = [True]  # 제주 서버에 바로 붙기가 한 번 다 실패하면 남은 노선은 처음부터 중계 서버로 (노선마다 100초씩 기다리면 갱신이 시간 한도에 걸림)
 
     def fetch(path):
-        for url in (f"{JEJU}/{path}" if direct[0] else None, via_proxy(path)):
+        own, body = direct_url(path)
+        for url in (own if direct[0] else None, via_proxy(path)):
             if not url:
                 continue
-            for wait in (0, 3, 10):
+            post = body if url == own else None
+            for wait in ((0, 3) if path.startswith("line/") else (0, 3, 10)):
                 time.sleep(wait)
                 try:
-                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 TagoHub-pipeline"})
+                    req = urllib.request.Request(url, data=post, headers={"User-Agent": "Mozilla/5.0 TagoHub-pipeline",
+                                                                          **({"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"} if post else {})})
                     with urllib.request.urlopen(req, timeout=30) as r:
                         return json.loads(r.read().decode("utf-8"))
                 except Exception as e:
                     err[0] = f"{type(e).__name__}: {str(e)[:120]}"
-            if url.startswith(JEJU) and via_proxy(path):
+            if url == own and via_proxy(path):
                 direct[0] = False
                 print(f"제주 서버에 바로 못 붙음 ({err[0]}), 이제부터 중계 서버로", flush=True)
         return None
@@ -465,8 +479,23 @@ def fetch_jeju(get=None):
             ok = False
             continue
         out[rid] = {"route": r, "stops": st}
-    print(f"제주 노선 {len(out)}개 (다 받음 {ok})", flush=True)
+    # 노선 종류: 같은 번호(101-11·101-12 …)는 종류가 같아서 번호마다 한 번만 (번호 약 250개). 못 받아도 노선은 그대로 넣음
+    kinds, missed = {}, 0
+    for rid, r in out.items():
+        num = str(r["route"].get("ROUTE_NUM", "")).strip()
+        if num not in kinds:
+            info = get(f"line/{rid}")
+            kinds[num] = jeju_type(info.get("busTypeStr")) if isinstance(info, dict) else None
+            missed += kinds[num] is None
+        r["type"] = kinds[num]
+    print(f"제주 노선 {len(out)}개 (다 받음 {ok}, 종류 못 받은 번호 {missed}/{len(kinds)})", flush=True)
     return out, ok
+
+
+def jeju_type(t):
+    """제주 버스정보 노선 종류(busTypeStr) → 앱에 보일 이름. 급행·일반간선·간선·지선·읍면지선·심야·관광지순환·마을은 그대로, 리무진은 공항리무진"""
+    t = str(t or "").strip()
+    return "공항리무진" if t == "리무진" else (t or None)
 
 
 def write_jeju(db, routes, known):
@@ -486,7 +515,7 @@ def write_jeju(db, routes, known):
             rows.append((jid, to_int(s.get("STATION_ORD")) or i + 1, sid, "" if sid in known else (str(s.get("STATION_NM", "")).strip() or "정류장"), None, None, None))
         db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
         db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                   (jid, str(it.get("ROUTE_NUM", "")).strip(), it.get("ORGT_NM"), it.get("DST_NM"), rows[0][2], rows[-1][2], "39", "제주", None, "jeju"))
+                   (jid, str(it.get("ROUTE_NUM", "")).strip(), it.get("ORGT_NM"), it.get("DST_NM"), rows[0][2], rows[-1][2], "39", "제주", r.get("type"), "jeju"))
         n += 1
     print(f"제주 노선 {n}개를 DB 에 넣음", flush=True)
     return n
@@ -595,6 +624,63 @@ def fetch_tsb_info(fx, base_db):
     out = {rid: r for _, rid, r in jobs if r}
     print(f"교통안전공단 노선 첫차·막차: {len(jobs)}개 중 {len(out)}개 받음", flush=True)
     return out
+
+
+def incheon_current(rid):
+    """인천 노선 ID: 앱 안 파일의 예전 ID(ICB1…) → TAGO 지금 ID(ICB3…) (앱 TagoIds.current 와 같음)"""
+    if len(rid) < 5 or not rid.startswith("ICB"):
+        return rid
+    return {"1": "ICB3", "2": "ICB4"}.get(rid[3], rid[:4]) + rid[4:]
+
+
+def fetch_incheon_info(fx, base_db):
+    """
+    인천 노선(앱 안 파일 '버스노선별 정류장 현황')의 TAGO 노선 정보 {예전 노선 ID: item}.
+    파일은 엑셀을 거치며 번호가 날짜로 바뀐 것(5-1 → '05월 01일')이 있고 종류·첫차·막차가 비어 있어서 TAGO 로 채움 (노선 약 360개, 7일 저장).
+    TAGO 는 지금 ID(ICB3…)로만 답함
+    """
+    db = sqlite3.connect(base_db)
+    jobs = [(rid, {}) for (rid,) in db.execute("SELECT id FROM routes WHERE id LIKE 'ICB%'")]
+    db.close()
+
+    def one(job):
+        rid, r = job
+        cur = incheon_current(rid)
+        got = items(fx.get(f"{TAGO}/getRouteInfoIem", {"_type": "json", "cityCode": "23", "routeId": cur}, f"tago/23/info_{cur}.json", 7 * DAY))
+        if got:
+            r.update(got[0])
+    try:
+        run_parallel(fx, jobs, one, "인천 노선 정보")
+    except (Limit, KeyError_):
+        print("인천 노선 정보: 한도 — 받은 데까지만", flush=True)
+    out = {rid: r for rid, r in jobs if r}
+    print(f"인천 노선 정보: {len(jobs)}개 중 {len(out)}개 받음", flush=True)
+    return out
+
+
+def write_incheon_info(db, info):
+    """인천 노선 번호·종류를 TAGO 노선 정보로 (번호는 TAGO 가 줄 때만 바꿈), 첫차·막차·배차는 write_tsb_info 와 같이. 바꾼 노선 수"""
+    n = 0
+    for rid, it in info.items():
+        no = str(it.get("routeno") or "").strip()
+        tp = str(it.get("routetp") or "").strip() or None
+        n += db.execute("UPDATE routes SET no = COALESCE(NULLIF(?, ''), no), rtype = COALESCE(?, rtype) WHERE id = ?", (no, tp, rid)).rowcount
+    write_tsb_info(db, info)
+    print(f"인천 노선 번호·종류를 TAGO 로: {n}개", flush=True)
+    return n
+
+
+def tidy_routes(db):
+    """
+    모든 노선에 공통으로: 번호 끝 '번' 지움(원주 '52-1번' → '52-1': 앱이 이 번호로 TAGO 노선을 찾는데 TAGO 는 '52-1' 이라 실시간이 안 붙었음),
+    도시 노선이 전부 '시외버스'인 곳(TAGO 의 안동·예천: 시내버스인데 종류가 시외버스로 옴)은 '일반버스'로. 고친 수 (번호, 종류)
+    """
+    a = db.execute("UPDATE routes SET no = substr(no, 1, length(no) - 1) WHERE no GLOB '*[0-9]번'").rowcount
+    wrong = [c for (c,) in db.execute("SELECT city FROM routes WHERE realtime = 'tago' GROUP BY city "
+                                       "HAVING COUNT(*) >= 20 AND SUM(rtype = '시외버스') = COUNT(*)")]
+    b = sum(db.execute("UPDATE routes SET rtype = '일반버스' WHERE city = ? AND realtime = 'tago'", (c,)).rowcount for c in wrong)
+    print(f"노선 정리: 번호 끝 '번' {a}개, 시외버스로 잘못 온 시내버스 {b}개 (도시 {wrong})", flush=True)
+    return a, b
 
 
 def write_tsb_info(db, info):
@@ -810,7 +896,7 @@ def fetch_jeonju_served(get=None):
 
 
 def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None, tago_cities=(),
-             gbis_stops=None, jeju=None, tsb_info=None, unserved_check=None):
+             gbis_stops=None, jeju=None, tsb_info=None, unserved_check=None, incheon_info=None):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -895,6 +981,8 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
         last = (old[1] if old and old[1] else None) or (wk[4] if wk else None)
         db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,?,?,?)", (rid, first, last, gap("weekday"), gap("sat"), gap("sun")))
     write_tsb_info(db, tsb_info or {})
+    write_incheon_info(db, incheon_info or {})
+    tidy_routes(db)
     # 노선 자료가 DB 에 없는 지역(전주): 그 지역 API 로 모은 노선이 서는 정류장의 이름도 지금 이름으로
     api_served, api_ok, api_routes = (tuple(served_api) + ({},))[:3] if served_api else ({}, False, {})
     if api_ok and api_routes:
@@ -1074,6 +1162,7 @@ def main():
     tsb = fetch_tsb_stops(fx, BASE_DB)
     print(f"교통안전공단 노선 정류장 순서: {len(tsb)}개 노선", flush=True)
     tsb_info = fetch_tsb_info(fx, BASE_DB)
+    incheon_info = fetch_incheon_info(fx, BASE_DB)
     jeonju = fetch_jeonju_served()
     cities = fetch_tago_cities(fx)
     gbis_stops = fetch_gbis_stops(fx, BASE_DB, gbis)
@@ -1084,7 +1173,7 @@ def main():
     jeju = fetch_jeju()
     print(f"TAGO 도시 목록: {len(cities)}곳", flush=True)
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju, tago_cities=cities,
-                            gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info,
+                            gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info, incheon_info=incheon_info,
                             unserved_check=unserved_check)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")

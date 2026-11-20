@@ -286,10 +286,11 @@ export function signalWebRequest(pathname) {
  */
 export function busWebRequest(pathname) {
   // "all" 은 제주 노선 전체 목록(/w/bus/jeju/routes/all)만
-  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan|daejeon)\/(arrival|pos|stops|routes)\/(\d{1,12}|all)$/.exec(pathname);
+  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan|daejeon)\/(arrival|pos|stops|routes|line)\/(\d{1,12}|all)$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
   if (id === "all" && !(area === "jeju" && op === "routes")) return null;
+  if (op === "line" && area !== "jeju") return null;   // 노선 정보는 제주만
   // 대전 정류장 도착(정류장 ID 7자리)·노선 버스 위치(노선 ID 8자리) (대전 BIS, 공공데이터포털 6300000, 5초 저장).
   // 같은 순간 TAGO 보다 같은 버스가 40~130초 새롭고 버스가 더 많음, 방면(DESTINATION)도 줌 (2026-11-17 실측).
   // 저장 이름은 앱이 /h/ 중계로 같은 것을 물을 때와 똑같이 (앱 RegionalBus: serviceKey 자리표시 → 나머지 순서) → 앱·웹이 한 번만 물음
@@ -312,6 +313,9 @@ export function busWebRequest(pathname) {
     if (!/^\d{9}$/.test(id)) return null;
     // 정류장 도착 예정 (제주 버스정보, 앱과 같은 자료, 5초 저장): TAGO 보다 새롭고 버스가 더 많이 나옴
     if (op === "arrival") return { area, url: `https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=${id}`, cacheKey: `bus/jeju/arrival/${id}`, ttl: 5 };
+    // 노선 정보 (종류 busTypeStr: 급행·간선·지선·읍면지선…, 하루 저장): 제주 API 노선 목록에는 종류가 없어서 데이터 갱신이 노선 번호마다 한 번 물음.
+    // 누리집 요청이라 POST (GET 은 빈 답)
+    if (op === "line") return { area, url: "https://bus.jeju.go.kr/data/search/getLineInfoByLineId", post: `lineId=${id}`, cacheKey: `bus/jeju/line/${id}`, ttl: 86400 };
     if (op !== "stops") return null;
     return { area, url: `https://bus.jeju.go.kr/api/searchBusRouteStationList.do?route_id=${id}`, cacheKey: `bus/jeju/stops/${id}`, ttl: 86400 };
   }

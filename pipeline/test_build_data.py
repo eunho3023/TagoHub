@@ -351,6 +351,21 @@ def test_jeju_routes_written():
     assert db.execute("SELECT no, start_node, end_node, city, realtime FROM routes").fetchone() == ("101", "JEB405002101", "JEB405000153", "39", "jeju")
     assert db.execute("SELECT seq, stop_id, name FROM route_stops ORDER BY seq").fetchall() == [(1, "JEB405002101", ""), (2, "JEB405000153", "터미널")]
     assert bd.fetch_jeju(get=lambda p: None) == ({}, False)       # 목록을 못 받으면 넣지 않음
+    # 노선 종류: 누리집 노선 정보(line/노선ID)의 busTypeStr, 같은 번호는 한 번만 묻고, 못 받으면 비워 둠
+    pages["searchBusRouteList.do"].append({"ROUTE_ID": 405410112, "ROUTE_NUM": "101", "ORGT_NM": "남원", "DST_NM": "공항"})
+    pages["searchBusRouteStationList.do?route_id=405410112"] = pages["searchBusRouteStationList.do?route_id=405410111"]
+    asked = []
+    def get(p):
+        if p.startswith("line/"):
+            asked.append(p)
+            return {"routeId": 405410111, "busTypeStr": "급행"}
+        return pages.get(p)
+    routes, ok = bd.fetch_jeju(get=get)
+    assert ok and asked == ["line/405410111"] and {r["type"] for r in routes.values()} == {"급행"}
+    db = _route_db()
+    bd.write_jeju(db, routes, set())
+    assert db.execute("SELECT DISTINCT rtype FROM routes").fetchall() == [("급행",)]
+    assert bd.jeju_type("리무진") == "공항리무진" and bd.jeju_type("읍면지선") == "읍면지선" and bd.jeju_type("") is None
 
 
 def test_gbis_stops_written():
@@ -408,7 +423,33 @@ def test_jeonju_retry_failed():
     assert not ok                                                    # 끝까지 못 받으면 '다 받음' 아님
 
 
+
+def test_incheon_info_and_tidy():
+    """인천: 날짜로 바뀐 번호('05월 01일')·빈 종류·첫차를 TAGO 노선 정보로. 번호 끝 '번'(원주)·전부 시외버스인 도시(안동)도 정리"""
+    assert bd.incheon_current("ICB165000006") == "ICB365000006" and bd.incheon_current("ICB265000006") == "ICB465000006"
+    assert bd.incheon_current("ICB365000006") == "ICB365000006" and bd.incheon_current("JUB1") == "JUB1"
+    db = _route_db()
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    add = lambda rid, no, city, rt, tp=None: db.execute("INSERT INTO routes(id,no,city,realtime,rtype) VALUES(?,?,?,?,?)", (rid, no, city, rt, tp))
+    add("ICB165000006", "05월 01일", "23", "tago")
+    add("ICB165000095", "539", "23", "tago")
+    add("FWJ0112", "51번", "32020", "resolve")
+    add("FWJ0001", "10", "32020", "resolve")
+    for i in range(20):
+        add(f"ADB{i}", str(300 + i), "37040", "tago", "시외버스")
+        add(f"IKB{i}", str(i), "35020", "tago", "시외버스" if i == 0 else "일반버스")
+    info = {"ICB165000006": {"routeno": "5-1", "routetp": "간선버스", "startvehicletime": "0530", "endvehicletime": "2300", "intervaltime": "12"},
+            "ICB165000095": {"routeno": "", "routetp": "지선버스"}}
+    assert bd.write_incheon_info(db, info) == 2
+    assert db.execute("SELECT no, rtype FROM routes WHERE id LIKE 'ICB%' ORDER BY id").fetchall() == [("5-1", "간선버스"), ("539", "지선버스")]
+    assert db.execute("SELECT first, last, interval FROM route_info WHERE id = 'ICB165000006'").fetchone() == ("05:30", "23:00", 12)
+    assert bd.tidy_routes(db) == (1, 20)
+    assert db.execute("SELECT no FROM routes WHERE id LIKE 'FWJ%' ORDER BY id").fetchall() == [("10",), ("51",)]
+    assert db.execute("SELECT DISTINCT rtype FROM routes WHERE city = '37040'").fetchall() == [("일반버스",)]
+    assert db.execute("SELECT rtype FROM routes WHERE id = 'IKB0'").fetchone() == ("시외버스",)      # 섞여 있는 도시는 그대로
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
