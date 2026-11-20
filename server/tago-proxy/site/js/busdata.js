@@ -219,7 +219,8 @@ async function routeRaw(id, city) {
  * 자료 조각에 없는 노선(경기·TAGO 지역)은 서버에 물어야 해서 느림 → 이 브라우저에 저장해 두고 다음부터 바로.
  * 저장한 것이 있으면 그것을 주고 뒤에서 새로 받아 저장 (다음에 열 때 반영). 하루 지나면 기다려서 새로 받음
  */
-const ROUTE_KEEP_MS = 24 * 3600 * 1000;
+// 저장해 둔 노선 정류장 목록은 30일까지 바로 보여 줌 (서버 쪽은 열 때마다 뒤에서 다시 받아 저장). 예전 하루: 다음 날 열면 다시 기다렸음
+const ROUTE_KEEP_MS = 30 * 24 * 3600 * 1000;
 async function savedRoute(id, city) {
   const key = "route:" + legacyId(id) + ":" + (city || "");
   const net = () => (ggId(id) ? ggRoute(id) : tagoRoute(id, city))
@@ -320,7 +321,8 @@ async function ggRoute(id) {
 
 // 정류장 노선 목록은 이 브라우저에 하루 저장해 두고 바로 보여 줌 (서버 확인은 뒤에서, 달라졌으면 onNewer 로 알림).
 // 전주시 정류장처럼 자료에 노선 목록이 없는 곳은 서버에 물어야 해서 처음엔 몇 초 걸림
-const STOP_ROUTES_KEEP_MS = 24 * 3600 * 1000;
+// 정류장을 지나는 노선도 30일까지 바로 (뒤에서 다시 받아 달라졌으면 onNewer)
+const STOP_ROUTES_KEEP_MS = 30 * 24 * 3600 * 1000;
 const stopRoutesMemo = new Map();
 // 누가 지도를 고치면(정류장 묶기·떼기·옮기기) 묶음이 달라지므로 다시 물음
 Edits.onChange(() => stopRoutesMemo.clear());

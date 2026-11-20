@@ -4,6 +4,8 @@ import { MapView } from "./map.js";
 import { thinDots } from "./mapdiff.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
+import { cachedText, subwayColor } from "./core.js";
+import { parseStations, stationsIn, pickSearchRow } from "./stations.js";
 import { applyTheme } from "./store.js";
 import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
 import { trafficLayer } from "./topis.js";
@@ -107,9 +109,21 @@ function startSide(focus) {
 }
 
 const towardMemo = new Map();
+// 지하철역 점 (data/files/subway_stations.tsv, 이 브라우저에 저장). 줌 12부터
+const STATION_ZOOM = 12;
+let stationsP = null;
+const stationGroups = () => (stationsP ||= cachedText("data/files/subway_stations.tsv").then(parseStations).catch(() => { stationsP = null; return []; }));
+/** 역 카드에서 노선을 누르면: 역 찾기로 그 노선 역 번호를 찾아 역 화면 */
+async function openStation(g, line) {
+  try {
+    const row = pickSearchRow(await subway.searchStations(g.name), g.name, line);
+    if (row) return go("subway", row.id, { name: row.name, line: row.line });
+  } catch (e) { /* 아래 */ }
+  alert("역 정보를 받지 못했어요. 잠시 뒤 다시 해 주세요.");
+}
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
 export function stopsMap(host, focus) {
-  let stops = [], picked = focus;
+  let stops = [], picked = focus, stations = [];
   let timer = null, alive = true;
   /** 서울 실시간 교통 점(돌발·교통량 지점)을 눌렀을 때 카드 내용 */
   let info = null;
@@ -124,12 +138,23 @@ export function stopsMap(host, focus) {
     // 점이 빽빽하면(300개 넘게) 화면 22px 칸마다 하나만 (mapdiff.js thinDots): 확대·축소 때 카카오 지도가 점 수백 개를 다시 맞추느라 멈췄음.
     // 정류장을 먼저 (교통 점보다 앞에), 고른 정류장(이름표)은 늘 남김
     MapView.dots(thinDots(
-      [...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
+      // 지하철역이 맨 앞 (솎을 때 남게): 흰 점에 노선 색 테두리, 고르면 이름
+      [...stations.map((g, i) => ({ id: "sub:" + i, lat: g.lat, lng: g.lng, color: "#fff", ring: subwayColor(g.lines[0]), r: 6, label: MapView.zoom() >= 15 ? g.name : null })),
+      ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
         .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
       ...(traffic ? traffic.dots() : [])], MapView.metersPerPx()),
       (d) => {
         // 돌발·공영자전거·주차장·편의시설 점은 카드 (topis.js card)
+        if (d.id.startsWith("sub:")) {
+          const g = stations[+d.id.slice(4)];
+          if (!g) return;
+          picked = null;
+          info = `<div><b>${esc(g.name)}역</b><small>${esc(g.lines.join(" · "))}</small></div><div class="flexrow" style="flex-wrap:wrap">${g.lines.map((l) =>
+            `<button class="btn" ${act(() => openStation(g, l))}>${esc(l)}</button>`).join("")}</div>`;
+          draw();
+          return;
+        }
         if (/^(acc|bike|park|pl):/.test(d.id)) {
           picked = null;
           info = traffic && traffic.card(d.id, (h) => { if (info != null) { info = h; draw(); } });
@@ -160,7 +185,11 @@ export function stopsMap(host, focus) {
     timer = setTimeout(async () => {
       const b = MapView.bounds();
       if (!b || !alive) return;
-      stops = MapView.zoom() < 15 ? [] : await stopsIn(b.s, b.w, b.n, b.e).catch(() => stops);
+      const z = MapView.zoom();
+      [stops, stations] = await Promise.all([
+        z < 15 ? [] : stopsIn(b.s, b.w, b.n, b.e).catch(() => stops),
+        z < STATION_ZOOM ? [] : stationGroups().then((gs) => stationsIn(gs, b.s, b.w, b.n, b.e)),
+      ]);
       if (focus && !picked?.name) picked = stops.find((s) => s.id === focus.id) || picked;
       if (alive) draw();
     }, 300);

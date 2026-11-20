@@ -1,5 +1,5 @@
 // 지하철: 역 찾기(국토교통부), 역 화면(서울 실시간 도착·시간표·혼잡도·시설), 서울 지하철 노선도 그림.
-import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor, livePoll, onReturn } from "./core.js";
+import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor, livePoll, onReturn, cachedText } from "./core.js";
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent } from "./store.js";
@@ -81,7 +81,7 @@ export const stationNorm = (s) => { const t = s.replace(PAREN, "").replace(/ /g,
 const CITY = { MTRBS: "부산", MTRDG: "대구", MTRGJ: "광주", MTRDJ: "대전", MTRIC: "인천" };
 let congP = null, facP = null;
 function congestionTable() {
-  if (!congP) congP = getText("data/files/subway_congestion.tsv").then((t) => {
+  if (!congP) congP = cachedText("data/files/subway_congestion.tsv").then((t) => {
     const out = new Map();
     for (const l of t.split("\n")) {
       const f = l.split("\t");
@@ -95,7 +95,7 @@ function congestionTable() {
   return congP;
 }
 function facilityTable() {
-  if (!facP) facP = getText("data/files/subway_station_facilities.tsv").then((t) => {
+  if (!facP) facP = cachedText("data/files/subway_station_facilities.tsv").then((t) => {
     const out = new Map();
     t.split("\n").slice(1).forEach((row) => {
       const c = row.split("\t");
@@ -270,7 +270,7 @@ export function subwayMap(root) {
     `<div class="mapimg"><img alt="서울 지하철 노선도" draggable="false"><span class="hint">끌어서 옮기기 · 휠·두 손가락으로 확대</span></div>`;
   const box = root.querySelector(".mapimg"), img = box.querySelector("img");
   let spots = [], scale = 0, ox = 0, oy = 0;
-  getText("data/files/seoul_metro_map_hotspots.tsv").then((t) => {
+  cachedText("data/files/seoul_metro_map_hotspots.tsv").then((t) => {
     spots = t.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 3 && Number.isFinite(+f[1])).map((f) => [f[0].trim(), +f[1], +f[2]]);
   }).catch(() => {});
   const apply = () => { img.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`; };
@@ -309,7 +309,7 @@ export function subwayMap(root) {
 // 노선 모양: data/files/subway_lines.json (pipeline/build_subway_lines.py, 한국철도공단 노선 정보의 역 차례 + 역 좌표)
 // 열차 위치: 서울 열린데이터광장 realtimePosition (서버 /w/seoul/position/<노선>, 10초 저장)
 let linesP = null;
-const subwayLines = () => (linesP ||= getText("data/files/subway_lines.json").then((t) => JSON.parse(t)).catch((e) => { linesP = null; throw e; }));
+const subwayLines = () => (linesP ||= cachedText("data/files/subway_lines.json").then((t) => JSON.parse(t)).catch((e) => { linesP = null; throw e; }));
 /** 역 화면 → 그 역의 서울 실시간 노선 ID (없으면 null) */
 export const seoulLineOf = (s) => lineIdOf(s);
 

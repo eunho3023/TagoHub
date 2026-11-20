@@ -1,5 +1,5 @@
 // 기차(서버에 올린 한국철도공사 시간표 + 국토교통부 종류·요금)와 고속·시외버스(국토교통부) 시간표.
-import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, onReturn } from "./core.js";
+import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, onReturn, cachedText } from "./core.js";
 import { act, header, note } from "./ui.js";
 import { clock } from "./subway.js";
 
@@ -30,7 +30,7 @@ function tripList(root, list, now, row) {
 const norm = (n) => { const t = n.replace(/\(.*?\)/g, "").replace(/\s+/g, ""); return t === "여수엑스포" || t === "여수EXPO" ? "여수EXPO" : t === "평택지제" ? "지제" : t; };
 let trainsP = null, stationsP = null;
 function trains() {
-  if (!trainsP) trainsP = getText("data/files/train_timetable.tsv").then((t) => t.split("\n").map((l) => {
+  if (!trainsP) trainsP = cachedText("data/files/train_timetable.tsv").then((t) => t.split("\n").map((l) => {
     const f = l.split("\t");
     if (f.length < 4 || !f[0].trim()) return null;
     const stops = f[3].split(";").map((s) => { const i = s.lastIndexOf("@"); const n = s.slice(0, i), m = parseInt(s.slice(i + 1), 10); return i > 0 && n.trim() && Number.isFinite(m) ? [n, m] : null; }).filter(Boolean);
@@ -39,7 +39,7 @@ function trains() {
   return trainsP;
 }
 function trainStations() {
-  if (!stationsP) stationsP = Promise.all([trains(), getText("data/files/train_stations.tsv")]).then(([tr, t]) => {
+  if (!stationsP) stationsP = Promise.all([trains(), cachedText("data/files/train_stations.tsv")]).then(([tr, t]) => {
     const known = new Set(tr.flatMap((x) => x.keys)), seen = new Set();
     return t.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 3 && f[0].startsWith("NAT"))
       .map((f) => ({ id: f[0], name: f[1].trim(), region: f[2].trim() })).filter((s) => known.has(norm(s.name)) && !seen.has(norm(s.name)) && seen.add(norm(s.name)));
@@ -114,7 +114,7 @@ export function trainScreen(root, chipsHtml) {
 // ── 고속·시외버스 ──
 let termP = null;
 function terminals() {
-  if (!termP) termP = getText("data/files/coach_terminals.tsv").then((t) => {
+  if (!termP) termP = cachedText("data/files/coach_terminals.tsv").then((t) => {
     const seen = new Set();
     return t.split("\n").map((l) => l.split("\t")).filter((f) => f.length >= 3 && f[0].startsWith("NA")).map((f) => ({ id: f[0], name: f[1].trim(), region: f[2].trim() })).filter((x) => !seen.has(x.id) && seen.add(x.id));
   });
