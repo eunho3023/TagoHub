@@ -98,7 +98,8 @@ export async function getJson(path, query) { return JSON.parse(await getText(pat
 
 // ── 이 브라우저에 저장 (Cache Storage): 다음에 열 때 서버를 기다리지 않고 바로 보여 줌 ──
 // 자료 조각(data/…)은 서버 자료가 새로 만들어지면(manifest.json 의 built) 통째로 지우고 다시 받음.
-const STORE = "tagohub-store-v1", DATA_STORE = "tagohub-data-v1", BUILT_KEY = "tagohub.dataBuilt";
+// v2: 배포 뒤 한 시간 동안 받은 예전 자료(고치기 전 지하철역 좌표)를 저장한 브라우저가 있어 한 번 모두 지움
+const STORE = "tagohub-store-v1", DATA_STORE = "tagohub-data-v2", BUILT_KEY = "tagohub.dataBuilt";
 const storeUrl = (key) => location.origin + "/__store/" + encodeURIComponent(key);
 /** 저장해 둔 값 (없거나 못 읽으면 undefined) */
 export async function cacheGet(key, name = STORE) {
@@ -116,11 +117,16 @@ export async function cachePut(key, value, name = STORE) {
   } catch (e) { /* 저장 공간 없음 등 */ }
 }
 // 페이지를 열 때 한 번: 서버 자료가 바뀌었으면 저장해 둔 자료 조각을 지움 (뒤에서, 화면을 막지 않음)
+// 서버 자료 판 번호(built): 자료 파일을 받을 때 주소에 붙임. 붙이지 않으면 브라우저·서버 앞단이 한 시간 보관한
+// 예전 파일(역 좌표를 고치기 전)을 받아 이 브라우저에 다음 판까지 저장해 버렸음
+let dataBuilt = "";
 const dataChecked = (async () => {
+  try { if (self.caches) caches.delete("tagohub-data-v1"); } catch (e) { /* 못 지움 */ }
   try {
     const m = await getJson("data/manifest.json", { t: Math.floor(Date.now() / 600000) });
     const built = String(m.built ?? m.dbVersion ?? "");
     if (!built) return;
+    dataBuilt = built;
     let old = null;
     try { old = localStorage.getItem(BUILT_KEY); } catch (e) { /* 못 읽음 */ }
     if (old !== built) {
@@ -141,8 +147,9 @@ export function cached(path) {
         const have = await cacheGet(path, DATA_STORE);
         if (have !== undefined) return have;
       }
-      const v = await getJson(path);
-      if (persist) dataChecked.then(() => cachePut(path, v, DATA_STORE));
+      if (persist) await dataChecked;
+      const v = await getJson(path, persist && dataBuilt ? { b: dataBuilt } : undefined);
+      if (persist) cachePut(path, v, DATA_STORE);
       return v;
     };
     memo.set(path, load().catch((e) => { memo.delete(path); throw e; }));
@@ -160,8 +167,9 @@ export function cachedText(path) {
     const load = async () => {
       const have = await cacheGet(path, DATA_STORE);
       if (typeof have === "string") return have;
-      const t = await getText(path);
-      dataChecked.then(() => cachePut(path, t, DATA_STORE));
+      await dataChecked;
+      const t = await getText(path, dataBuilt ? { b: dataBuilt } : undefined);
+      cachePut(path, t, DATA_STORE);
       return t;
     };
     memo.set(k, load().catch((e) => { memo.delete(k); throw e; }));
