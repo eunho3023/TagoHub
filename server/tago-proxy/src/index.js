@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, seoulPositionRequest, seoulPositionUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
 import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps, gpsInfo } from "./gps.js";
@@ -251,6 +251,11 @@ async function exWeb(request, url, env, ctx) {
 
 /** 웹 버전 서울 실시간 지하철 역 도착 (proxy.js seoulWebRequest). "데이터 없음"(INFO-200)도 정상으로 저장 */
 async function seoulWeb(request, url, env, ctx) {
+  const pr = seoulPositionRequest(url.pathname);
+  if (pr) {
+    return cachedJson(request, env, ctx, "https://cache.tagohub/seoul/position/" + encodeURIComponent(pr.line),
+      env.SEOUL_SUBWAY_KEY ? seoulPositionUrl(pr.line, env.SEOUL_SUBWAY_KEY) : null, pr.ttl, (b) => /"code"\s*:\s*"INFO-(000|200)"/.test(b));
+  }
   const r = seoulWebRequest(url.pathname);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
   return cachedJson(request, env, ctx, "https://cache.tagohub/seoul/arrival/" + encodeURIComponent(r.name),

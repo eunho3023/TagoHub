@@ -38,6 +38,7 @@ const SCREENS = {
   route: bus.routeScreen,
   subway: subway.stationScreen,
   subwaymap: subway.subwayMap,
+  subwayline: subway.lineScreen,
   airport: air.airportScreen,
   report: more.reportScreen,
   fix: fixScreen,

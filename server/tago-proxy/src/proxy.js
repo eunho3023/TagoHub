@@ -218,6 +218,22 @@ export function seoulWebRequest(pathname) {
   return { name, ttl: 10 };
 }
 
+/** 서울 실시간 열차 위치를 물을 수 있는 노선 이름 (서울 열린데이터광장 realtimePosition, 앱 SeoulLines.apiName) */
+export const SEOUL_POSITION_LINES = ["1호선", "2호선", "3호선", "4호선", "5호선", "6호선", "7호선", "8호선", "9호선", "경의중앙선", "공항철도", "경춘선",
+  "수인분당선", "신분당선", "경강선", "우이신설선", "서해선", "신림선", "GTX-A"];
+/** "/w/seoul/position/2호선" → { line, ttl }. 노선 열차 위치 (웹 지하철 노선 화면, 10초 저장). 모르는 노선이면 null */
+export function seoulPositionRequest(pathname) {
+  const m = /^\/w\/seoul\/position\/([^/]+)$/.exec(pathname);
+  if (!m) return null;
+  let line;
+  try { line = decodeURIComponent(m[1]); } catch { return null; }
+  return SEOUL_POSITION_LINES.includes(line) ? { line, ttl: 10 } : null;
+}
+/** 서울 열린데이터광장 노선 열차 위치 (JSON, 앞 300건) */
+export function seoulPositionUrl(line, key) {
+  return `http://swopenapi.seoul.go.kr/api/subway/${encodeURIComponent(key.trim())}/json/realtimePosition/0/300/${encodeURIComponent(line)}`;
+}
+
 /** 서울 열린데이터광장 역 도착 (JSON, 앞 60건). 키는 주소 안에 들어감 */
 export function seoulArrivalUrl(name, key) {
   return `http://swopenapi.seoul.go.kr/api/subway/${encodeURIComponent(key.trim())}/json/realtimeStationArrival/0/60/${encodeURIComponent(name)}`;

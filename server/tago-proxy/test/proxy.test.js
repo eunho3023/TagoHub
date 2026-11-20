@@ -297,3 +297,12 @@ test("'all' 은 제주 노선 목록만", () => {
   assert.equal(busWebRequest("/w/bus/seoul/pos/all"), null);
   assert.equal(busWebRequest("/w/bus/jeonju/routes/all"), null);
 });
+
+test("웹 서울 지하철 열차 위치: 아는 노선만, 10초 저장", async () => {
+  const { seoulPositionRequest, seoulPositionUrl } = await import("../src/proxy.js");
+  assert.deepEqual(seoulPositionRequest("/w/seoul/position/" + encodeURIComponent("2호선")), { line: "2호선", ttl: 10 });
+  assert.deepEqual(seoulPositionRequest("/w/seoul/position/" + encodeURIComponent("수인분당선")), { line: "수인분당선", ttl: 10 });
+  assert.equal(seoulPositionRequest("/w/seoul/position/" + encodeURIComponent("부산1호선")), null);
+  assert.equal(seoulPositionRequest("/w/seoul/position/x/y"), null);
+  assert.equal(seoulPositionUrl("2호선", " k "), "http://swopenapi.seoul.go.kr/api/subway/k/json/realtimePosition/0/300/" + encodeURIComponent("2호선"));
+});

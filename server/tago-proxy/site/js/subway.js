@@ -3,6 +3,8 @@ import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor, liveP
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent } from "./store.js";
+import { MapView } from "./map.js";
+import { adjacency, placeTrain, TRAIN_STATUS } from "./trainpos.js";
 
 // ── 자료 ──
 export async function searchStations(q) {
@@ -213,6 +215,8 @@ export function stationScreen(root, p) {
       return;
     }
     h += `<div class="toolrow">${segs([["01", "평일"], ["02", "토요일"], ["03", "일·공휴일"]], day, (k) => { day = k; loadSched(); })}<button class="link" ${act(() => { all = !all; draw(); })}>${all ? "다음 열차만" : "전체 시간표"}</button></div>`;
+    // 서울 실시간 노선: 지도에 노선·열차 위치 (버스 노선 화면처럼)
+    if (realtime) h += `<button class="link pad" ${act(() => go("subwayline", lineIdOf(s), { station: s.name }))}>🚇 ${esc(s.line)} 노선·열차 위치 보기</button>`;
     h += liveHtml();
     if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
     if (!up || !down) { root.innerHTML = h + note("시간표를 불러오는 중..."); return; }
@@ -299,4 +303,82 @@ export function subwayMap(root) {
     if (best) { const dx = (best[1] - ix) * img.naturalWidth * scale, dy = (best[2] - iy) * img.naturalHeight * scale; if (dx * dx + dy * dy < 1600) { search.q = best[0]; location.hash = "#/transit/subway"; } }
   });
   box.addEventListener("pointercancel", (e) => pts.delete(e.pointerId));
+}
+
+// ── 서울 지하철 노선 화면: 지도에 노선 선·역·실시간 열차 점 (버스 노선 화면처럼), 아래 역 목록 ──
+// 노선 모양: data/files/subway_lines.json (pipeline/build_subway_lines.py, 한국철도공단 노선 정보의 역 차례 + 역 좌표)
+// 열차 위치: 서울 열린데이터광장 realtimePosition (서버 /w/seoul/position/<노선>, 10초 저장)
+let linesP = null;
+const subwayLines = () => (linesP ||= getText("data/files/subway_lines.json").then((t) => JSON.parse(t)).catch((e) => { linesP = null; throw e; }));
+/** 역 화면 → 그 역의 서울 실시간 노선 ID (없으면 null) */
+export const seoulLineOf = (s) => lineIdOf(s);
+
+export function lineScreen(root, p, ctx) {
+  let alive = true, L = null, adj = null, trains = null, failed = false, fitted = false, poll = null;
+  const focus = p.station ? stationNorm(p.station) : null;
+  root.innerHTML = header("지하철 노선", null, { back: true }) + note("노선을 불러오는 중...");
+  const trainText = (t) => [t.dest && t.dest + "행", TRAIN_STATUS[t.status], t.express && "급행", t.last && "막차"].filter(Boolean).join(" ");
+  const drawMap = () => {
+    if (!L || !alive) return;
+    const pt = (i) => [L.stations[i][1], L.stations[i][2]];
+    MapView.lines(L.edges.map(([i, j]) => ({ pts: [pt(i), pt(j)], color: L.color, width: 5 })));
+    const z = MapView.zoom();
+    const dots = L.stations.map((s, i) => ({ id: "s:" + i, lat: s[1], lng: s[2], color: s[0] === focus ? "#D7262E" : "#fff", ring: L.color, r: s[0] === focus ? 7 : 4,
+      label: s[0] === focus || z >= 15 ? s[0] : null }));
+    (trains || []).forEach((t, k) => dots.push({ id: "t:" + k, lat: t.lat, lng: t.lng, color: L.color, ring: "#fff", r: 8, label: z >= 14 ? trainText(t) : null }));
+    MapView.dots(dots, (d) => {
+      const i = d.id.startsWith("s:") ? +d.id.slice(2) : trains?.[+d.id.slice(2)]?.at;
+      if (i != null) root.querySelector(`[data-i="${i}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    if (!fitted) {
+      fitted = true;
+      const f = L.stations.find((s) => s[0] === focus);
+      if (f) MapView.view(f[1], f[2], 13); else MapView.fit(L.stations.map((s) => [s[1], s[2]]));
+    }
+  };
+  const drawList = () => {
+    if (!L || !alive) return;
+    const st = root.querySelector("#status"), list = root.querySelector("#stops");
+    if (!st || !list) return;
+    const n = trains ? trains.length : 0;
+    st.innerHTML = `<b>${esc(failed && !trains ? "열차 위치를 받지 못했어요" : !trains ? "열차 위치를 받는 중..." : n ? `운행 중 ${n}대 · 10초마다 새로` : "지금 운행 중인 열차가 없어요")}</b>` +
+      `<small>${esc(`역 ${L.stations.length}개 · 실시간 위치는 서울 열린데이터광장 자료예요`)}</small>`;
+    const by = new Map();
+    (trains || []).forEach((t) => { if (!by.has(t.at)) by.set(t.at, []); by.get(t.at).push(t); });
+    list.innerHTML = L.stations.map((s, i) => {
+      const here = by.get(i) || [];
+      return `<div class="rstop" data-i="${i}">
+        <button class="dotbtn" ${act(() => { MapView.view(s[1], s[2], 15); drawMap(); })}><span class="rdot ${here.length ? "bus" : ""}" style="--c:${L.color}"></span></button>
+        <button class="grow rname ${s[0] === focus ? "here" : ""}" ${act(() => { MapView.view(s[1], s[2], 15); drawMap(); })}>${esc(s[0])}</button>
+        ${here.length ? `<span class="plate" style="background:${L.color}">${esc(here.map(trainText).join(" · "))}</span>` : ""}
+      </div>`;
+    }).join("");
+  };
+  subwayLines().then((all) => {
+    if (!alive) return;
+    L = all[p.id] || null;
+    if (!L) { root.innerHTML = header("지하철 노선", null, { back: true }) + note("이 노선은 노선 모양 자료가 없어요"); return; }
+    adj = adjacency(L);
+    root.innerHTML = header(L.name, focus ? `${focus}역에서 연 노선` : "실시간 열차 위치", { back: true }) +
+      `<div class="map-slot"></div><div id="status" class="status"></div><div id="stops" class="list"></div>`;
+    ctx.useMap(root.querySelector(".map-slot"));
+    drawList(); drawMap();
+    const offIdle = MapView.onIdle(drawMap);
+    // 열차 위치: 10초마다, 다른 앱에서 돌아오면 바로, 못 받으면 2·4·6초 뒤 다시 (livePoll). 다시 묻는 동안은 받은 위치를 그대로
+    poll = livePoll(async ({ lastTry }) => {
+      let rows;
+      try { rows = JSON.parse(await getText("w/seoul/position/" + encodeURIComponent(L.name))).realtimePositionList || []; } catch (e) {
+        if (!alive) return;
+        if (lastTry) { failed = true; drawList(); }
+        return false;
+      }
+      if (!alive) return;
+      trains = rows.map((r) => placeTrain(L, adj, r)).filter(Boolean);
+      failed = false;
+      drawList(); drawMap();
+    }, 10000);
+    const prevStop = poll.stop.bind(poll);
+    poll.stop = () => { prevStop(); offIdle(); };
+  }).catch(() => { if (alive) root.innerHTML = header("지하철 노선", null, { back: true }) + note("노선을 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); });
+  return () => { alive = false; poll?.stop(); };
 }
