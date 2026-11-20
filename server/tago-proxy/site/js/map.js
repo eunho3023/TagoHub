@@ -2,6 +2,7 @@
 // 확대 단계는 웹 지도 기준 z (카카오 레벨 = 20 - z).
 // dots: [{id, lat, lng, color, ring, r, label}], lines: [{pts:[[위도,경도]...], color, width}]
 import { follow } from "./geo.js";
+import { reconcile, dotKey, lineKey } from "./mapdiff.js";
 
 const el = document.createElement("div");
 el.className = "map";
@@ -91,22 +92,22 @@ async function kakaoImpl() {
   map.addControl(new K.ZoomControl(), K.ControlPosition.RIGHT);
   K.event.addListener(map, "idle", () => idleCbs.forEach((f) => f()));
   K.event.addListener(map, "click", (e) => tapCb && tapCb(e && e.latLng ? [e.latLng.getLat(), e.latLng.getLng()] : null));
-  let lineObjs = [], dotObjs = [], meObj = null, meRing = null;
+  let lineObjs = new Map(), dotObjs = new Map(), meObj = null, meRing = null;
   const lv = (z) => Math.min(14, Math.max(1, 20 - z));
   return {
     view(lat, lng, z) { map.setLevel(lv(z)); map.setCenter(new K.LatLng(lat, lng)); },
     fit(pts) { if (!pts.length) return; const b = new K.LatLngBounds(); pts.forEach((p) => b.extend(new K.LatLng(p[0], p[1]))); map.setBounds(b, 40, 40, 40, 40); },
     lines(ls) {
-      lineObjs.forEach((o) => o.setMap(null)); lineObjs = [];
-      for (const l of ls) {
+      lineObjs = reconcile(lineObjs, ls, lineKey, (l) => {
         const path = l.pts.map((p) => new K.LatLng(p[0], p[1]));
-        lineObjs.push(new K.Polyline({ map, path, strokeWeight: l.width + 4, strokeColor: "#ffffff", strokeOpacity: 0.9 }));
-        lineObjs.push(new K.Polyline({ map, path, strokeWeight: l.width, strokeColor: l.color, strokeOpacity: 1, strokeStyle: l.dash ? "shortdash" : "solid" }));
-      }
+        return [new K.Polyline({ map, path, strokeWeight: l.width + 4, strokeColor: "#ffffff", strokeOpacity: 0.9 }),
+          new K.Polyline({ map, path, strokeWeight: l.width, strokeColor: l.color, strokeOpacity: 1, strokeStyle: l.dash ? "shortdash" : "solid" })];
+      }, (o) => o.forEach((x) => x.setMap(null)));
     },
     dots(ds) {
-      dotObjs.forEach((o) => o.setMap(null));
-      dotObjs = ds.map((d) => new K.CustomOverlay({ map, position: new K.LatLng(d.lat, d.lng), content: dotEl(d), xAnchor: 0.5, yAnchor: 0.5, zIndex: d.chevron != null ? 1 : d.label ? 3 : 2, clickable: d.chevron == null }));
+      dotObjs = reconcile(dotObjs, ds, dotKey,
+        (d) => new K.CustomOverlay({ map, position: new K.LatLng(d.lat, d.lng), content: dotEl(d), xAnchor: 0.5, yAnchor: 0.5, zIndex: d.chevron != null ? 1 : d.label ? 3 : 2, clickable: d.chevron == null }),
+        (o) => o.setMap(null));
     },
     bounds() { const b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast(); return { s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng() }; },
     zoom() { return 20 - map.getLevel(); },
@@ -135,20 +136,20 @@ async function leafletImpl() {
   map.on("moveend", () => idleCbs.forEach((f) => f()));
   map.on("click", (e) => tapCb && tapCb(e && e.latlng ? [e.latlng.lat, e.latlng.lng] : null));
   const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map), meLayer = L.layerGroup().addTo(map);
-  let meMark = null, meCircle = null;
+  let meMark = null, meCircle = null, lineObjs = new Map(), dotObjs = new Map();
   return {
     view(lat, lng, z) { map.setView([lat, lng], z); },
     fit(pts) { if (pts.length) map.fitBounds(pts, { padding: [40, 40] }); },
     lines(ls) {
-      lineLayer.clearLayers();
-      for (const l of ls) {
-        L.polyline(l.pts, { color: "#fff", weight: l.width + 4, opacity: 0.9 }).addTo(lineLayer);
-        L.polyline(l.pts, { color: l.color, weight: l.width, dashArray: l.dash ? "6 6" : null }).addTo(lineLayer);
-      }
+      lineObjs = reconcile(lineObjs, ls, lineKey, (l) => [
+        L.polyline(l.pts, { color: "#fff", weight: l.width + 4, opacity: 0.9 }).addTo(lineLayer),
+        L.polyline(l.pts, { color: l.color, weight: l.width, dashArray: l.dash ? "6 6" : null }).addTo(lineLayer),
+      ], (o) => o.forEach((x) => lineLayer.removeLayer(x)));
     },
     dots(ds) {
-      dotLayer.clearLayers();
-      for (const d of ds) L.marker([d.lat, d.lng], { icon: L.divIcon({ html: dotEl(d), className: "", iconSize: [0, 0] }), zIndexOffset: d.label ? 1000 : 0 }).addTo(dotLayer);
+      dotObjs = reconcile(dotObjs, ds, dotKey,
+        (d) => L.marker([d.lat, d.lng], { icon: L.divIcon({ html: dotEl(d), className: "", iconSize: [0, 0] }), zIndexOffset: d.label ? 1000 : 0 }).addTo(dotLayer),
+        (o) => dotLayer.removeLayer(o));
     },
     bounds() { const b = map.getBounds(); return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; },
     zoom() { return map.getZoom(); },
@@ -162,6 +163,23 @@ async function leafletImpl() {
       } else { meMark.setLatLng([p[0], p[1]]); meCircle.setLatLng([p[0], p[1]]); meCircle.setRadius(p[2] || 0); }
     },
   };
+}
+
+let pendLines = null, pendDots = null, paintAsked = false;
+function paintSoon() {
+  if (paintAsked) return;
+  paintAsked = true;
+  ready.then((m) => {
+    const run = () => {
+      paintAsked = false;
+      const ls = pendLines, ds = pendDots;
+      pendLines = pendDots = null;
+      if (ls) m.lines(ls);
+      if (ds) m.dots(ds);
+    };
+    // 화면이 숨겨져 있으면 requestAnimationFrame 이 멈춰서 바로 그림
+    if (document.hidden || typeof requestAnimationFrame !== "function") run(); else requestAnimationFrame(run);
+  });
 }
 
 const ready = (async () => {
@@ -235,9 +253,10 @@ export const MapView = {
   mount(container) { if (el.parentElement !== container) { container.appendChild(el); impl?.relayout(); } },
   view(lat, lng, z) { if (impl) impl.view(lat, lng, z); else pendingView = () => impl.view(lat, lng, z); },
   fit(pts) { if (impl) impl.fit(pts); else pendingView = () => impl.fit(pts); },
-  lines(ls) { ready.then((m) => m.lines(ls)); },
-  dots(ds, onDot) { dotCb = onDot || null; ready.then((m) => m.dots(ds)); },
-  clear() { dotCb = null; tapCb = null; ready.then((m) => { m.lines([]); m.dots([]); }); },
+  // 그리기는 다음 화면 갱신 때 한 번만 (자료가 잇달아 오면 마지막 것만 그림: 정류장·소통 속도·자전거·주차장·편의시설이 따로 옴)
+  lines(ls) { pendLines = ls; paintSoon(); },
+  dots(ds, onDot) { dotCb = onDot || null; pendDots = ds; paintSoon(); },
+  clear() { dotCb = null; tapCb = null; pendLines = []; pendDots = []; paintSoon(); },
   onTap(f) { tapCb = f; },
   /** 지도를 옮기거나 확대할 때마다 (돌려준 함수로 그만 받기) */
   onIdle(f) { idleCbs.push(f); return () => { idleCbs = idleCbs.filter((x) => x !== f); }; },
