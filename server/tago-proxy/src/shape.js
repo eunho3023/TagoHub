@@ -608,7 +608,8 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const routeNo = cleanNo(url.searchParams.get("no")) || (await dataRouteNo(env, id));
   const useKakao = !!(routeNo && (env.KAKAO_REST_KEY || "").trim());
   // v7b: 회차에서 끊어 다시 만든 모양을 받게 (예전 응답은 하루 동안 남아 있음)
-  const key = new Request(`https://cache.tagohub/shape/v7b${useKakao ? "k" : ""}/${id}`);
+  // v7c: 예전 방식으로 직선이 든 모양을 하루 동안 저장해 두던 응답을 쓰지 않게 (STRAIGHT_FIX_AT, 여수 365-5)
+  const key = new Request(`https://cache.tagohub/shape/v7c${useKakao ? "k" : ""}/${id}`);
   const hit = await cache.match(key);
   if (hit) return hit;
 
@@ -621,6 +622,8 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
     const got = await storedShape(env.DB, id, sig);
     if (got) {
       poly = got.poly;
+      // 다시 만들 모양은 짧게만 저장 (예약 작업이 새로 만들면 곧 그것이 나오게)
+      if (got.stale) partial = true;
       // 임시 모양이거나 예전 방식으로 직선이 든 모양이면 예약 작업이 다시 만들게 줄에 (사람이 연 노선이라 먼저, 이미 있으면 그대로)
       if (got.interim || got.stale) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 1));
     }
