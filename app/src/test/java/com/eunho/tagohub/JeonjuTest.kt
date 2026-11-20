@@ -151,7 +151,8 @@ class JeonjuTest {
     fun loopRouteIsCircular() {
         assertEquals("순환", JeonjuMappers.routeType("0", "2", "평화동종점", "평화동종점"))
         assertEquals("일반", JeonjuMappers.routeType("0", "104", "평화동종점", "송천동종점"))
-        assertEquals("순환", JeonjuMappers.routeType("1", "7"))
+        assertEquals("일반", JeonjuMappers.routeType("1", "7"))   // brtClass 1 은 가지 번호(7-1)지 순환이 아님
+        assertEquals("간선", JeonjuMappers.routeType("0", "6001", "비전대학교", "비전대학교"))   // 간선이 먼저
         assertEquals("간선", JeonjuMappers.routeType("0", "4000"))
     }
 }

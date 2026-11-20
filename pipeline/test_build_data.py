@@ -328,6 +328,7 @@ def test_jeonju_served_walk():
     assert db.execute("SELECT seq, stop_id, name FROM route_stops ORDER BY seq").fetchall() == [(1, "JUB305100426", ""), (2, "JUB306101023", "백자삼거리")]
     assert db.execute("SELECT first, last, interval FROM route_info").fetchone() == ("05:40", "22:30", 15)
     assert bd.jeonju_type("0", "4000", "a", "b") == "간선" and bd.jeonju_type("0", "100", "a", "b") == "일반"
+    assert bd.jeonju_type("0", "6001", "비전대학교", "비전대학교") == "간선" and bd.jeonju_type("1", "62", "흑석골종점", "원상림") == "일반"
 
 
 def _route_db():

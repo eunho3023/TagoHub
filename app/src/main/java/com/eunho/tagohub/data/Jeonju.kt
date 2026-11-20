@@ -35,13 +35,14 @@ object JeonjuMappers {
      * (예: 110 비전대→대성동종점 / 110 혁신전기안전공사→대성동종점).
      */
     /**
-     * 전주 노선 종류: 순환(brtClass 1, 또는 기점과 종점이 같은 노선) / 간선(4자리 번호, 예: 4000·6002) / 일반.
-     * 전주시 자료는 2번(평화동종점→평화동종점)처럼 도는 노선도 brtClass 0 으로 줘서 "일반"으로 보였음
+     * 전주 노선 종류: 간선(4자리 번호, 예: 4000·6001·6002) / 순환(기점과 종점이 같은 노선, 예: 2번 평화동종점→평화동종점) / 일반.
+     * 간선을 먼저 봄: 6001·6002 는 비전대학교→비전대학교로 오가는 간선이라 기점·종점이 같아도 순환이 아님.
+     * brtClass 는 종류가 아니라 번호 뒤 가지 번호(1 → 3-1, 2 → 3-2, 5 → 5-5, 전주시 누리집 BRT_NO)라 쓰지 않음.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun routeType(brtClass: String?, routeNo: String, start: String? = null, end: String? = null): String = when {
-        brtClass == "1" -> "순환"
-        !start.isNullOrBlank() && start.trim() == end?.trim() -> "순환"
         Regex("^\\d{4}").containsMatchIn(routeNo.trim()) -> "간선"
+        !start.isNullOrBlank() && start.trim() == end?.trim() -> "순환"
         else -> "일반"
     }
 
