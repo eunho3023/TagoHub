@@ -926,10 +926,11 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
 
 
 def jeonju_type(cls, no, start, end):
-    """전주 노선 종류 (앱 JeonjuMappers.routeType 과 같음): 순환 / 간선(4자리 번호) / 일반"""
-    if cls == "1" or (start and start.strip() == (end or "").strip()):
-        return "순환"
-    return "간선" if re.match(r"^\d{4}", (no or "").strip()) else "일반"
+    """전주 노선 종류 (앱 JeonjuMappers.routeType 과 같음): 간선(4자리 번호, 6001·6002 처럼 기점=종점이어도) / 순환(기점=종점) / 일반.
+    cls(brtClass)는 종류가 아니라 가지 번호(3-1 의 1)라 쓰지 않음"""
+    if re.match(r"^\d{4}", (no or "").strip()):
+        return "간선"
+    return "순환" if start and start.strip() == (end or "").strip() else "일반"
 
 
 def write_jeonju(db, routes, known):

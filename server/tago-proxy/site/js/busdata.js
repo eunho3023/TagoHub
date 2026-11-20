@@ -601,12 +601,12 @@ async function tagoArrivals(city, node) {
 }
 
 /** 정류장 실시간 도착: {state: "ok"|"unsupported"|"failed", list, at} */
-/** 전주 노선 종류 (앱 JeonjuMappers.routeType): 순환(brtClass 1, 또는 기점과 종점이 같은 노선, 예: 2번 평화동종점→평화동종점) / 간선(4자리 번호) / 일반 */
+/** 전주 노선 종류 (앱 JeonjuMappers.routeType): 간선(4자리 번호, 6001·6002 처럼 기점=종점이어도) / 순환(기점과 종점이 같은 노선, 예: 2번) / 일반.
+ *  cls(brtClass)는 종류가 아니라 가지 번호(3-1 의 1)라 쓰지 않음 */
 export function jeonjuType(cls, no, start, end) {
-  if (cls === "1") return "순환";
+  if (/^\d{4}/.test(String(no || "").trim())) return "간선";
   const s = String(start || "").trim();
-  if (s && s === String(end || "").trim()) return "순환";
-  return /^\d{4}/.test(String(no)) ? "간선" : "일반";
+  return s && s === String(end || "").trim() ? "순환" : "일반";
 }
 /** 전주시 버스정보 정류장 도착 (줄 이름 <list>, RTime 초, RStop 남은 정류장) */
 async function jeonjuArrivals(id) {

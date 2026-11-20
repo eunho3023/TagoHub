@@ -36,7 +36,8 @@ test("기점에 서 있는 버스는 '정류장 도착'이 아니라 '출발 대
 test("전주 노선 종류: 기점과 종점이 같으면 순환 (2번 평화동종점→평화동종점, 앱 JeonjuMappers 와 같게)", () => {
   assert.equal(jeonjuType("0", "2", "평화동종점", "평화동종점"), "순환");
   assert.equal(jeonjuType("0", "104", "평화동종점", "송천동종점"), "일반");
-  assert.equal(jeonjuType("1", "7"), "순환");
+  assert.equal(jeonjuType("1", "7"), "일반");   // brtClass 1 은 가지 번호(7-1)
+  assert.equal(jeonjuType("0", "6001", "비전대학교", "비전대학교"), "간선");   // 간선이 먼저
   assert.equal(jeonjuType("0", "4000"), "간선");
 });
 

@@ -36,6 +36,7 @@ class KotsaTest {
         assertEquals("간선", JeonjuMappers.routeType("0", "4000"))
         assertEquals("간선", JeonjuMappers.routeType("0", "6002"))
         assertEquals("일반", JeonjuMappers.routeType("0", "119"))
-        assertEquals("순환", JeonjuMappers.routeType("1", "3-2"))
+        assertEquals("일반", JeonjuMappers.routeType("2", "3-2"))
+        assertEquals("간선", JeonjuMappers.routeType("0", "6002", "비전대학교", "비전대학교"))
     }
 }
