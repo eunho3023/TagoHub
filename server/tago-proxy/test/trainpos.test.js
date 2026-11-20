@@ -49,3 +49,17 @@ test("열차 자리: 도착은 그 역, 출발은 행선지 쪽 다음 역으로
   assert.deepEqual(at("1081", R("세종왕릉", "판교")), ["세종대왕릉", "판교"]);
   assert.deepEqual(at("1001", R("지행", "광운대행")), ["지행", "광운대"]);   // 역 이름 끝 '행'은 그대로
 });
+
+test("선로 모양: 풀기·방향·선 위 지점", async () => {
+  const { decodePath, edgePath, alongPath } = await import("../site/js/trainpos.js");
+  // "_p~iF~ps|U_ulLnnqC_mqNvxq`@" = (38.5,-120.2),(40.7,-120.95),(43.252,-126.453)
+  const pts = decodePath("_p~iF~ps|U_ulLnnqC_mqNvxq`@");
+  assert.deepEqual(pts, [[38.5, -120.2], [40.7, -120.95], [43.252, -126.453]]);
+  const line = { stations: [["A", 37.5, 127.0], ["B", 37.51, 127.0]], edges: [[0, 1]], paths: ["_p~iF~ps|U_ulLnnqC_mqNvxq`@"] };
+  assert.deepEqual(edgePath(line, 0, 1)[0], [38.5, -120.2]);
+  assert.deepEqual(edgePath(line, 1, 0)[0], [43.252, -126.453]);
+  const noPath = { stations: line.stations, edges: [[0, 1]], paths: [""] };
+  assert.deepEqual(edgePath(noPath, 0, 1), [[37.5, 127.0], [37.51, 127.0]]);
+  const mid = alongPath([[37.5, 127.0], [37.51, 127.0]], 0.5);
+  assert.ok(Math.abs(mid[0] - 37.505) < 1e-9 && mid[1] === 127.0);
+});

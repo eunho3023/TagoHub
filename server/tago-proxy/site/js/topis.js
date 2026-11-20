@@ -25,8 +25,13 @@ export function speedColor(div, kmh) {
  * 30개를 한 요청에 물으면 서울 API 를 5번 차례로 기다렸음 → 6개씩 나눠 여러 요청을 한꺼번에 보내면 한 차례로 끝남
  */
 const GROUP = 6;
-/** 한꺼번에 보내는 요청 수 (화면 하나에 보통 30~40개) */
-const GROUPS_MAX = 48;
+/** 한꺼번에 보내는 요청 수 (1920px 화면 줌 14: 링크 1436개 = 묶음 240개 남짓) */
+const GROUPS_MAX = 300;
+/**
+ * 그리는 소통 링크 수 (화면 가운데에서 가까운 것부터). 예전 180: 넓은 화면·줌 14~15 에서 가장자리 도로가 칠해지지 않았음
+ * (2026-11-21 "확대나 축소했을 때 교통정보가 다 안 떠"). 1920px 화면 줌 14 에 1436개, 줌 15 에 458개. 흰 테두리 없이 한 겹으로
+ */
+const LINKS_MAX = 1600;
 /** 이 시간 안에 다 오지 않으면 받은 것까지 먼저 칠함 (ms) */
 const PAINT_WAIT_MS = 6000;
 let linksP = null;
@@ -122,7 +127,7 @@ export function trafficLayer(onChange) {
     const cla = (b.s + b.n) / 2, clo = (b.w + b.e) / 2;
     visible = ls.filter((l) => l.b.n >= b.s && l.b.s <= b.n && l.b.e >= b.w && l.b.w <= b.e)
       .map((l) => [l, Math.hypot((l.b.s + l.b.n) / 2 - cla, ((l.b.w + l.b.e) / 2 - clo) * 0.8)])
-      .sort((x, y) => x[1] - y[1]).slice(0, 180).map((x) => x[0]);
+      .sort((x, y) => x[1] - y[1]).slice(0, LINKS_MAX).map((x) => x[0]);
     // 4분 넘은 묶음만 한꺼번에 물음 (서버는 묶음마다 5분 저장). 화면 가운데에 가까운 묶음부터
     const need = [];
     for (const l of visible) {
@@ -170,7 +175,7 @@ export function trafficLayer(onChange) {
         const s = speeds.get(l.id), color = s ? speedColor(l.div, s[0]) : null;
         if (!color) continue;
         if (l.offAt !== side) { l.off = offsetRight(l.pts, side); l.offAt = side; }   // 같은 거리면 지난번에 비킨 선 그대로
-        out.push({ pts: l.off, color, width: 4 });
+        out.push({ pts: l.off, color, width: 4, casing: false });
       }
       return out;
     },

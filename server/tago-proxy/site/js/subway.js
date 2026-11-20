@@ -4,7 +4,7 @@ import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent } from "./store.js";
 import { MapView } from "./map.js";
-import { adjacency, placeTrain, TRAIN_STATUS } from "./trainpos.js";
+import { adjacency, placeTrain, TRAIN_STATUS, edgePath } from "./trainpos.js";
 
 // ── 자료 ──
 export async function searchStations(q) {
@@ -320,10 +320,10 @@ export function lineScreen(root, p, ctx) {
   const trainText = (t) => [t.dest && t.dest + "행", TRAIN_STATUS[t.status], t.express && "급행", t.last && "막차"].filter(Boolean).join(" ");
   const drawMap = () => {
     if (!L || !alive) return;
-    const pt = (i) => [L.stations[i][1], L.stations[i][2]];
-    MapView.lines(L.edges.map(([i, j]) => ({ pts: [pt(i), pt(j)], color: L.color, width: 5 })));
+    // 역 사이는 실제 선로 모양 (OSM, pipeline/build_subway_lines.py). 없는 이음만 직선
+    MapView.lines(L.edges.map(([i, j]) => ({ pts: edgePath(L, i, j), color: L.color, width: 5 })));
     const z = MapView.zoom();
-    const dots = L.stations.map((s, i) => ({ id: "s:" + i, lat: s[1], lng: s[2], color: s[0] === focus ? "#D7262E" : "#fff", ring: L.color, r: s[0] === focus ? 7 : 4,
+    const dots = L.stations.map((s, i) => ({ id: "s:" + i, lat: s[1], lng: s[2], color: s[0] === focus ? "#D7262E" : "#fff", ring: L.color, r: s[0] === focus ? 7 : 4, labelColor: s[0] === focus ? "#D7262E" : L.color,
       label: s[0] === focus || z >= 15 ? s[0] : null }));
     (trains || []).forEach((t, k) => dots.push({ id: "t:" + k, lat: t.lat, lng: t.lng, color: L.color, ring: "#fff", r: 8, label: z >= 14 ? trainText(t) : null }));
     MapView.dots(dots, (d) => {
