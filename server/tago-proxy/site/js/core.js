@@ -2,11 +2,8 @@
 // 서버 주소는 이 페이지를 내준 서버. 시험할 때는 ?server=https://….workers.dev/ 로 바꿀 수 있음.
 
 const qs = new URLSearchParams(location.search);
-// 사용자 주소(Cloudflare Pages, tabolkka.pages.dev)는 화면만 있고 자료·실시간은 서버(관리자 주소, workers.dev)에 물음:
-// config.js 의 TAGOHUB_SERVER (deploy.ps1 이 Pages 에 올릴 때 넣음)
+// 타볼까(tabolkka.pages.dev)는 화면·자료·서버가 한 주소. 다른 서버에 묻게 하려면 config.js 의 TAGOHUB_SERVER 나 ?server=
 export const BASE = (qs.get("server") || (typeof window !== "undefined" && window.TAGOHUB_SERVER) || new URL("../", location.href).href.replace(/\/lite\/?$/, "/")).replace(/\/?$/, "/");
-/** 사용자 주소인지 (관리자 기능 숨김: 관리자로 로그인 단추·지도 고치기). 관리자 주소(서버 주소)에서만 보임 */
-export const USER_SITE = typeof window !== "undefined" && window.TAGOHUB_USER_SITE === true;
 
 /** 글자 받기 (실패하면 오류) */
 export async function getText(path, query) {

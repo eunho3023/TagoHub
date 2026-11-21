@@ -83,7 +83,7 @@ async function hashIp(ip) {
 
 export async function handleEdits(request, env, ctx, path = "/w/edits") {
   if (path === "/w/edits/check") return new Response(JSON.stringify({ ok: isAdmin(request, env) }), { status: isAdmin(request, env) ? 200 : 403, headers: { ...HEAD, "Cache-Control": "no-store" } });
-  if (!env.DB) return new Response(JSON.stringify({ v: 0, bus: {}, rail: {}, stop: {}, station: {} }), { headers: HEAD });
+  if (!env.DB) return new Response(JSON.stringify({ v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {}, place: {} }), { headers: HEAD });
   await ensure(env.DB);
   if (request.method === "GET") {
     // 고치면 바로 모두에게 보이게 저장(캐시)하지 않음. 대신 판 번호(고친 기록 마지막 번호)가 같으면 목록 없이 204 로 짧게

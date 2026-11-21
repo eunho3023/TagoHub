@@ -19,6 +19,9 @@ name = "WEB_LIMIT"
 namespace_id = "1001"
 simple = { limit = 3000, period = 60 }
 
-# 예약 작업: 1분마다 노선 도로 모양 하나를 미리 만들어 D1 에 저장 (사람들이 연 노선 먼저, 그다음 모든 노선 차례로)
+# 예약 작업: 타볼까(Cloudflare Pages)로 옮김 — GitHub Actions 가 1분마다 https://tabolkka.pages.dev/w/cron 을 부름
+# (.github/workflows/server-cron.yml). 이 서버(workers.dev)는 이미 깔린 예전 앱만 씀. 예약을 다시 켜려면 아래를 되살림
+# [triggers]
+# crons = ["* * * * *"]
 [triggers]
-crons = ["* * * * *"]
+crons = []

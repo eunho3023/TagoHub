@@ -803,7 +803,7 @@ PRUNE_MIN = 0.95
 # 지우지 않는 지역: 경기(GGB)는 GBIS 노선 중 정류장 순서가 있는 것이 일부(약 2/3)뿐, 교통안전공단(TSB)은 정류장 순서가 거의 없음
 PRUNE_KEEP = {"GGB", "TSB"}
 # 노선 자료가 DB 에 없어 그 지역 API 로 노선이 서는 정류장을 모으는 곳 (중계 서버 /w/bus/jeonju/… 를 거쳐 하루 저장본을 씀, 인증키 필요 없음)
-WEB_BASE = os.environ.get("TAGOHUB_WEB", "https://tagohub-proxy.eunho3023.workers.dev").rstrip("/")
+WEB_BASE = os.environ.get("TAGOHUB_WEB", "https://tabolkka.pages.dev").rstrip("/")
 
 
 def prefix(sid):

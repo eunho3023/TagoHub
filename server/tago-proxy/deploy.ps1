@@ -82,21 +82,16 @@ if ($py) {
     Write-Host '  파이썬이 없어서 자료 조각은 건너뜀 (웹·PC 버전의 정류장 찾기만 빠짐)'
 }
 
-Write-Host '준비: 웹 버전(화면) 넣는 중...'
-# 웹 버전은 HTML·자바스크립트 (site/, 빌드 없이 그대로): 처음 열 때 바로 뜨게 (예전 Compose 웹은 엔진·글꼴 약 5MB 를 받아야 했음)
+# 웹 화면은 타볼까(Cloudflare Pages)에만 올림 (아래 4/4). 예전 서버(workers.dev)에는 자료 조각(data)과 _headers 만:
+# 화면 주소로 들어오면 서버 코드가 타볼까로 넘김 (src/index.js)
 $pub = Join-Path $PSScriptRoot 'public'
-# 예전 Compose 웹 파일과 지난번 화면 파일은 지움 (자료 조각 data, _headers 는 그대로)
 Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
-foreach ($d in @('composeResources', 'fonts', 'lite', 'js')) { $x = Join-Path $pub $d; if (Test-Path $x) { Remove-Item $x -Recurse -Force } }
-Get-ChildItem (Join-Path $PSScriptRoot 'site') | Copy-Item -Destination $pub -Recurse -Force
+Get-ChildItem $pub -Directory | Where-Object { $_.Name -ne 'data' } | Remove-Item -Recurse -Force
 # 카카오 지도 JavaScript 키 (local.properties 의 KAKAO_JS_KEY). 웹 페이지에 들어가는 키라 공개돼도 되는 종류이고, 카카오에 등록한 도메인에서만 동작
 # 키가 없으면 빈 값 → 웹 버전은 OpenStreetMap 지도
 $jsKey = (Prop 'KAKAO_JS_KEY') -replace '[^A-Za-z0-9]', ''
-[IO.File]::WriteAllText((Join-Path $pub 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
-if ($jsKey) { Write-Host '  카카오 지도 키 넣음 (카카오 개발자 사이트에서 이 서버 주소를 JavaScript SDK 도메인으로 등록해야 지도가 보임)' } else { Write-Host '  카카오 지도 키 없음 → OpenStreetMap 지도' }
-Write-Host '  웹 버전 준비됨 (서버 주소로 열면 보임)'
 
-Write-Host '1/3 서버 올리는 중...'
+Write-Host '1/4 예전 서버(이미 깔린 앱용) 올리는 중...'
 $out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
 Write-Host $out
 $m = [regex]::Match($out, 'https://[A-Za-z0-9.-]+\.workers\.dev')
@@ -106,18 +101,35 @@ if (-not $m.Success) {
 }
 $url = $m.Value
 
-Write-Host '2/3 비밀 값 넣는 중...'
+# 타볼까 (Cloudflare Pages): 화면·자료·서버 코드 모두 (pages/functions 가 같은 src/index.js 를 돌림)
+# API 토큰에 "Cloudflare Pages: Edit" 권한이 있어야 함
+$pagesProject = 'tabolkka'
+$pagesUrl = "https://$pagesProject.pages.dev"
+$pagesRoot = Join-Path $PSScriptRoot 'pages'
+Push-Location $pagesRoot
+$null = (& npx --yes wrangler@4.45.0 pages project create $pagesProject --production-branch main 2>&1 | Out-String)
+Pop-Location
+# 비밀 값은 예전 서버와 타볼까 두 곳에 같이 (값은 화면에 쓰지 않음)
+function PutSecret([string]$name, [string]$value) {
+    if (-not $value) { return }
+    $value | & npx --yes wrangler@4.45.0 secret put $name --config $config | Out-Null
+    Push-Location $pagesRoot
+    $value | & npx --yes wrangler@4.45.0 pages secret put $name --project-name $pagesProject | Out-Null
+    Pop-Location
+}
+
+Write-Host '2/4 비밀 값 넣는 중 (예전 서버·타볼까)...'
 $appToken = Prop 'TAGO_PROXY_TOKEN'
 if (-not $appToken) { $appToken = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N') }
-$appToken | & npx --yes wrangler@4.45.0 secret put APP_TOKEN | Out-Null
-$dataKey | & npx --yes wrangler@4.45.0 secret put DATA_GO_KR_KEY | Out-Null
+PutSecret 'APP_TOKEN' $appToken
+PutSecret 'DATA_GO_KR_KEY' $dataKey
 # 앱이 자리표시(TAGOHUB_<이름>)로 보내는 키들 (src/proxy.js 의 KEY_NAMES). 비어 있는 것은 건너뜀
 $fallback = @{ 'KLID_BUS_KEY' = 'TAGO_SERVICE_KEY'; 'KAC_API_KEY' = 'TAGO_SERVICE_KEY' }
 foreach ($name in @('TAGO_SERVICE_KEY', 'KLID_BUS_KEY', 'KAC_API_KEY', 'KRIC_SUBWAY_KEY', 'SEOUL_SIGNAL_KEY', 'EX_API_KEY', 'SEOUL_SUBWAY_KEY', 'KAKAO_REST_KEY', 'KMA_HUB_KEY', 'KEPCO_API_KEY', 'DEV_IDS')) {
     $v = Prop $name
     if (-not $v -and $fallback.ContainsKey($name)) { $v = Prop $fallback[$name] }
     if ($v) {
-        $v | & npx --yes wrangler@4.45.0 secret put $name | Out-Null
+        PutSecret $name $v
         Write-Host "  $name 넣음"
     } else {
         Write-Host "  $name 없음 (건너뜀)"
@@ -133,8 +145,19 @@ if (-not $adminKey) {
     @(Get-Content $props -Encoding UTF8) + "EDIT_ADMIN_KEY=$adminKey" | Set-Content $props -Encoding UTF8
     Write-Host '  지도 고치기 관리자 키를 새로 만들어 local.properties 의 EDIT_ADMIN_KEY 에 적었어요'
 }
-$adminKey | & npx --yes wrangler@4.45.0 secret put EDIT_ADMIN_KEY | Out-Null
+PutSecret 'EDIT_ADMIN_KEY' $adminKey
 Write-Host '  지도 고치기 관리자 키 넣음'
+
+# 예약 작업 열쇠: GitHub Actions(.github/workflows/server-cron.yml)가 1분마다 타볼까 /w/cron 을 부를 때 씀.
+# 없으면 새로 만들어 local.properties 의 CRON_KEY 에 적음 → 같은 값을 GitHub 저장소 Settings → Secrets → Actions 의 CRON_KEY 에 넣어야 함
+$cronKey = Prop 'CRON_KEY'
+if (-not $cronKey) {
+    $cronKey = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
+    @(Get-Content $props -Encoding UTF8) + "CRON_KEY=$cronKey" | Set-Content $props -Encoding UTF8
+    Write-Host '  예약 작업 열쇠를 새로 만들어 local.properties 의 CRON_KEY 에 적었어요 (GitHub 비밀값 CRON_KEY 에도 같은 값을 넣어 주세요)'
+}
+PutSecret 'CRON_KEY' $cronKey
+Write-Host '  예약 작업 열쇠 넣음'
 
 # 웹 버전 앱 제보 → 폰 앱과 같은 Firebase(Firestore reports). app/google-services.json 에서 (값은 화면에 쓰지 않음)
 $gs = Join-Path $PSScriptRoot '..\..\app\google-services.json'
@@ -144,39 +167,41 @@ if (Test-Path $gs) {
     $fbKey = (@($client.api_key) | Select-Object -First 1).current_key
     $fbCert = (@($client.oauth_client) | Where-Object { $_.android_info } | Select-Object -First 1).android_info.certificate_hash
     if ($fbKey) {
-        $fbKey | & npx --yes wrangler@4.45.0 secret put FIREBASE_API_KEY | Out-Null
-        $g.project_info.project_id | & npx --yes wrangler@4.45.0 secret put FIREBASE_PROJECT_ID | Out-Null
-        if ($fbCert) { $fbCert | & npx --yes wrangler@4.45.0 secret put FIREBASE_ANDROID_CERT | Out-Null }
+        PutSecret 'FIREBASE_API_KEY' $fbKey
+        PutSecret 'FIREBASE_PROJECT_ID' $g.project_info.project_id
+        if ($fbCert) { PutSecret 'FIREBASE_ANDROID_CERT' $fbCert }
         Write-Host '  Firebase 제보 설정 넣음'
     }
 } else {
     Write-Host '  app/google-services.json 없음 → 웹 제보는 깃허브로'
 }
 
-Write-Host '3/3 local.properties 에 서버 주소 적는 중...'
+Write-Host '3/4 local.properties 에 서버 주소(타볼까) 적는 중...'
 $keep = Get-Content $props -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*TAGO_PROXY_(URL|TOKEN)\s*=' }
-$keep + "TAGO_PROXY_URL=$url" + "TAGO_PROXY_TOKEN=$appToken" | Set-Content $props -Encoding UTF8
+# 새로 빌드하는 앱은 타볼까 주소를 씀 (이미 깔린 예전 앱은 예전 서버 주소 그대로 — 그 서버도 계속 돎)
+$keep + "TAGO_PROXY_URL=$pagesUrl" + "TAGO_PROXY_TOKEN=$appToken" | Set-Content $props -Encoding UTF8
 
-# 사용자 주소 (Cloudflare Pages, https://<이름>.pages.dev): 화면 파일만 올리고 자료·실시간은 위 서버($url)에 물음.
-# 서버 주소(workers.dev)는 관리자용으로 남김 — 사용자 주소에서는 관리자로 로그인·지도 고치기가 보이지 않음 (site/js/core.js USER_SITE)
-# 이름이 비어 있으면 건너뜀. API 토큰에 "Cloudflare Pages: Edit" 권한이 있어야 함
-$pagesProject = 'tabolkka'
-if ($pagesProject) {
-    Write-Host "사용자 주소 올리는 중 (https://$pagesProject.pages.dev)..."
-    $pagesDir = Join-Path $PSScriptRoot 'pages-public'
-    if (Test-Path $pagesDir) { Remove-Item $pagesDir -Recurse -Force }
-    New-Item -ItemType Directory $pagesDir | Out-Null
-    Get-ChildItem (Join-Path $PSScriptRoot 'site') | Copy-Item -Destination $pagesDir -Recurse -Force
-    [IO.File]::WriteAllText((Join-Path $pagesDir 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`nwindow.TAGOHUB_SERVER = `"$url/`";`nwindow.TAGOHUB_USER_SITE = true;`n", (New-Object Text.UTF8Encoding $false))
-    # 화면 파일은 늘 새로 확인 (서버 쪽 _headers 와 같게)
-    [IO.File]::WriteAllText((Join-Path $pagesDir '_headers'), "/*`n  Cache-Control: no-cache`n", (New-Object Text.UTF8Encoding $false))
-    $null = (& npx --yes wrangler@4.45.0 pages project create $pagesProject --production-branch main 2>&1 | Out-String)
-    $pout = (& npx --yes wrangler@4.45.0 pages deploy $pagesDir --project-name $pagesProject --branch main --commit-dirty=true 2>&1 | Out-String)
-    Write-Host $pout
-    if ($pout -match 'Authentication error|10000') { Write-Host '  Pages 권한이 없어요: Cloudflare API 토큰에 "Cloudflare Pages: Edit" 권한을 더한 뒤 다시 실행해 주세요' }
-    Write-Host "  사용자 주소: https://$pagesProject.pages.dev (카카오 개발자 사이트 JavaScript SDK 도메인에도 등록해야 지도가 보임)"
-}
+Write-Host "4/4 타볼까 올리는 중 ($pagesUrl)..."
+# dist = 화면(site) + 자료 조각(public/data) + 카카오 키(config.js) + _headers + _routes.json(서버 길만 서버 코드로)
+$dist = Join-Path $pagesRoot 'dist'
+if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
+New-Item -ItemType Directory $dist | Out-Null
+Get-ChildItem (Join-Path $PSScriptRoot 'site') | Copy-Item -Destination $dist -Recurse -Force
+if (Test-Path (Join-Path $pub 'data')) { Copy-Item (Join-Path $pub 'data') -Destination $dist -Recurse -Force }
+Copy-Item (Join-Path $pub '_headers') -Destination $dist -Force
+Copy-Item (Join-Path $pagesRoot '_routes.json') -Destination $dist -Force
+[IO.File]::WriteAllText((Join-Path $dist 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
+# Pages 설정 (데이터베이스 번호가 들어가 저장소에는 안 올림: .gitignore)
+$ptoml = "name = `"$pagesProject`"`npages_build_output_dir = `"./dist`"`ncompatibility_date = `"2025-10-01`"`n"
+if ($db -and $db.uuid) { $ptoml += "`n[[d1_databases]]`nbinding = `"DB`"`ndatabase_name = `"tagohub-log`"`ndatabase_id = `"$($db.uuid)`"`n" }
+[IO.File]::WriteAllText((Join-Path $pagesRoot 'wrangler.toml'), $ptoml, (New-Object Text.UTF8Encoding $false))
+Push-Location $pagesRoot
+$pout = (& npx --yes wrangler@4.45.0 pages deploy dist --project-name $pagesProject --branch main --commit-dirty=true 2>&1 | Out-String)
+Pop-Location
+Write-Host $pout
+if ($pout -match 'Authentication error|10000') { Write-Host '  Pages 권한이 없어요: Cloudflare API 토큰에 "Cloudflare Pages: Edit" 권한을 더한 뒤 다시 실행해 주세요' }
+if ($jsKey) { Write-Host "  카카오 지도: 카카오 개발자 사이트 JavaScript SDK 도메인에 $pagesUrl 이 있어야 지도가 보임" }
 
 Start-Sleep -Seconds 3
-try { $h = (Invoke-WebRequest "$url/health" -UseBasicParsing).Content } catch { $h = $_.Exception.Message }
-Write-Host "끝: $url (상태: $h)"
+try { $h = (Invoke-WebRequest "$pagesUrl/health" -UseBasicParsing).Content } catch { $h = $_.Exception.Message }
+Write-Host "끝: $pagesUrl (상태: $h) · 이미 깔린 예전 앱용 서버: $url"

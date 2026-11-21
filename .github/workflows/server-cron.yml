@@ -1,0 +1,39 @@
+# 타볼까 서버 예약 작업: 1분마다 https://tabolkka.pages.dev/w/cron 을 부름 (src/index.js runCron)
+#  - 0분·30분: 자료 제공처 고장 확인 / 그 밖: 관심 노선 버스 위치 모으기 → 노선 모양 하나 만들기
+# Cloudflare Pages 는 예약 작업을 못 돌려서 GitHub 가 대신 부름. GitHub 예약은 5분이 가장 짧아서, 한 번 돌 때 1분 간격으로 5번 부름.
+# 실행 위치: GitHub 서버 (집 PC 가 꺼져 있어도 돎, 공개 저장소라 무료).
+# 필요한 비밀값: CRON_KEY (deploy.ps1 이 만들어 local.properties 에 적고 타볼까에도 넣음 → 같은 값을 Settings → Secrets → Actions 에)
+name: 서버 예약 작업
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # 5분마다 (GitHub 는 몇 분 늦게 시작할 수 있음)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-cron
+  cancel-in-progress: false   # 앞 실행이 안 끝났으면 기다림 (같은 작업이 겹치지 않게)
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: 1분 간격으로 5번
+        env:
+          CRON_KEY: ${{ secrets.CRON_KEY }}
+        run: |
+          if [ -z "$CRON_KEY" ]; then
+            echo "::warning::CRON_KEY 비밀값이 없어 예약 작업을 건너뜀 (local.properties 의 CRON_KEY 를 Settings → Secrets → Actions 에 넣어 주세요)"
+            exit 0
+          fi
+          for i in 1 2 3 4 5; do
+            start=$(date +%s)
+            code=$(curl -s -o out.json -w "%{http_code}" -m 55 -X POST -H "X-Cron-Key: $CRON_KEY" https://tabolkka.pages.dev/w/cron || echo 000)
+            echo "$(date -u +%H:%M) $code $(head -c 200 out.json 2>/dev/null)"
+            if [ "$code" = "403" ]; then echo "::error::CRON_KEY 가 타볼까의 값과 달라요"; exit 1; fi
+            if [ $i -lt 5 ]; then sleep $(( 60 - ($(date +%s) - start) > 0 ? 60 - ($(date +%s) - start) : 1 )); fi
+          done

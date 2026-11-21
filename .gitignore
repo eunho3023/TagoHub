@@ -53,5 +53,7 @@ server/tago-proxy/.fontcache/
 # 웹 버전 빌드 결과·글꼴 (deploy.ps1 이 composeApp 에서 만들어 넣음)
 server/tago-proxy/public/*
 !server/tago-proxy/public/_headers
-# 사용자 주소(Cloudflare Pages)에 올릴 화면 (deploy.ps1 이 만듦)
+# 타볼까(Cloudflare Pages)에 올릴 것과 설정 (deploy.ps1 이 만듦, 설정에 데이터베이스 번호)
+server/tago-proxy/pages/dist/
+server/tago-proxy/pages/wrangler.toml
 server/tago-proxy/pages-public/
