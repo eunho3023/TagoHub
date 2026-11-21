@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -252,7 +253,7 @@ private fun CategoryResults(vm: MapViewModel, cat: Category, onPlace: (Place2) -
 private fun HomeWorkRow(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onEdit: () -> Unit) {
     val saved by vm.trip.homeWork.state.collectAsStateWithLifecycle()
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        listOf(Triple("집", Icons.Filled.Home, saved.home), Triple("회사", Icons.Filled.Work, saved.work)).forEach { (label, icon, place) ->
+        listOf(Triple("집", Icons.Filled.Home, saved.home), Triple("회사", Icons.Filled.Work, saved.work), Triple("학교", Icons.Filled.School, saved.school)).forEach { (label, icon, place) ->
             Row(
                 Modifier.clickable { if (place != null) onGoTo(place) else onEdit() }.heightIn(min = 44.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
