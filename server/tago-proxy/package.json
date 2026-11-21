@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/proxy.test.js test/log.test.js test/shape.test.js test/report.test.js test/gps.test.js test/poll.test.js test/timetable.test.js test/edits.test.js test/appshape.test.js test/roadline.test.js test/tagostore.test.js test/seoultraffic.test.js test/health.test.js test/busahead.test.js test/livepoll.test.js test/crowd.test.js test/bike.test.js test/daejeon.test.js test/parking.test.js test/amenity.test.js test/auth.test.js test/trainpos.test.js test/mapdiff.test.js test/stations.test.js test/pages.test.js",
+    "test": "node --test test/proxy.test.js test/log.test.js test/shape.test.js test/report.test.js test/gps.test.js test/poll.test.js test/timetable.test.js test/edits.test.js test/appshape.test.js test/roadline.test.js test/tagostore.test.js test/seoultraffic.test.js test/health.test.js test/busahead.test.js test/livepoll.test.js test/crowd.test.js test/bike.test.js test/daejeon.test.js test/parking.test.js test/amenity.test.js test/auth.test.js test/trainpos.test.js test/mapdiff.test.js test/stations.test.js test/pages.test.js test/sideline.test.js",
     "deploy": "npx wrangler@4.45.0 deploy"
   }
 }
