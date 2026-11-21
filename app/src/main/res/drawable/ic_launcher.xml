@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 모두의 지도: 파란 둥근 칸 위에 세 번 접힌 지도와 빨간 위치 핀 -->
+<!-- 타볼까: 파란 둥근 칸 위에 세 번 접힌 지도와 빨간 위치 핀 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"

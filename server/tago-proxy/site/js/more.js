@@ -1,5 +1,5 @@
 // 대중교통 탭(수단 칩), 길찾기 탭, 설정, 공지사항.
-import { BASE, getText, getJson, esc } from "./core.js";
+import { BASE, getText, getJson, esc, USER_SITE } from "./core.js";
 import { act, header, chips, note, sectionHead } from "./ui.js";
 import { go } from "./nav.js";
 import { Theme } from "./store.js";
@@ -22,7 +22,7 @@ export function transit(root, p, ctx) {
   if (mode === "bus") return busSearch(root, chipsHtml);
   const fn = modeScreens[mode];
   if (fn) return fn(root, chipsHtml, ctx);
-  root.innerHTML = header("모두의 지도", MODES.find(([k]) => k === mode)[1]) + chipsHtml + note("준비 중이에요");
+  root.innerHTML = header("타볼까", MODES.find(([k]) => k === mode)[1]) + chipsHtml + note("준비 중이에요");
   return null;
 }
 
@@ -74,7 +74,7 @@ export function settings(root) {
        <button class="row" ${act(() => go("report"))}><span class="grow"><b>앱 제보</b><small>불편한 점이나 틀린 정보를 알려 주세요</small></span></button></div>` +
       accountHtml() +
       healthHtml() +
-      adminHtml() +
+      (USER_SITE ? "" : adminHtml()) +
       sectionHead("약관 및 정책") +
       `<div class="list">${[["legal/terms.html", "이용약관"], ["legal/privacy.html", "개인정보 처리방침"], ["legal/sources.html", "정보 제공처", "교통 자료·지도를 제공하는 기관"], ["legal/licenses.html", "오픈소스 라이선스"]]
         .map(([h, t, s]) => `<a class="row" href="${h}"><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span></a>`).join("")}</div>` +

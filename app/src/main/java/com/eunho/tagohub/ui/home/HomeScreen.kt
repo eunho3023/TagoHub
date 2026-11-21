@@ -313,7 +313,7 @@ internal fun BrandHeader(modifier: Modifier = Modifier, action: String? = null, 
         }
         Spacer(Modifier.width(10.dp))
         Column {
-            Text("모두의 지도", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("타볼까", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp, color = MaterialTheme.colorScheme.onSurface)
             Text("원하는 곳 어디든지! 모두가 함께 만들어가는 지도!", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (trailing != null && action == null) {

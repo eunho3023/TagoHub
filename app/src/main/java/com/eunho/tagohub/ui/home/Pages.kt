@@ -131,12 +131,11 @@ internal val LEGAL_PAGES = listOf(
     "오픈소스 라이선스" to "licenses.html",
 )
 
-/** 약관 문서 주소: 앱이 쓰는 서버(TAGO_PROXY_URL), 없으면 공개 서버 */
-internal fun legalUrl(page: String): String {
-    val base = com.eunho.tagohub.BuildConfig.TAGO_PROXY_URL.trim().trimEnd('/').takeIf { it.startsWith("https://") }
-        ?: "https://tagohub-proxy.eunho3023.workers.dev"
-    return "$base/legal/$page"
-}
+/** 사용자용 웹 주소 (Cloudflare Pages). 서버 주소(workers.dev)는 관리자용 */
+const val USER_WEB = "https://tabolkka.pages.dev"
+
+/** 약관 문서 주소: 사용자용 웹 주소 */
+internal fun legalUrl(page: String): String = "$USER_WEB/legal/$page"
 
 /** 설정: 화면 모드, 길안내(안내 음성·크기·알릴 항목), 계정, 정보(공지사항·앱 제보·최근 오류), 약관 및 정책 */
 @Composable

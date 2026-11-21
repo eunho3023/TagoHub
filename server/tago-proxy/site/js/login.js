@@ -1,6 +1,6 @@
 // 아이디 로그인·회원가입·아이디 찾기·비밀번호 찾기 화면 (따로 된 화면: #/login, #/login/signup, #/login/findid, #/login/reset).
 // 브라우저 뒤로 가기로 앞 화면에 돌아감. 계정 처리는 account.js
-import { esc } from "./core.js";
+import { esc, USER_SITE } from "./core.js";
 import { act, header } from "./ui.js";
 import { go } from "./nav.js";
 import * as Edits from "./edits.js";
@@ -13,7 +13,9 @@ const TITLES = { login: "로그인", signup: "회원가입", findid: "아이디 
 const form = { adminkey: "", username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
 
 export function loginScreen(root, p) {
-  const page = TITLES[p.id] ? p.id : "login";
+  // 사용자 주소에서는 관리자 화면 없음 (관리자는 서버 주소에서)
+  const page = TITLES[p.id] && !(USER_SITE && p.id === "admin") ? p.id : "login";
+  const adminLink = () => (USER_SITE ? "" : `<button class="link authlink" ${act(() => go("login", "admin"))}>${Edits.hasAdminKey() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`);
   let busy = false, error = "", info = "", found = null, mailSent = false;
   form.password = ""; form.confirm = ""; form.adminkey = "";
 
@@ -50,14 +52,14 @@ export function loginScreen(root, p) {
       return `<p class="authhint">${esc(current().username)} 아이디로 로그인했어요${current().dev ? " · 개발자" : ""}.</p>` +
         `<button class="btn authbtn" ${act(() => go("settings"))}>설정으로</button>` +
         `<button class="link authlink" ${act(() => { logout(); draw(); })}>로그아웃</button>` +
-        `<button class="link authlink" ${act(() => go("login", "admin"))}>${Edits.hasAdminKey() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`;
+        adminLink();
     }
     if (page === "login") {
       return input("username", "아이디", "text", 'autocomplete="username" autocapitalize="none"') +
         input("password", "비밀번호", "password", 'autocomplete="current-password"') +
         submit("로그인", () => doing(async () => { const m = await login(form.username, form.password); if (m) error = m; else done("로그인했어요"); })) +
         `<div class="authlinks"><button class="link" ${act(() => go("login", "findid"))}>아이디 찾기</button><button class="link" ${act(() => go("login", "reset"))}>비밀번호 찾기</button><button class="link" ${act(() => go("login", "signup"))}>회원가입</button></div>` +
-        `<button class="link authlink" ${act(() => go("login", "admin"))}>${Edits.hasAdminKey() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`;
+        adminLink();
     }
     if (page === "signup") {
       return input("username", "아이디 (영어 소문자·숫자 4~20자)", "text", 'autocomplete="username" autocapitalize="none"') +
@@ -104,7 +106,7 @@ export function loginScreen(root, p) {
   function draw() {
     root.innerHTML = header(TITLES[page], null, { back: true }) +
       `<form class="authform" autocomplete="on" onsubmit="return false"><h2>${TITLES[page]}</h2>` +
-      (page === "login" && !current() ? `<p class="authsub">모두의 지도 아이디로 로그인해요. 폰 앱과 같은 아이디예요.</p>` : "") +
+      (page === "login" && !current() ? `<p class="authsub">타볼까 아이디로 로그인해요. 폰 앱과 같은 아이디예요.</p>` : "") +
       body() +
       (info ? `<p class="authinfo">${esc(info)}</p>` : "") + (error ? `<p class="autherr">${esc(error)}</p>` : "") + `</form>`;
     const f = root.querySelector(".authform");
