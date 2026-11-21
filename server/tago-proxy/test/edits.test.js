@@ -18,6 +18,11 @@ test("고침 검사: 종류·id·좌표 범위", () => {
   assert.equal(clean("group", "JUB1", Array.from({ length: 9 }, (_, i) => "S" + i)), null);
   assert.equal(clean("station", "2호선 강남", null), "");                      // 원래대로
   assert.equal(clean("rail", "2호선", [[37.5, 127.0], [37.51, 127.03]]) != null, true);
+  // 그 밖의 지도 점 (자전거 대여소·주차장·편의시설)
+  assert.equal(clean("place", "bike:ST-1234", [37.5, 127.0]), "[37.5,127]");
+  assert.equal(clean("place", "park:123-4-56", [37.5, 127.0]), "[37.5,127]");
+  assert.equal(clean("place", "pl:x", [10, 10]), null);                          // 나라 밖
+  assert.equal(clean("station", "2호선:0222:강남", [37.4979, 127.0276]), "[37.4979,127.0276]");
 });
 
 test("선 고침은 폴리라인으로 저장해 그대로 돌려받음", () => {
@@ -27,6 +32,7 @@ test("선 고침은 폴리라인으로 저장해 그대로 돌려받음", () => 
   assert.equal(b.bus.R1, poly);
   assert.deepEqual(b.stop.S1, [35.8, 127.1]);
   assert.equal(b.v, 9);
+  assert.deepEqual(bundle([{ kind: "place", id: "pl:1", data: "[37.5,127]", at: 3 }]).place["pl:1"], [37.5, 127]);
 });
 
 /** 메모리 D1 흉내 (edits·edit_log 만) */

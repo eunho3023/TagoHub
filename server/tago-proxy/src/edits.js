@@ -1,6 +1,6 @@
 // 지도 고치기: 사람이 손으로 고친 버스 노선 모양·정류장 위치·지하철역 위치·지하철 노선 모양 (웹·앱이 같이 씀).
 // 자동으로 만든 노선 모양(src/shape.js)이나 공공데이터 좌표가 틀어져 보일 때, 지도에서 고친 것을 D1 에 저장하고 모두에게 나눠 준다.
-// GET  /w/edits[?v=번호]   → (가진 번호 v 가 지금과 같으면 204 "바뀐 것 없음") {v, bus:{노선 id: 폴리라인}, rail:{노선 이름: 폴리라인}, stop:{정류장 id:[위도,경도]}, station:{역 id:[위도,경도]}}
+// GET  /w/edits[?v=번호]   → (가진 번호 v 가 지금과 같으면 204 "바뀐 것 없음") {v, bus:{노선 id: 폴리라인}, rail:{노선 이름: 폴리라인}, stop:{정류장 id:[위도,경도]}, station:{역 id:[위도,경도]}, place:{점 id:[위도,경도]}}
 // POST /w/edits {kind, id, data} → 저장 (data 가 null 이면 고친 것을 지우고 원래대로). 관리자만: X-TagoHub-Admin 헤더 = 비밀 값 EDIT_ADMIN_KEY
 // GET  /w/edits/check (X-TagoHub-Admin) → 관리자 키가 맞으면 200, 아니면 403 (설정 화면에서 키 확인)
 // 고친 기록은 모두 edit_log 에 남김 (잘못 고친 것을 되돌릴 수 있게, 주소(IP)는 해시만)
@@ -9,7 +9,8 @@ import { decode, encode } from "./shape.js";
 import { isDevRequest } from "./auth.js";
 
 // group: 같은 자리 정류장 손으로 묶기. id 정류장과 data 의 정류장들을 한 점으로. data 가 [] 이면 그 정류장은 자동으로 묶지 않음(따로 떼기)
-export const KINDS = ["bus", "rail", "stop", "station", "group"];
+// place: 그 밖의 지도 점(공영자전거 대여소 bike:…, 주차장 park:…, 편의시설 pl:…) 위치
+export const KINDS = ["bus", "rail", "stop", "station", "group", "place"];
 const MAX_GROUP = 8;
 const ID_RE = /^[0-9A-Za-z가-힣_().,·:\- ]{1,40}$/;
 const LINE_KINDS = new Set(["bus", "rail"]);
@@ -66,7 +67,7 @@ export function clean(kind, id, data) {
 
 /** 저장된 줄들 → 내보낼 모양 */
 export function bundle(rows) {
-  const out = { v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {} };
+  const out = { v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {}, place: {} };
   for (const r of rows) {
     if (!out[r.kind]) continue;
     out[r.kind][r.id] = LINE_KINDS.has(r.kind) ? r.data : JSON.parse(r.data);

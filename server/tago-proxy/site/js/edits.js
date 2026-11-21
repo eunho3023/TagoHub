@@ -22,7 +22,7 @@ export async function setAdminKey(k) {
   try { localStorage.setItem(ADMIN_KEY, k); } catch (e) { /* 못 씀 */ }
   return true;
 }
-const EMPTY = { v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {} };
+const EMPTY = { v: 0, bus: {}, rail: {}, stop: {}, station: {}, group: {}, place: {} };
 
 const POLL_MS = 15000;
 const listeners = new Set();
@@ -68,6 +68,10 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 /** 고친 것 목록의 판 번호 (누가 고치면 올라감, 모르면 0) */
 export function version() { return (data && data.v) || 0; }
 export function stopFix(id) { return (data && id && (data.stop[id] || null)) || null; }
+/** 지하철역 고친 위치 (열쇠: 앱 MapEdits.stationKey 와 같은 "노선:역 코드:역 이름" 40자) */
+export function stationFix(key) { return (data && key && data.station && data.station[key]) || null; }
+/** 그 밖의 지도 점(bike:… park:… pl:…) 고친 위치 */
+export function placeFix(id) { return (data && id && data.place && data.place[id]) || null; }
 export function busFix(id) { return (data && id && data.bus[id]) || null; }
 /** 손으로 묶은 같은 자리 정류장 {정류장 id: [함께 묶을 id...]} (빈 목록 = 따로 떼기) */
 export function groupEdits() { return (data && data.group) || {}; }
