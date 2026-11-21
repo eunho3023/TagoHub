@@ -664,9 +664,10 @@ class KakaoCanvas(
         val roadShape = (a.shape?.size ?: 0) >= 2
         val d = ROUTE_LINE_WIDTH_DP * 0.9 * density * metersPerPx()  // 상·하행 두 줄이 굵어진 만큼 더 띄움
         val lines: List<Pair<List<LatLng>, Boolean>> = if ((a.parts?.size ?: 0) >= 2) {
-            a.parts!!.mapIndexed { i, p -> PathMath.offsetMeters(p, d) to (a.strong == null || a.strong == i) }
+            // 같은 길을 오가는 구간만 오른쪽으로 (실제 거리 3m 까지): 골목을 한 바퀴 도는 구간은 도로 한가운데
+            a.parts!!.mapIndexed { i, p -> PathMath.offsetTwoWay(p, d, a.parts!!.filterIndexed { j, _ -> j != i }) to (a.strong == null || a.strong == i) }
         } else if (roadShape) {
-            listOf(PathMath.offsetMeters(a.shape!!, d) to true)
+            listOf(PathMath.offsetTwoWay(a.shape!!, d) to true)
         } else {
             listOf(a.stops.map { LatLng(it.lat, it.lng) } to true)
         }

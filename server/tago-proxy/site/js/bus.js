@@ -9,6 +9,8 @@ import { Alight } from "./alight.js";
 import * as Edits from "./edits.js";
 import { tidyRoad } from "./roadline.js";
 import * as Ahead from "./busahead.js";
+import { MAX_SIDE_M, twoWayMask, offsetRight } from "./sideline.js";
+export { offsetRight };
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
 /** 못 받아서 다시 묻는 동안(livePoll) 받은 지 이만큼 안 된 자료는 그대로 보여 줌 */
@@ -356,40 +358,6 @@ function roadCum(road) {
 }
 /** 노선 선 굵기(px)와, 오른쪽 통행에 맞춰 진행 방향 오른쪽으로 비키는 거리(px: 굵기 절반 + 조금 → 오가는 두 줄이 겹치지 않음) */
 const LINE_W = 7, LINE_SIDE_PX = 4.5;
-/** 점 p 를 방향 deg(북쪽 0도, 시계 방향)의 오른쪽으로 m 미터 */
-function shiftRight(p, deg, m) {
-  const a = ((deg + 90) * Math.PI) / 180;
-  return [p[0] + (m * Math.cos(a)) / 110540, p[1] + (m * Math.sin(a)) / (111320 * Math.cos((p[0] * Math.PI) / 180))];
-}
-/**
- * 선을 진행 방향 오른쪽으로 m 미터 평행 이동 (폰 앱 core/OffsetLine 과 같은 방법).
- * 꺾이는 점은 양쪽 조각 법선의 평균 방향으로 옮기고, 아주 뾰족한 곳은 2m 까지로 제한
- */
-export function offsetRight(line, m) {
-  const n = line.length;
-  if (n < 2 || !m) return line;
-  const lat0 = line[0][0], kx = 111320 * Math.cos((lat0 * Math.PI) / 180), ky = 110540;
-  // 평면 (x 동쪽, y 북쪽). 진행 방향 (dx, dy) 의 오른쪽 법선은 (dy, -dx)
-  const xs = line.map((p) => (p[1] - line[0][1]) * kx), ys = line.map((p) => (p[0] - lat0) * ky);
-  const nx = [], ny = [];
-  let lx = 0, ly = 0;
-  for (let i = 0; i < n - 1; i++) {
-    const dx = xs[i + 1] - xs[i], dy = ys[i + 1] - ys[i], len = Math.hypot(dx, dy);
-    if (len > 1e-3) { lx = dy / len; ly = -dx / len; }
-    nx.push(lx); ny.push(ly);
-  }
-  const first = nx.findIndex((v, i) => v !== 0 || ny[i] !== 0);
-  if (first < 0) return line;
-  for (let i = 0; i < first; i++) { nx[i] = nx[first]; ny[i] = ny[first]; }
-  return line.map((p, i) => {
-    const a = i === 0 ? 0 : i - 1, b = i === n - 1 ? n - 2 : i;
-    let mx = nx[a] + nx[b], my = ny[a] + ny[b];
-    const ml = Math.hypot(mx, my);
-    if (ml < 1e-3) { mx = nx[b]; my = ny[b]; } else { mx /= ml; my /= ml; }
-    const cos = Math.max(0.5, mx * nx[b] + my * ny[b]);
-    return [lat0 + (ys[i] + (my * m) / cos) / ky, line[0][1] + (xs[i] + (mx * m) / cos) / kx];
-  });
-}
 /** 선 단순화 (tol 미터 안의 꼭짓점은 뺌, Douglas-Peucker). 축소했을 때 촘촘한 꼭짓점 때문에 비킨 선이 톱니처럼 되지 않게 */
 export function simplifyLine(line, tol) {
   if (!line || line.length < 3 || !(tol > 0)) return line;
@@ -459,7 +427,7 @@ const plateTail =(no) => (no || "").replace(/\D/g, "").slice(-4) || null;
 export function routeScreen(root, p, ctx) {
   let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null, linesOf = null;
   // 화면에 그린 노선 선 (도로 선을 진행 방향 오른쪽으로 비킨 것)과 그때의 m/px·비킨 거리(m)
-  let drawn = null, drawnMpp = 0, sideM = 0;
+  let drawn = null, drawnMpp = 0, sideM = 0, roadTwoWay = null, twoWayOf = null;
   const timers = [];
   /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
   const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]) : []);
@@ -501,7 +469,7 @@ export function routeScreen(root, p, ctx) {
   /** 그리는 자리가 움직이는 중인지 (미끄러지는 중이거나 앞으로 당기는 중) */
   const moving = (x, now) => (x.from && now - x.at < GLIDE_MS + 1000) || (!x.a.still && x.a.v > 0 && x.a.deg != null && now - x.a.at < Ahead.MAX_LEAD_MS);
   /** 도로 선 위 점을 그 자리 진행 방향 오른쪽으로 (그린 선과 같은 거리) */
-  const toRight = (pt, seg) => (road && sideM && seg != null ? shiftRight(pt, bearingAt(road, seg), sideM) : pt);
+  const toRight = (pt, seg) => (road && sideM && seg != null && roadTwoWay?.[seg] ? shiftRight(pt, bearingAt(road, seg), sideM) : pt);
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
   const drawMap = () => {
     if (!r) return;
@@ -511,8 +479,11 @@ export function routeScreen(root, p, ctx) {
     const mpp = MapView.metersPerPx() || 0;
     if (linesOf !== (road || pts) || (road && Math.abs(mpp - drawnMpp) > drawnMpp * 0.05)) {
       linesOf = road || pts; drawnMpp = mpp;
-      sideM = road && mpp ? mpp * LINE_SIDE_PX : 0;
-      drawn = sideM ? offsetRight(simplifyLine(road, mpp * 0.7), sideM) : linesOf;
+      sideM = road && mpp ? Math.min(mpp * LINE_SIDE_PX, MAX_SIDE_M) : 0;
+      // 같은 길을 오가는 구간만 오른쪽으로 (한 바퀴 도는 골목 구간은 도로 한가운데)
+      if (road && twoWayOf !== road) { twoWayOf = road; roadTwoWay = twoWayMask(road); }
+      const simp = road ? simplifyLine(road, mpp * 0.7) : null;
+      drawn = sideM && simp ? offsetRight(simp, twoWayMask(simp).map((t) => (t ? sideM : 0))) : linesOf;
       MapView.lines([{ pts: drawn, color, width: LINE_W }]);
     }
     const z = MapView.zoom();

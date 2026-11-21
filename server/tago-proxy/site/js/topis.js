@@ -5,7 +5,7 @@ import { getJson, esc, onReturn } from "./core.js";
 import { placeFix } from "./edits.js";
 import { MapView } from "./map.js";
 import { decodePolyline } from "./busdata.js";
-import { offsetRight } from "./bus.js";
+import { offsetRight } from "./sideline.js";
 import { BIKE_ZOOM, bikeDots } from "./bikes.js";
 import { PARKING_ZOOM, parkingDots, parkingIn, parkingLines } from "./parking.js";
 import { PLACE_KINDS, placeDots, placesIn } from "./amenity.js";
