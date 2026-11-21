@@ -4,19 +4,47 @@ import { esc } from "./core.js";
 import { act, header } from "./ui.js";
 import { go } from "./nav.js";
 import * as Edits from "./edits.js";
-import { MIN_PASSWORD, NET, post, phoneOk, emailOk, current, logout, login, signUp, onChange } from "./account.js";
+import { MIN_PASSWORD, NET, post, phoneOk, emailOk, current, logout, login, signUp, onChange, EMAIL_DOMAINS, joinEmail, usernameFree, normUsername } from "./account.js";
 
 // ── 화면 ──
 
 const TITLES = { login: "로그인", signup: "회원가입", findid: "아이디 찾기", reset: "비밀번호 찾기", admin: "관리자로 로그인" };
 // 입력값은 화면을 오가도 남김 (비밀번호는 화면을 바꾸면 지움)
-const form = { username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
+// 회원가입 이메일은 앞자리(emailId)와 뒷자리(emailDomain, 고르기·직접 넣기 emailCustom)로 나눠 받음
+const form = { emailId: "", emailDomain: "naver.com", emailCustom: "", username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
 
 export function loginScreen(root, p) {
   const page = TITLES[p.id] ? p.id : "login";
   const adminOn = () => Edits.isAdmin();
   const adminLink = () => `<button class="link authlink" ${act(() => go("login", "admin"))}>${adminOn() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`;
   let busy = false, error = "", info = "", found = null, mailSent = false;
+  /** 아이디 중복확인 결과 { u: 확인한 아이디, free: true|false|null } */
+  let idCheck = null;
+  // 회원가입: 앞 화면에서 넣은 이메일이 있으면 앞자리·뒷자리로 나눠 이어 씀
+  if (page === "signup" && form.email && !form.emailId) {
+    const [a, d] = form.email.split("@");
+    form.emailId = a || "";
+    if (d) { if (EMAIL_DOMAINS.includes(d)) form.emailDomain = d; else { form.emailDomain = ""; form.emailCustom = d; } }
+  }
+  const signupEmail = () => joinEmail(form.emailId, form.emailDomain || form.emailCustom);
+  /** 비밀번호 확인 칸 아래 글: 같은지 다른지 (확인 칸이 비었으면 없음) */
+  const matchHtml = () => (!form.confirm ? "" : form.confirm === form.password
+    ? `<span class="authok">비밀번호가 같아요</span>` : `<span class="autherr">비밀번호가 달라요</span>`);
+  const idCheckHtml = () => {
+    const u = normUsername(form.username);
+    if (!form.username) return "";
+    if (!u) return `<span class="autherr">영어 소문자·숫자·밑줄(_)로 4~20자예요</span>`;
+    if (!idCheck || idCheck.u !== u) return `<span class="authhint">중복확인을 눌러 주세요</span>`;
+    return idCheck.free === true ? `<span class="authok">쓸 수 있는 아이디예요</span>`
+      : idCheck.free === false ? `<span class="autherr">이미 쓰는 아이디예요</span>` : `<span class="autherr">지금은 확인할 수 없어요. 잠시 뒤에 다시 눌러 주세요</span>`;
+  };
+  async function checkId() {
+    const u = normUsername(form.username);
+    if (!u) { draw(); return null; }
+    idCheck = { u, free: await usernameFree(u) };
+    draw();
+    return idCheck.free;
+  }
   form.password = ""; form.confirm = "";
 
   const input = (name, label, type = "text", extra = "") =>
@@ -68,13 +96,24 @@ export function loginScreen(root, p) {
         adminLink();
     }
     if (page === "signup") {
-      return input("username", "아이디 (영어 소문자·숫자 4~20자)", "text", 'autocomplete="username" autocapitalize="none"') +
+      const domains = EMAIL_DOMAINS.map((d) => `<option value="${d}" ${form.emailDomain === d ? "selected" : ""}>${d || "직접 입력"}</option>`).join("");
+      return `<label class="authfield"><span>아이디 (영어 소문자·숫자 4~20자)</span><span class="authrow"><input name="username" type="text" value="${esc(form.username)}" autocomplete="username" autocapitalize="none">` +
+          `<button type="button" class="btn authside" ${act(() => checkId())}>중복확인</button></span><small id="idcheck">${idCheckHtml()}</small></label>` +
         input("password", `비밀번호 (영어+숫자 ${MIN_PASSWORD}자 이상)`, "password", 'autocomplete="new-password"') +
-        input("confirm", "비밀번호 확인", "password", 'autocomplete="new-password"') +
-        input("email", "이메일", "email", 'autocomplete="email"') +
+        `<label class="authfield"><span>비밀번호 확인</span><input name="confirm" type="password" value="${esc(form.confirm)}" autocomplete="new-password"><small id="pwmatch">${matchHtml()}</small></label>` +
+        `<label class="authfield"><span>이메일</span><span class="authrow"><input name="emailId" type="text" value="${esc(form.emailId)}" autocomplete="off" autocapitalize="none" placeholder="이메일 앞자리">` +
+          `<b class="authat">@</b><select name="emailDomain">${domains}</select></span>` +
+          (form.emailDomain ? "" : `<input name="emailCustom" type="text" value="${esc(form.emailCustom)}" autocomplete="off" autocapitalize="none" placeholder="예: company.co.kr">`) + `</label>` +
         input("phone", "전화번호", "tel", 'autocomplete="tel"') +
         `<p class="authhint">전화번호와 이메일로 아이디를 찾을 수 있어요. 비밀번호는 웹에서는 이메일로, 폰 앱에서 문자 인증을 하면 전화번호로도 바꿀 수 있어요.</p>` +
-        submit("가입", () => doing(async () => { const m = await signUp(form); if (m) error = m; else done("가입했어요. 환영해요!"); }));
+        submit("가입", () => doing(async () => {
+          // 중복확인을 안 했거나 아이디를 바꿨으면 지금 확인
+          const u = normUsername(form.username);
+          if (u && (!idCheck || idCheck.u !== u)) idCheck = { u, free: await usernameFree(u) };
+          if (u && idCheck.free === false) { error = "이미 쓰는 아이디예요"; return; }
+          const m = await signUp({ ...form, email: signupEmail() });
+          if (m) error = m; else done("가입했어요. 환영해요!");
+        }));
     }
     if (page === "findid") {
       return byChips(false) +
@@ -121,9 +160,22 @@ export function loginScreen(root, p) {
       if (!(n in form)) return;
       form[n] = n === "username" && page !== "login" ? e.target.value.toLowerCase() : e.target.value;
       if (e.target.value !== form[n]) e.target.value = form[n];
+      if (page === "signup") {
+        // 비밀번호 확인: 넣는 대로 같은지 다른지 (다시 그리지 않고 글만 바꿔 입력 중인 칸이 그대로)
+        if (n === "password" || n === "confirm") { const el = f.querySelector("#pwmatch"); if (el) el.innerHTML = matchHtml(); }
+        if (n === "username") { const el = f.querySelector("#idcheck"); if (el) el.innerHTML = idCheckHtml(); }
+        // 이메일 앞자리에 @ 를 넣으면 뒷자리는 직접 넣기로
+        if (n === "emailId" && form.emailId.includes("@")) {
+          const [a, d] = form.emailId.split("@");
+          form.emailId = a; form.emailCustom = d || ""; form.emailDomain = EMAIL_DOMAINS.includes(d) ? d : "";
+          draw(); f.ownerDocument.querySelector(form.emailDomain ? 'select[name="emailDomain"]' : 'input[name="emailCustom"]')?.focus();
+        }
+      }
       // 찾기·확인 단추가 켜질지 바뀌는 경우만 다시 그림
       if (page === "reset" && n === "username") { const b = f.querySelector(".authbtn"); if (b) b.disabled = busy || !form.username.trim(); }
     });
+    // 이메일 뒷자리 고르기 (직접 입력이면 칸이 생김)
+    f.addEventListener("change", (e) => { if (e.target.name === "emailDomain") { form.emailDomain = e.target.value; draw(); if (!form.emailDomain) root.querySelector('input[name="emailCustom"]')?.focus(); } });
     // 엔터 = 맨 아래 큰 단추
     f.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); f.querySelector(".authbtn")?.click(); } });
   }

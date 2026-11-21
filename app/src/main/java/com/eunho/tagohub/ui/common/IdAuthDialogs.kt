@@ -3,6 +3,8 @@ package com.eunho.tagohub.ui.common
 import android.app.Activity
 import android.content.ContextWrapper
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +17,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -55,6 +60,16 @@ import com.eunho.tagohub.data.PhoneNumber
 import kotlinx.coroutines.launch
 
 /** 아이디 회원 창의 화면들 */
+/** 회원가입 이메일 뒷자리 고르기 (웹 account.js EMAIL_DOMAINS 와 같음). 빈 글자 = 직접 입력 */
+internal val EMAIL_DOMAINS = listOf("naver.com", "gmail.com", "daum.net", "hanmail.net", "kakao.com", "nate.com", "")
+
+/** "gidrl" + "naver.com" → "gidrl@naver.com" (앞자리에 @ 가 있거나 뒷자리가 비었으면 앞자리 그대로) */
+internal fun joinEmail(id: String, domain: String): String {
+    val a = id.trim()
+    val d = domain.trim().removePrefix("@")
+    return if ('@' in a || d.isEmpty()) a else "$a@$d"
+}
+
 private enum class IdPage { Login, SignUp, FindId, Reset, Admin }
 
 private const val ASKED_PREF = "id_login_asked"
@@ -110,7 +125,15 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
     var byPhone by rememberSaveable { mutableStateOf(true) }
     var found by remember { mutableStateOf<List<String>?>(null) }
     val isAdmin by MapEdits.admin.collectAsStateWithLifecycle()
-    var resetStep by rememberSaveable { mutableStateOf(0) }   // 0 확인 전, 1 문자 보냄(새 비밀번호), 2 메일 보냄
+    var resetStep by rememberSaveable { mutableStateOf(0) }
+    // 회원가입 이메일: 앞자리 + 뒷자리 고르기(직접 넣기). 앞 화면에서 넣은 이메일이 있으면 나눠 이어 씀
+    var emailId by rememberSaveable { mutableStateOf("") }
+    var emailDomain by rememberSaveable { mutableStateOf(EMAIL_DOMAINS.first()) }
+    var emailCustom by rememberSaveable { mutableStateOf("") }
+    var domainOpen by remember { mutableStateOf(false) }
+    /** 아이디 중복확인 결과 (확인한 아이디, 쓸 수 있으면 true · 이미 쓰면 false · 확인 못 하면 null) */
+    var idCheck by remember { mutableStateOf<Pair<String, Boolean?>?>(null) }
+    fun signupEmail(): String = joinEmail(emailId, emailDomain.ifEmpty { emailCustom })   // 0 확인 전, 1 문자 보냄(새 비밀번호), 2 메일 보냄
 
     fun go(p: IdPage) { page = p; error = null; info = null; password = ""; confirm = ""; code = ""; codeSent = false; smsFailed = false; found = null; resetStep = 0 }
     fun run(block: suspend () -> Unit) { busy = true; error = null; scope.launch { try { block() } finally { busy = false } } }
@@ -168,12 +191,61 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                         }
 
                         IdPage.SignUp -> {
-                            OutlinedTextField(username, { username = it.lowercase() }, field, label = { Text("아이디 (영어 소문자·숫자 4~20자)") }, singleLine = true)
+                            LaunchedEffect(Unit) {
+                                if (email.isNotBlank() && emailId.isEmpty()) {
+                                    val parts = email.trim().split("@", limit = 2)
+                                    emailId = parts[0]
+                                    parts.getOrNull(1)?.let { d -> if (d in EMAIL_DOMAINS) emailDomain = d else { emailDomain = ""; emailCustom = d } }
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(username, { username = it.lowercase() }, Modifier.weight(1f), label = { Text("아이디 (영어 소문자·숫자 4~20자)") }, singleLine = true)
+                                OutlinedButton(enabled = !busy && IdAccount.normUsername(username) != null, onClick = {
+                                    val u = IdAccount.normUsername(username) ?: return@OutlinedButton
+                                    scope.launch { idCheck = u to IdAccount.isFree(u) }
+                                }) { Text("중복확인") }
+                            }
+                            val u = IdAccount.normUsername(username)
+                            val idMsg: Pair<String, Boolean>? = when {
+                                username.isEmpty() -> null
+                                u == null -> "영어 소문자·숫자·밑줄(_)로 4~20자예요" to false
+                                idCheck?.first != u -> "중복확인을 눌러 주세요" to true
+                                idCheck?.second == true -> "쓸 수 있는 아이디예요" to true
+                                idCheck?.second == false -> "이미 쓰는 아이디예요" to false
+                                else -> "지금은 확인할 수 없어요. 잠시 뒤에 다시 눌러 주세요" to false
+                            }
+                            idMsg?.let { (t, ok) -> Text(t, fontSize = 12.sp, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
                             OutlinedTextField(password, { password = it }, field, label = { Text("비밀번호 (영어+숫자 ${IdAccount.MIN_PASSWORD}자 이상)") }, singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwKeyboard)
                             OutlinedTextField(confirm, { confirm = it }, field, label = { Text("비밀번호 확인") }, singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwKeyboard)
-                            OutlinedTextField(email, { email = it }, field, label = { Text("이메일") }, singleLine = true,
+                            // 비밀번호 확인: 넣는 대로 같은지 다른지
+                            if (confirm.isNotEmpty()) Text(if (confirm == password) "비밀번호가 같아요" else "비밀번호가 달라요", fontSize = 12.sp,
+                                color = if (confirm == password) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            // 이메일: 앞자리 @ 뒷자리(고르기, 직접 입력)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(emailId, { v ->
+                                    // 앞자리에 @ 를 넣으면 뒷자리를 나눠 받음
+                                    if ('@' in v) {
+                                        val parts = v.split("@", limit = 2)
+                                        emailId = parts[0]
+                                        val d = parts[1]
+                                        if (d in EMAIL_DOMAINS) emailDomain = d else { emailDomain = ""; emailCustom = d }
+                                    } else emailId = v
+                                }, Modifier.weight(1f), label = { Text("이메일") }, singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
+                                Text("@", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Box {
+                                    OutlinedButton(onClick = { domainOpen = true }) { Text(emailDomain.ifEmpty { "직접 입력" }) }
+                                    DropdownMenu(expanded = domainOpen, onDismissRequest = { domainOpen = false }) {
+                                        EMAIL_DOMAINS.forEach { d ->
+                                            DropdownMenuItem(text = { Text(d.ifEmpty { "직접 입력" }) }, onClick = { emailDomain = d; domainOpen = false })
+                                        }
+                                    }
+                                }
+                            }
+                            if (emailDomain.isEmpty()) OutlinedTextField(emailCustom, { emailCustom = it.trim().removePrefix("@") }, field,
+                                label = { Text("이메일 뒷자리 (예: company.co.kr)") }, singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
                             OutlinedTextField(phone, { phone = it; codeSent = false; code = "" }, field, label = { Text("전화번호") }, singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
@@ -250,9 +322,15 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                         }) { Text(if (busy) "로그인 중…" else "로그인") }
 
                         IdPage.SignUp -> Button(modifier = field.height(52.dp), enabled = !busy && (code.length == PhoneNumber.CODE_LENGTH || smsFailed), onClick = {
-                            IdAccount.validateSignUp(username, password, confirm, email, phone)?.let { error = it; return@Button }
+                            val mail = signupEmail()
+                            email = mail
+                            IdAccount.validateSignUp(username, password, confirm, mail, phone)?.let { error = it; return@Button }
                             run {
-                                val msg = IdAccount.signUp(context, username, password, email, phone, code.takeIf { codeSent && it.isNotEmpty() })
+                                // 중복확인을 안 했거나 아이디를 바꿨으면 지금 확인
+                                val u = IdAccount.normUsername(username)
+                                if (u != null && idCheck?.first != u) idCheck = u to IdAccount.isFree(u)
+                                if (u != null && idCheck?.second == false) { error = "이미 쓰는 아이디예요"; return@run }
+                                val msg = IdAccount.signUp(context, username, password, mail, phone, code.takeIf { codeSent && it.isNotEmpty() })
                                 if (IdAccount.me.value.username != null) { toast(msg ?: "가입했어요. 환영해요!"); onDismiss() } else error = msg
                             }
                         }) { Text(if (busy) "가입 중…" else "가입") }
