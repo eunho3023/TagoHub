@@ -7,8 +7,12 @@ import { HomeWork, Recent } from "./store.js";
 import { currentLocation } from "./alight.js";
 
 export const MY_PLACE = "내 위치";
-/** 길찾기·장소 검색은 좌표를 카카오로 보내야 해서 웹에서는 잠시 막아 둠 (위치를 기기 밖으로 보내지 않음) */
-export const KAKAO_ROUTING = false;
+/**
+ * 길찾기·장소 검색은 좌표를 카카오로 보내야 해서 웹에서는 막아 두었다가(2026-11-05), 개인정보 처리방침·이용약관을 바꾸고
+ * 7일 전에 공지(2026-11-22, notices.json)한 뒤 2026-11-29 0시(한국 시간)부터 켬
+ */
+export const KAKAO_ROUTING_FROM = Date.parse("2026-11-29T00:00:00+09:00");
+export const KAKAO_ROUTING = Date.now() >= KAKAO_ROUTING_FROM;
 /** 길찾기 상태 (다른 화면에 다녀와도 남음) */
 export const dir = { from: null, to: null, editing: "from", q: "", routes: null, status: null, picked: null };
 
@@ -58,7 +62,7 @@ export function startDirections(to) {
 export function directionsScreen(root, p, ctx) {
   if (!KAKAO_ROUTING) {
     root.innerHTML = header("길찾기", "대중교통 길찾기") + note("준비 중이에요") +
-      note("길찾기와 장소 검색은 출발·도착 좌표를 카카오로 보내야 해서 웹에서는 잠시 쉬고 있어요. 정류장 찾기, 내 주변 정류장, 내 위치는 이 기기 안에서만 처리돼요.");
+      note("11월 29일부터 웹에서도 길찾기와 장소 검색을 할 수 있어요 (공지사항 참고). 그 전에는 출발·도착 좌표를 보내지 않아서, 정류장 찾기·내 주변 정류장·내 위치는 이 기기 안에서만 처리돼요.");
     return null;
   }
   let alive = true, seq = 0;
