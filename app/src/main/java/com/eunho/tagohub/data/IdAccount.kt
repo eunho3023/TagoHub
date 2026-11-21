@@ -104,6 +104,15 @@ object IdAccount {
         developer.value = dev || MapEdits.adminKeySet()
     }
 
+    // 자동 로그인: 켜 두면(기본) 앱을 다시 켜도 로그인이 그대로, 끄면 앱을 새로 켤 때 로그아웃 (MainActivity)
+    private const val PREFS = "ui"
+    private const val AUTO_LOGIN = "auto_login"
+    fun autoLogin(context: android.content.Context): Boolean =
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getBoolean(AUTO_LOGIN, true)
+    fun setAutoLogin(context: android.content.Context, on: Boolean) {
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean(AUTO_LOGIN, on).apply()
+    }
+
     /** 앱을 켤 때: 로그인 상태가 바뀌면 아이디를 다시 받음 */
     fun init() {
         update()
