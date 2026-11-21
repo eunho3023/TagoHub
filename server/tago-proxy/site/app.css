@@ -179,6 +179,11 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .pbox.on { background: var(--pcont); }
 .pbox b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .swap { font-size: 22px; color: var(--primary); padding: 0 4px; }
+/* 길찾기 경유지 (5곳까지) */
+.vias { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 8px; background: var(--surface); }
+.via { display: inline-flex; align-items: center; gap: 4px; background: var(--sv); border-radius: 12px; padding: 2px 2px 2px 10px; font-size: 13px; max-width: 100%; }
+.via small { color: var(--muted); }
+.tile:nth-child(5) .tile-ic { background: var(--p2); color: var(--p2i); }
 .dur { display: inline; font-size: 22px; font-weight: 800; }
 .inl { display: inline; }
 .bar8 { display: flex; gap: 2px; height: 8px; margin: 6px 0; }

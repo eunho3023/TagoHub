@@ -244,7 +244,9 @@ const COORD = /^-?\d{1,3}(\.\d{1,17})?$/; // 웹 화면은 Double 그대로(소�
 const round5 = (v) => Number(v).toFixed(5);
 
 /**
- * "/w/kakao/place?q=&x=&y=" → 장소 찾기, "/w/kakao/transit?sx=&sy=&ex=&ey=" → 대중교통 길찾기.
+ * "/w/kakao/place?q=&x=&y=" → 장소 찾기, "/w/kakao/transit?sx=&sy=&ex=&ey=" → 대중교통 길찾기,
+ * "/w/kakao/walk|bicycle?sx=&sy=&ex=&ey=" → 도보·자전거 (앱 KakaoExtra.ride 와 같은 주소),
+ * "/w/kakao/car?sx=&sy=&ex=&ey=&via=경도,위도|…" → 자동차 (카카오모빌리티, 경유지 5곳까지, 앱 KakaoExtra.drive 와 같은 값).
  * 좌표는 소수 5자리로 맞춰(약 1m) 같은 요청끼리 저장을 같이 씀. 허락하지 않으면 null → { url, cacheKey, ttl }
  */
 export function kakaoWebRequest(pathname, search) {
@@ -263,6 +265,31 @@ export function kakaoWebRequest(pathname, search) {
     const [sx, sy, ex, ey] = v.map(round5);
     const qs = `start_x=${sx}&start_y=${sy}&end_x=${ex}&end_y=${ey}`;
     return { url: "https://dapi.kakao.com/v2/routing/publictraffic?" + qs, cacheKey: "transit?" + qs, ttl: 300 };
+  }
+  const ride = { "/w/kakao/walk": "walk", "/w/kakao/bicycle": "bicycle" }[pathname];
+  if (ride) {
+    const v = ["sx", "sy", "ex", "ey"].map((k) => p.get(k));
+    if (v.some((s) => !s || !COORD.test(s))) return null;
+    const [sx, sy, ex, ey] = v.map(round5);
+    const qs = `start_x=${sx}&start_y=${sy}&end_x=${ex}&end_y=${ey}`;
+    return { url: `https://dapi.kakao.com/v2/routing/${ride}?` + qs, cacheKey: ride + "?" + qs, ttl: 3600 };
+  }
+  if (pathname === "/w/kakao/car") {
+    const v = ["sx", "sy", "ex", "ey"].map((k) => p.get(k));
+    if (v.some((s) => !s || !COORD.test(s))) return null;
+    const [sx, sy, ex, ey] = v.map(round5);
+    const via = (p.get("via") || "").split("|").filter(Boolean);
+    if (via.length > 5) return null;
+    const vias = [];
+    for (const one of via) {
+      const xy = one.split(",");
+      if (xy.length !== 2 || !xy.every((s) => COORD.test(s))) return null;
+      vias.push(xy.map(round5).join(","));
+    }
+    const qs = `origin=${sx},${sy}&destination=${ex},${ey}${vias.length ? "&waypoints=" + vias.join("%7C") : ""}` +
+      "&priority=RECOMMEND&car_fuel=GASOLINE&car_hipass=false&alternatives=false&road_details=false";
+    // 자동차는 지금 길 막힘이 반영돼 1분만 저장
+    return { url: "https://apis-navi.kakaomobility.com/v1/directions?" + qs, cacheKey: "car?" + qs, ttl: 60 };
   }
   return null;
 }

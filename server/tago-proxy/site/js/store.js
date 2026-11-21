@@ -66,8 +66,10 @@ export const Recent = {
 export const HomeWork = {
   get home() { return decPlace(storeGet("home") || ""); },
   get work() { return decPlace(storeGet("work") || ""); },
+  get school() { return decPlace(storeGet("school") || ""); },
   saveHome(p) { storeSet("home", encPlace(p)); },
   saveWork(p) { storeSet("work", encPlace(p)); },
+  saveSchool(p) { storeSet("school", encPlace(p)); },
 };
 
 /** 화면 모드: auto(기기 설정) · light · dark */
