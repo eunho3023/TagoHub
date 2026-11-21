@@ -4,7 +4,7 @@ import { MapView } from "./map.js";
 import { thinDots } from "./mapdiff.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
-import { cachedText, subwayColor, meters } from "./core.js";
+import { cachedText, subwayColor } from "./core.js";
 import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations.js";
 import { fixPointScreen } from "./fixpoint.js";
 import { applyTheme } from "./store.js";
@@ -125,18 +125,9 @@ async function openStation(g, line) {
   } catch (e) { /* 아래 */ }
   alert("역 정보를 받지 못했어요. 잠시 뒤 다시 해 주세요.");
 }
-/**
- * 카카오 지도의 정류장 아이콘을 눌렀다고 볼 범위: 정류장 자리에서 화면 18px(아이콘 하나 크기) 안, 10~20m.
- * 카카오는 아이콘 자리를 알려 주지 않고 지도 그림도 못 읽어서(다른 주소 그림) 정류장 자리로만 가림.
- * 40m 로 두었더니 도로 가운데를 눌러도 정류장이 열렸음
- */
-const KAKAO_TAP_PX = 18, KAKAO_TAP_MIN_M = 10, KAKAO_TAP_MAX_M = 20;
-
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
 export function stopsMap(host, focus) {
   let stops = [], picked = focus, stations = [];
-  /** 카카오 아이콘을 눌러 고른 자리 (고른 표시를 자료 좌표 대신 아이콘 위에) */
-  let pickedAt = null;
   let timer = null, alive = true;
   /** 서울 실시간 교통 점(돌발·교통량 지점)을 눌렀을 때 카드 내용 */
   let info = null;
@@ -166,13 +157,9 @@ export function stopsMap(host, focus) {
     MapView.dots(thinDots(
       // 지하철역이 맨 앞 (솎을 때 남게): 노선 색 점(정류장보다 크게), 줌 14부터 노선 색 이름표 (흰 점·흰 이름표는 지도에 묻혀 안 보였음)
       [...stations.map((g, i) => { const at = stationPos(g, Edits.stationFix); return { id: "sub:" + i, lat: at[0], lng: at[1], color: subwayColor(g.lines[0]), ring: "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null }; }),
-      // 카카오 지도가 정류장 아이콘을 그리는 배율(줌 17~)이면 우리 점은 고른 것만 (지도 고치기 중엔 자료 자리를 봐야 해서 모두)
-      ...[...(MapView.kakaoStops() && !Edits.editing() ? [] : stops.filter((s) => !picked || s.id !== picked.id)), ...(picked && picked.name ? [picked] : [])]
+      ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
-        .map((s) => {
-          const on = picked && s.id === picked.id, at = on && pickedAt && !Edits.editing() ? pickedAt : [s.lat, s.lng];
-          return { id: s.id, lat: at[0], lng: at[1], color: on ? "#D7262E" : BUS_STOP_COLOR, ring: "#fff", r: on ? 11 : 8, bus: true, label: on ? s.name : null, labelUp: on };
-        }),
+        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : BUS_STOP_COLOR, ring: "#fff", r: on ? 11 : 8, bus: true, label: on ? s.name : null, labelUp: on }; }),
       ...(traffic ? traffic.dots() : [])], MapView.metersPerPx()),
       (d) => {
         // 돌발·공영자전거·주차장·편의시설 점은 카드 (topis.js card)
@@ -195,8 +182,6 @@ export function stopsMap(host, focus) {
         }
         info = null;
         picked = stops.find((s) => s.id === d.id) || picked;
-        if (picked && picked.id !== d.id) pickedAt = null;
-        if (!picked || picked.id === d.id) pickedAt = picked && pickedAt && meters(pickedAt[0], pickedAt[1], d.lat, d.lng) < 1 ? pickedAt : null;
         draw();
       },
     );
@@ -233,17 +218,7 @@ export function stopsMap(host, focus) {
   const off = MapView.onIdle(load);
   // 누가 정류장 위치를 고치면 바로 다시 (지도는 그대로)
   const offEdit = Edits.onChange(() => { drawBanner(); load(); });
-  MapView.onTap((p) => {
-    info = null;
-    // 카카오 지도의 정류장 아이콘을 누름 → 그 자리에서 가장 가까운 정류장 (아이콘 하나 크기 안). 아니면 고르기 취소
-    const lim = Math.min(KAKAO_TAP_MAX_M, Math.max(KAKAO_TAP_MIN_M, KAKAO_TAP_PX * (MapView.metersPerPx() || 1)));
-    const near = p && MapView.kakaoStops() && !Edits.editing()
-      ? stops.map((s) => [s, meters(p[0], p[1], s.lat, s.lng)]).filter((x) => x[1] <= lim).sort((a, b) => a[1] - b[1])[0]?.[0]
-      : null;
-    picked = near || null;
-    pickedAt = near ? [p[0], p[1]] : null;
-    draw();
-  });
+  MapView.onTap(() => { picked = null; info = null; draw(); });
   MapView.ready.then(load);
   return () => { alive = false; off(); offEdit(); card.remove(); banner.remove(); traffic.destroy(); MapView.lines([]); };
 }
