@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material.icons.outlined.Traffic
 import androidx.compose.material.icons.outlined.Train
 import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -406,13 +407,14 @@ com.eunho.tagohub.ui.common.FitText(
     }
 }
 
-/** 바로가기 네 칸: 집 · 회사(저장해 둔 곳으로 바로 길찾기), 즐겨찾기 · 최근(아래 목록으로 내려감) */
+/** 바로가기 다섯 칸: 집 · 회사 · 학교(저장해 둔 곳으로 바로 길찾기), 즐겨찾기 · 최근(아래 목록으로 내려감) */
 @Composable
 private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpenTab: (AppTab) -> Unit, onFavorites: () -> Unit, onRecent: () -> Unit, modifier: Modifier = Modifier) {
     val saved by vm.trip.homeWork.state.collectAsStateWithLifecycle()
     val items: List<Triple<String, ImageVector, () -> Unit>> = listOf(
         Triple(SavedKind.Home.label, Icons.Outlined.Home, saved.home?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
         Triple(SavedKind.Work.label, Icons.Outlined.Work, saved.work?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
+        Triple(SavedKind.School.label, Icons.Outlined.School, saved.school?.let { p -> { onGoTo(p) } } ?: { onOpenTab(AppTab.Navi) }),
         Triple("즐겨찾기", Icons.Outlined.StarBorder, onFavorites),
         Triple("최근", Icons.Outlined.History, onRecent),
     )
@@ -440,9 +442,9 @@ private fun ShortcutTiles(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit, onOpen
 @Composable
 private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
     val saved by vm.trip.homeWork.state.collectAsStateWithLifecycle()
-    if (saved.home == null && saved.work == null) return
+    if (saved.home == null && saved.work == null && saved.school == null) return
     val first = remember { com.eunho.tagohub.data.HomeWork.suggested(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) }
-    val order = listOf(first, SavedKind.entries.first { it != first })
+    val order = listOf(first) + SavedKind.entries.filter { it != first }
     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         order.forEach { kind ->
             val place = saved[kind] ?: return@forEach
@@ -452,7 +454,7 @@ private fun SavedPlaces(vm: MapViewModel, onGoTo: (SavedPlace) -> Unit) {
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (kind == SavedKind.Home) Icons.Outlined.Home else Icons.Outlined.Work, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                    Icon(com.eunho.tagohub.ui.map.savedKindIcon(kind, filled = false), contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("${kind.label}으로", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }

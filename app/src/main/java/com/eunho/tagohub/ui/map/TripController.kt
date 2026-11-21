@@ -145,21 +145,27 @@ class TripController(
     /** 경유지 (카카오 길찾기로 출발→경유, 경유→도착을 이어 붙임) */
     val via = MutableStateFlow<PlanPoint?>(null)
 
-    /** 자동차 길찾기 경유지 (카카오 길찾기 waypoints, 최대 5개). 순서대로 거침 */
+    /**
+     * 경유지 (최대 5개, 순서대로 거침). 이름은 예전 자동차 전용 목록 그대로지만 지금은 모든 수단이 같이 씀:
+     * 자동차는 카카오모빌리티 waypoints 로 한 번에, 대중교통·도보·자전거는 구간마다 받아 이어 붙임
+     */
     val carVias = MutableStateFlow<List<PlanPoint>>(emptyList())
 
+    /** 거칠 경유지 (예전 대중교통 한 곳 [via] 도 앞에 넣음) */
+    private fun allVias(): List<PlanPoint> = (listOfNotNull(via.value) + carVias.value).distinctBy { it.lat to it.lng }
+
     fun addCarVia(p: PlanPoint) {
-        if (carVias.value.size >= com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS) {
+        if (allVias().size >= com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS) {
             note.value = "경유지는 ${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS}개까지 넣을 수 있어요."
             return
         }
         carVias.value = carVias.value + p
-        if (dest.value != null) { mode.value = PlanMode.Car; drive() }
+        if (dest.value != null) selectMode(mode.value)
     }
 
     fun removeCarVia(index: Int) {
         carVias.value = carVias.value.filterIndexed { i, _ -> i != index }
-        if (dest.value != null && mode.value == PlanMode.Car) drive()
+        if (dest.value != null) selectMode(mode.value)
     }
     val plans = MutableStateFlow<Load<List<TripPlan>>>(Load.Idle)
     val selected = MutableStateFlow<TripPlan?>(null)
@@ -185,9 +191,52 @@ class TripController(
     val modeMinutes = MutableStateFlow<Map<PlanMode, Int>>(emptyMap())
     private var modeKey = ""
 
+    private fun timesKey(o: LatLng, d: PlanPoint) = "${o.lat},${o.lng}>" + allVias().joinToString("") { "${it.lat},${it.lng}>" } + "${d.lat},${d.lng}"
+
     private fun resetTimesIfRouteChanged(o: LatLng, d: PlanPoint) {
-        val key = "${o.lat},${o.lng}>${d.lat},${d.lng}"
+        val key = timesKey(o, d)
         if (key != modeKey) { modeKey = key; modeMinutes.value = emptyMap() }
+    }
+
+    private var timesJob: Job? = null
+
+    /**
+     * 수단 탭마다 걸리는 시간을 한 번에 (앱·웹 같게): 아직 안 받은 자동차·도보·자전거를 뒤에서 받아 [modeMinutes] 에만 넣음.
+     * 지도·결과 화면은 바꾸지 않음. 자동차는 받은 경로를 [driveAlts] 에 넣어 자동차 탭을 누르면 다시 받지 않게
+     */
+    private fun prefetchTimes(o: LatLng, d: PlanPoint) {
+        if (!com.eunho.tagohub.data.KakaoExtra.available) return
+        val key = timesKey(o, d)
+        val vias = allVias().map { LatLng(it.lat, it.lng) }
+        val dl = LatLng(d.lat, d.lng)
+        timesJob?.cancel()
+        timesJob = scope.launch {
+            listOf(PlanMode.Car, PlanMode.Walk, PlanMode.Bicycle).filter { it !in modeMinutes.value }.forEach { m ->
+                launch {
+                    val min = when (m) {
+                        PlanMode.Car -> {
+                            val opt = com.eunho.tagohub.data.DriveOption.Recommend
+                            val r = runCatching { com.eunho.tagohub.data.KakaoExtra.drive(o, dl, opt, vias).second }.getOrNull()
+                            val altsKey = "${o.lat},${o.lng}>${d.lat},${d.lng}|" + vias.joinToString { "${it.lat},${it.lng}" }
+                            if (r != null && modeKey == key) {
+                                if (altsKey != driveAltsKey) { driveAltsKey = altsKey; driveAlts.value = emptyMap() }
+                                driveAlts.value = driveAlts.value + (opt to r)
+                            }
+                            r?.let { (it.durationSeconds + 59) / 60 }
+                        }
+                        else -> rideChain(o, dl, vias, m == PlanMode.Bicycle)?.let { (it.third + 59) / 60 }
+                    }
+                    if (min != null && modeKey == key) modeMinutes.value = modeMinutes.value + (m to min)
+                }
+            }
+        }
+    }
+
+    /** 도보·자전거: 경유지가 있으면 구간마다 받아 이어 붙임 (경로, 거리 m, 시간 초) */
+    private suspend fun rideChain(o: LatLng, d: LatLng, vias: List<LatLng>, bicycle: Boolean): Triple<List<LatLng>, Int, Int>? {
+        val pts = listOf(o) + vias + d
+        val legs = pts.zipWithNext().map { (a, b) -> com.eunho.tagohub.data.KakaoExtra.ride(a, b, bicycle) ?: return null }
+        return Triple(legs.flatMap { it.first }, legs.sumOf { it.second }, legs.sumOf { it.third })
     }
 
     /** 경로 전체가 보이게 지도를 맞춤 (아래 「전체경로」 버튼) */
@@ -238,6 +287,7 @@ class TripController(
         plans.value = Load.Idle
         via.value = null
         carVias.value = emptyList()
+        timesJob?.cancel()
         selected.value = null
         live.value = null
         mode.value = PlanMode.Transit
@@ -289,7 +339,7 @@ class TripController(
                 ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았어요.")
                 return@launch
             }
-            val viaLatLngs = carVias.value.map { LatLng(it.lat, it.lng) }
+            val viaLatLngs = allVias().map { LatLng(it.lat, it.lng) }
             resetTimesIfRouteChanged(o, d)
             val altsKey = "${o.lat},${o.lng}>${d.lat},${d.lng}|" + viaLatLngs.joinToString { "${it.lat},${it.lng}" }
             if (altsKey != driveAltsKey) { driveAltsKey = altsKey; driveAlts.value = emptyMap() }
@@ -338,7 +388,8 @@ class TripController(
                 ridePlan.value = Load.Fail("카카오 REST API 키가 설정되지 않았어요.")
                 return@launch
             }
-            val r = tracked { com.eunho.tagohub.data.KakaoExtra.ride(o, LatLng(d.lat, d.lng), bicycle) }
+            val viaLatLngs = allVias().map { LatLng(it.lat, it.lng) }
+            val r = tracked { rideChain(o, LatLng(d.lat, d.lng), viaLatLngs, bicycle) }
             if (r == null) {
                 ridePlan.value = Load.Fail("${if (bicycle) "자전거" else "도보"} 경로를 카카오에서 찾지 못했어요.")
                 return@launch
@@ -347,7 +398,7 @@ class TripController(
             resetTimesIfRouteChanged(o, d)
             modeMinutes.value = modeMinutes.value + ((if (bicycle) PlanMode.Bicycle else PlanMode.Walk) to (sec + 59) / 60)
             canvas()?.setTrip(listOf(TripSegment(path, if (bicycle) 0xFF2E7D32.toInt() else WALK, !bicycle)),
-                listOf(TripMark(o.lat, o.lng, "출", MARK_START), TripMark(d.lat, d.lng, "도", MARK_END)))
+                listOf(TripMark(o.lat, o.lng, "출", MARK_START)) + viaLatLngs.map { TripMark(it.lat, it.lng, "경", MARK_TRANSFER) } + TripMark(d.lat, d.lng, "도", MARK_END))
             canvas()?.fitTo(path)
             ridePlan.value = Load.Ok(RidePlan(if (bicycle) PlanMode.Bicycle else PlanMode.Walk, m, sec, path = path))
         }
@@ -362,7 +413,7 @@ class TripController(
         fixedMinutes = (a.fixedMinutes ?: a.minutes) + (b.fixedMinutes ?: b.minutes) + 3,
         fare = listOfNotNull(a.fare, b.fare).takeIf { it.isNotEmpty() }?.sum(),
         walkPaths = a.walkPaths.orEmpty() + b.walkPaths.orEmpty(),
-        source = "카카오 길찾기 · 경유 ${via.value?.name.orEmpty()}",
+        source = "카카오 길찾기 · 경유 ${allVias().joinToString(", ") { it.name }}",
     )
 
     fun edit(field: PlanField?) {
@@ -468,17 +519,25 @@ class TripController(
                 return@launch
             }
 
-            val v = via.value
-            if (v != null) {
-                val (statusA, a) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(o.lat, o.lng, v.lat, v.lng) }
-                val (statusB, b) = tracked { com.eunho.tagohub.data.KakaoRoutes.transit(v.lat, v.lng, d.lat, d.lng) }
-                val joined = a.sortedBy { it.minutes }.take(3).flatMap { x -> b.sortedBy { it.minutes }.take(3).map { y -> joinVia(x, y) } }
-                if (joined.isNotEmpty()) {
+            val vias = allVias()
+            if (vias.isNotEmpty()) {
+                // 구간마다 받아 빠른 3개씩 이어 붙임 (조합은 빠른 9개까지만 남김), 경유마다 3분 여유 (joinVia)
+                val pts = listOf(o) + vias + d
+                val legs = pts.zipWithNext().map { (a, b) -> tracked { com.eunho.tagohub.data.KakaoRoutes.transit(a.lat, a.lng, b.lat, b.lng) } }
+                var joined: List<TripPlan> = legs.first().second.sortedBy { it.minutes }.take(3)
+                for ((_, next) in legs.drop(1)) {
+                    joined = joined.flatMap { x -> next.sortedBy { it.minutes }.take(3).map { y -> joinVia(x, y) } }.sortedBy { it.minutes }.take(9)
+                }
+                if (joined.isNotEmpty() && legs.all { it.second.isNotEmpty() }) {
                     plans.value = Load.Ok(joined.sortedBy { it.minutes })
-                    canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(v.lat, v.lng), LatLng(d.lat, d.lng)))
+                    resetTimesIfRouteChanged(LatLng(o.lat, o.lng), d)
+                    modeMinutes.value = modeMinutes.value + (PlanMode.Transit to joined.minOf { it.minutes })
+                    prefetchTimes(LatLng(o.lat, o.lng), d)
+                    canvas()?.fitTo(pts.map { LatLng(it.lat, it.lng) })
                     return@launch
                 }
-                plans.value = Load.Fail("카카오에서 경유 경로를 찾지 못했어요. ${routeFailure(statusA, statusB)}")
+                plans.value = Load.Fail("카카오에서 경유 경로를 찾지 못했어요. ${routeFailure(*legs.map { it.first }.toTypedArray())}")
+                prefetchTimes(LatLng(o.lat, o.lng), d)
                 return@launch
             }
             val (status, kakao) = tracked {
@@ -486,11 +545,14 @@ class TripController(
             }
             if (kakao.isEmpty()) {
                 plans.value = Load.Fail(routeFailure(status))
+                resetTimesIfRouteChanged(LatLng(o.lat, o.lng), d)
+                prefetchTimes(LatLng(o.lat, o.lng), d)
                 return@launch
             }
             plans.value = Load.Ok(kakao.sortedBy { it.minutes }.take(10))
             resetTimesIfRouteChanged(LatLng(o.lat, o.lng), d)
             modeMinutes.value = modeMinutes.value + (PlanMode.Transit to kakao.minOf { it.minutes })
+            prefetchTimes(LatLng(o.lat, o.lng), d)
             canvas()?.fitTo(listOf(LatLng(o.lat, o.lng), LatLng(d.lat, d.lng)))
         }
     }

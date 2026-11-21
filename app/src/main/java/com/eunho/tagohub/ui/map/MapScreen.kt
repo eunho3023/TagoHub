@@ -82,6 +82,11 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.outlined.Home as OutlinedHome
+import androidx.compose.material.icons.outlined.School as OutlinedSchool
+import androidx.compose.material.icons.outlined.Work as OutlinedWork
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
@@ -1046,6 +1051,7 @@ private fun PickCard(vm: MapViewModel, p: MapViewModel.PickedPlace) {
             Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Home) }) { Text("집으로 저장") }
                 TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.Work) }) { Text("회사로 저장") }
+                TextButton(onClick = { vm.saveHomeWork(com.eunho.tagohub.data.SavedKind.School) }) { Text("학교로 저장") }
             }
             // 주변 찾기: 카카오 카테고리 버튼 + "주변 지하철역" 바로 뒤에 "주변 버스정류장" 버튼 (앱 정류장 자료로 찾음)
             var busOpen by remember(p) { mutableStateOf(false) }
@@ -2416,8 +2422,9 @@ fun PlannerPage(vm: MapViewModel, onShowMap: () -> Unit, modifier: Modifier = Mo
 private fun HomeWorkChips(t: TripController) {
     val saved by t.homeWork.state.collectAsStateWithLifecycle()
     val first = remember { com.eunho.tagohub.data.HomeWork.suggested(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) }
-    val order = listOf(first, com.eunho.tagohub.data.SavedKind.entries.first { it != first })
-    Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    val order = listOf(first) + com.eunho.tagohub.data.SavedKind.entries.filter { it != first }
+    // 집·회사·학교 + 출근 알림이 한 줄에 다 안 들어가면 옆으로 밀어 봄
+    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         order.forEach { kind ->
             val place = saved[kind]
             Surface(
@@ -2429,7 +2436,7 @@ private fun HomeWorkChips(t: TripController) {
                 ),
             ) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (kind == com.eunho.tagohub.data.SavedKind.Home) Icons.Filled.Home else Icons.Filled.Work, contentDescription = null, tint = ModeColor.Bus, modifier = Modifier.size(16.dp))
+                    Icon(savedKindIcon(kind), contentDescription = null, tint = ModeColor.Bus, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
                         if (place != null) "${kind.label}으로" else "${kind.label} 설정",
@@ -2441,7 +2448,7 @@ private fun HomeWorkChips(t: TripController) {
             }
         }
         if (saved.home != null && saved.work != null) CommuteReminderChip()
-        if (saved.home != null || saved.work != null) {
+        if (saved.home != null || saved.work != null || saved.school != null) {
             Text("길게 누르면 변경", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -2600,7 +2607,6 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
     val ridePlan by t.ridePlan.collectAsStateWithLifecycle()
     val sort by t.sort.collectAsStateWithLifecycle()
     val mode by t.mode.collectAsStateWithLifecycle()
-    val via by t.via.collectAsStateWithLifecycle()
     val modeMinutes by t.modeMinutes.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize()) {
@@ -2625,7 +2631,8 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
                     )
                 }
             }
-            if (mode == PlanMode.Car) CarViaBar(t)
+            // 경유지 (5곳까지, 대중교통·자동차·도보·자전거 모두 같은 목록)
+            CarViaBar(t)
             if (mode != PlanMode.Transit) {
                 when (val route = ridePlan) {
                     is Load.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 12.dp))
@@ -2663,12 +2670,6 @@ private fun PlanList(t: TripController, onShowMap: (() -> Unit)? = null, cards: 
                     }
                     is Load.Idle -> MessageText("${mode.label} 경로를 불러올 준비가 되었어요.")
                 }
-            }
-        }
-        via?.takeIf { mode == PlanMode.Transit }?.let { v ->
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("경유  ${v.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { t.via.value = null; t.plan() }) { Text("경유 빼기") }
             }
         }
         if (mode == PlanMode.Transit) {
@@ -2785,6 +2786,13 @@ private fun CarViaBar(t: TripController) {
             TextButton(onClick = { t.edit(PlanField.Via) }) { Text(if (vias.isEmpty()) "경유지 추가" else "경유지 더 추가 (${vias.size}/${com.eunho.tagohub.data.KakaoDrive.MAX_WAYPOINTS})") }
         }
     }
+}
+
+/** 집·회사·학교 아이콘 */
+internal fun savedKindIcon(kind: com.eunho.tagohub.data.SavedKind, filled: Boolean = true): androidx.compose.ui.graphics.vector.ImageVector = when (kind) {
+    com.eunho.tagohub.data.SavedKind.Home -> if (filled) Icons.Filled.Home else Icons.Outlined.OutlinedHome
+    com.eunho.tagohub.data.SavedKind.Work -> if (filled) Icons.Filled.Work else Icons.Outlined.OutlinedWork
+    com.eunho.tagohub.data.SavedKind.School -> if (filled) Icons.Filled.School else Icons.Outlined.OutlinedSchool
 }
 
 /**

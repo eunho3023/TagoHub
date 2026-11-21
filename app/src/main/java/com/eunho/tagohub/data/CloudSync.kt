@@ -19,6 +19,7 @@ internal object CloudSyncSpec {
         "bus" to "cityName",
         "bus" to "saved_home",
         "bus" to "saved_work",
+        "bus" to "saved_school",
         "drive_guidance" to "off_groups",
         "ui" to "theme_mode",
         "ui" to "night_mode",

@@ -4,16 +4,23 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** 자주 가는 곳 두 가지: 집과 회사 (출퇴근 한 번 길찾기용) */
-enum class SavedKind(val label: String) { Home("집"), Work("회사") }
+/** 자주 가는 곳: 집·회사·학교 (한 번에 길찾기용) */
+enum class SavedKind(val label: String) { Home("집"), Work("회사"), School("학교") }
 
 data class SavedPlace(val name: String, val lat: Double, val lng: Double)
 
-data class HomeWork(val home: SavedPlace? = null, val work: SavedPlace? = null) {
-    operator fun get(kind: SavedKind): SavedPlace? = if (kind == SavedKind.Home) home else work
+data class HomeWork(val home: SavedPlace? = null, val work: SavedPlace? = null, val school: SavedPlace? = null) {
+    operator fun get(kind: SavedKind): SavedPlace? = when (kind) {
+        SavedKind.Home -> home
+        SavedKind.Work -> work
+        SavedKind.School -> school
+    }
 
-    fun with(kind: SavedKind, place: SavedPlace?): HomeWork =
-        if (kind == SavedKind.Home) copy(home = place) else copy(work = place)
+    fun with(kind: SavedKind, place: SavedPlace?): HomeWork = when (kind) {
+        SavedKind.Home -> copy(home = place)
+        SavedKind.Work -> copy(work = place)
+        SavedKind.School -> copy(school = place)
+    }
 
     companion object {
         /**
@@ -56,17 +63,27 @@ object SavedPlaceCodec {
 /** 휴대폰 안에 저장 (로그인 없이). 즐겨찾기와 같은 설정 파일을 씀 */
 class HomeWorkStore(private val prefs: SharedPreferences) {
     private val _state = MutableStateFlow(
-        HomeWork(SavedPlaceCodec.decode(prefs.getString(KEY_HOME, null)), SavedPlaceCodec.decode(prefs.getString(KEY_WORK, null))),
+        HomeWork(
+            SavedPlaceCodec.decode(prefs.getString(KEY_HOME, null)),
+            SavedPlaceCodec.decode(prefs.getString(KEY_WORK, null)),
+            SavedPlaceCodec.decode(prefs.getString(KEY_SCHOOL, null)),
+        ),
     )
     val state: StateFlow<HomeWork> = _state
 
     fun set(kind: SavedKind, place: SavedPlace?) {
         _state.value = _state.value.with(kind, place)
-        prefs.edit().putString(if (kind == SavedKind.Home) KEY_HOME else KEY_WORK, SavedPlaceCodec.encode(place)).apply()
+        val key = when (kind) {
+            SavedKind.Home -> KEY_HOME
+            SavedKind.Work -> KEY_WORK
+            SavedKind.School -> KEY_SCHOOL
+        }
+        prefs.edit().putString(key, SavedPlaceCodec.encode(place)).apply()
     }
 
     private companion object {
         const val KEY_HOME = "saved_home"
         const val KEY_WORK = "saved_work"
+        const val KEY_SCHOOL = "saved_school"
     }
 }

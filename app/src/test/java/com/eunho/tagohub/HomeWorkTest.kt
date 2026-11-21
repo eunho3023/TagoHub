@@ -39,6 +39,16 @@ class HomeWorkTest {
     }
 
     @Test
+    fun schoolIsItsOwnSlot() {
+        val school = SavedPlace("학교", 36.0, 127.3)
+        val hw = HomeWork().with(SavedKind.Work, SavedPlace("회사", 35.9, 127.2)).with(SavedKind.School, school)
+        assertEquals(school, hw[SavedKind.School])
+        assertEquals("회사", hw.work?.name)
+        assertNull(hw.with(SavedKind.School, null).school)
+        assertEquals("학교", SavedKind.School.label)
+    }
+
+    @Test
     fun morningSuggestsWorkAndEveningSuggestsHome() {
         assertEquals(SavedKind.Work, HomeWork.suggested(7))
         assertEquals(SavedKind.Work, HomeWork.suggested(4))
