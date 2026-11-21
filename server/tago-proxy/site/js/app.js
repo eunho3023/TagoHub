@@ -125,8 +125,12 @@ async function openStation(g, line) {
   } catch (e) { /* 아래 */ }
   alert("역 정보를 받지 못했어요. 잠시 뒤 다시 해 주세요.");
 }
-/** 카카오 지도의 정류장 아이콘을 눌렀을 때 그 자리 정류장으로 볼 거리 (자료 좌표가 아이콘과 수십 m 어긋나기도 함) */
-const KAKAO_TAP_M = 40;
+/**
+ * 카카오 지도의 정류장 아이콘을 눌렀다고 볼 범위: 정류장 자리에서 화면 18px(아이콘 하나 크기) 안, 10~20m.
+ * 카카오는 아이콘 자리를 알려 주지 않고 지도 그림도 못 읽어서(다른 주소 그림) 정류장 자리로만 가림.
+ * 40m 로 두었더니 도로 가운데를 눌러도 정류장이 열렸음
+ */
+const KAKAO_TAP_PX = 18, KAKAO_TAP_MIN_M = 10, KAKAO_TAP_MAX_M = 20;
 
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
 export function stopsMap(host, focus) {
@@ -231,9 +235,10 @@ export function stopsMap(host, focus) {
   const offEdit = Edits.onChange(() => { drawBanner(); load(); });
   MapView.onTap((p) => {
     info = null;
-    // 카카오 지도의 정류장 아이콘을 누름 → 그 자리에서 가장 가까운 정류장 (KAKAO_TAP_M 안). 아니면 고르기 취소
+    // 카카오 지도의 정류장 아이콘을 누름 → 그 자리에서 가장 가까운 정류장 (아이콘 하나 크기 안). 아니면 고르기 취소
+    const lim = Math.min(KAKAO_TAP_MAX_M, Math.max(KAKAO_TAP_MIN_M, KAKAO_TAP_PX * (MapView.metersPerPx() || 1)));
     const near = p && MapView.kakaoStops() && !Edits.editing()
-      ? stops.map((s) => [s, meters(p[0], p[1], s.lat, s.lng)]).filter((x) => x[1] <= KAKAO_TAP_M).sort((a, b) => a[1] - b[1])[0]?.[0]
+      ? stops.map((s) => [s, meters(p[0], p[1], s.lat, s.lng)]).filter((x) => x[1] <= lim).sort((a, b) => a[1] - b[1])[0]?.[0]
       : null;
     picked = near || null;
     pickedAt = near ? [p[0], p[1]] : null;
