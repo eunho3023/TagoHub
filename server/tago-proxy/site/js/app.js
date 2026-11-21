@@ -5,7 +5,8 @@ import { thinDots } from "./mapdiff.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
 import { cachedText, subwayColor } from "./core.js";
-import { parseStations, stationsIn, pickSearchRow } from "./stations.js";
+import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations.js";
+import { fixPointScreen } from "./fixpoint.js";
 import { applyTheme } from "./store.js";
 import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
 import { trafficLayer } from "./topis.js";
@@ -46,6 +47,7 @@ const SCREENS = {
   report: more.reportScreen,
   fix: fixScreen,
   fixstops: fixStopsScreen,
+  fixpoint: fixPointScreen,
   login: loginScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */
@@ -127,6 +129,9 @@ export function stopsMap(host, focus) {
   let timer = null, alive = true;
   /** 서울 실시간 교통 점(돌발·교통량 지점)을 눌렀을 때 카드 내용 */
   let info = null;
+  /** 관리자: 카드에 붙는 "위치 고치기" (역·자전거·주차장·편의시설 점, 지도 고치기 → fixpoint.js) */
+  let infoFix = "";
+  const fixBtn = (go2) => (Edits.isAdmin() ? `<button class="link" ${act(go2)}>📍 위치 고치기</button>` : "");
   const card = document.createElement("div");
   card.className = "side-card";
   host.appendChild(card);
@@ -139,7 +144,7 @@ export function stopsMap(host, focus) {
     // 정류장을 먼저 (교통 점보다 앞에), 고른 정류장(이름표)은 늘 남김
     MapView.dots(thinDots(
       // 지하철역이 맨 앞 (솎을 때 남게): 노선 색 점(정류장보다 크게), 줌 14부터 노선 색 이름표 (흰 점·흰 이름표는 지도에 묻혀 안 보였음)
-      [...stations.map((g, i) => ({ id: "sub:" + i, lat: g.lat, lng: g.lng, color: subwayColor(g.lines[0]), ring: "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null })),
+      [...stations.map((g, i) => { const at = stationPos(g, Edits.stationFix); return { id: "sub:" + i, lat: at[0], lng: at[1], color: subwayColor(g.lines[0]), ring: "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null }; }),
       ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
         .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
@@ -152,12 +157,14 @@ export function stopsMap(host, focus) {
           picked = null;
           info = `<div><b>${esc(g.name)}역</b><small>${esc(g.lines.join(" · "))}</small></div><div class="flexrow" style="flex-wrap:wrap">${g.lines.map((l) =>
             `<button class="btn" ${act(() => openStation(g, l))}>${esc(l)}</button>`).join("")}</div>`;
+          infoFix = fixBtn(() => go("fixpoint", "station", { keys: g.keys.join("|"), lat: d.lat, lng: d.lng, name: g.name + "역" }));
           draw();
           return;
         }
         if (/^(acc|bike|park|pl):/.test(d.id)) {
           picked = null;
           info = traffic && traffic.card(d.id, (h) => { if (info != null) { info = h; draw(); } });
+          infoFix = /^(bike|park|pl):/.test(d.id) ? fixBtn(() => go("fixpoint", "place", { pid: d.id, lat: d.lat, lng: d.lng, name: card.querySelector("b")?.textContent || "" })) : "";
           draw();
           return;
         }
@@ -168,10 +175,11 @@ export function stopsMap(host, focus) {
     );
     if (info) {
       card.style.display = "flex";
-      card.innerHTML = info;
+      card.innerHTML = info + infoFix;
     } else if (picked && picked.name) {
       card.style.display = "flex";
-      card.innerHTML = `<div><b>${esc(picked.name)}</b><small>${picked.no ? "정류장 번호 " + esc(picked.no) : ""}</small></div><button class="btn" ${act(() => go("stop", picked.id, { lat: picked.lat, lng: picked.lng }))}>도착 정보</button>`;
+      card.innerHTML = `<div><b>${esc(picked.name)}</b><small>${picked.no ? "정류장 번호 " + esc(picked.no) : ""}</small></div><button class="btn" ${act(() => go("stop", picked.id, { lat: picked.lat, lng: picked.lng }))}>도착 정보</button>` +
+        fixBtn(() => go("fixstops", picked.id, { lat: picked.lat, lng: picked.lng }));
       // 시군 이름과 방면(지나는 노선의 다음 정류장)을 받는 대로 채움
       const p0 = picked, info = { c: null, t: null };
       const fill = () => { const sm = card.querySelector("small"); if (sm && picked === p0) sm.textContent = [info.c, p0.no ? "정류장 번호 " + p0.no : null, info.t ? info.t + " 방면" : null].filter(Boolean).join(" · "); };

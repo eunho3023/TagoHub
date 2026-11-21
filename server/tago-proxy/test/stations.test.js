@@ -45,3 +45,14 @@ test("역 찾기 결과에서 노선 고르기", () => {
   assert.equal(pickSearchRow(s, "서울", "공항철도선").id, "A");
   assert.equal(pickSearchRow([], "서울", "1호선"), null);
 });
+
+test("역 고치기 열쇠와 고친 자리", async () => {
+  const { stationKey, stationPos } = await import("../site/js/stations.js");
+  assert.equal(stationKey("2호선", "0222", "강남"), "2호선:0222:강남");
+  const gs = parseStations(tsv);
+  const seoul = gs.find((g) => g.name === "서울");
+  assert.ok(seoul.keys.length >= 2 && seoul.keys.some((k) => k.startsWith("1호선:")));
+  assert.deepEqual(stationPos(seoul, () => null), [seoul.lat, seoul.lng]);
+  const k = seoul.keys[1];
+  assert.deepEqual(stationPos(seoul, (x) => (x === k ? [37.55, 126.97] : null)), [37.55, 126.97]);
+});

@@ -27,7 +27,10 @@ export function lineLabel(line, operator) {
 
 const meters = (a, b) => Math.hypot((b.lat - a.lat) * 110540, (b.lng - a.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
 
-/** TSV → 역 묶음 [{ name, lat, lng, lines: [노선 이름…] }] (위도 차례) */
+/** 지도 고치기 열쇠 (앱 MapEdits.stationKey 와 같음: "노선:역 코드:역 이름" 40자, 자료 그대로의 노선·이름) */
+export const stationKey = (line, code, name) => `${line}:${code}:${name}`.slice(0, 40);
+
+/** TSV → 역 묶음 [{ name, lat, lng, lines: [노선 이름…], keys: [고치기 열쇠…] }] (위도 차례) */
 export function parseStations(tsv) {
   const rows = [];
   String(tsv || "").split("\n").forEach((l, i) => {
@@ -36,19 +39,25 @@ export function parseStations(tsv) {
     const lat = parseFloat(c[3]), lng = parseFloat(c[4]);
     const name = stationNorm(c[1]);
     if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    rows.push({ name, lat, lng, line: lineLabel(c[2], c[5]) });
+    rows.push({ name, lat, lng, line: lineLabel(c[2], c[5]), key: stationKey(c[2], c[0], c[1]) });
   });
   const groups = [];
   const byName = new Map();
   for (const r of rows) {
     const same = (byName.get(r.name) || []).find((g) => meters(g, r) <= GROUP_M);
-    if (same) { if (!same.lines.includes(r.line)) same.lines.push(r.line); continue; }
-    const g = { name: r.name, lat: r.lat, lng: r.lng, lines: [r.line] };
+    if (same) { if (!same.lines.includes(r.line)) same.lines.push(r.line); same.keys.push(r.key); continue; }
+    const g = { name: r.name, lat: r.lat, lng: r.lng, lines: [r.line], keys: [r.key] };
     groups.push(g);
     if (!byName.has(r.name)) byName.set(r.name, []);
     byName.get(r.name).push(g);
   }
   return groups.sort((a, b) => a.lat - b.lat);
+}
+
+/** 손으로 고친 위치가 있으면 그것 (묶음의 역 중 처음 고친 것), 없으면 원래 자리. [fix]: 열쇠 → [위도, 경도] 또는 null */
+export function stationPos(g, fix) {
+  for (const k of g.keys || []) { const p = fix(k); if (p) return p; }
+  return [g.lat, g.lng];
 }
 
 /** 화면 안 역 (위도 차례 목록에서 나눠 찾기) */

@@ -2,6 +2,7 @@
 // 더 확대하면 주차장(전국주차장정보표준데이터, parking.js), 화장실·전동휠체어 충전기·졸음쉼터·교통약자 이동지원센터·환승센터(amenity.js).
 // 도로 링크 모양은 seoul/links.json (pipeline/build_seoul_links.py), 실시간 값은 서버 /w/topis/… (src/seoultraffic.js)
 import { getJson, esc, onReturn } from "./core.js";
+import { placeFix } from "./edits.js";
 import { MapView } from "./map.js";
 import { decodePolyline } from "./busdata.js";
 import { offsetRight } from "./bus.js";
@@ -187,7 +188,8 @@ export function trafficLayer(onChange) {
       for (const [kind, k] of Object.entries(PLACE_KINDS)) if (MapView.zoom() >= k.zoom) out.push(...placeDots(places[kind] || [], b));
       if (MapView.zoom() >= PARKING_ZOOM) out.push(...parkingDots(parks, b));
       if (MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
-      return out;
+      // 관리자가 지도 고치기로 옮긴 점은 고친 자리에 (fixpoint.js)
+      return out.map((d) => { const f = placeFix(d.id); return f ? { ...d, lat: f[0], lng: f[1] } : d; });
     },
     /** 점을 눌렀을 때 카드 내용 (모르는 점이면 null) */
     card(id, fill) {
