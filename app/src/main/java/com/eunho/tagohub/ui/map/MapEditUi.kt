@@ -134,7 +134,8 @@ fun AdminKeyRow(onOpenFix: (() -> Unit)? = null) {
                     Text("관리자 모드 켜짐", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                     Text("노선·정류장·역 화면에서 지도 고치기를 할 수 있어요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                TextButton(onClick = { scope.launch { com.eunho.tagohub.data.MapEdits.setAdminKey(context, ""); msg = "관리자 모드를 껐어요" } }) { Text("끄기") }
+                // 예전에 넣은 관리자 키가 있을 때만 (관리자 아이디 로그인은 로그아웃으로 끔)
+                if (com.eunho.tagohub.data.MapEdits.adminKeySet()) TextButton(onClick = { scope.launch { com.eunho.tagohub.data.MapEdits.setAdminKey(context, ""); msg = "관리자 키를 지웠어요" } }) { Text("키 지우기") }
             }
             // 지도에서 정류장 위치를 한꺼번에 고치는 창
             if (onOpenFix != null) Button(onClick = onOpenFix, modifier = Modifier.padding(top = 6.dp)) { Text("지도 고치기 열기") }

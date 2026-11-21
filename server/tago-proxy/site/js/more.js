@@ -36,10 +36,10 @@ function ago(ms) {
   return m < 1 ? "방금" : m < 60 ? m + "분 전" : m < 1440 ? Math.round(m / 60) + "시간 전" : Math.round(m / 1440) + "일 전";
 }
 export function settings(root) {
-  let adminMsg = "", checking = false;
+  let adminMsg = "";
   // 자료 연결 상태: 서버가 30분마다 각 제공처(TAGO·서울·경기·전주·제주·카카오)에 작은 요청을 보내 본 결과 (서버 src/health.js)
   let health = null, healthFail = false;
-  getJson("w/health").then((v) => { health = v; draw(); }).catch(() => { healthFail = true; draw(); });
+  if (Edits.isAdmin()) getJson("w/health").then((v) => { health = v; draw(); }).catch(() => { healthFail = true; draw(); });
   const healthHtml = () => {
     if (healthFail) return sectionHead("자료 연결 상태") + note("상태를 받지 못했어요");
     if (!health) return sectionHead("자료 연결 상태") + note("확인 중...");
@@ -57,15 +57,10 @@ export function settings(root) {
       ? `<div class="list"><div class="row"><span class="grow"><b>아이디: ${esc(a.username)}${a.dev ? " · 개발자" : ""}</b><small>${a.dev ? "노선·정류장 화면에서 지도 고치기를 할 수 있어요" : "폰 앱과 같은 아이디로 로그인했어요"}</small></span>${a.dev ? `<button class="link" ${act(() => go("fixstops"))}>지도 고치기</button>` : ""}<button class="link" ${act(() => { Account.logout(); draw(); })}>로그아웃</button></div></div>`
       : `<div class="list"><button class="row" ${act(() => go("login"))}><span class="grow"><b>아이디로 로그인·회원가입</b><small>폰 앱과 같은 아이디를 써요</small></span></button></div>`);
   };
-  const adminHtml = () => sectionHead("관리자") + (Edits.hasAdminKey()
-    ? `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장 화면에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(() => go("fixstops"))}>지도 고치기 열기</button><button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 모드를 껐어요"; draw(); })}>끄기</button></div></div>`
-    : `<div class="searchbox"><input id="adminkey" type="password" autocomplete="off" placeholder="관리자 키"><div class="flexrow"><small class="grow">지도 고치기는 관리자만 할 수 있어요</small><button class="btn" ${checking ? "disabled" : ""} ${act(async () => {
-        const v = root.querySelector("#adminkey")?.value || "";
-        if (!v.trim()) return;
-        checking = true; adminMsg = ""; draw();
-        const ok = await Edits.setAdminKey(v);
-        checking = false; adminMsg = ok ? "관리자 모드를 켰어요" : "키가 맞지 않아요"; draw();
-      })}>${checking ? "확인 중..." : "확인"}</button></div></div>`) + (adminMsg ? note(adminMsg) : "");
+  // 관리자 칸: 관리자로 로그인했을 때만 (관리자 아이디 로그인이면 키 없이 고칠 수 있음. 예전에 넣은 관리자 키가 있으면 끄기)
+  const adminHtml = () => (!Edits.isAdmin() ? "" : sectionHead("관리자") +
+    `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장·역·자전거·주차장·편의시설 점에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(() => go("fixstops"))}>지도 고치기 열기</button>${Edits.hasAdminKey() ? `<button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 키를 지웠어요"; draw(); })}>키 지우기</button>` : ""}</div></div>` +
+    (adminMsg ? note(adminMsg) : ""));
   const draw = () => {
     root.innerHTML = header("설정") + sectionHead("화면 모드") +
       `<div class="seg">${[["auto", "기기 설정"], ["light", "밝게"], ["dark", "어둡게"]].map(([m, l]) => `<button class="${Theme.mode === m ? "on" : ""}" ${act(() => { Theme.set(m); draw(); })}>${l}</button>`).join("")}</div>` +
@@ -73,7 +68,8 @@ export function settings(root) {
       `<div class="list"><button class="row" ${act(() => go("notices"))}><b class="grow">공지사항</b></button>
        <button class="row" ${act(() => go("report"))}><span class="grow"><b>앱 제보</b><small>불편한 점이나 틀린 정보를 알려 주세요</small></span></button></div>` +
       accountHtml() +
-      healthHtml() +
+      // 자료 연결 상태는 관리자만 (일반 사용자에게는 필요 없는 정보)
+      (Edits.isAdmin() ? healthHtml() : "") +
       adminHtml() +
       sectionHead("약관 및 정책") +
       `<div class="list">${[["legal/terms.html", "이용약관"], ["legal/privacy.html", "개인정보 처리방침"], ["legal/sources.html", "정보 제공처", "교통 자료·지도를 제공하는 기관"], ["legal/licenses.html", "오픈소스 라이선스"]]
