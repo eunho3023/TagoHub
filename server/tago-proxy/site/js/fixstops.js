@@ -25,11 +25,14 @@ export function fixStopsScreen(root, p, ctx) {
   const posOf = (s) => moves.get(s.id)?.to || [s.lat, s.lng];
   // 어느 방면인지 (지나는 노선의 다음 정류장, 같은 이름의 길 건너 정류장을 가려 고치게): 고른 정류장 + 확대하면 화면 가운데 가까운 정류장들
   const toward = new Map();   // 정류장 id → "○○" · null(모름) · undefined(받는 중)
+  const buses = new Map();    // 정류장 id → 서는 버스 [{id, no, start, end}] (같은 자리 정류장 것까지, 정류장 화면과 같은 목록)
   const TOWARD_ZOOM = 17, TOWARD_MAX = 25;
   function wantToward(s) {
     if (toward.has(s.id)) return;
     toward.set(s.id, undefined);
-    B.stopRoutes(s).then((rs) => B.towardOf(s, rs)).catch(() => null).then((t) => { toward.set(s.id, t || null); if (alive) drawAll(); });
+    B.stopRoutes(s).then((rs) => { buses.set(s.id, rs || []); if (alive && sel === s) drawBar(); return B.towardOf(s, rs); })
+      .catch(() => { if (!buses.has(s.id)) buses.set(s.id, []); return null; })
+      .then((t) => { toward.set(s.id, t || null); if (alive) drawAll(); });
   }
   const towardText = (s) => { const t = toward.get(s.id); return t ? t + " 방면" : ""; };
   const drawMap = () => {
@@ -99,7 +102,11 @@ export function fixStopsScreen(root, p, ctx) {
         ${moves.has(sel.id) ? `<button class="link" ${act(() => { moves.delete(sel.id); drawAll(); })}>이 정류장 되돌리기</button>` : ""}
         ${fixed ? `<button class="link" ${act(() => resetStop(sel))}>고친 위치 지우기 (원래 자료로)</button>` : ""}
         <button class="link" ${act(() => { sel = null; routes = null; drawAll(); })}>고르기 취소</button></div>`;
-      if (routes && routes.length) h += `<p class="note">노선 모양 고치기:</p><div class="toolrow">${routes.map((r) => `<button class="link" ${act(() => go("fix", r.id, { kind: "bus", no: r.no, name: r.no }))}>${esc(r.no)}</button>`).join("")}</div>`;
+      // 이 정류장에 서는 버스 (누르면 그 노선 모양 고치기)
+      const got = buses.get(sel.id);
+      const list = (got && got.length ? got : routes || []).slice().sort((a, b) => String(a.no).localeCompare(String(b.no), "ko", { numeric: true }));
+      if (list.length) h += `<p class="note">이 정류장에 서는 버스 ${list.length}개 · 누르면 노선 모양 고치기</p><div class="toolrow">${list.map((r) => `<button class="link" title="${esc([r.start, r.end].filter(Boolean).join(" → "))}" ${act(() => go("fix", r.id, { kind: "bus", no: r.no, name: r.no }))}>${esc(r.no)}</button>`).join("")}</div>`;
+      else h += `<p class="note">${got || routes ? "서는 버스 정보가 없어요." : "서는 버스 찾는 중..."}</p>`;
     }
     h += `<div class="toolrow"><span class="grow muted">${moves.size ? `${moves.size}곳 옮김 (저장 전)` : ""}</span>
       ${moves.size ? `<button class="link" ${act(() => { moves.clear(); sel = null; drawAll(); })}>모두 취소</button>` : ""}
