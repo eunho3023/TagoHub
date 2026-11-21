@@ -64,6 +64,21 @@ export const normUsername = (s) => { const u = String(s || "").trim().toLowerCas
 export const phoneOk = (s) => { const d = String(s || "").replace(/[\s\-()]/g, ""); return /^\+82\d{8,11}$/.test(d) || /^0\d{8,10}$/.test(d); };
 export const emailOk = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || "").trim());
 
+/** 회원가입 이메일 뒷자리 고르기 (앱 IdAuthDialogs 와 같은 목록). 빈 글자 = 직접 넣기 */
+export const EMAIL_DOMAINS = ["naver.com", "gmail.com", "daum.net", "hanmail.net", "kakao.com", "nate.com", ""];
+/** "gidrl" + "naver.com" → "gidrl@naver.com" (앞자리에 @ 를 넣었으면 그대로) */
+export function joinEmail(id, domain) {
+  const a = String(id || "").trim(), d = String(domain || "").trim().replace(/^@/, "");
+  return a.includes("@") || !d ? a : a + "@" + d;
+}
+/** 아이디를 쓸 수 있는지: true(쓸 수 있음) · false(이미 씀) · null(확인 못 함) */
+export async function usernameFree(username) {
+  const u = normUsername(username);
+  if (!u) return null;
+  const r = await post("check", { username: u }).catch(() => null);
+  return r && r.ok && typeof r.j.free === "boolean" ? r.j.free : null;
+}
+
 /** 아이디 로그인 → 틀리면 알림 글, 되면 null */
 export async function login(username, password) {
   const u = normUsername(username);
