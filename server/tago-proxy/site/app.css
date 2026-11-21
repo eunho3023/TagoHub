@@ -72,6 +72,12 @@ small { display: block; color: var(--muted); font-size: 13px; }
 
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 8px 16px; background: var(--surface); flex: none; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
+/* 가로로 넘기기 (ui.js): 가려진 쪽 끝을 흐리게, 마우스로 끄는 동안 글자 선택 안 되게 */
+.chips { user-select: none; -webkit-user-select: none; }
+.chips.dragging { cursor: grabbing; }
+.chips.fade-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.chips.fade-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
+.chips.fade-l.fade-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
 .chip { flex: none; padding: 7px 16px; border-radius: 99px; background: var(--sv); color: var(--muted); font-size: 14px; }
 .chip.on { background: var(--primary); color: var(--on-primary); font-weight: 700; }
 

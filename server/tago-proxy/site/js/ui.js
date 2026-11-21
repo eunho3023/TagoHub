@@ -12,6 +12,57 @@ document.addEventListener("click", (e) => {
   if (f) { e.preventDefault(); e.stopPropagation(); f(e, t); }
 });
 
+// ── 가로로 넘기는 줄 (.chips: 대중교통 버스·지하철·…·항공·도로) ──
+// 휴대폰은 손가락으로 밀고, PC 는 마우스로 끌거나 휠을 굴려 옆으로 넘김 (스크롤 막대는 숨김).
+// 가려진 쪽이 있으면 그쪽 끝을 흐리게 해서 더 있다는 걸 보여 주고, 고른 칩은 보이게 옮김
+let drag = null, dragged = false;
+document.addEventListener("pointerdown", (e) => {
+  dragged = false;
+  if (e.pointerType !== "mouse" || e.button !== 0) return;
+  const row = e.target.closest(".chips");
+  if (row && row.scrollWidth > row.clientWidth + 1) drag = { row, x: e.clientX, left: row.scrollLeft, moved: false };
+});
+document.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (!drag.moved && Math.abs(dx) < 5) return;
+  drag.moved = true;
+  drag.row.classList.add("dragging");
+  drag.row.scrollLeft = drag.left - dx;
+});
+document.addEventListener("pointerup", () => {
+  if (!drag) return;
+  dragged = drag.moved;
+  drag.row.classList.remove("dragging");
+  drag = null;
+});
+// 끌다가 놓은 것은 칩 누르기가 아님 (아래 누를 곳 처리보다 먼저 받음)
+document.addEventListener("click", (e) => {
+  if (dragged && e.target.closest(".chips")) { e.preventDefault(); e.stopPropagation(); }
+  dragged = false;
+}, true);
+document.addEventListener("wheel", (e) => {
+  const row = e.target.closest?.(".chips");
+  if (!row || row.scrollWidth <= row.clientWidth + 1 || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+  row.scrollLeft += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
+const edgeFade = (row) => {
+  const more = row.scrollWidth > row.clientWidth + 1;
+  row.classList.toggle("fade-l", more && row.scrollLeft > 2);
+  row.classList.toggle("fade-r", more && row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+};
+const fit = new ResizeObserver((es) => es.forEach((x) => edgeFade(x.target)));
+new MutationObserver(() => {
+  for (const row of document.querySelectorAll(".chips:not([data-hscroll])")) {
+    row.dataset.hscroll = "1";
+    row.addEventListener("scroll", () => edgeFade(row), { passive: true });
+    fit.observe(row);
+    row.querySelector(".chip.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    edgeFade(row);
+  }
+}).observe(document.documentElement, { childList: true, subtree: true });
+
 export { esc };
 
 const ICONS = {
