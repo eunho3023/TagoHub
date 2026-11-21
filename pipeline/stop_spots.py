@@ -2,7 +2,7 @@
 
 정류장 DB(bus_stops.db)에 두 표를 만든다 (앱 StopDb·웹 build_web_data.py 가 읽음):
   stop_hidden(id)      : 노선이 하나도 안 서는 정류장 → 지도·검색에서 뺌 (폐지·미사용).
-                         노선 자료가 덜 찬 경기·교통안전공단 정류장, 경기 버스가 서는 서울·인천 정류장은 남김 ([unserved])
+                         노선 자료가 거의 다 찬 서울 정류장만, 경기 버스가 서는 곳은 빼고 ([unserved])
   stop_spot(id, spot)  : 한 점으로 묶인 정류장 → 대표 정류장 id (묶음에 하나뿐이면 넣지 않음)
 
 방면: 정류장을 지나는 노선마다 (앞 정류장 → 뒤 정류장) 방향을 더한 것. 노선마다 방향이 엇갈리면(종점 등) 모름.
@@ -12,6 +12,7 @@
   3) 같은 시군, 이름이 같고, 같은 방면, 30m 안                    — 한 정류장이 번호만 달리 여러 개로 몰려 있는 것
   4) 정류장 번호가 앞의 0만 다르고(02001 = 2001) 100m 안, 반대 방면 아님 — 같은 정류장이 서울(SEB)·경기 버스(GGB)
      자료에 이름만 달리 따로 있는 것 (예: 명동성당.남대문세무서 02001 = 남대문세무서(중) 2001)
+  5) 이름이 같고 8m 안인데 한쪽이라도 방면을 모름(노선 자료가 덜 찬 경기·교통안전공단)       — 같은 정류장이 두 번 등록된 것
 대표: 노선이 가장 많은 것 (같으면 교통안전공단 TS… 아닌 것, 번호 있는 것). 점은 대표 정류장 자리에 찍힘.
 
 실행: python pipeline/stop_spots.py <bus_stops.db>   (build_data.py 가 DB 를 만들 때 부름)
@@ -27,7 +28,11 @@ SAME_DIR = 60.0      # 이 각도(도) 안이면 같은 방면
 OPPOSITE = 100.0     # 이 각도보다 벌어지면 반대 방면 (길 건너편)
 CROWD_DIR = 45.0     # 3) 은 더 엄격하게
 SAME_NO_M = 100.0    # 4) 번호가 같은 것 (앞의 0 빼고)
-KEEP = ("GGB", "TSB")  # 노선 자료가 덜 차 노선이 없어도 숨기지 않는 지역 (build_data.py PRUNE_KEEP)
+DUP_M = 8.0          # 5) 방면을 모르는(노선 자료 없는) 같은 이름 정류장이 이만큼 붙어 있으면 한 정류장 (길 건너편은 보통 10m 넘음)
+# 노선이 없으면 숨기는 지역: 노선 자료가 거의 다 찬 서울(SEB)만. 다른 지역은 DB 노선 자료가 덜 차 있고,
+# 안 쓰는 정류장은 데이터 만들기(build_data.py prune_unserved, TAGO 경유노선 확인)가 이미 지움.
+# (2026-11-21 숨긴 정류장 28곳 실시간 확인: 충남·원주·목포·포항·세종·인천 24곳 중 21곳에 TAGO 노선이 있었고, 서울 4곳은 없었음)
+HIDE_ONLY = ("SEB",)
 MIN_SURE = 0.35      # 노선들 방향을 더한 길이 / 노선 수 가 이보다 작으면 방면 모름
 M_LAT = 111_000.0
 
@@ -83,13 +88,11 @@ def _num(n):
 
 
 def unserved(stops, served):
-    """숨길 정류장: 노선이 하나도 안 서는 정류장 (폐지·미사용).
-    단 노선 자료가 덜 찬 곳은 남김 (build_data.py PRUNE_KEEP 과 같은 까닭):
-    - 경기(GGB): 경기 노선 중 정류장 순서가 있는 것이 2/3 쯤뿐 (2026-11: 6,848개 중 4,537개)
-    - 교통안전공단(TSB): 정류장 순서가 거의 없음
-    - 근처(100m)에 번호가 같은(앞의 0 빼고) 경기 버스 정류장이 있는 서울·인천 등 정류장: 경기 버스가 서는 곳
-      (예: 명동입구B 02143 = GGB 2143, M4108·4108 이 서는데 그 노선의 정류장 순서가 자료에 없었음)"""
-    cand = [s for s in stops if not served.get(s[0]) and s[2] is not None and s[3] is not None and not s[0].startswith(KEEP)]
+    """숨길 정류장: 노선이 하나도 안 서는 서울 정류장 (폐지·미사용). [HIDE_ONLY] 밖 지역은 노선 자료가 덜 차 숨기지 않음
+    (경기 노선은 1/3 이 정류장 순서가 없고, TAGO 지역은 DB 에 없는 노선이 많음).
+    서울이라도 근처(100m)에 번호가 같은(앞의 0 빼고) 경기 버스 정류장이 있으면 남김: 경기 버스가 서는 곳
+    (예: 명동입구B 02143 = GGB 2143, M4108·4108 이 서는데 그 노선의 정류장 순서가 자료에 없었음)"""
+    cand = [s for s in stops if not served.get(s[0]) and s[2] is not None and s[3] is not None and s[0].startswith(HIDE_ONLY)]
     CELL = SAME_NO_M / M_LAT
     gg = defaultdict(list)
     for s in stops:
@@ -102,7 +105,7 @@ def unserved(stops, served):
                          for dx in (-1, 0, 1) for dy in (-1, 0, 1) for o in gg.get((gx + dx, gy + dy), ()))
         if not twin:
             out.add(s[0])
-    return out | {s[0] for s in stops if not served.get(s[0]) and (s[2] is None or s[3] is None)}
+    return out
 
 
 def spots(stops, served, head, routes=None):
@@ -140,6 +143,8 @@ def spots(stops, served, head, routes=None):
                     else:
                         ok = same_name and d <= CROWD_M and ang is not None and ang <= CROWD_DIR
                     if not ok and nos[i] and nos[i] == nos[j] and d <= SAME_NO_M and (ang is None or ang <= OPPOSITE):
+                        ok = True
+                    if not ok and same_name and ang is None and d <= DUP_M:
                         ok = True
                     if ok and not (routes.get(a[0], set()) & routes.get(b[0], set())):
                         edges.append((d, i, j))
