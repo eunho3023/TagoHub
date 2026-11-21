@@ -16,20 +16,44 @@ import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
 import { healthCron, handleHealth } from "./health.js";
 
+/** 사용자·관리자 모두 쓰는 웹 주소 (Cloudflare Pages). 이 서버 코드도 거기서 돎 (pages/functions) */
+export const USER_WEB = "https://tabolkka.pages.dev";
+/** 서버 코드가 받는 길 (나머지는 화면·자료 파일). pages/_routes.json 과 같음 */
+export const API_PREFIXES = ["/health", "/w/", "/log/", "/appshape/", "/h/", "/dg/"];
+export const isApiPath = (p) => API_PREFIXES.some((x) => (x.endsWith("/") ? p.startsWith(x) : p === x));
+
+/**
+ * 예약 작업 한 번 (1분에 한 번 부름). 30분마다(0분·30분)는 자료 제공처 고장 확인만 (src/health.js):
+ * 한 번 실행의 외부 요청 수 한도(50번)를 다른 작업과 나누지 않게.
+ * 그 밖에는 관심 노선 버스 위치 모으기(정류장 시간표, src/poll.js) → 노선 모양 하나 만들기(src/shape.js).
+ * 부르는 곳: 타볼까(Pages)는 GitHub Actions 가 /w/cron 으로 (.github/workflows/server-cron.yml), 예전 서버(workers.dev)의 예약은 껐음
+ */
+export async function runCron(env, now = Date.now()) {
+  if (new Date(now).getUTCMinutes() % 30 === 0) return { health: await healthCron(env).catch(() => null) != null };
+  await pollCron(env).catch(() => null);
+  await shapeCron(env).catch(() => null);
+  return { poll: true, shape: true };
+}
+
+/** 두 글자가 같은지 (걸린 시간으로 맞힐 수 없게 끝까지 비교) */
+function sameText(a, b) {
+  a = String(a || ""); b = String(b || "");
+  let d = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return d === 0 && a.length > 0;
+}
+
 export default {
-  // 예약 작업 (wrangler.toml [triggers]): 1분마다 노선 모양 하나를 미리 만들어 저장 (src/shape.js shapeCron)
+  // 예전 서버(workers.dev)의 예약 작업. wrangler.toml 에서 껐음 (타볼까 쪽 /w/cron 이 대신). 다시 켜면 그대로 돎
   async scheduled(event, env, ctx) {
-    // 30분마다(0분·30분)는 자료 제공처 고장 확인만 (src/health.js). 한 번 실행의 외부 요청 수 한도(50번)를 다른 작업과 나누지 않게
-    if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() % 30 === 0) {
-      ctx.waitUntil(healthCron(env).catch(() => null));
-      return;
-    }
-    // 관심 노선 버스 위치를 스스로 물어 통과 기록 모으기 (정류장 시간표, src/poll.js).
-    // 노선 모양 만들기보다 먼저: 한 번 실행의 외부 요청 수 한도를 모양 만들기가 다 쓰기 전에
-    ctx.waitUntil(pollCron(env).catch(() => null).then(() => shapeCron(env)).catch(() => null));
+    ctx.waitUntil(runCron(env, event.scheduledTime || Date.now()).catch(() => null));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    // 예전 서버 주소로 화면을 열면 타볼까로 (서버 기능 길은 이미 깔린 예전 앱이 계속 씀)
+    if (url.hostname.endsWith(".workers.dev") && !isApiPath(url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
+      return Response.redirect(USER_WEB + url.pathname + url.search, 301);
+    }
     if (url.pathname === "/health") return new Response("ok");
     if (url.pathname.startsWith("/w/")) return web(request, url, env, ctx);
     if (!env.APP_TOKEN || request.headers.get("X-TagoHub-Token") !== env.APP_TOKEN) {
@@ -53,6 +77,12 @@ const WEB_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-
 /** 웹 버전: 토큰 없이 실시간 버스 도착·위치만 (proxy.js webRequest), 주소(IP)마다 분당 요청 수 제한 */
 async function web(request, url, env, ctx) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: WEB_HEADERS });
+  // 예약 작업 (GitHub Actions 가 1분마다, 비밀 값 CRON_KEY). 끝날 때까지 기다렸다 답함
+  if (url.pathname === "/w/cron") {
+    if (request.method !== "POST" || !sameText(request.headers.get("X-Cron-Key"), env.CRON_KEY)) return new Response("forbidden", { status: 403 });
+    const r = await runCron(env).catch((e) => ({ error: String(e && e.message || e) }));
+    return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  }
   // 앱 제보 (POST, 주소마다 분당 요청 수 제한을 같이 씀) — src/report.js
   if (url.pathname === "/w/report") {
     if (env.WEB_LIMIT) {

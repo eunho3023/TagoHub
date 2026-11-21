@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "include": ["/health", "/w/*", "/log/*", "/appshape/*", "/h/*", "/dg/*"],
+  "exclude": []
+}
