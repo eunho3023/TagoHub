@@ -2906,6 +2906,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         /** 묶기 중: 고른 정류장과 함께 묶을 정류장을 누르는 중 */
         val joining: Boolean = false,
         val joinPick: List<BusStop> = emptyList(),
+        /** 고른 정류장이 어느 방면인지 (다음 정류장 이름, 같은 이름의 길 건너 정류장과 가려 고치게) */
+        val toward: String? = null,
     )
     val stopFix = MutableStateFlow<StopFixState?>(null)
 
@@ -2935,8 +2937,12 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val sel = if (s.sel?.nodeId == stop.nodeId) null else stop
-        stopFix.value = s.copy(sel = sel, together = togetherOf(sel), msg = null)
+        stopFix.value = s.copy(sel = sel, together = togetherOf(sel), msg = null, toward = null)
         pushStopFix()
+        if (sel != null) viewModelScope.launch {
+            val t = runCatching { stopDirection(sel.nodeId) }.getOrNull()
+            stopFix.value?.let { now -> if (now.sel?.nodeId == sel.nodeId) stopFix.value = now.copy(toward = t) }
+        }
     }
 
     // ── 같은 자리 정류장 손으로 묶기·따로 떼기 (앱·웹 모두에 보임, 서버 /w/edits 의 group) ──

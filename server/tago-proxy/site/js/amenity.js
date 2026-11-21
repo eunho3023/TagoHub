@@ -12,6 +12,9 @@ export const PLACE_KINDS = {
   oneway: { label: "일", color: "#c62828", zoom: 16 },
   crosswalk: { label: "횡", color: "#455a64", zoom: 17 },
 };
+/** 레이어 고르기에 보이는 이름 (topis.js) */
+export const PLACE_NAMES = { toilet: "공중화장실", wheel: "전동휠체어 충전기", drowsy: "졸음쉼터", mobility: "교통약자 이동지원센터", transfer: "환승센터",
+  repair: "자동차 정비소", buslane: "버스전용차로", oneway: "일방통행", crosswalk: "횡단보도" };
 /** 한 종류에서 한 번에 보여 줄 수 (화면 가운데에서 가까운 것부터) */
 export const PLACE_MAX = 120;
 const MAX_TILES = 12;

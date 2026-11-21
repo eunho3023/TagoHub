@@ -8,10 +8,23 @@ import { decodePolyline } from "./busdata.js";
 import { offsetRight } from "./sideline.js";
 import { BIKE_ZOOM, bikeDots } from "./bikes.js";
 import { PARKING_ZOOM, parkingDots, parkingIn, parkingLines } from "./parking.js";
-import { PLACE_KINDS, placeDots, placesIn } from "./amenity.js";
+import { PLACE_KINDS, PLACE_NAMES, placeDots, placesIn } from "./amenity.js";
 
 const SEOUL = { s: 37.41, n: 37.72, w: 126.76, e: 127.19 };
-const SAVE = "tagohub.traffic";
+const SAVE = "tagohub.traffic";   // 예전: 모두 한꺼번에 켜고 끄기 ("1")
+const LAYERS = "tagohub.layers";   // 지금: 레이어마다 {traffic, bike, park, pl:종류…}
+/** 레이어 고르기 목록 [열쇠, 이름, 설명] */
+export const LAYER_LIST = [["traffic", "실시간 교통", "서울 도로 소통·돌발"], ["bike", "공영자전거", "빌릴 수 있는 대수"], ["park", "주차장", ""],
+  ...Object.keys(PLACE_KINDS).map((k) => ["pl:" + k, PLACE_NAMES[k] || k, ""])];
+/** 저장해 둔 레이어 켜짐 (예전 "모두 켜기"였으면 모두 켬) */
+export function loadLayers() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(LAYERS) || "null"); } catch (e) { /* 못 읽음 */ }
+  if (o && typeof o === "object") return o;
+  let all = false;
+  try { all = localStorage.getItem(SAVE) === "1"; } catch (e) { /* 못 읽음 */ }
+  return Object.fromEntries(LAYER_LIST.map(([k]) => [k, all]));
+}
 const GREEN = "#16a34a", AMBER = "#f59e0b", RED = "#dc2626";
 /** 링크 수가 많아 확대했을 때만 소통 색을 그림 */
 export const TRAFFIC_ZOOM = 14;
@@ -75,26 +88,55 @@ function seoulLinks() {
  * [onChange] 는 다시 그려야 할 때 부름 (선·점은 부르는 쪽이 lines()·dots() 로 받아 그림)
  */
 export function trafficLayer(onChange) {
-  let on = false;
-  try { on = localStorage.getItem(SAVE) === "1"; } catch (e) { /* 못 읽음 */ }
+  // 레이어마다 켜고 끄기 (지도 오른쪽 위 레이어 단추 → 고르기 창). 하나라도 켜져 있으면 on
+  const layers = loadLayers();
+  const L = (k) => !!layers[k];
+  let on = LAYER_LIST.some(([k]) => L(k));
   let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0, parks = [], parkSeq = 0;
   const places = {}, placeSeq = {};
   const speeds = new Map(); // 링크 id → [km/h, 초]
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
   btn.className = "locbtn trafficbtn" + (on ? " on" : "");
-  btn.title = "실시간 교통 (서울) · 공영자전거 · 주차장 · 편의시설";
-  btn.setAttribute("aria-label", "실시간 교통 (서울) · 공영자전거 · 주차장 · 편의시설");
-  btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="7" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/></svg>';
-  for (const ev of ["pointerdown", "mousedown", "touchstart", "dblclick"]) btn.addEventListener(ev, (e) => e.stopPropagation());
+  btn.title = "지도 종류와 레이어";
+  btn.setAttribute("aria-label", "지도 종류와 레이어");
+  // 레이어 그림 (겹친 판)
+  btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".55"/></svg>';
+  // 고르기 창: 지도 종류(일반·위성) + 레이어 하나씩
+  const menu = document.createElement("div");
+  menu.className = "layermenu";
+  menu.style.display = "none";
+  const drawMenu = () => {
+    const type = MapView.mapType();
+    menu.innerHTML = `<b>지도 종류</b><div class="seg">${[["normal", "일반"], ["sky", "위성"]].map(([t, l]) =>
+      `<button type="button" data-type="${t}" class="${type === t ? "on" : ""}">${l}</button>`).join("")}</div>` +
+      `<b>레이어</b>` + LAYER_LIST.map(([k, l, sub]) => `<label class="layerrow"><input type="checkbox" data-layer="${k}" ${L(k) ? "checked" : ""}><span>${esc(l)}${sub ? `<small>${esc(sub)}</small>` : ""}</span></label>`).join("");
+  };
+  for (const ev of ["pointerdown", "mousedown", "touchstart", "dblclick", "wheel"]) { btn.addEventListener(ev, (e) => e.stopPropagation()); menu.addEventListener(ev, (e) => e.stopPropagation()); }
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    on = !on;
+    const open = menu.style.display === "none";
+    if (open) drawMenu();
+    menu.style.display = open ? "block" : "none";
+  });
+  menu.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const t = e.target.closest("[data-type]");
+    if (t) { MapView.setMapType(t.dataset.type); drawMenu(); }
+  });
+  menu.addEventListener("change", (e) => {
+    const k = e.target.dataset && e.target.dataset.layer;
+    if (!k) return;
+    layers[k] = e.target.checked;
+    try { localStorage.setItem(LAYERS, JSON.stringify(layers)); } catch (err) { /* 못 씀 */ }
+    on = LAYER_LIST.some(([x]) => L(x));
     btn.classList.toggle("on", on);
-    try { localStorage.setItem(SAVE, on ? "1" : "0"); } catch (err) { /* 못 씀 */ }
     refresh();
   });
-  MapView.ready.then(() => { if (alive) MapView.el.appendChild(btn); });
+  // 지도 다른 곳을 누르면 닫음
+  const closeMenu = () => { menu.style.display = "none"; };
+  document.addEventListener("pointerdown", closeMenu);
+  MapView.ready.then(() => { if (alive) { MapView.el.appendChild(btn); MapView.el.appendChild(menu); } });
 
   const inSeoul = (b) => b && b.n > SEOUL.s && b.s < SEOUL.n && b.e > SEOUL.w && b.w < SEOUL.e;
   async function refresh() {
@@ -102,22 +144,22 @@ export function trafficLayer(onChange) {
     const b = MapView.bounds();
     const now = Date.now();
     // 공영자전거(서울 따릉이 + 대전·세종·창원 등): 서울 밖도 있음. 서버가 1분 저장하므로 1분마다
-    if (on && MapView.zoom() >= BIKE_ZOOM && now - bikeAt > 60000) {
+    if (L("bike") && MapView.zoom() >= BIKE_ZOOM && now - bikeAt > 60000) {
       bikeAt = now;
       getJson("w/topis/bike").then((v) => { bikes = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { bikeAt = 0; });
     }
     // 주차장: 고정 자료라 칸마다 한 번만 받음. 지도를 옮기는 사이 먼저 물은 것이 늦게 오면 버림 (마지막에 물은 것만)
-    if (on && b && MapView.zoom() >= PARKING_ZOOM) {
+    if (L("park") && b && MapView.zoom() >= PARKING_ZOOM) {
       const seq = ++parkSeq;
       parkingIn(b).then((v) => { if (seq !== parkSeq) return; parks = v; if (alive) onChange(); }).catch(() => {});
     }
     // 편의시설: 주차장과 같은 방식, 종류마다 보이기 시작하는 확대가 다름
     for (const [kind, k] of Object.entries(PLACE_KINDS)) {
-      if (!on || !b || MapView.zoom() < k.zoom) continue;
+      if (!L("pl:" + kind) || !b || MapView.zoom() < k.zoom) continue;
       const seq = placeSeq[kind] = (placeSeq[kind] || 0) + 1;
       placesIn(kind, b).then((v) => { if (seq !== placeSeq[kind]) return; places[kind] = v; if (alive) onChange(); }).catch(() => {});
     }
-    if (!on || !inSeoul(b)) { visible = []; onChange(); return; }
+    if (!L("traffic") || !inSeoul(b)) { visible = []; onChange(); return; }
     if (now - accAt > 120000) {
       accAt = now;
       getJson("w/topis/acc").then((v) => { acc = Array.isArray(v) ? v : []; if (alive) onChange(); }).catch(() => { accAt = 0; });
@@ -167,7 +209,7 @@ export function trafficLayer(onChange) {
     get on() { return on; },
     /** 그릴 소통 선 [{pts, color, width}] (한 방향 링크라 진행 방향 오른쪽으로 비켜 상·하행이 나란히) */
     lines() {
-      if (!on || !visible.length) return [];
+      if (!L("traffic") || !visible.length) return [];
       // 비키는 거리는 0.5m 단위로: 지도를 옮기기만 해도 1px 당 m 가 아주 조금씩 바뀌어 선 꼭짓점이 달라지면
       // 지도가 같은 선을 매번 지우고 새로 그림 (map.js 는 꼭짓점이 같은 선을 그대로 둠)
       const side = Math.max(0.5, Math.round((MapView.metersPerPx() || 1) * 3 * 2) / 2);
@@ -184,10 +226,10 @@ export function trafficLayer(onChange) {
     dots() {
       const b = MapView.bounds();
       if (!on || !b) return [];
-      const out = inSeoul(b) ? acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 })) : [];
-      for (const [kind, k] of Object.entries(PLACE_KINDS)) if (MapView.zoom() >= k.zoom) out.push(...placeDots(places[kind] || [], b));
-      if (MapView.zoom() >= PARKING_ZOOM) out.push(...parkingDots(parks, b));
-      if (MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
+      const out = L("traffic") && inSeoul(b) ? acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 })) : [];
+      for (const [kind, k] of Object.entries(PLACE_KINDS)) if (L("pl:" + kind) && MapView.zoom() >= k.zoom) out.push(...placeDots(places[kind] || [], b));
+      if (L("park") && MapView.zoom() >= PARKING_ZOOM) out.push(...parkingDots(parks, b));
+      if (L("bike") && MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
       // 관리자가 지도 고치기로 옮긴 점은 고친 자리에 (fixpoint.js)
       return out.map((d) => { const f = placeFix(d.id); return f ? { ...d, lat: f[0], lng: f[1] } : d; });
     },
@@ -218,6 +260,6 @@ export function trafficLayer(onChange) {
       }
       return null;
     },
-    destroy() { alive = false; clearInterval(timer); offIdle(); offReturn(); btn.remove(); },
+    destroy() { alive = false; clearInterval(timer); offIdle(); offReturn(); btn.remove(); menu.remove(); document.removeEventListener("pointerdown", closeMenu); },
   };
 }

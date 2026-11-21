@@ -70,8 +70,8 @@ export function loginScreen(root, p) {
     // 관리자인지는 서버가 정함 (지도 고치기 저장도 서버가 이 로그인 토큰을 확인, src/edits.js·auth.js)
     if (page === "admin") {
       if (adminOn()) return `<p class="authhint">${current()?.dev ? esc(current().username) + " 관리자 아이디로 로그인했어요" : "관리자 모드가 켜져 있어요"}. 노선·정류장·역 점에서 지도 고치기를 할 수 있어요.</p>` +
-        `<button class="btn authbtn" ${act(() => go("fixstops"))}>지도 고치기 열기</button>` +
-        `<button class="link authlink" ${act(async () => { if (Edits.hasAdminKey()) await Edits.setAdminKey(""); if (current()?.dev) logout(); info = "관리자 모드를 껐어요"; draw(); })}>관리자 로그아웃</button>`;
+        `<button class="btn authbtn" ${act(() => go("settings"))}>설정에서 지도 고치기</button>` +
+        `<button class="link authlink" ${act(async () => { if (Edits.hasAdminKey()) await Edits.setAdminKey(""); if (current()?.dev) logout(); Edits.setEditing(false); info = "관리자 모드를 껐어요"; draw(); })}>관리자 로그아웃</button>`;
       return input("username", "관리자 아이디", "text", 'autocomplete="username" autocapitalize="none"') +
         input("password", "비밀번호", "password", 'autocomplete="current-password"') +
         `<p class="authhint">관리자 아이디로 로그인하면 지도 고치기(노선 모양·정류장·역·자전거·주차장·편의시설 위치)를 할 수 있어요.</p>` +

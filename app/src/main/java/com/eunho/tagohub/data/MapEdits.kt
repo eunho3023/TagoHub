@@ -36,6 +36,12 @@ object MapEdits {
     /** 관리자 키를 넣은 기기인지 (고치기 단추를 보일지) */
     val admin = MutableStateFlow(false)
 
+    /**
+     * 지도 고치기 중: 설정 → 관리자 → "지도 고치기 시작" 으로만 켬 (앱을 끄면 꺼짐).
+     * 켜져 있을 때만 정류장·노선·역 패널에 고치기 단추와 지도 위 "지도 고치기 중" 막대가 보임 (웹 edits.js editing 과 같음)
+     */
+    val editing = MutableStateFlow(false)
+
     /** 개발자 아이디로 로그인했는지 ([IdAccount]). 관리자 키 없이도 고칠 수 있음 (서버가 로그인 토큰을 확인) */
     @Volatile private var devAccount = false
 
@@ -44,6 +50,7 @@ object MapEdits {
     fun setDeveloper(on: Boolean) {
         devAccount = on
         admin.value = adminKeySet() || on
+        if (!admin.value) editing.value = false
     }
 
     fun loadAdmin(context: android.content.Context) {

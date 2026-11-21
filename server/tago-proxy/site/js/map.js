@@ -114,6 +114,8 @@ async function kakaoImpl() {
     zoom() { return 20 - map.getLevel(); },
     center() { const c = map.getCenter(); return [c.getLat(), c.getLng()]; },
     relayout() { map.relayout(); },
+    /** 지도 종류: normal 일반 · sky 위성(도로명·지명 함께) */
+    setType(t) { map.setMapTypeId(t === "sky" ? K.MapTypeId.HYBRID : K.MapTypeId.ROADMAP); },
     /** 내 위치 점 (null 이면 지움) + 정확도 원 */
     me(p) {
       if (!p) { meObj?.setMap(null); meRing?.setMap(null); meObj = meRing = null; return; }
@@ -133,7 +135,9 @@ async function leafletImpl() {
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   const L = window.L;
   const map = L.map(el, { zoomControl: true }).setView([START[0], START[1]], 16);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+  const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+  // 위성: Esri World Imagery (카카오 지도를 못 쓸 때)
+  const sky = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imagery © Esri" });
   map.on("moveend", () => idleCbs.forEach((f) => f()));
   map.on("click", (e) => tapCb && tapCb(e && e.latlng ? [e.latlng.lat, e.latlng.lng] : null));
   const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map), meLayer = L.layerGroup().addTo(map);
@@ -156,6 +160,7 @@ async function leafletImpl() {
     zoom() { return map.getZoom(); },
     center() { const c = map.getCenter(); return [c.lat, c.lng]; },
     relayout() { map.invalidateSize(); },
+    setType(t) { if (t === "sky") { map.removeLayer(osm); sky.addTo(map); } else { map.removeLayer(sky); osm.addTo(map); } },
     me(p) {
       if (!p) { meLayer.clearLayers(); meMark = meCircle = null; return; }
       if (!meMark) {
@@ -183,12 +188,18 @@ function paintSoon() {
   });
 }
 
+// 지도 종류 (normal 일반 · sky 위성): 이 브라우저에 기억
+const MAPTYPE = "tagohub.mapType";
+let mapType = "normal";
+try { mapType = localStorage.getItem(MAPTYPE) === "sky" ? "sky" : "normal"; } catch (e) { /* 못 읽음 */ }
+
 const ready = (async () => {
   // 크기가 생긴 뒤에 지도를 만듦
   while (!el.isConnected || el.clientWidth === 0) await new Promise((r) => setTimeout(r, 100));
   try { impl = await kakaoImpl(); } catch (e) { el.innerHTML = ""; impl = await leafletImpl(); }
   new ResizeObserver(() => impl.relayout()).observe(el);
   el.appendChild(locBtn);
+  if (mapType !== "normal") impl.setType(mapType);
   if (myPos) impl.me(myPos);
   if (pendingView) { const v = pendingView; pendingView = null; v(); }
   return impl;
@@ -271,4 +282,11 @@ export const MapView = {
     return ((b.e - b.w) * 111000 * Math.cos((((b.s + b.n) / 2) * Math.PI) / 180)) / el.clientWidth;
   },
   zoom() { return impl ? impl.zoom() : 0; },
+  /** 지도 종류 normal · sky */
+  mapType() { return mapType; },
+  setMapType(t) {
+    mapType = t === "sky" ? "sky" : "normal";
+    try { localStorage.setItem(MAPTYPE, mapType); } catch (e) { /* 못 씀 */ }
+    if (impl) impl.setType(mapType);
+  },
 };

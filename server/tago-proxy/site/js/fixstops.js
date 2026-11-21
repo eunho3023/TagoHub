@@ -23,13 +23,24 @@ export function fixStopsScreen(root, p, ctx) {
   if (p.lat) MapView.view(+p.lat, +p.lng, 17);
 
   const posOf = (s) => moves.get(s.id)?.to || [s.lat, s.lng];
+  // 어느 방면인지 (지나는 노선의 다음 정류장, 같은 이름의 길 건너 정류장을 가려 고치게): 고른 정류장 + 확대하면 화면 가운데 가까운 정류장들
+  const toward = new Map();   // 정류장 id → "○○" · null(모름) · undefined(받는 중)
+  const TOWARD_ZOOM = 17, TOWARD_MAX = 25;
+  function wantToward(s) {
+    if (toward.has(s.id)) return;
+    toward.set(s.id, undefined);
+    B.stopRoutes(s).then((rs) => B.towardOf(s, rs)).catch(() => null).then((t) => { toward.set(s.id, t || null); if (alive) drawAll(); });
+  }
+  const towardText = (s) => { const t = toward.get(s.id); return t ? t + " 방면" : ""; };
   const drawMap = () => {
     if (!alive) return;
     const lines = [], dots = [];
     for (const [, m] of moves) lines.push({ pts: [m.orig, m.to], color: "#9aa3b2", width: 2, dash: true });
     for (const s of stops) {
       const at = posOf(s), on = sel && sel.id === s.id, moved = moves.has(s.id), pick = joinPick.has(s.id);
-      dots.push({ id: s.id, lat: at[0], lng: at[1], color: on ? "#D7262E" : pick ? "#16A34A" : moved ? "#E08A00" : "#2563eb", ring: "#fff", r: on || pick ? 9 : 6, label: on || pick ? s.name : null, labelUp: on || pick });
+      const tw = towardText(s), near = MapView.zoom() >= TOWARD_ZOOM;
+      dots.push({ id: s.id, lat: at[0], lng: at[1], color: on ? "#D7262E" : pick ? "#16A34A" : moved ? "#E08A00" : "#2563eb", ring: "#fff", r: on || pick ? 9 : 6,
+        label: on || pick ? s.name + (tw ? " · " + tw : "") : near && tw ? "→ " + toward.get(s.id) : null, labelUp: on || pick });
     }
     MapView.lines(lines);
     MapView.dots(dots, (d) => {
@@ -42,6 +53,7 @@ export function fixStopsScreen(root, p, ctx) {
         return;
       }
       sel = sel && sel.id === s.id ? null : s; routes = null; msg = ""; mates = [];
+      if (sel) wantToward(sel);
       drawAll();
       if (sel) { loadRoutes(sel); loadMates(sel); }
     });
@@ -73,7 +85,7 @@ export function fixStopsScreen(root, p, ctx) {
       box.innerHTML = j;
       return;
     }
-    let h = note(!zoomOk ? "지도를 더 확대하면 정류장이 모두 보여요." : sel ? `「${sel.name}」 고름 → 지도에서 새 위치를 누르면 옮겨져요.` : "정류장 점을 누르고 → 지도에서 새 위치를 누르면 옮겨져요. 여러 곳을 옮긴 뒤 한 번에 저장해요.");
+    let h = note(!zoomOk ? "지도를 더 확대하면 정류장이 모두 보여요." : sel ? `「${sel.name}」${toward.get(sel.id) ? ` (${toward.get(sel.id)} 방면)` : toward.has(sel.id) && toward.get(sel.id) === undefined ? " (방면 찾는 중)" : ""} 고름 → 지도에서 새 위치를 누르면 옮겨져요.` : "정류장 점을 누르고 → 지도에서 새 위치를 누르면 옮겨져요. 여러 곳을 옮긴 뒤 한 번에 저장해요.");
     if (msg) h += `<p class="note"><b>${esc(msg)}</b></p>`;
     if (sel) {
       const manual = E.groupFix(sel.id);
@@ -147,6 +159,11 @@ export function fixStopsScreen(root, p, ctx) {
       if (p.id && !preset) { preset = true; sel = got.find((x) => x.id === p.id || B.legacyId(x.id) === B.legacyId(p.id)) || null; if (sel) { loadRoutes(sel); loadMates(sel); } }
       // 고른 정류장은 화면 밖으로 나가도 남김
       stops = sel && !got.some((x) => x.id === sel.id) ? [...got, sel] : got;
+      // 확대하면 화면 가운데에 가까운 정류장부터 방면을 구해 이름표로 (→ ○○)
+      if (MapView.zoom() >= TOWARD_ZOOM) {
+        const c = MapView.bounds(), cla = (c.s + c.n) / 2, clo = (c.w + c.e) / 2;
+        [...stops].sort((a, b) => Math.hypot(a.lat - cla, a.lng - clo) - Math.hypot(b.lat - cla, b.lng - clo)).slice(0, TOWARD_MAX).forEach(wantToward);
+      }
       drawAll();
     }, 250);
   }

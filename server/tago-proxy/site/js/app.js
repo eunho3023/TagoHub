@@ -131,10 +131,21 @@ export function stopsMap(host, focus) {
   let info = null;
   /** 관리자: 카드에 붙는 "위치 고치기" (역·자전거·주차장·편의시설 점, 지도 고치기 → fixpoint.js) */
   let infoFix = "";
-  const fixBtn = (go2) => (Edits.isAdmin() ? `<button class="link" ${act(go2)}>📍 위치 고치기</button>` : "");
+  const fixBtn = (go2) => (Edits.editing() ? `<button class="link" ${act(go2)}>📍 위치 고치기</button>` : "");
   const card = document.createElement("div");
   card.className = "side-card";
   host.appendChild(card);
+  // 지도 고치기 중 표시 (설정에서 켬): 점을 누르면 카드에 위치 고치기, 끝내기
+  const banner = document.createElement("div");
+  banner.className = "editbanner";
+  host.appendChild(banner);
+  const drawBanner = () => {
+    const on = Edits.editing();
+    banner.style.display = on ? "flex" : "none";
+    if (on) banner.innerHTML = `<b>✏️ 지도 고치기 중</b><span class="grow">점을 누르면 위치를 고칠 수 있어요</span>` +
+      `<button class="link" ${act(() => go("fixstops"))}>정류장 한꺼번에</button><button class="link" ${act(() => { Edits.setEditing(false); })}>끝내기</button>`;
+  };
+  drawBanner();
   // 서울 실시간 교통 (켜기 버튼은 지도 오른쪽 위, 내 위치 아래): 확대하면 도로 소통 색, 돌발·교통량 지점 (topis.js). 아래 draw 를 만든 뒤에 만듦
   let traffic = null;
   const draw = () => {
@@ -205,10 +216,10 @@ export function stopsMap(host, focus) {
   traffic = trafficLayer(() => { if (alive) draw(); });
   const off = MapView.onIdle(load);
   // 누가 정류장 위치를 고치면 바로 다시 (지도는 그대로)
-  const offEdit = Edits.onChange(load);
+  const offEdit = Edits.onChange(() => { drawBanner(); load(); });
   MapView.onTap(() => { picked = null; info = null; draw(); });
   MapView.ready.then(load);
-  return () => { alive = false; off(); offEdit(); card.remove(); traffic.destroy(); MapView.lines([]); };
+  return () => { alive = false; off(); offEdit(); card.remove(); banner.remove(); traffic.destroy(); MapView.lines([]); };
 }
 
 window.addEventListener("hashchange", show);
