@@ -1,6 +1,7 @@
 // 지도 하나 (화면 전체에서 같은 지도를 옮겨 씀). 카카오 지도(폰 앱과 같음), 키·도메인이 안 맞으면 OpenStreetMap(Leaflet).
 // 확대 단계는 웹 지도 기준 z (카카오 레벨 = 20 - z).
-// dots: [{id, lat, lng, color, ring, r, label}], lines: [{pts:[[위도,경도]...], color, width}]
+// dots: [{id, lat, lng, color, ring, r, label, bus}], lines: [{pts:[[위도,경도]...], color, width}]
+// bus: 버스 정류장 아이콘 (둥근 네모 + 흰 버스, color 바탕)
 import { follow } from "./geo.js";
 import { reconcile, dotKey, lineKey } from "./mapdiff.js";
 
@@ -40,6 +41,10 @@ function dotEl(d) {
   const dot = document.createElement("div");
   dot.className = "mdot";
   dot.style.cssText = `width:${size}px;height:${size}px;background:${d.color};border-color:${d.ring || "#fff"}`;
+  if (d.bus) {
+    dot.className = "mdot mbus";
+    dot.innerHTML = `<svg width="${Math.round(size * 0.78)}" height="${Math.round(size * 0.78)}" viewBox="0 0 24 24"><path fill="#fff" d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg>`;
+  }
   // 진행 방향 화살표 (d.dir: 북쪽 0도, 시계 방향)
   if (d.dir != null && Number.isFinite(d.dir)) {
     dot.style.display = "flex"; dot.style.alignItems = "center"; dot.style.justifyContent = "center";

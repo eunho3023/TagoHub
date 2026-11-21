@@ -9,6 +9,8 @@ import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations
 import { fixPointScreen } from "./fixpoint.js";
 import { applyTheme } from "./store.js";
 import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
+/** 버스 정류장 아이콘 바탕색 (파란 둥근 네모, 폰 앱 정류장 아이콘과 같게) */
+const BUS_STOP_COLOR = "#2F7CF6";
 import { trafficLayer } from "./topis.js";
 import * as home from "./home.js";
 import * as bus from "./bus.js";
@@ -149,7 +151,6 @@ export function stopsMap(host, focus) {
   // 서울 실시간 교통 (켜기 버튼은 지도 오른쪽 위, 내 위치 아래): 확대하면 도로 소통 색, 돌발·교통량 지점 (topis.js). 아래 draw 를 만든 뒤에 만듦
   let traffic = null;
   const draw = () => {
-    const primary = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
     MapView.lines(traffic ? traffic.lines() : []);
     // 점이 빽빽하면(300개 넘게) 화면 22px 칸마다 하나만 (mapdiff.js thinDots): 확대·축소 때 카카오 지도가 점 수백 개를 다시 맞추느라 멈췄음.
     // 정류장을 먼저 (교통 점보다 앞에), 고른 정류장(이름표)은 늘 남김
@@ -158,7 +159,7 @@ export function stopsMap(host, focus) {
       [...stations.map((g, i) => { const at = stationPos(g, Edits.stationFix); return { id: "sub:" + i, lat: at[0], lng: at[1], color: subwayColor(g.lines[0]), ring: "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null }; }),
       ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
-        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : primary, ring: "#fff", r: on ? 8 : 5, label: on ? s.name : null, labelUp: on }; }),
+        .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : BUS_STOP_COLOR, ring: "#fff", r: on ? 11 : 8, bus: true, label: on ? s.name : null, labelUp: on }; }),
       ...(traffic ? traffic.dots() : [])], MapView.metersPerPx()),
       (d) => {
         // 돌발·공영자전거·주차장·편의시설 점은 카드 (topis.js card)

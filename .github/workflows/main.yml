@@ -80,6 +80,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python pipeline/test_build_web_data.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python pipeline/test_stop_spots.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: 앱 파일 새로 만들기 (지하철 시간표·휴게소·항공 소요시간·울산 교차로)
         # 노선 DB 의 files 표에 넣어 앱이 같이 받음. 실패해도 노선 DB 는 만듦 (앱은 앱 안 파일 그대로)

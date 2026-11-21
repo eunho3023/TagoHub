@@ -45,16 +45,16 @@ def test_build_small_db():
         assert json.loads((out / f"shapes/{bw.bucket('GGB200000006')}.json").read_text(encoding="utf-8"))["GGB200000006"] == "_p~iF~ps|U_ulLnnqC"
         assert json.loads((out / f"shapes/{bw.bucket('SEB100100118')}.json").read_text(encoding="utf-8"))["SEB100100118"] == bw.encode_polyline([(37.5, 127.0), (37.5001, 126.9998), (37.50015, 126.99985)])
         t = json.loads((out / "tiles/358_1271.json").read_text(encoding="utf-8"))
-        assert ["S1", "홍산로전북도교육청.동암고", 35.8235, 127.1478, "30490", "35010", ["R1"]] in t
+        assert ["S1", "홍산로전북도교육청.동암고", 35.8235, 127.1478, "30490", "35010", ["R1"], None] in t
         # 낱말마다: "홍산로전북도교육청" 과 "동암고" 둘 다로 찾음
         assert any(r[0] == "S1" for r in json.loads((out / f"names/{ord('동'):x}.json").read_text(encoding="utf-8")))
         r = json.loads((out / f"routes/{bw.bucket('R1')}.json").read_text(encoding="utf-8"))["R1"]
         assert r["no"] == "104" and r["info"] == ["06:00", "23:00", 15, 20, 25]
         assert r["stops"] == [[1, "S1", "홍산로전북도교육청.동암고", 35.8235, 127.1478, "0"], [2, "S2", "우전초교", 35.8241, 127.149, "0"],
                               [3, None, "새 정류장", 35.83, 127.15, "1"]]
-        # 노선이 안 서는 S3 은 검색에서 빠지고(같은 지역 S1·S2 는 노선 있음) 칸 파일에는 남음
+        # 노선이 안 서는 S3 은 검색·칸 파일 모두에서 빠짐 (pipeline/stop_spots.py)
         assert not (out / f"names/{ord('폐'):x}.json").exists()
-        assert any(r[0] == "S3" for r in t) and m["hiddenStops"] == 1
+        assert not any(r[0] == "S3" for r in t) and m["hiddenStops"] == 1
         assert json.loads((out / f"routesum/{bw.bucket('R1')}.json").read_text(encoding="utf-8"))["R1"] == ["104", "송천동", "평화동", "일반", "06:00", "23:00", 15, 20, 25]
         c = json.loads((out / "cities.json").read_text(encoding="utf-8"))
         assert c["names"] == {"35010": "전주"}

@@ -54,6 +54,14 @@ object StopMerge {
     }
     @Volatile var manual = Manual()
 
+    /**
+     * 데이터에 미리 묶어 둔 점 (pipeline/stop_spots.py, 웹 spotGroups 와 같음): 정류장 id → 대표 id.
+     * 방면까지 봐서 같은 방면에 시군마다 쪼개진 정류장만 묶고, 길 건너편은 이름이 같아도 따로 둠.
+     * 있으면 데이터 안 정류장끼리는 거리 규칙을 안 씀 ([known] 이 데이터 밖이라고 하는 정류장만 거리 규칙). 옛 데이터면 null
+     */
+    @Volatile var spots: Map<String, String>? = null
+    @Volatile var known: ((String) -> Boolean)? = null
+
     private fun key(id: String) = TagoIds.legacy(id)
 
     /** 이름 비교용: 공백·문장부호·괄호를 뺌 ("부산대학병원(토성역)" = "부산대학병원.토성역") */
@@ -101,9 +109,21 @@ object StopMerge {
         m.pairs.forEach { (a, b) -> val ia = at[a]; val ib = at[b]; if (ia != null && ib != null) join(ia, ib) }
         // 2) 가까운 짝부터 묶음을 합침. 합칠 두 묶음에 같은 시군이 있으면 안 합침. 따로 떼어 둔 정류장은 빼고
         val apart = located.indices.filter { key(located[it].nodeId) in m.split }.toSet()
+        // 2-1) 데이터에 미리 묶어 둔 점이 있으면 그것 (데이터 안 정류장끼리는 아래 거리 규칙 대신)
+        val pre = spots
+        val inData = known
+        if (pre != null) {
+            val first = HashMap<String, Int>()
+            located.indices.forEach { i ->
+                if (i in apart) return@forEach
+                val sp = pre[located[i].nodeId] ?: return@forEach
+                first[sp]?.let { join(it, i) } ?: run { first[sp] = i }
+            }
+        }
         edges.sortWith(compareBy<Edge> { it.d }.thenBy { minOf(it.a, it.b) }.thenBy { maxOf(it.a, it.b) })
         for (e in edges) {
             if (e.a in apart || e.b in apart) continue
+            if (pre != null && (inData == null || (inData(located[e.a].nodeId) && inData(located[e.b].nodeId)))) continue
             val ra = root(e.a)
             val rb = root(e.b)
             if (ra == rb || cities[ra].any { it in cities[rb] }) continue
