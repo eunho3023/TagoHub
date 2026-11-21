@@ -100,6 +100,7 @@ async function kakaoImpl() {
   let lineObjs = new Map(), dotObjs = new Map(), meObj = null, meRing = null;
   const lv = (z) => Math.min(14, Math.max(1, 20 - z));
   return {
+    kakao: true,
     view(lat, lng, z) { map.setLevel(lv(z)); map.setCenter(new K.LatLng(lat, lng)); },
     fit(pts) { if (!pts.length) return; const b = new K.LatLngBounds(); pts.forEach((p) => b.extend(new K.LatLng(p[0], p[1]))); map.setBounds(b, 40, 40, 40, 40); },
     lines(ls) {
@@ -176,6 +177,7 @@ async function leafletImpl() {
   };
 }
 
+const KAKAO_STOP_ZOOM = 17;
 let pendLines = null, pendDots = null, paintAsked = false;
 function paintSoon() {
   if (paintAsked) return;
@@ -287,6 +289,13 @@ export const MapView = {
     return ((b.e - b.w) * 111000 * Math.cos((((b.s + b.n) / 2) * Math.PI) / 180)) / el.clientWidth;
   },
   zoom() { return impl ? impl.zoom() : 0; },
+  /** 카카오 지도인지 (아니면 OpenStreetMap) */
+  isKakao() { return !!impl?.kakao; },
+  /**
+   * 카카오 지도가 자기 버스 정류장 아이콘을 그리는 배율인지 (줌 17 = 카카오 레벨 3 부터, 15·16 에는 안 그림).
+   * 이때는 정류장 점을 따로 안 그리고 카카오 아이콘을 누르면 그 자리 정류장을 엶 (폰 앱과 같음)
+   */
+  kakaoStops() { return !!impl?.kakao && impl.zoom() >= KAKAO_STOP_ZOOM; },
   /** 지도 종류 normal · sky */
   mapType() { return mapType; },
   setMapType(t) {
