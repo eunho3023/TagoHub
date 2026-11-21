@@ -66,6 +66,7 @@ import com.eunho.tagohub.ui.bus.loadDirection
 import com.eunho.tagohub.ui.bus.refreshBusData
 import com.eunho.tagohub.ui.bus.routeStopsFor
 import com.eunho.tagohub.ui.bus.routeInfoFor
+import com.eunho.tagohub.ui.bus.stopRoutesFor
 import com.eunho.tagohub.ui.subway.StationDetail
 import com.eunho.tagohub.ui.subway.StationDetailController
 import com.eunho.tagohub.data.StationFacilityIndex
@@ -2908,6 +2909,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val joinPick: List<BusStop> = emptyList(),
         /** 고른 정류장이 어느 방면인지 (다음 정류장 이름, 같은 이름의 길 건너 정류장과 가려 고치게) */
         val toward: String? = null,
+        /** 고른 정류장에 서는 버스 번호 (같이 묶인 정류장 것까지). null = 찾는 중 */
+        val buses: List<String>? = null,
     )
     val stopFix = MutableStateFlow<StopFixState?>(null)
 
@@ -2937,13 +2940,23 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val sel = if (s.sel?.nodeId == stop.nodeId) null else stop
-        stopFix.value = s.copy(sel = sel, together = togetherOf(sel), msg = null, toward = null)
+        stopFix.value = s.copy(sel = sel, together = togetherOf(sel), msg = null, toward = null, buses = null)
         pushStopFix()
         if (sel != null) viewModelScope.launch {
             val t = runCatching { stopDirection(sel.nodeId) }.getOrNull()
             stopFix.value?.let { now -> if (now.sel?.nodeId == sel.nodeId) stopFix.value = now.copy(toward = t) }
         }
+        if (sel != null) viewModelScope.launch {
+            val nos = stopFixBuses(listOf(sel) + togetherOf(sel).take(4))
+            stopFix.value?.let { now -> if (now.sel?.nodeId == sel.nodeId) stopFix.value = now.copy(buses = nos) }
+        }
     }
+
+    /** 정류장들에 서는 버스 번호 (정류장 화면과 같은 경유 노선 목록, 번호순) */
+    private suspend fun stopFixBuses(list: List<BusStop>): List<String> = list.flatMap { st ->
+        (runCatching { stopRoutesFor(repo, st) }.getOrNull() as? TagoResult.Success)?.data.orEmpty()
+    }.map { it.routeNo.trim() }.filter { it.isNotEmpty() }.distinct()
+        .sortedWith(compareBy<String>({ it.takeWhile(Char::isDigit).toIntOrNull() ?: Int.MAX_VALUE }, { it }))
 
     // ── 같은 자리 정류장 손으로 묶기·따로 떼기 (앱·웹 모두에 보임, 서버 /w/edits 의 group) ──
 

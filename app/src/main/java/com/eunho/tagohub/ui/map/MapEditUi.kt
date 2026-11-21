@@ -86,6 +86,15 @@ internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
                 return@Column
             }
             if (s.sel != null) {
+                // 이 정류장에 서는 버스 (같은 이름의 길 건너 정류장과 가려 고치게)
+                Text(
+                    when {
+                        s.buses == null -> "서는 버스 찾는 중…"
+                        s.buses.isEmpty() -> "서는 버스 정보가 없어요."
+                        else -> "서는 버스 ${s.buses.size}개: " + s.buses.joinToString(" · ")
+                    },
+                    Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+                )
                 Text("노선 모양은 정류장 화면 → 노선 → \"노선 모양 고치기\"에서 고쳐요.", Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
