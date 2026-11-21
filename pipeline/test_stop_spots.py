@@ -19,9 +19,10 @@ def run(stops, routes):
 
 
 def test_no_route_hidden():
-    h, sp = run([("A", "가", 37.0, 127.0, "1", "11"), ("B", "나", 37.001, 127.0, "2", "11"), ("Z", "폐지", 37.002, 127.0, "3", "11")],
-                {"R": ["A", "B"]})
-    assert h == {"Z"} and sp == {}
+    h, sp = run([("A", "가", 37.0, 127.0, "1", "11"), ("B", "나", 37.001, 127.0, "2", "11"), ("SEBZ", "폐지", 37.002, 127.0, "3", "11"),
+                 ("CNB1", "천내2리", 36.3, 127.0, None, "34350")], {"R": ["A", "B"]})
+    # 서울 정류장만 숨김 (다른 지역은 DB 노선 자료가 덜 차 TAGO 에 노선이 있는 정류장이 많았음)
+    assert h == {"SEBZ"} and sp == {}
 
 
 def test_keep_gyeonggi_and_twins_without_routes():
@@ -68,7 +69,17 @@ def test_same_number_leading_zero_merged():
     assert "X" not in sp
 
 
+def test_unknown_direction_same_name_close_merged():
+    # 노선 자료 없는 교통안전공단 정류장 둘: 같은 이름 5m → 하나, 12m(길 건너일 수 있음) → 따로
+    stops = [("A", "가", 37.0, 127.0, "1", "11"), ("B", "나", 37.001, 127.0, "2", "11"),
+             ("TSB1", "원천", 37.01, 127.0, "541171", "TS1"), ("TSB2", "원천", 37.01 + 5 * D, 127.0, "541172", "TS1"),
+             ("TSB3", "고천", 37.02, 127.0, "541620", "TS1"), ("TSB4", "고천", 37.02 + 12 * D, 127.0, "541692", "TS1")]
+    h, sp = run(stops, {"R": ["A", "B"]})
+    assert sp.get("TSB1") == sp.get("TSB2") and sp.get("TSB1")
+    assert "TSB3" not in sp and "TSB4" not in sp
+
+
 if __name__ == "__main__":
-    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged):
+    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged, test_unknown_direction_same_name_close_merged):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
