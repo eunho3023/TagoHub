@@ -1,7 +1,7 @@
 // 지도 고치기: 사람이 손으로 고친 버스 노선 모양·정류장 위치 (서버 /w/edits, src/edits.js). 폰 앱(MapEdits.kt)과 같은 자료.
 // 화면을 열 때 받아 두고, 페이지가 보이는 동안 15초마다 판 번호로 바뀌었는지 확인(안 바뀌면 서버가 204 로 짧게).
 // 바뀌면 바로 다시 받아 열린 화면이 다시 그림 (onChange). 노선 모양·정류장 좌표를 그릴 때 고친 것이 있으면 그것을 씀.
-import { BASE } from "./core.js";
+import { BASE, USER_SITE } from "./core.js";
 import * as Account from "./account.js";
 
 let data = null, at = 0, loading = null;
@@ -10,7 +10,7 @@ let data = null, at = 0, loading = null;
 const ADMIN_KEY = "tagohub.adminKey";
 export function adminKey() { try { return localStorage.getItem(ADMIN_KEY) || ""; } catch (e) { return ""; } }
 /** 관리자 키를 넣었거나 개발자 아이디로 로그인한 브라우저인지 (고치기 단추를 보일지) */
-export const isAdmin = () => adminKey().length >= 16 || Account.isDev();
+export const isAdmin = () => !USER_SITE && (adminKey().length >= 16 || Account.isDev());
 /** 관리자 키를 넣은 브라우저인지 (설정의 관리자 키 칸) */
 export const hasAdminKey = () => adminKey().length >= 16;
 /** 키 저장 전 서버에 맞는지 물어봄 → true/false (빈 글자면 지우고 false) */

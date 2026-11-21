@@ -157,6 +157,26 @@ Write-Host '3/3 local.properties 에 서버 주소 적는 중...'
 $keep = Get-Content $props -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*TAGO_PROXY_(URL|TOKEN)\s*=' }
 $keep + "TAGO_PROXY_URL=$url" + "TAGO_PROXY_TOKEN=$appToken" | Set-Content $props -Encoding UTF8
 
+# 사용자 주소 (Cloudflare Pages, https://<이름>.pages.dev): 화면 파일만 올리고 자료·실시간은 위 서버($url)에 물음.
+# 서버 주소(workers.dev)는 관리자용으로 남김 — 사용자 주소에서는 관리자로 로그인·지도 고치기가 보이지 않음 (site/js/core.js USER_SITE)
+# 이름이 비어 있으면 건너뜀. API 토큰에 "Cloudflare Pages: Edit" 권한이 있어야 함
+$pagesProject = 'tabolkka'
+if ($pagesProject) {
+    Write-Host "사용자 주소 올리는 중 (https://$pagesProject.pages.dev)..."
+    $pagesDir = Join-Path $PSScriptRoot 'pages-public'
+    if (Test-Path $pagesDir) { Remove-Item $pagesDir -Recurse -Force }
+    New-Item -ItemType Directory $pagesDir | Out-Null
+    Get-ChildItem (Join-Path $PSScriptRoot 'site') | Copy-Item -Destination $pagesDir -Recurse -Force
+    [IO.File]::WriteAllText((Join-Path $pagesDir 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`nwindow.TAGOHUB_SERVER = `"$url/`";`nwindow.TAGOHUB_USER_SITE = true;`n", (New-Object Text.UTF8Encoding $false))
+    # 화면 파일은 늘 새로 확인 (서버 쪽 _headers 와 같게)
+    [IO.File]::WriteAllText((Join-Path $pagesDir '_headers'), "/*`n  Cache-Control: no-cache`n", (New-Object Text.UTF8Encoding $false))
+    $null = (& npx --yes wrangler@4.45.0 pages project create $pagesProject --production-branch main 2>&1 | Out-String)
+    $pout = (& npx --yes wrangler@4.45.0 pages deploy $pagesDir --project-name $pagesProject --branch main --commit-dirty=true 2>&1 | Out-String)
+    Write-Host $pout
+    if ($pout -match 'Authentication error|10000') { Write-Host '  Pages 권한이 없어요: Cloudflare API 토큰에 "Cloudflare Pages: Edit" 권한을 더한 뒤 다시 실행해 주세요' }
+    Write-Host "  사용자 주소: https://$pagesProject.pages.dev (카카오 개발자 사이트 JavaScript SDK 도메인에도 등록해야 지도가 보임)"
+}
+
 Start-Sleep -Seconds 3
 try { $h = (Invoke-WebRequest "$url/health" -UseBasicParsing).Content } catch { $h = $_.Exception.Message }
 Write-Host "끝: $url (상태: $h)"
