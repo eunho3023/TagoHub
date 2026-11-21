@@ -10,6 +10,11 @@ import { latestNotice } from "./more.js";
 import { locate, geoMessage } from "./geo.js";
 import { stopsMap } from "./app.js";
 
+// 지역 도착(전주·제주·울산·대전·경기)을 기다리는 시간. 넘으면 TAGO 도착부터 (정류장 화면 bus.js 와 같은 값)
+const QUICK_LOCAL_MS = 3000;
+// 실시간 도착 카드가 한 번에 기다리는 시간. 넘으면 못 받은 것으로 보고 2·4·6초 뒤 다시 (늦게 온 답은 다음 번에 서버 저장분으로 바로 옴)
+const LIVE_WAIT_MS = 8000;
+
 const st = {
   q: "",
   near: null,
@@ -85,6 +90,10 @@ export function render(root, _p, ctx) {
   };
 
   /* ───────── 실시간 도착 카드 ───────── */
+  let liveSeq = 0;
+  // 도착을 정말 받았는지: 빈 목록인데 일부 자료(TAGO 등)를 못 받았으면 "버스 없음"이 아니라 못 받은 것
+  // (지역 도착이 늦어 TAGO 로 물었는데 TAGO 도 막혔을 때 "700m 안에 없어요"·"도착 정보 없음"으로 보였음)
+  const received = (x) => x.state === "ok" && (x.list.length > 0 || !x.partial);
   function liveSection() {
     const L = st.live;
     let rows = "";
@@ -124,7 +133,9 @@ export function render(root, _p, ctx) {
       draw();
       return;
     }
-    if (st.live.state !== "ok") { st.live = { ...st.live, state: "loading" }; draw(); }
+    // 주기 실행 중 "늦어요" 안내가 떠 있으면 그대로 둠 (불러오는 모양과 번갈아 깜빡이지 않게). 단추로 부르면 불러오는 모양부터
+    const byButton = opt?.lastTry === undefined;
+    if (st.live.state !== "ok" && (byButton || st.live.state !== "error")) { st.live = { ...st.live, state: "loading" }; draw(); }
     let here;
     try {
       here = await locate();
@@ -137,8 +148,9 @@ export function render(root, _p, ctx) {
     const fail = () => {
       if (!alive) return false;
       const fresh = st.live.state === "ok" && Date.now() - st.live.at < 120000;
-      if (!lastTry) { if (!fresh && st.live.state !== "loading") { st.live = { ...st.live, state: "loading" }; draw(); } return false; }
-      st.live = { state: "error", rows: null, at: 0, note: "도착 정보를 받지 못했어요." };
+      // 받아 둔 것(2분 안)이 없으면 계속 불러오는 모양 대신 늦다고 알림 (공공데이터 서버가 20초 넘게 답이 없을 때가 있음)
+      if (!lastTry) { if (!fresh) { st.live = { state: "error", rows: null, at: 0, note: "도착 정보가 늦게 와요. 다시 받는 중..." }; draw(); } return false; }
+      st.live = { state: "error", rows: null, at: 0, note: "도착 정보를 받지 못했어요. 버스 자료 서버가 바쁠 때 그래요. 잠시 뒤 저절로 다시 받아요." };
       draw();
       return false;
     };
@@ -148,17 +160,29 @@ export function render(root, _p, ctx) {
         .filter((x) => x.m <= 700)
         .sort((a, b) => a.m - b.m)
         .slice(0, 2);
-      const lists = await Promise.all(near.map(({ s }) => B.arrivals(s).catch(() => ({ state: "failed", list: [] }))));
+      // 지역 도착(전주 등)이 3초 안에 안 오면 TAGO 도착을 먼저 보여 주고, 지역 도착은 오는 대로 바꿈 (정류장 화면과 같음).
+      // 전주시 서버가 20~40초 답이 없을 때 이 카드가 그동안 계속 불러오는 모양이었음
+      const seq = ++liveSeq;
+      const lists = await Promise.all(near.map(({ s }) => Promise.race([B.arrivals(s, { quickMs: QUICK_LOCAL_MS }), new Promise((r) => setTimeout(() => r({ state: "failed", list: [] }), LIVE_WAIT_MS))]).catch(() => ({ state: "failed", list: [] }))));
+      const show = (got) => {
+        const rows = [];
+        near.forEach(({ s, m }, i) => {
+          if (!received(got[i])) return;
+          (got[i].list || []).slice(0, 2).forEach((a) => rows.push({ stop: s, a, m }));
+        });
+        st.live = { state: "ok", rows: rows.slice(0, 4), at: Date.now(), note: null };
+      };
+      if (lists.some((x) => x.later)) {
+        Promise.all(lists.map((x) => (x.later ? x.later.catch(() => x) : x))).then((full) => {
+          if (!alive || seq !== liveSeq || st.q.trim()) return;
+          const best = full.map((x, i) => (received(x) ? x : lists[i]));
+          if (best.some(received)) { show(best); draw(); }
+        });
+      }
       // 근처 정류장 도착을 하나도 못 받았으면 실패 ("700m 안에 없어요"로 보이던 것)
-      if (near.length && lists.every((x) => x.state === "failed")) return fail();
-      const rows = [];
-      near.forEach(({ s, m }, i) => {
-        const got = lists[i];
-        if (got.state !== "ok") return;
-        (got.list || []).slice(0, 2).forEach((a) => rows.push({ stop: s, a, m }));
-      });
+      if (near.length && !lists.some(received)) return fail();
       if (!alive) return;
-      st.live = { state: "ok", rows: rows.slice(0, 4), at: Date.now(), note: null };
+      show(lists);
     } catch (e) {
       return fail();
     }
@@ -196,11 +220,12 @@ export function render(root, _p, ctx) {
   // 예전엔 한도를 아끼려고 4곳·30초마다
   const refresh = async () => {
     const got = await Promise.all(Favorites.stops.items.map(async (s) => {
-      const a = await B.arrivals(s);
-      if (a.state === "ok") st.first.set(s.id, { a: a.list[0] || null, at: a.at });
+      const a = await B.arrivals(s, { quickMs: QUICK_LOCAL_MS });
+      if (received(a)) st.first.set(s.id, { a: a.list[0] || null, at: a.at });
       else if (a.state === "unsupported") st.first.set(s.id, { a: null, at: a.at });
+      a.later?.then((b) => { if (alive && received(b)) { st.first.set(s.id, { a: b.list[0] || null, at: b.at }); if (!st.q.trim()) draw(); } });
       if (alive && !st.q.trim()) draw();
-      return a.state !== "failed";
+      return received(a) || a.state === "unsupported";
     }));
     return got.every(Boolean);
   };
