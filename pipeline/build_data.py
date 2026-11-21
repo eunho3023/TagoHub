@@ -1006,6 +1006,10 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     write_files(db, FILES_DIR)
     for rid, no, s, e in gbis_routes:
         db.execute("INSERT OR REPLACE INTO gbis_routes(id,no,start_name,end_name) VALUES(?,?,?,?)", ("GGB" + rid, no, s, e))
+    # 노선 없는 정류장 숨기기 + 같은 방면에 쪼개진 정류장 한 점으로 (stop_hidden·stop_spot 표, 앱·웹이 읽음)
+    import stop_spots
+    h, n, g = stop_spots.apply(db)
+    print(f"정류장 정리: 노선 없는 정류장 {h}곳 숨김, {n}곳을 {g}개 점으로 묶음", flush=True)
     db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES('version', ?)", (version,))
     db.commit()
     db.execute("VACUUM")

@@ -27,7 +27,8 @@ export function legacyId(id) {
   return id[3] === "3" ? "ICB1" + id.slice(4) : id[3] === "4" ? "ICB2" + id.slice(4) : id;
 }
 
-/** 조각 한 줄 → 정류장 {id, name, lat, lng, no, city, routes} */
+/** 조각 한 줄 → 정류장 {id, name, lat, lng, no, city, routes, spot}.
+ * spot: 한 점으로 묶인 정류장의 대표 id (pipeline/stop_spots.py — 같은 방면에 시군마다 쪼개진 정류장), 혼자면 null, 옛 자료면 undefined */
 function stopOf(a) {
   if (!Array.isArray(a) || a[0] == null) return null;
   let lat = num(a[2]), lng = num(a[3]);
@@ -35,7 +36,8 @@ function stopOf(a) {
   const fix = Edits.stopFix(String(a[0]));
   if (fix) { lat = fix[0]; lng = fix[1]; }
   if (lat == null || lng == null) return null;
-  return { id: String(a[0]), name: String(a[1] ?? ""), lat, lng, no: str(a[4]) && a[4] !== "null" ? String(a[4]) : null, city: String(a[5] ?? ""), routes: (a[6] || []).map(String) };
+  return { id: String(a[0]), name: String(a[1] ?? ""), lat, lng, no: str(a[4]) && a[4] !== "null" ? String(a[4]) : null, city: String(a[5] ?? ""), routes: (a[6] || []).map(String),
+    spot: a.length > 7 ? (a[7] == null ? null : String(a[7])) : undefined };
 }
 const parseStops = (rows) => (Array.isArray(rows) ? rows.map(stopOf).filter(Boolean) : []);
 
@@ -89,8 +91,17 @@ export function spotGroups(stops) {
     const a = at.get(legacyId(k));
     for (const o of v) { if (apart.has(legacyId(String(o)))) continue; const b = at.get(legacyId(String(o))); if (a != null && b != null) join(a, b); }
   }
-  // 2) 가까운 짝부터. 합칠 두 묶음에 같은 시군이 있으면 안 합침
-  for (const [a, b] of edges) {
+  // 2) 자료에 미리 묶어 둔 점 (방면까지 본 묶음, pipeline/stop_spots.py — 폰 앱 StopMerge 와 같음). 있으면 거리 규칙은 안 씀
+  const pre = list.some((x) => x.spot !== undefined);
+  if (pre) {
+    const first = new Map();
+    list.forEach((x, i) => {
+      if (!x.spot || apart.has(legacyId(x.id))) return;
+      if (first.has(x.spot)) join(first.get(x.spot), i); else first.set(x.spot, i);
+    });
+  }
+  // 3) (옛 자료) 가까운 짝부터. 합칠 두 묶음에 같은 시군이 있으면 안 합침
+  for (const [a, b] of pre ? [] : edges) {
     if (apart.has(legacyId(list[a].id)) || apart.has(legacyId(list[b].id))) continue;
     const ra = root(a), rb = root(b);
     if (ra === rb || [...cities[ra]].some((c) => cities[rb].has(c))) continue;
@@ -135,8 +146,11 @@ export async function stopsIn(s, w, n, e, limit = 400) {
   const inView = all.filter((x) => x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e &&
     (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("TSB") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
   // 같은 자리의 다른 시군 정류장은 점 하나로. 대표는 그 지역 시내버스 정류장(교통안전공단 TS… 아닌 것) — 폰 앱과 같게
-  const mainOf = (g) => [...g].sort((x, y) => (localStop(y) - localStop(x)) || byRoutes(x, y))[0];
-  return mergeSameSpot(spotGroups(inView).map(mainOf)).slice(0, limit);
+  // 미리 묶은 자료면 그 대표(점 자리), 방면이 다른 길 건너 정류장은 이름이 같아도 따로 둠
+  const isMain = (x) => (x.spot && x.spot === x.id ? 1 : 0);
+  const mainOf = (g) => [...g].sort((x, y) => (isMain(y) - isMain(x)) || (localStop(y) - localStop(x)) || byRoutes(x, y))[0];
+  const mains = spotGroups(inView).map(mainOf);
+  return (inView.some((x) => x.spot !== undefined) ? mains : mergeSameSpot(mains)).slice(0, limit);
 }
 
 /** 자료 조각의 원래 좌표 (손으로 고친 것 적용 전). 못 찾으면 null */

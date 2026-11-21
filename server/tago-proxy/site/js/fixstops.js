@@ -42,7 +42,7 @@ export function fixStopsScreen(root, p, ctx) {
     for (const s of stops) {
       const at = posOf(s), on = sel && sel.id === s.id, moved = moves.has(s.id), pick = joinPick.has(s.id);
       const tw = towardText(s), near = MapView.zoom() >= TOWARD_ZOOM;
-      dots.push({ id: s.id, lat: at[0], lng: at[1], color: on ? "#D7262E" : pick ? "#16A34A" : moved ? "#E08A00" : "#2563eb", ring: "#fff", r: on || pick ? 9 : 6,
+      dots.push({ id: s.id, lat: at[0], lng: at[1], color: on ? "#D7262E" : pick ? "#16A34A" : moved ? "#E08A00" : "#2F7CF6", ring: "#fff", r: on || pick ? 11 : 8, bus: true,
         label: on || pick ? s.name + (tw ? " · " + tw : "") : near && tw ? "→ " + toward.get(s.id) : null, labelUp: on || pick });
     }
     MapView.lines(lines);

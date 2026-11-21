@@ -18,13 +18,35 @@ import java.io.File
  */
 class StopDb private constructor(private val db: SQLiteDatabase) {
 
+    /** 정류장 정리 표가 있는 데이터인지 (pipeline/stop_spots.py: stop_hidden·stop_spot, 웹과 같은 규칙) */
+    private val cleaned: Boolean = runCatching {
+        db.rawQuery("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('stop_hidden', 'stop_spot')", null)
+            .use { it.moveToFirst() && it.getInt(0) == 2 }
+    }.getOrDefault(false)
+
+    /** 노선이 하나도 안 서는 정류장(폐지·미사용)은 지도·검색에서 뺌 */
+    private val notHidden: String get() = if (cleaned) " AND id NOT IN (SELECT id FROM stop_hidden)" else ""
+
+    /** 같은 방면에 시군마다 쪼개진 정류장을 한 점으로 미리 묶은 것: 정류장 id → 대표 id. 옛 데이터면 null */
+    val spots: Map<String, String>? by lazy {
+        if (!cleaned) null else HashMap<String, String>().also { m ->
+            runCatching { query("SELECT id, spot FROM stop_spot", emptyArray()) { m[TagoIds.current(it.getString(0))] = TagoIds.current(it.getString(1)) } }
+        }
+    }
+
+    private val knownIds = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    /** 이 데이터에 있는 정류장인지 (TAGO 주변 정류장 등 데이터 밖 정류장 가리기) */
+    fun has(id: String): Boolean = knownIds.getOrPut(id) {
+        query("SELECT 1 FROM stops WHERE id = ? LIMIT 1", arrayOf(TagoIds.legacy(id))) { true }.isNotEmpty()
+    }
+
     /** 화면 범위 안의 정류장. 중심에서 가까운 순으로 최대 limit 개 */
     fun inBox(south: Double, west: Double, north: Double, east: Double, limit: Int = 800): List<BusStop> {
         val cLat = (south + north) / 2
         val cLng = (west + east) / 2
         return query(
             """SELECT id, name, lat, lng, no, city FROM stops
-               WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?
+               WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?$notHidden
                ORDER BY (lat - ?) * (lat - ?) + (lng - ?) * (lng - ?) LIMIT $limit""",
             arrayOf(south, north, west, east, cLat, cLat, cLng, cLng).map { it.toString() }.toTypedArray(),
         ) { it.toStop() }
@@ -36,7 +58,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         if (k.isEmpty()) return emptyList()
         return query(
             """SELECT id, name, lat, lng, no, city FROM stops
-               WHERE replace(name, ' ', '') LIKE ? OR no = ?
+               WHERE (replace(name, ' ', '') LIKE ? OR no = ?)$notHidden
                ORDER BY (replace(name, ' ', '') = ?) DESC, (no = ?) DESC, length(name), name
                LIMIT $limit""",
             arrayOf("%$k%", k, k, k),
@@ -60,7 +82,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         if (names.isEmpty()) return emptyList()
         return query(
             """SELECT id, name, lat, lng, no, city FROM stops
-               WHERE replace(name, ' ', '') IN (${names.joinToString(",") { "?" }})
+               WHERE replace(name, ' ', '') IN (${names.joinToString(",") { "?" }})$notHidden
                ORDER BY length(name), name LIMIT $limit""",
             names.toTypedArray(),
         ) { it.toStop() }
@@ -340,6 +362,12 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         )
     }
 
+    /** 같은 자리 묶기([StopMerge])가 이 데이터의 미리 묶은 점을 쓰게 */
+    private fun useForMerge() {
+        StopMerge.spots = spots
+        StopMerge.known = if (spots != null) ({ id: String -> has(id) }) else null
+    }
+
     /** 새 데이터로 바뀌어 이 DB 가 이미 닫혔으면(옛 참조를 들고 있던 곳) 지금 열린 DB 로 다시 물음 */
     private fun <T> query(sql: String, args: Array<String>, map: (Cursor) -> T): List<T> = try {
         db.rawQuery(sql, args).use { c ->
@@ -364,7 +392,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
             instance?.let { return it }
             return withContext(Dispatchers.IO) {
                 synchronized(this@Companion) {
-                    instance ?: open(ctx.applicationContext)?.also { instance = it }
+                    instance ?: open(ctx.applicationContext)?.also { instance = it; it.useForMerge() }
                 }
             }
         }
@@ -386,6 +414,7 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
                 old = instance
                 instance = open(ctx.applicationContext)
             }
+            instance?.useForMerge()
             if (old != null && old !== instance) {
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ runCatching { old.db.close() } }, 60_000)
             }

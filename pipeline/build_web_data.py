@@ -1,7 +1,8 @@
 """정류장·노선 DB 를 서버(Cloudflare Workers 정적 파일)에 올릴 작은 JSON 조각으로 나누기.
 
 웹·PC 버전이 120MB DB 를 통째로 받지 않고 필요한 조각만 받게 한다 (무료 요금제: 파일 하나 25MB, 2만 개까지).
-  tiles/{위도*10}_{경도*10}.json : 그 0.1도 칸의 정류장 [id, 이름, 위도, 경도, 번호, 시군, [지나는 노선 id...]]
+  tiles/{위도*10}_{경도*10}.json : 그 0.1도 칸의 정류장 [id, 이름, 위도, 경도, 번호, 시군, [지나는 노선 id...], 한 점 대표 id|null]
+                                  노선이 하나도 안 서는 정류장은 뺌. 같은 방면에 쪼개진 정류장은 대표 id 가 같음 (pipeline/stop_spots.py)
   names/{첫 글자 코드}.json      : 이름의 낱말(점·공백으로 나눔)이 그 글자로 시작하는 정류장 (검색용, 칸 파일과 같은 모양).
                                   노선 자료가 있는 지역에서 노선이 하나도 안 서는 정류장(폐지·미사용)은 뺌 (칸 파일에는 남김)
   routesum/{0~1023}.json        : 노선 요약 {노선 id: [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]} (정류장 화면 첫 표시용, 작음)
@@ -18,6 +19,9 @@
 """
 import argparse, gzip, json, pathlib, re, shutil, sqlite3, sys, tempfile, time, urllib.request
 from collections import defaultdict
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import stop_spots  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "app/src/main/assets"
@@ -140,9 +144,18 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
     tiles, names = defaultdict(list), defaultdict(list)
     stops = db.execute("SELECT id, name, lat, lng, no, city FROM stops").fetchall()
     covered = route_coverage(stops, stop_routes)
+    # 정류장 정리 (노선 없는 정류장·한 점으로 묶기): DB 에 표가 있으면 그것, 없으면(옛 DB) 여기서 계산
+    if {"stop_hidden", "stop_spot"} <= tables:
+        gone = {r[0] for r in db.execute("SELECT id FROM stop_hidden")}
+        spot = dict(db.execute("SELECT id, spot FROM stop_spot").fetchall())
+    else:
+        gone, spot = stop_spots.compute(db)
     hidden = 0
     for sid, name, lat, lng, no, city in stops:
-        row = [sid, name, round(lat, 6), round(lng, 6), no, city, sorted(stop_routes.get(sid, []))]
+        if sid in gone:
+            hidden += 1
+            continue
+        row = [sid, name, round(lat, 6), round(lng, 6), no, city, sorted(stop_routes.get(sid, [])), spot.get(sid)]
         tiles[tile(lat, lng)].append(row)
         if closed(sid, stop_routes, covered):
             hidden += 1
@@ -201,6 +214,7 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
     version = dict(db.execute("SELECT k, v FROM meta").fetchall()).get("version") if "meta" in tables else None
     db.close()
     manifest = {"built": int(time.time()), "dbVersion": version, "tiles": len(tiles), "names": len(names), "hiddenStops": hidden,
+                "spots": len(set(spot.values())),
                 "routeBuckets": len(groups), "files": copied, "buckets": BUCKETS}
     dump(out / "manifest.json", manifest)
     total = sum(1 for _ in out.rglob("*") if _.is_file())

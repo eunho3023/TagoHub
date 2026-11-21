@@ -27,6 +27,26 @@ class StopMergeTest {
     }
 
     @Test
+    fun precomputedSpots_replaceDistanceRule() {
+        // 데이터에 미리 묶은 점(pipeline/stop_spots.py)이 있으면 그것만: 1m 옆이라도 다른 점이면 따로, 멀어도 같은 점이면 하나
+        try {
+            StopMerge.spots = mapOf("JUB316100044" to "JUB316100044", "TSB311000313" to "JUB316100044")
+            StopMerge.known = { true }
+            val merged = StopMerge.merge(listOf(jeonjuByc, gimjeByc, jeonjuGwanchon, imsilGwanchon), preferCity = "35010")
+            assertEquals(3, merged.size)
+            assertEquals(listOf("TSB311000313"), merged.first { it.main.nodeId == "JUB316100044" }.others.map { it.nodeId })
+            assertTrue(merged.any { it.main.nodeId == "JUB312100690" && it.others.isEmpty() })
+            // 데이터 밖 정류장(TAGO 주변 정류장 등)은 예전 거리 규칙
+            StopMerge.known = { it != "TSB316000445" }
+            val m2 = StopMerge.merge(listOf(jeonjuGwanchon, imsilGwanchon), preferCity = "35010")
+            assertEquals(1, m2.size)
+        } finally {
+            StopMerge.spots = null
+            StopMerge.known = null
+        }
+    }
+
+    @Test
     fun mainStop_followsCurrentRegion() {
         val m = StopMerge.merge(listOf(jeonjuByc, gimjeByc), preferCity = "35060").single()
         assertEquals("TSB311000313", m.main.nodeId)
