@@ -47,7 +47,18 @@ def test_same_city_crowded_merged_unless_same_route():
     assert "A" not in sp and "B" not in sp
 
 
+def test_same_number_leading_zero_merged():
+    # 서울 SEB "02001" 과 경기 버스 GGB "2001" (이름 다름, 같은 시군 11, 20m) → 하나. 번호가 다르면 따로
+    lat0 = 37.0
+    stops = [("P", "앞", lat0 - 400 * D, 127.0, None, "11"), ("S", "명동성당.남대문세무서", lat0, 127.0, "02001", "11"),
+             ("G", "남대문세무서(중)", lat0 + 20 * D, 127.0, "2001", "11"), ("X", "다른곳", lat0 + 10 * D, 127.0, "02009", "11"),
+             ("N", "뒤", lat0 + 400 * D, 127.0, None, "11")]
+    h, sp = run(stops, {"R1": ["P", "S", "N"], "R2": ["P", "S", "N"], "R3": ["P", "G", "N"], "R4": ["P", "X", "N"]})
+    assert sp.get("S") == sp.get("G") == "S"
+    assert "X" not in sp
+
+
 if __name__ == "__main__":
-    for t in (test_no_route_hidden, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route):
+    for t in (test_no_route_hidden, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
