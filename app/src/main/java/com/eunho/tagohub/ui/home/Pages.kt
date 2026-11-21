@@ -188,8 +188,9 @@ fun MorePage(
                     }
                 }
 
-                // 관리자: 맞는 키를 넣은 기기에서만 지도 고치기(노선 모양·정류장·역 위치) 단추가 보임
-                com.eunho.tagohub.ui.common.SettingsGroup("관리자", "지도 고치기는 관리자만") {
+                // 관리자 칸: 관리자로 로그인했을 때만 (로그인 창의 "관리자로 로그인", 관리자 아이디면 키 없이 고칠 수 있음)
+                val adminOn by com.eunho.tagohub.data.MapEdits.admin.collectAsStateWithLifecycle()
+                if (adminOn) com.eunho.tagohub.ui.common.SettingsGroup("관리자", "지도 고치기") {
                     com.eunho.tagohub.ui.map.AdminKeyRow(onMapFix)
                 }
 
