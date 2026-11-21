@@ -53,12 +53,13 @@ export function render(root, _p, ctx) {
       return;
     }
     const favStops = Favorites.stops.items, favSt = Favorites.stations.items, rec = Recent.places.items;
-    const home = HomeWork.home, work = HomeWork.work;
+    const home = HomeWork.home, work = HomeWork.work, school = HomeWork.school;
     const tile = (label, ic, run) => `<button class="tile" ${act(run)}><span class="tile-ic">${icon(ic, 26)}</span><span>${label}</span></button>`;
     body.innerHTML = `${liveSection()}
       <div class="tiles">
         ${tile("집", "home", () => (home ? startDirections(home) : go("navi")))}
         ${tile("회사", "work", () => (work ? startDirections(work) : go("navi")))}
+        ${tile("학교", "school", () => (school ? startDirections(school) : go("navi")))}
         ${tile("즐겨찾기", "star", () => body.querySelector("#fav")?.scrollIntoView({ behavior: "smooth" }))}
         ${tile("최근", "clock", () => body.querySelector("#rec")?.scrollIntoView({ behavior: "smooth" }))}
       </div>

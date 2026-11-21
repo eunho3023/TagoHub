@@ -154,7 +154,16 @@ test("웹 카카오: 장소 찾기·길찾기만, 좌표는 소수 5자리", () 
   assert.equal(kakaoWebRequest("/w/kakao/transit", "?sx=126.97068121721812&sy=37.5546788388674&ex=127.0276&ey=37.4979").url,
     "https://dapi.kakao.com/v2/routing/publictraffic?start_x=126.97068&start_y=37.55468&end_x=127.02760&end_y=37.49790");
   assert.equal(kakaoWebRequest("/w/kakao/transit", "?sx=1e9&sy=36&ex=127&ey=36"), null);
-  assert.equal(kakaoWebRequest("/w/kakao/walk", "?sx=1&sy=1&ex=1&ey=1"), null);
+  assert.equal(kakaoWebRequest("/w/kakao/boat", "?sx=1&sy=1&ex=1&ey=1"), null);
+  // 도보·자전거·자동차 (경유지 5곳까지, 좌표 아닌 값은 막음)
+  assert.equal(kakaoWebRequest("/w/kakao/walk", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2").url,
+    "https://dapi.kakao.com/v2/routing/walk?start_x=127.10000&start_y=36.10000&end_x=127.20000&end_y=36.20000");
+  assert.equal(kakaoWebRequest("/w/kakao/bicycle", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2").url.split("?")[0], "https://dapi.kakao.com/v2/routing/bicycle");
+  const c = kakaoWebRequest("/w/kakao/car", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2&via=127.15,36.15|127.17,36.17");
+  assert.ok(c.url.startsWith("https://apis-navi.kakaomobility.com/v1/directions?origin=127.10000,36.10000&destination=127.20000,36.20000&waypoints=127.15000,36.15000%7C127.17000,36.17000&priority=RECOMMEND"));
+  assert.equal(c.ttl, 60);
+  assert.equal(kakaoWebRequest("/w/kakao/car", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2&via=" + Array(6).fill("127.1,36.1").join("|")), null);
+  assert.equal(kakaoWebRequest("/w/kakao/car", "?sx=127.1&sy=36.1&ex=127.2&ey=36.2&via=evil"), null);
 });
 
 import { kacWebRequest } from "../src/proxy.js";
