@@ -43,6 +43,7 @@ small { display: block; color: var(--muted); font-size: 13px; }
     -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
   .map-slot { display: none !important; }
   #side .side-card { left: 470px; }
+  #side .editbanner { left: 510px; transform: none; max-width: calc(100% - 580px); }
   #side .leaflet-left { left: 462px; }
 }
 #splash { margin: auto; text-align: center; color: var(--muted); }
@@ -278,3 +279,20 @@ textarea:focus { border-color: var(--primary); }
 .authinfo { margin: 0; color: var(--primary); font-size: 13px; }
 .autherr { margin: 0; color: var(--soon); font-size: 13px; }
 @media (min-width: 860px) { .authform { max-width: 460px; margin: 0 auto; width: 100%; } }
+
+/* 지도 고치기 중 표시 (설정 → 관리자 → 지도 고치기 시작) */
+.editbanner { position: absolute; left: 50%; transform: translateX(-50%); top: 10px; z-index: 640; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 120px);
+  background: var(--surface); color: var(--text); border: 2px solid #E08A00; border-radius: 14px; padding: 6px 10px; font-size: 13px; box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+.editbanner span { color: var(--muted); }
+.editbanner .link { padding: 4px 6px; white-space: nowrap; }
+@media (max-width: 520px) { .editbanner span { display: none; } }
+
+/* 지도 종류·레이어 고르기 창 (topis.js, 레이어 단추 옆) */
+.layermenu { position: absolute; right: 62px; top: 62px; z-index: 650; width: 230px; max-height: calc(100% - 80px); overflow: auto; background: var(--surface); color: var(--text);
+  border-radius: 14px; padding: 10px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.2); font-size: 14px; }
+.home-map .layermenu { top: 86px; }
+.layermenu > b { display: block; font-size: 12px; color: var(--muted); margin: 6px 0 4px; }
+.layermenu .seg { margin: 0 0 4px; }
+.layerrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
+.layerrow input { width: 18px; height: 18px; accent-color: var(--primary); flex: none; }
+.layerrow small { display: block; color: var(--muted); font-size: 11px; }

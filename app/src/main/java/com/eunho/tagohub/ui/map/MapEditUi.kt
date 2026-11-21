@@ -67,7 +67,7 @@ internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
             Text("지도 고치기 · 정류장 위치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 if (s.joining) "「${s.sel?.name}」과(와) 한 정류장으로 묶을 정류장을 지도에서 누르세요 (다시 누르면 빠져요)."
-                else s.sel?.let { "「${it.name}」 고름 → 지도에서 새 위치를 누르면 옮겨져요." }
+                else s.sel?.let { "「${it.name}」${s.toward?.let { t -> " ($t 방면)" } ?: ""} 고름 → 지도에서 새 위치를 누르면 옮겨져요." }
                     ?: "지도를 확대하면 정류장이 모두 보여요. 정류장을 누르고 → 새 위치를 누르면 옮겨지고, 여러 곳을 옮긴 뒤 한 번에 저장해요.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -109,6 +109,18 @@ internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
     }
 }
 
+/** 지도 고치기 중 막대 (설정 → 관리자 → 지도 고치기 시작). 정류장·노선·역 패널의 고치기 단추는 이때만 보임 */
+@Composable
+internal fun EditSessionBar(vm: MapViewModel) {
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 3.dp, shadowElevation = 6.dp) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("✏️ 지도 고치기 중", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { vm.startStopFixMode() }) { Text("정류장 한꺼번에") }
+            TextButton(onClick = { com.eunho.tagohub.data.MapEdits.editing.value = false }) { Text("끝내기") }
+        }
+    }
+}
+
 /** 패널 안 "고치기" 단추 줄 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -132,13 +144,21 @@ fun AdminKeyRow(onOpenFix: (() -> Unit)? = null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("관리자 모드 켜짐", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                    Text("노선·정류장·역 화면에서 지도 고치기를 할 수 있어요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("지도 고치기를 시작하면 정류장·노선·역 화면에서 고칠 수 있어요", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 // 예전에 넣은 관리자 키가 있을 때만 (관리자 아이디 로그인은 로그아웃으로 끔)
                 if (com.eunho.tagohub.data.MapEdits.adminKeySet()) TextButton(onClick = { scope.launch { com.eunho.tagohub.data.MapEdits.setAdminKey(context, ""); msg = "관리자 키를 지웠어요" } }) { Text("키 지우기") }
             }
-            // 지도에서 정류장 위치를 한꺼번에 고치는 창
-            if (onOpenFix != null) Button(onClick = onOpenFix, modifier = Modifier.padding(top = 6.dp)) { Text("지도 고치기 열기") }
+            // 지도 고치기는 여기서만 시작 (켜져 있는 동안 정류장·노선·역 패널에 고치기 단추)
+            val editOn by com.eunho.tagohub.data.MapEdits.editing.collectAsStateWithLifecycle()
+            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!editOn) Button(onClick = { com.eunho.tagohub.data.MapEdits.editing.value = true; onOpenFix?.invoke() }) { Text("지도 고치기 시작") }
+                else {
+                    Text("지도 고치기 중", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                    if (onOpenFix != null) TextButton(onClick = onOpenFix) { Text("지도 열기") }
+                    TextButton(onClick = { com.eunho.tagohub.data.MapEdits.editing.value = false }) { Text("끝내기") }
+                }
+            }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(

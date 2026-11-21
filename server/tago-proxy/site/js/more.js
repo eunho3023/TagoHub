@@ -54,12 +54,17 @@ export function settings(root) {
   const accountHtml = () => {
     const a = Account.current();
     return sectionHead("계정") + (a
-      ? `<div class="list"><div class="row"><span class="grow"><b>아이디: ${esc(a.username)}${a.dev ? " · 개발자" : ""}</b><small>${a.dev ? "노선·정류장 화면에서 지도 고치기를 할 수 있어요" : "폰 앱과 같은 아이디로 로그인했어요"}</small></span>${a.dev ? `<button class="link" ${act(() => go("fixstops"))}>지도 고치기</button>` : ""}<button class="link" ${act(() => { Account.logout(); draw(); })}>로그아웃</button></div></div>`
+      ? `<div class="list"><div class="row"><span class="grow"><b>아이디: ${esc(a.username)}${a.dev ? " · 관리자" : ""}</b><small>폰 앱과 같은 아이디로 로그인했어요</small></span><button class="link" ${act(() => { Account.logout(); Edits.setEditing(false); draw(); })}>로그아웃</button></div></div>`
       : `<div class="list"><button class="row" ${act(() => go("login"))}><span class="grow"><b>아이디로 로그인·회원가입</b><small>폰 앱과 같은 아이디를 써요</small></span></button></div>`);
   };
   // 관리자 칸: 관리자로 로그인했을 때만 (관리자 아이디 로그인이면 키 없이 고칠 수 있음. 예전에 넣은 관리자 키가 있으면 끄기)
+  // 지도 고치기는 여기서만 시작 (켜져 있는 동안 지도 점·정류장·노선 화면에 고치기 단추)
   const adminHtml = () => (!Edits.isAdmin() ? "" : sectionHead("관리자") +
-    `<div class="list"><div class="row"><span class="grow"><b>관리자 모드 켜짐</b><small>노선·정류장·역·자전거·주차장·편의시설 점에서 지도 고치기를 할 수 있어요</small></span><button class="link" ${act(() => go("fixstops"))}>지도 고치기 열기</button>${Edits.hasAdminKey() ? `<button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 키를 지웠어요"; draw(); })}>키 지우기</button>` : ""}</div></div>` +
+    `<div class="list"><div class="row"><span class="grow"><b>지도 고치기${Edits.editing() ? " 중" : ""}</b><small>${Edits.editing() ? "지도에서 정류장·역·자전거·주차장·편의시설 점을 누르면 위치를, 노선 화면에서 모양을 고쳐요" : "시작하면 지도에서 점을 눌러 위치를 고칠 수 있어요"}</small></span>` +
+    (Edits.editing()
+      ? `<button class="link" ${act(() => go("fixstops"))}>정류장 한꺼번에</button><button class="link" ${act(() => { Edits.setEditing(false); draw(); })}>끝내기</button>`
+      : `<button class="btn" ${act(() => { Edits.setEditing(true); go("map"); })}>지도 고치기 시작</button>`) +
+    `${Edits.hasAdminKey() ? `<button class="link" ${act(async () => { await Edits.setAdminKey(""); adminMsg = "관리자 키를 지웠어요"; draw(); })}>키 지우기</button>` : ""}</div></div>` +
     (adminMsg ? note(adminMsg) : ""));
   const draw = () => {
     root.innerHTML = header("설정") + sectionHead("화면 모드") +

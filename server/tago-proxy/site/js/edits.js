@@ -11,6 +11,14 @@ const ADMIN_KEY = "tagohub.adminKey";
 export function adminKey() { try { return localStorage.getItem(ADMIN_KEY) || ""; } catch (e) { return ""; } }
 /** 관리자 키를 넣었거나 개발자 아이디로 로그인한 브라우저인지 (고치기 단추를 보일지) */
 export const isAdmin = () => adminKey().length >= 16 || Account.isDev();
+// 지도 고치기 중: 설정 → 관리자 → "지도 고치기 시작" 으로만 켬 (이 창에서만, 닫으면 꺼짐).
+// 켜져 있을 때만 지도 카드·정류장·노선 화면에 고치기 단추가 보이고 지도 위에 "지도 고치기 중" 표시
+const EDITING = "tagohub.editing";
+export function editing() { try { return isAdmin() && sessionStorage.getItem(EDITING) === "1"; } catch (e) { return false; } }
+export function setEditing(on) {
+  try { if (on) sessionStorage.setItem(EDITING, "1"); else sessionStorage.removeItem(EDITING); } catch (e) { /* 못 씀 */ }
+  notify();
+}
 /** 관리자 키를 넣은 브라우저인지 (설정의 관리자 키 칸) */
 export const hasAdminKey = () => adminKey().length >= 16;
 /** 키 저장 전 서버에 맞는지 물어봄 → true/false (빈 글자면 지우고 false) */

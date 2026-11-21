@@ -312,7 +312,7 @@ private fun AccountRow() {
     val me by com.eunho.tagohub.data.IdAccount.me.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxWidth().padding(14.dp)) {
         me.username?.let {
-            Text("아이디: $it" + if (me.dev) " · 개발자" else "", style = MaterialTheme.typography.titleSmall)
+            Text("아이디: $it" + if (me.dev) " · 관리자" else "", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
         }
         Text(
