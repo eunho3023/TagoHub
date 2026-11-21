@@ -9,6 +9,8 @@
   1) 다른 시군(지역번호), 이름이 같고, 같은 방면, MAX_M 안        — 시군마다 따로 등록돼 쪼개진 같은 정류장
   2) 다른 시군, 30m 안(이름이 같으면 60m 안), 반대 방면이 아님     — 예전 규칙 (같은 자리 다른 시군 정류장)
   3) 같은 시군, 이름이 같고, 같은 방면, 30m 안                    — 한 정류장이 번호만 달리 여러 개로 몰려 있는 것
+  4) 정류장 번호가 앞의 0만 다르고(02001 = 2001) 100m 안, 반대 방면 아님 — 같은 정류장이 서울(SEB)·경기 버스(GGB)
+     자료에 이름만 달리 따로 있는 것 (예: 명동성당.남대문세무서 02001 = 남대문세무서(중) 2001)
 대표: 노선이 가장 많은 것 (같으면 교통안전공단 TS… 아닌 것, 번호 있는 것). 점은 대표 정류장 자리에 찍힘.
 
 실행: python pipeline/stop_spots.py <bus_stops.db>   (build_data.py 가 DB 를 만들 때 부름)
@@ -23,6 +25,7 @@ CROWD_M = 30.0       # 3) 같은 시군, 같은 이름·같은 방면으로 몰�
 SAME_DIR = 60.0      # 이 각도(도) 안이면 같은 방면
 OPPOSITE = 100.0     # 이 각도보다 벌어지면 반대 방면 (길 건너편)
 CROWD_DIR = 45.0     # 3) 은 더 엄격하게
+SAME_NO_M = 100.0    # 4) 번호가 같은 것 (앞의 0 빼고)
 MIN_SURE = 0.35      # 노선들 방향을 더한 길이 / 노선 수 가 이보다 작으면 방면 모름
 M_LAT = 111_000.0
 
@@ -85,6 +88,7 @@ def spots(stops, served, head, routes=None):
     for i, s in enumerate(live):
         grid[(int(s[2] // CELL), int(s[3] // CELL))].append(i)
     keys = [name_key(s[1]) for s in live]
+    nos = [str(s[4]).strip().lstrip("0") if s[4] not in (None, "", "null") else "" for s in live]
     edges = []
     for i, a in enumerate(live):
         gx, gy = int(a[2] // CELL), int(a[3] // CELL)
@@ -106,6 +110,8 @@ def spots(stops, served, head, routes=None):
                              (d <= (SAME_NAME_M if same_name else RADIUS_M) and (ang is None or ang <= OPPOSITE))
                     else:
                         ok = same_name and d <= CROWD_M and ang is not None and ang <= CROWD_DIR
+                    if not ok and nos[i] and nos[i] == nos[j] and d <= SAME_NO_M and (ang is None or ang <= OPPOSITE):
+                        ok = True
                     if ok and not (routes.get(a[0], set()) & routes.get(b[0], set())):
                         edges.append((d, i, j))
     edges.sort()
@@ -147,7 +153,9 @@ def spots(stops, served, head, routes=None):
     for g in members.values():
         if len(g) < 2:
             continue
-        main = min(g, key=lambda k: (-served.get(live[k][0], 0), live[k][5].startswith("TS"), live[k][4] is None, live[k][0]))
+        # 경기 밖(서울·인천 등)에 있는 경기 버스 정류장(GGB, 시군 31… 아님)은 그 지역 정류장 이름이 대표가 되게 뒤로
+        main = min(g, key=lambda k: (live[k][0].startswith("GGB") and not str(live[k][5]).startswith("31"),
+                                     -served.get(live[k][0], 0), live[k][5].startswith("TS"), live[k][4] is None, live[k][0]))
         for k in g:
             spot[live[k][0]] = live[main][0]
     return hidden, spot
