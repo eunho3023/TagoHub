@@ -2,9 +2,9 @@
 
 웹·PC 버전이 120MB DB 를 통째로 받지 않고 필요한 조각만 받게 한다 (무료 요금제: 파일 하나 25MB, 2만 개까지).
   tiles/{위도*10}_{경도*10}.json : 그 0.1도 칸의 정류장 [id, 이름, 위도, 경도, 번호, 시군, [지나는 노선 id...], 한 점 대표 id|null]
-                                  노선이 하나도 안 서는 정류장은 뺌. 같은 방면에 쪼개진 정류장은 대표 id 가 같음 (pipeline/stop_spots.py)
+                                  숨길 정류장(노선이 하나도 안 서는 폐지·미사용, pipeline/stop_spots.py)은 뺌. 같은 방면에 쪼개진 정류장은 대표 id 가 같음
   names/{첫 글자 코드}.json      : 이름의 낱말(점·공백으로 나눔)이 그 글자로 시작하는 정류장 (검색용, 칸 파일과 같은 모양).
-                                  노선 자료가 있는 지역에서 노선이 하나도 안 서는 정류장(폐지·미사용)은 뺌 (칸 파일에는 남김)
+                                  칸 파일과 같이 숨길 정류장만 뺌
   routesum/{0~1023}.json        : 노선 요약 {노선 id: [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]} (정류장 화면 첫 표시용, 작음)
   routes/{0~1023}.json          : 노선 묶음 {노선 id: {no, start, end, city, region, rtype, realtime, info, stops}}
                                   묶음 번호 = FNV-1a 32비트(노선 id, UTF-8) % 1024 (앱 공용 코드 WebData.bucket 과 같게)
@@ -49,29 +49,6 @@ def words(name: str):
     for w in name.replace(".", " ").replace("(", " ").replace(")", " ").split():
         out.add(w[0])
     return out
-
-
-# 정류장 id 앞 영문자(지역)마다 노선 정류장 자료가 이만큼 넘게 있으면, 노선이 하나도 안 서는 정류장은 폐지·미사용으로 보고 검색에서 뺌.
-# (교통안전공단 TSB·제주 JEB·전주 JUB 처럼 노선 정류장 자료가 거의 없는 지역은 그대로 둠 — 폰 앱은 그 지역 API 로 확인)
-COVERAGE_MIN = 0.5
-
-
-def region(sid: str) -> str:
-    """정류장 id 앞의 영문자 (지역): DJB8001793 → DJB"""
-    return re.match(r"[A-Za-z]*", sid).group(0)
-
-
-def route_coverage(stops, stop_routes) -> set:
-    total, served = defaultdict(int), defaultdict(int)
-    for sid, *_ in stops:
-        total[region(sid)] += 1
-        if stop_routes.get(sid):
-            served[region(sid)] += 1
-    return {p for p, n in total.items() if served[p] / n > COVERAGE_MIN}
-
-
-def closed(sid, stop_routes, covered) -> bool:
-    return region(sid) in covered and not stop_routes.get(sid)
 
 
 def dump(path: pathlib.Path, obj):
@@ -143,7 +120,6 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
 
     tiles, names = defaultdict(list), defaultdict(list)
     stops = db.execute("SELECT id, name, lat, lng, no, city FROM stops").fetchall()
-    covered = route_coverage(stops, stop_routes)
     # 정류장 정리 (노선 없는 정류장·한 점으로 묶기): DB 에 표가 있으면 그것, 없으면(옛 DB) 여기서 계산
     if {"stop_hidden", "stop_spot"} <= tables:
         gone = {r[0] for r in db.execute("SELECT id FROM stop_hidden")}
@@ -157,9 +133,7 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
             continue
         row = [sid, name, round(lat, 6), round(lng, 6), no, city, sorted(stop_routes.get(sid, [])), spot.get(sid)]
         tiles[tile(lat, lng)].append(row)
-        if closed(sid, stop_routes, covered):
-            hidden += 1
-            continue
+        # 검색도 지도와 같게: 숨긴 정류장만 빼고 (예전 closed() 는 노선 자료가 덜 찬 경기 정류장까지 뺐음)
         for ch in words(name):
             names[f"{ord(ch):x}"].append(row)
     for k, rows in tiles.items():
