@@ -35,7 +35,7 @@ export function fixPointScreen(root, p, ctx) {
     if (msg) h += `<p class="note"><b>${esc(msg)}</b></p>`;
     h += `<div class="toolrow">${fixedNow() ? `<button class="link" ${act(() => reset())} ${busy ? "disabled" : ""}>원래 위치로</button>` : ""}<span class="grow"></span>` +
       (to ? `<button class="link" ${act(() => { to = null; msg = ""; drawAll(); })}>취소</button>` : "") +
-      `<button class="bar-act" ${act(() => saveIt())} ${busy || !to || !ids.length ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button></div>`;
+      `<button class="btn" ${act(() => saveIt())} ${busy || !to || !ids.length ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button></div>`;
     box.innerHTML = h;
   };
   const drawAll = () => { drawMap(); drawBar(); };

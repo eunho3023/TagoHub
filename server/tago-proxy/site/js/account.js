@@ -7,8 +7,12 @@ import { BASE } from "./core.js";
 const KEY = "tagohub.account";
 export const MIN_PASSWORD = 8;
 
+// 자동 로그인(기본): 브라우저에 남겨 다음에 열어도 로그인. 끄면 sessionStorage 에만 두어 창을 닫으면 로그아웃
 function load() {
-  try { const a = JSON.parse(localStorage.getItem(KEY) || "null"); return a && a.username && a.refreshToken ? a : null; } catch (e) { return null; }
+  for (const st of ["localStorage", "sessionStorage"]) {
+    try { const a = JSON.parse(window[st].getItem(KEY) || "null"); if (a && a.username && a.refreshToken) return a; } catch (e) { /* 못 읽음 */ }
+  }
+  return null;
 }
 let acc = load();
 const listeners = new Set();
@@ -16,7 +20,10 @@ const listeners = new Set();
 export function onChange(f) { listeners.add(f); return () => listeners.delete(f); }
 function save(a) {
   acc = a;
-  try { if (a) localStorage.setItem(KEY, JSON.stringify(a)); else localStorage.removeItem(KEY); } catch (e) { /* 저장 못 함 */ }
+  try {
+    localStorage.removeItem(KEY); sessionStorage.removeItem(KEY);
+    if (a) (a.remember === false ? sessionStorage : localStorage).setItem(KEY, JSON.stringify(a));
+  } catch (e) { /* 저장 못 함 */ }
   listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
 }
 
@@ -35,8 +42,12 @@ export async function post(op, body) {
 function expOf(tok) {
   try { return JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).exp * 1000; } catch (e) { return 0; }
 }
+/** 다음 로그인에 쓸 자동 로그인 (로그인 창 체크) */
+let rememberNext = true;
+export function setRemember(on) { rememberNext = !!on; }
+export const remembered = () => !acc || acc.remember !== false;
 function keep(j) {
-  save({ username: j.username, dev: !!j.dev, email: j.email || null, idToken: j.idToken, refreshToken: j.refreshToken, exp: expOf(j.idToken) });
+  save({ username: j.username, dev: !!j.dev, email: j.email || null, idToken: j.idToken, refreshToken: j.refreshToken, exp: expOf(j.idToken), remember: rememberNext });
 }
 
 /** 지금 쓸 수 있는 Firebase 토큰 (2분 안에 끝나면 새로 받음). 로그인 안 했거나 못 받으면 null */

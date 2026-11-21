@@ -98,6 +98,11 @@ class MainActivity : ComponentActivity() {
         com.eunho.tagohub.data.NightSettings.load(applicationContext)
         com.eunho.tagohub.data.VehicleSettings.load(applicationContext)
         com.eunho.tagohub.data.MapEdits.loadAdmin(applicationContext)
+        // 자동 로그인을 꺼 두었으면 앱을 새로 켤 때 로그아웃 (화면 돌리기 같은 다시 만들기는 빼고)
+        if (savedInstanceState == null && !com.eunho.tagohub.data.IdAccount.autoLogin(this) &&
+            runCatching { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null }.getOrDefault(false)) {
+            com.eunho.tagohub.data.CloudAccount.signOut(this)
+        }
         com.eunho.tagohub.data.IdAccount.init()
         takeEmailLink(intent)
         setContent { TagoTheme { MainScreen() } }

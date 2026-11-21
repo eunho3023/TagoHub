@@ -4,14 +4,14 @@ import { esc } from "./core.js";
 import { act, header } from "./ui.js";
 import { go } from "./nav.js";
 import * as Edits from "./edits.js";
-import { MIN_PASSWORD, NET, post, phoneOk, emailOk, current, logout, login, signUp, onChange, EMAIL_DOMAINS, joinEmail, usernameFree, normUsername } from "./account.js";
+import { MIN_PASSWORD, NET, post, phoneOk, emailOk, current, logout, login, signUp, onChange, EMAIL_DOMAINS, joinEmail, usernameFree, normUsername, setRemember } from "./account.js";
 
 // ── 화면 ──
 
 const TITLES = { login: "로그인", signup: "회원가입", findid: "아이디 찾기", reset: "비밀번호 찾기", admin: "관리자로 로그인" };
 // 입력값은 화면을 오가도 남김 (비밀번호는 화면을 바꾸면 지움)
 // 회원가입 이메일은 앞자리(emailId)와 뒷자리(emailDomain, 고르기·직접 넣기 emailCustom)로 나눠 받음
-const form = { emailId: "", emailDomain: "naver.com", emailCustom: "", username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
+const form = { autoLogin: true, emailId: "", emailDomain: "naver.com", emailCustom: "", username: "", password: "", confirm: "", email: "", phone: "", byPhone: true };
 
 export function loginScreen(root, p) {
   const page = TITLES[p.id] ? p.id : "login";
@@ -91,7 +91,8 @@ export function loginScreen(root, p) {
     if (page === "login") {
       return input("username", "아이디", "text", 'autocomplete="username" autocapitalize="none"') +
         input("password", "비밀번호", "password", 'autocomplete="current-password"') +
-        submit("로그인", () => doing(async () => { const m = await login(form.username, form.password); if (m) error = m; else done("로그인했어요"); })) +
+        `<label class="authcheck"><input type="checkbox" name="autoLogin" ${form.autoLogin ? "checked" : ""}> 자동 로그인</label>` +
+        submit("로그인", () => doing(async () => { setRemember(form.autoLogin); const m = await login(form.username, form.password); if (m) error = m; else done("로그인했어요"); })) +
         `<div class="authlinks"><button class="link" ${act(() => go("login", "findid"))}>아이디 찾기</button><button class="link" ${act(() => go("login", "reset"))}>비밀번호 찾기</button><button class="link" ${act(() => go("login", "signup"))}>회원가입</button></div>` +
         adminLink();
     }
@@ -157,7 +158,7 @@ export function loginScreen(root, p) {
     const f = root.querySelector(".authform");
     f.addEventListener("input", (e) => {
       const n = e.target.name;
-      if (!(n in form)) return;
+      if (!(n in form) || e.target.type === "checkbox") return;
       form[n] = n === "username" && page !== "login" ? e.target.value.toLowerCase() : e.target.value;
       if (e.target.value !== form[n]) e.target.value = form[n];
       if (page === "signup") {
@@ -174,8 +175,10 @@ export function loginScreen(root, p) {
       // 찾기·확인 단추가 켜질지 바뀌는 경우만 다시 그림
       if (page === "reset" && n === "username") { const b = f.querySelector(".authbtn"); if (b) b.disabled = busy || !form.username.trim(); }
     });
-    // 이메일 뒷자리 고르기 (직접 입력이면 칸이 생김)
-    f.addEventListener("change", (e) => { if (e.target.name === "emailDomain") { form.emailDomain = e.target.value; draw(); if (!form.emailDomain) root.querySelector('input[name="emailCustom"]')?.focus(); } });
+    // 이메일 뒷자리 고르기 (직접 입력이면 칸이 생김), 자동 로그인 체크
+    f.addEventListener("change", (e) => {
+      if (e.target.name === "autoLogin") { form.autoLogin = e.target.checked; return; }
+      if (e.target.name === "emailDomain") { form.emailDomain = e.target.value; draw(); if (!form.emailDomain) root.querySelector('input[name="emailCustom"]')?.focus(); } });
     // 엔터 = 맨 아래 큰 단추
     f.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); f.querySelector(".authbtn")?.click(); } });
   }

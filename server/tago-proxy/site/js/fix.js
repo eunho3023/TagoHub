@@ -63,7 +63,7 @@ export function fixScreen(root, p, ctx) {
         ${kind === "bus" ? `<button class="link" ${act(() => { pts = E.passStops(E.simplify(orig, TOL_M), stops); sel = -1; msg = "자동으로 만든 모양으로 돌렸어요 (저장해야 반영돼요)"; drawAll(); })}>처음 모양으로</button>` : ""}
         ${hasEdit ? `<button class="link" ${act(() => reset())}>고친 것 지우기</button>` : ""}
         <button class="link" ${act(() => history.back())}>취소</button>
-        <button class="bar-act" ${act(() => save())} ${busy ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button>
+        <button class="btn" ${act(() => save())} ${busy ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button>
       </div>`;
   };
   const drawAll = () => { drawMap(); drawBar(); };

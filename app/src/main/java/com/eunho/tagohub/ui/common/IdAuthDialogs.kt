@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
@@ -126,6 +127,7 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
     var found by remember { mutableStateOf<List<String>?>(null) }
     val isAdmin by MapEdits.admin.collectAsStateWithLifecycle()
     var resetStep by rememberSaveable { mutableStateOf(0) }
+    var autoLogin by rememberSaveable { mutableStateOf(IdAccount.autoLogin(context)) }
     // 회원가입 이메일: 앞자리 + 뒷자리 고르기(직접 넣기). 앞 화면에서 넣은 이메일이 있으면 나눠 이어 씀
     var emailId by rememberSaveable { mutableStateOf("") }
     var emailDomain by rememberSaveable { mutableStateOf(EMAIL_DOMAINS.first()) }
@@ -176,6 +178,11 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                             OutlinedTextField(username, { username = it }, field, label = { Text("아이디") }, singleLine = true)
                             OutlinedTextField(password, { password = it }, field, label = { Text("비밀번호") }, singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwKeyboard)
+                            // 자동 로그인: 끄면 앱을 새로 켤 때 로그아웃
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = autoLogin, onCheckedChange = { autoLogin = it })
+                                Text("자동 로그인", fontSize = 14.sp)
+                            }
                         }
 
                         // 관리자 로그인: 관리자 아이디(서버 비밀 값 DEV_IDS)와 비밀번호. 관리자인지는 서버가 정함
@@ -317,7 +324,7 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                         IdPage.Login -> Button(modifier = field.height(52.dp), enabled = !busy && username.isNotBlank() && password.isNotEmpty(), onClick = {
                             run {
                                 val msg = IdAccount.login(context, username, password)
-                                if (msg == null) { toast("로그인했어요"); onDismiss() } else error = msg
+                                if (msg == null) { IdAccount.setAutoLogin(context, autoLogin); toast("로그인했어요"); onDismiss() } else error = msg
                             }
                         }) { Text(if (busy) "로그인 중…" else "로그인") }
 

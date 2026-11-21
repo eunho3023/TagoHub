@@ -69,7 +69,7 @@ export function fixStopsScreen(root, p, ctx) {
       if (msg) j += `<p class="note"><b>${esc(msg)}</b></p>`;
       j += `<div class="toolrow"><span class="grow"></span>
         <button class="link" ${act(() => { joining = false; joinPick.clear(); drawAll(); })}>취소</button>
-        <button class="bar-act" ${act(() => saveJoin())} ${busy || !joinPick.size ? "disabled" : ""}>${busy ? "저장 중..." : `묶기 저장 (${joinPick.size}곳)`}</button></div>`;
+        <button class="btn" ${act(() => saveJoin())} ${busy || !joinPick.size ? "disabled" : ""}>${busy ? "저장 중..." : `묶기 저장 (${joinPick.size}곳)`}</button></div>`;
       box.innerHTML = j;
       return;
     }
@@ -91,7 +91,7 @@ export function fixStopsScreen(root, p, ctx) {
     }
     h += `<div class="toolrow"><span class="grow muted">${moves.size ? `${moves.size}곳 옮김 (저장 전)` : ""}</span>
       ${moves.size ? `<button class="link" ${act(() => { moves.clear(); sel = null; drawAll(); })}>모두 취소</button>` : ""}
-      <button class="bar-act" ${act(() => saveAll())} ${busy || !moves.size ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button></div>`;
+      <button class="btn" ${act(() => saveAll())} ${busy || !moves.size ? "disabled" : ""}>${busy ? "저장 중..." : "저장"}</button></div>`;
     box.innerHTML = h;
   };
   const drawAll = () => { drawMap(); drawBar(); };
