@@ -143,8 +143,10 @@ export async function stopsIn(s, w, n, e, limit = 400) {
   const all = (await Promise.all(names.map(tile))).flat();
   // 노선 목록이 없는 정류장은 빼되, 노선을 서버에 물어 채우는 지역은 남김: 교통안전공단(TSB… — 도시 코드가 TS… 인 곳도,
   // 익산 35030·진안 35320 처럼 숫자인 곳도 있음), 제주(JEB), 전주(JUB)
+  // 정리된 자료(pipeline/stop_spots.py, 칸 줄에 대표 id 칸이 있음)는 숨길 정류장이 이미 빠져 있어 그대로 (노선 자료가 덜 찬
+  // 경기·교통안전공단 정류장, 경기 버스가 서는 서울 정류장도 보이게 — 명동입구B 는 M4108 이 서는데 노선 자료에 없어 안 보였음)
   const inView = all.filter((x) => x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e &&
-    (x.routes.length || x.city.startsWith("TS") || x.id.startsWith("TSB") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
+    (x.spot !== undefined || x.routes.length || x.city.startsWith("TS") || x.id.startsWith("TSB") || x.id.startsWith("JEB") || x.id.startsWith("JUB")));
   // 같은 자리의 다른 시군 정류장은 점 하나로. 대표는 그 지역 시내버스 정류장(교통안전공단 TS… 아닌 것) — 폰 앱과 같게
   // 미리 묶은 자료면 그 대표(점 자리), 방면이 다른 길 건너 정류장은 이름이 같아도 따로 둠
   const isMain = (x) => (x.spot && x.spot === x.id ? 1 : 0);

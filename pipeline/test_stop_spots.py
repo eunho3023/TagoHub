@@ -24,6 +24,16 @@ def test_no_route_hidden():
     assert h == {"Z"} and sp == {}
 
 
+def test_keep_gyeonggi_and_twins_without_routes():
+    # 노선 자료가 덜 찬 경기(GGB)·교통안전공단(TSB) 정류장, 번호가 같은 경기 정류장이 옆에 있는 서울 정류장은 노선이 없어도 남김
+    stops = [("A", "가", 37.0, 127.0, "1", "11"), ("B", "나", 37.001, 127.0, "2", "11"),
+             ("GGB1", "명동입구B", 37.0100, 127.0, "2143", "11"), ("SEB1", "명동입구B", 37.0101, 127.0, "02143", "11"),
+             ("TSB1", "시골", 37.02, 127.0, "9", "TS1"), ("SEB2", "폐지", 37.03, 127.0, "02925", "11")]
+    h, sp = run(stops, {"R": ["A", "B"]})
+    assert h == {"SEB2"}
+    assert sp.get("GGB1") == sp.get("SEB1")   # 번호 같은 둘은 한 점
+
+
 def test_other_city_same_dir_far_merged_opposite_not():
     # 북쪽으로 가는 노선: 시군 11 의 "시장" 과 시군 22 의 "시장" 이 같은 방면 100m 떨어짐 → 하나로
     # 남쪽으로 가는 시군 22 의 "시장" (길 건너, 20m) → 따로
@@ -59,6 +69,6 @@ def test_same_number_leading_zero_merged():
 
 
 if __name__ == "__main__":
-    for t in (test_no_route_hidden, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged):
+    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

@@ -1,7 +1,8 @@
 """정류장 정리: 노선 없는 정류장 숨기기 + 같은 방면에 쪼개진 정류장을 한 점으로 묶기.
 
 정류장 DB(bus_stops.db)에 두 표를 만든다 (앱 StopDb·웹 build_web_data.py 가 읽음):
-  stop_hidden(id)      : 노선이 하나도 안 서는 정류장 → 지도·검색에서 뺌 (폐지·미사용)
+  stop_hidden(id)      : 노선이 하나도 안 서는 정류장 → 지도·검색에서 뺌 (폐지·미사용).
+                         노선 자료가 덜 찬 경기·교통안전공단 정류장, 경기 버스가 서는 서울·인천 정류장은 남김 ([unserved])
   stop_spot(id, spot)  : 한 점으로 묶인 정류장 → 대표 정류장 id (묶음에 하나뿐이면 넣지 않음)
 
 방면: 정류장을 지나는 노선마다 (앞 정류장 → 뒤 정류장) 방향을 더한 것. 노선마다 방향이 엇갈리면(종점 등) 모름.
@@ -26,6 +27,7 @@ SAME_DIR = 60.0      # 이 각도(도) 안이면 같은 방면
 OPPOSITE = 100.0     # 이 각도보다 벌어지면 반대 방면 (길 건너편)
 CROWD_DIR = 45.0     # 3) 은 더 엄격하게
 SAME_NO_M = 100.0    # 4) 번호가 같은 것 (앞의 0 빼고)
+KEEP = ("GGB", "TSB")  # 노선 자료가 덜 차 노선이 없어도 숨기지 않는 지역 (build_data.py PRUNE_KEEP)
 MIN_SURE = 0.35      # 노선들 방향을 더한 길이 / 노선 수 가 이보다 작으면 방면 모름
 M_LAT = 111_000.0
 
@@ -76,19 +78,46 @@ def headings(rows):
     return out
 
 
+def _num(n):
+    return str(n).strip().lstrip("0") if n not in (None, "", "null") else ""
+
+
+def unserved(stops, served):
+    """숨길 정류장: 노선이 하나도 안 서는 정류장 (폐지·미사용).
+    단 노선 자료가 덜 찬 곳은 남김 (build_data.py PRUNE_KEEP 과 같은 까닭):
+    - 경기(GGB): 경기 노선 중 정류장 순서가 있는 것이 2/3 쯤뿐 (2026-11: 6,848개 중 4,537개)
+    - 교통안전공단(TSB): 정류장 순서가 거의 없음
+    - 근처(100m)에 번호가 같은(앞의 0 빼고) 경기 버스 정류장이 있는 서울·인천 등 정류장: 경기 버스가 서는 곳
+      (예: 명동입구B 02143 = GGB 2143, M4108·4108 이 서는데 그 노선의 정류장 순서가 자료에 없었음)"""
+    cand = [s for s in stops if not served.get(s[0]) and s[2] is not None and s[3] is not None and not s[0].startswith(KEEP)]
+    CELL = SAME_NO_M / M_LAT
+    gg = defaultdict(list)
+    for s in stops:
+        if s[0].startswith("GGB") and s[2] is not None and s[3] is not None and _num(s[4]):
+            gg[(int(s[2] // CELL), int(s[3] // CELL))].append(s)
+    out = set()
+    for s in cand:
+        n, gx, gy = _num(s[4]), int(s[2] // CELL), int(s[3] // CELL)
+        twin = n and any(o[0] != s[0] and _num(o[4]) == n and meters(s[2], s[3], o[2], o[3]) <= SAME_NO_M
+                         for dx in (-1, 0, 1) for dy in (-1, 0, 1) for o in gg.get((gx + dx, gy + dy), ()))
+        if not twin:
+            out.add(s[0])
+    return out | {s[0] for s in stops if not served.get(s[0]) and (s[2] is None or s[3] is None)}
+
+
 def spots(stops, served, head, routes=None):
     """stops: [(id, 이름, 위도, 경도, 번호, 시군)], served: {id: 노선 수}, head: {id: 방향},
     routes: {id: 지나는 노선 id 집합} (같은 노선이 둘 다 지나면 차례로 서는 다른 정류장이라 안 묶음)
     → (숨길 id 집합, {id: 대표 id} — 둘 이상 묶인 것만)"""
     routes = routes or {}
-    hidden = {s[0] for s in stops if not served.get(s[0])}
+    hidden = unserved(stops, served)
     live = [s for s in stops if s[0] not in hidden and s[2] is not None and s[3] is not None]
     CELL = MAX_M / M_LAT
     grid = defaultdict(list)
     for i, s in enumerate(live):
         grid[(int(s[2] // CELL), int(s[3] // CELL))].append(i)
     keys = [name_key(s[1]) for s in live]
-    nos = [str(s[4]).strip().lstrip("0") if s[4] not in (None, "", "null") else "" for s in live]
+    nos = [_num(s[4]) for s in live]
     edges = []
     for i, a in enumerate(live):
         gx, gy = int(a[2] // CELL), int(a[3] // CELL)
