@@ -814,6 +814,25 @@ def prefix(sid):
     return sid[:i]
 
 
+def jeonju_urls(path, key=None):
+    """
+    전주시 버스 API 를 물을 주소들, 먼저 물을 것부터: 이 PC 에서 공공데이터포털에 바로(인증키가 있을 때), 그다음 중계 서버(하루 저장본).
+    예전엔 중계 서버만 썼는데, Cloudflare 가 공공데이터포털에 못 붙는 동안(2026-11-22, 522) 호출마다 20초 넘게 걸려
+    전주 노선 800번 남짓을 모으는 데 몇 시간이 걸렸음 (같은 때 이 PC 에서 바로 물으면 0.1초). path: "routes/<정류장 std>" · "stops/<노선 std>"
+    """
+    key = (os.environ.get("TAGO_SERVICE_KEY", "") if key is None else key).strip()
+    kind, _, i = path.partition("/")
+    out = []
+    if key and i.isdigit():
+        k = urllib.parse.quote(urllib.parse.unquote(key), safe="")
+        if kind == "routes":
+            out.append(f"https://apis.data.go.kr/4641000/busstop/general_busstop_common?stopStandardid={i}&stopStdid={i}&serviceKey={k}")
+        elif kind == "stops":
+            out.append(f"https://apis.data.go.kr/4641000/realtime/bus_location_bus_position_common?brtStdid={i}&serviceKey={k}")
+    out.append(f"{WEB_BASE}/w/bus/jeonju/{path}")
+    return out
+
+
 def fetch_jeonju_served(get=None):
     """
     전주: 노선마다 정류장 목록을 받아 지금 노선이 서는 정류장 {정류장 id: 지금 이름}, 다 받았는지, 노선 {노선 std: {"route": 노선 칸, "stops": [(순번, 정류장 std, 이름)]}}.
@@ -825,18 +844,20 @@ def fetch_jeonju_served(get=None):
     def fetch(path):
         for wait in (0, 3, 10):
             time.sleep(wait)
-            try:
-                # 이름표 없는 파이썬 기본 요청은 서버 앞단에서 403 으로 막힘
-                req = urllib.request.Request(f"{WEB_BASE}/w/bus/jeonju/{path}", headers={"User-Agent": "TagoHub-pipeline"})
-                with urllib.request.urlopen(req, timeout=30) as r:
-                    body = r.read().decode("utf-8")
-                # 한도 초과·키 오류 응답은 "노선 없음"이 아니라 실패 (예전엔 빈 목록으로 읽어 그 정류장을 노선 없는 곳으로 봤음)
-                if re.search(r"LIMITED_NUMBER_OF_SERVICE|SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|returnAuthMsg|<code[^>]*>(?!000)\d+</code>", body):
-                    limited[0] += "LIMITED" in body
-                    continue
-                return body
-            except Exception:
-                pass
+            # 이 PC 에서 전주시 API 에 바로 묻고, 안 되면 중계 서버로
+            for url in jeonju_urls(path):
+                try:
+                    # 이름표 없는 파이썬 기본 요청은 서버 앞단에서 403 으로 막힘
+                    req = urllib.request.Request(url, headers={"User-Agent": "TagoHub-pipeline", "Accept": "application/xml"})
+                    with urllib.request.urlopen(req, timeout=20) as r:
+                        body = r.read().decode("utf-8")
+                    # 한도 초과·키 오류 응답은 "노선 없음"이 아니라 실패 (예전엔 빈 목록으로 읽어 그 정류장을 노선 없는 곳으로 봤음)
+                    if re.search(r"LIMITED_NUMBER_OF_SERVICE|SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|returnAuthMsg|<code[^>]*>(?!000)\d+</code>", body):
+                        limited[0] += "LIMITED" in body
+                        continue
+                    return body
+                except Exception:
+                    pass
         return None
     limited = [0]
     get = get or fetch
