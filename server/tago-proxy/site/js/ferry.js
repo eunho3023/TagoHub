@@ -3,7 +3,7 @@
 import { getText, esc, seoulNow, addDays, ymd, onReturn, cachedText } from "./core.js";
 import { act, header, note } from "./ui.js";
 import { clock } from "./subway.js";
-import { dayRow, boxes, tripList, duration } from "./trips.js";
+import { dayRow, boxes, tripList, duration, RecentRoutes, recentRow } from "./trips.js";
 
 let dataP = null;
 /** {ports: Map(코드 → {code, name, sido}), lines: {키 → {name, fwd, rev, stops: [[코드, 정박]]}}, places: 고를 수 있는 항구} */
@@ -87,20 +87,22 @@ function trips(list, lines, dep, arr) {
   }).filter(Boolean).sort((a, b) => a.depMin - b.depMin);
 }
 
-const ferry = { dep: null, arr: null, tomorrow: false, editing: "dep", q: "" };
+const lastFerry = RecentRoutes.load("ferry")[0];
+const ferry = { dep: lastFerry?.dep || null, arr: lastFerry?.arr || null, tomorrow: false, editing: lastFerry ? null : "dep", q: "" };
 export function ferryScreen(root, chipsHtml) {
   let alive = true, list = null, failed = false, data = null;
   ferryData().then((d) => { data = d; if (alive) (ferry.editing ? draw() : load()); }).catch(() => { failed = true; draw(); });
   const load = async () => {
     list = null; failed = false; draw();
     if (!ferry.dep || !ferry.arr || !data) return;
+    RecentRoutes.add("ferry", ferry.dep, ferry.arr);
     const t = ferry.tomorrow ? addDays(seoulNow(), 1) : seoulNow();
     try { list = trips(await sailings(ymd(t)), data.lines, ferry.dep.code, ferry.arr.code); } catch (e) { failed = true; list = []; }
     draw();
   };
   function draw() {
     if (!alive) return;
-    const h = header("타볼까", "여객선 운항") + chipsHtml + `<div class="searchtop">${boxes(ferry, ferry.dep?.name || "항구 고르기", ferry.arr?.name || "항구 고르기", () => { if (!ferry.editing) load(); else draw(); })}${dayRow(ferry, load)}</div>`;
+    const h = header("타볼까", "여객선 운항") + chipsHtml + `<div class="searchtop">${boxes(ferry, ferry.dep?.name || "항구 고르기", ferry.arr?.name || "항구 고르기", () => { if (!ferry.editing) load(); else draw(); })}${dayRow(ferry, load)}${ferry.editing ? "" : recentRow("ferry", (x) => x.name, (r) => { ferry.dep = r.dep; ferry.arr = r.arr; load(); })}</div>`;
     if (ferry.editing) {
       if (!data) { root.innerHTML = h + note(failed ? "항구 목록을 받지 못했어요. 잠시 뒤 다시 시도해 주세요." : "항구 목록을 불러오는 중..."); return; }
       const q = ferry.q.replace(/\s/g, ""), other = ferry.editing === "arr" ? ferry.dep : ferry.arr;
