@@ -3,7 +3,7 @@ import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, c
 import { act, header, note, sectionHead, chips } from "./ui.js";
 import { go } from "./nav.js";
 import { clock } from "./subway.js";
-import { RecentRoutes, recentRow } from "./trips.js";
+import { RecentRoutes, blank, dayOf, nowMin, searchForm, resultTop, bindDate } from "./trips.js";
 
 const duration = (min) => (min >= 60 ? `${Math.floor(min / 60)}시간${min % 60 ? " " + (min % 60) + "분" : ""}` : min + "분");
 const WEEK = "월화수목금토일";
@@ -124,39 +124,53 @@ const KR_AIRPORTS = { GMP: "김포", CJU: "제주", PUS: "김해", TAE: "대구"
   HIN: "사천", KPO: "포항경주", KUV: "군산", WJU: "원주", MWX: "무안", ICN: "인천" };
 
 // ── 국내선 시간표 화면 (대중교통 → 항공) ──
-const lastAir = RecentRoutes.load("air")[0];
-const air = { dep: lastAir?.dep || "GMP", arr: lastAir?.arr || "CJU", tomorrow: false, editing: null, chosen: false };
+// 앱처럼 출발·도착은 빈칸에서 시작 (예전엔 김포→제주가 미리 들어가 있었음), 아래 날짜와 "시간표 조회" 버튼
+const air = blank();
 export function airScreen(root, chipsHtml) {
+  const MAX = 30;
   let alive = true, data = null, failed = false, liveMap = new Map();
   const name = (c) => { const n = data?.airports[c] || KR_AIRPORTS[c]; return n ? (n.endsWith("공항") ? n : n + "공항") : c; };
   const loadLive = async () => {
     liveMap = new Map();
-    if (air.tomorrow) return;
+    // 실시간 운항은 오늘만
+    if (air.day || !air.searched || !air.dep) return;
+    const want = air.dep;
     const st = await status(air.dep, ymd()).catch(() => []);
+    if (want !== air.dep) return;
     liveMap = new Map(st.filter((s) => s.departure && s.other).map((s) => [normNo(s.flight), s]));
     if (alive) draw();
   };
+  const search = () => { air.searched = true; air.editing = null; RecentRoutes.add("air", air.dep, air.arr); root.scrollTop = 0; draw(); loadLive(); };
+  const redraw = () => { draw(); if (air.searched && !air.editing) loadLive(); };
   function draw() {
     if (!alive) return;
     let h = header("타볼까", "국내선 항공 시간표") + chipsHtml;
     if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
     if (!data) { root.innerHTML = h + note("시간표를 불러오는 중..."); return; }
-    const t = air.tomorrow ? addDays(seoulNow(), 1) : seoulNow();
-    const box = (k, title) => `<button class="pbox ${air.editing === k ? "on" : ""}" ${act(() => { air.editing = k; draw(); })}><small>${title}</small><b>${esc(name(air[k]))}</b></button>`;
-    h += `<div class="searchtop"><div class="pboxes">${box("dep", "출발")}<button class="swap" ${act(() => { [air.dep, air.arr] = [air.arr, air.dep]; air.chosen = true; draw(); loadLive(); })}>⇄</button>${box("arr", "도착")}</div>
-      <div class="toolrow"><div class="segs">${[["오늘", false], ["내일", true]].map(([l, v]) => `<button class="${air.tomorrow === v ? "on" : ""}" ${act(() => { air.tomorrow = v; draw(); loadLive(); })}>${l}</button>`).join("")}</div><small>${t.m}월 ${t.d}일 (${WEEK[isoDay(t) - 1]})</small></div>${air.editing ? "" : recentRow("air", name, (r) => { air.dep = r.dep; air.arr = r.arr; air.chosen = true; draw(); loadLive(); })}</div>`;
     if (air.editing) {
+      const box = (k, title) => `<button class="pbox ${air.editing === k ? "on" : ""} ${air[k] ? "" : "empty"}" ${act(() => { air.editing = k; draw(); })}><small>${title}</small><b>${esc(air[k] ? name(air[k]) : title + " 고르기")}</b></button>`;
       const codes = [...new Set(data.rows.filter((r) => !r.intl).flatMap((r) => [r.dep, r.arr]))].sort((a, b) => (PREFERRED.indexOf(a) + 100) % 100 - (PREFERRED.indexOf(b) + 100) % 100);
-      root.innerHTML = h + `<div class="list">${codes.map((c) => `<button class="row" ${act(() => { air[air.editing] = c; air.editing = null; air.chosen = true; draw(); loadLive(); })}><b class="grow">${esc(name(c))}</b><small>${c}</small></button>`).join("")}</div>`;
+      root.innerHTML = h + `<div class="searchtop"><div class="pboxes">${box("dep", "출발")}<span class="swap"></span>${box("arr", "도착")}</div></div><div class="list">${codes.map((c) => `<button class="row" ${act(() => {
+        air[air.editing] = c;
+        // 출발을 고르고 도착이 비었으면 도착 고르기로 (조회는 버튼으로)
+        air.editing = air.editing === "dep" && !air.arr ? "arr" : null;
+        draw();
+      })}><b class="grow">${esc(name(c))}</b><small>${c}</small></button>`).join("")}</div>`;
       return;
     }
+    if (!air.searched) {
+      root.innerHTML = h + searchForm(air, { key: "air", depName: air.dep && name(air.dep), arrName: air.arr && name(air.arr), label: name, max: MAX, redraw, search });
+      bindDate(root, air, MAX, redraw);
+      return;
+    }
+    const t = dayOf(air);
+    h += resultTop(air, name(air.dep), name(air.arr), MAX, redraw);
     h += `<div class="links">${[air.dep, air.arr].map((c) => `<button class="link" ${act(() => go("airport", c, { name: name(c) }))}>${esc(name(c))} 정보</button>`).join("")}<button class="link" ${act(() => go("airport", ICN, { name: "인천국제공항" }))}>인천공항 운항</button></div>`;
-    if (air.chosen) RecentRoutes.add("air", air.dep, air.arr);
     const r = flights(data.rows, air.dep, air.arr, t);
-    if (!r.list.length) { root.innerHTML = h + note(`${name(air.dep)} → ${name(air.arr)} 그날 운항편이 없어요`); return; }
-    const now = air.tomorrow ? -1 : seoulNow().h * 60 + seoulNow().mi;
+    if (!r.list.length) { root.innerHTML = h + note(`${name(air.dep)} → ${name(air.arr)} 그날 운항편이 없어요`); bindDate(root, air, MAX, redraw); return; }
+    const now = nowMin(air);
     const next = Math.max(0, r.list.findIndex((f) => f.depMin >= now));
-    h += `<p class="note">${r.list.length}편${air.tomorrow ? "" : ` · 남은 편 ${r.list.filter((f) => f.depMin >= now).length}`}${r.projected ? " · 시간표 기간이 지나 지난주 운항으로 예상" : ""}</p>
+    h += `<p class="note">${r.list.length}편${air.day ? "" : ` · 남은 편 ${r.list.filter((f) => f.depMin >= now).length}`}${r.projected ? " · 시간표 기간이 지나 지난주 운항으로 예상" : ""}</p>
       <div class="list">${r.list.map((f, i) => {
         const s = liveMap.get(normNo(f.flight));
         const tt = s ? [s.remark, s.estimated && s.estimated !== s.scheduled ? "변경 " + s.estimated : null, s.gate ? "탑승구 " + s.gate : null].filter(Boolean).join(" · ") : "";
@@ -165,6 +179,7 @@ export function airScreen(root, chipsHtml) {
       }).join("")}</div>`;
     const y = root.scrollTop;
     root.innerHTML = h;
+    bindDate(root, air, MAX, redraw);
     if (y) root.scrollTop = y; else root.querySelector(`[data-i="${next}"]`)?.scrollIntoView({ block: "start" });
   }
   const loadAll = () => { failed = false; load().then((d) => { data = d; draw(); }).catch(() => { failed = true; draw(); }); };
