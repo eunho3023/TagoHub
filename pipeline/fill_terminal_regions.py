@@ -32,7 +32,18 @@ BY_HAND = {
     "NAEK161": "경기", "NAEK141": "경기", "NAEK144": "경기", "NAEK153": "경기", "NAEK155": "경기",  # 용인기흥역·여주프리·부밭·삼계리·초부리 (번호대 경기)
     "NAEK357": "충북", "NAEK371": "충남", "NAEK466": "충남",            # 오송단지·한국전통대(부여)·대천욕장(보령)
     "NAEK644": "전북", "NAEK893": "경북", "NAEK934": "경북",            # 전북강진(임실)·내남(경주)·석적(칠곡)
+    "NAEK963": "경기",                                                    # 성남속리 (NAEK96x 는 성남터미널 회사별 자리: 성남금호·동양·중앙·고려)
+    "NAI3174801": "충남",                                                 # 신평 (당진 신평면, NAI31 번호대가 충남)
+    "NAI3710402": "경북",                                                 # 한방단지 (국토교통부 시외 터미널 목록의 cityName 이 경상북도)
 }
+# 카카오가 같은 이름의 다른 지역을 잡아 시·도가 틀린 곳: 시·도를 고치고 위치는 비움
+WRONG = {
+    "NAEK965": "경기",   # 성남천일 (성남터미널 회사별 자리인데 전남으로 잡혔음)
+    "NAEK123": "경기",   # 동천(호남) (용인 동천 정류소, 울산 동천으로 잡혔음)
+}
+# 고를 수 없는 자리: 2026-11-22 국토교통부 고속버스 조회에서 서울경부·센트럴시티·동서울·인천공항 T1/T2·대전복합·광주 오가는 차가
+# 한 대도 없고, 이름만으로 어디인지 알 수 없음 (공항왕복·평동)
+GONE = {"NAEK124", "NAEK458"}
 # 탈 수 없는 자리(요금 정산용 "통합단말", "…_수수료")는 목록에서 뺌
 JUNK = re.compile(r"^통합단말$|_수수료$")
 
@@ -77,8 +88,10 @@ def main():
     rest = prop("KAKAO_REST_KEY")
     rows = [l.split("\t") for l in TSV.read_text(encoding="utf-8").splitlines() if l.strip()]
     rows = [r + [""] * (5 - len(r)) for r in rows]
-    rows = [r for r in rows if not JUNK.search(r[1].strip())]
+    rows = [r for r in rows if not JUNK.search(r[1].strip()) and r[0] not in GONE]
     for r in rows:
+        if r[0] in WRONG:
+            r[2], r[3], r[4] = WRONG[r[0]], "", ""
         if r[0] in BY_HAND and not r[2]:
             r[2] = BY_HAND[r[0]]
     # 번호대마다 시·도 (그 번호대 터미널의 10% 넘는 시·도만 받아들임)
