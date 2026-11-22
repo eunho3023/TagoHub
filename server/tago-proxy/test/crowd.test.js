@@ -72,3 +72,12 @@ test("시간표상 운행 시간 안인지 (실시간 위치가 안 오는 노�
   assert.equal(inService(null, "18:00", 600), false);
   assert.equal(kstMinute(Date.UTC(2026, 10, 20, 8, 58)), 17 * 60 + 58);
 });
+
+test("하루 한 번만 다니는 노선(첫차 = 막차): 하루 1번 시각으로", async () => {
+  const { noLive, planText } = await import("../site/js/busdata.js");
+  assert.deepEqual(noLive("22:40", "22:40", null, 20 * 60 + 43), { main: "하루 1번 22:40", sub: "1시간 57분 후 · 기점", ended: false });
+  assert.deepEqual(noLive("06:00", "06:00", null, 7 * 60), { main: "출발함", sub: "내일 06:00 · 하루 1번 · 23시간 후", ended: false });
+  assert.equal(noLive("06:00", "06:00", null, 20 * 60 + 43).main, "운행종료");
+  assert.equal(planText({ first: "06:00", last: "06:00", interval: 15 }, 1), "하루 1번 06:00");
+  assert.equal(planText({ first: "06:00", last: "22:20", interval: 15 }, 1), "첫차 06:00 · 막차 22:20 · 배차 15분");
+});

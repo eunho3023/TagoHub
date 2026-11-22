@@ -39,4 +39,16 @@ class NoLiveTextTest {
         assertEquals("막차 00:30", NoLiveText.describe("05:30", "00:30", null, at(23, 50))!!.main)
         assertEquals("운행종료", NoLiveText.describe("05:30", "00:30", null, at(3, 0))!!.main)
     }
+
+    @Test
+    fun onceADayRoute() {
+        // 전주 165 이서회차지→호남고속: 하루 한 번 22:40 (첫차 = 막차)
+        val t = NoLiveText.describe("22:40", "22:40", null, at(20, 43))!!
+        assertEquals("하루 1번 22:40", t.main)
+        assertEquals("1시간 57분 후 · 기점", t.sub)
+        assertEquals("출발함", NoLiveText.describe("06:00", "06:00", null, at(7, 0))!!.main)
+        assertEquals("운행종료", NoLiveText.describe("06:00", "06:00", null, at(20, 43))!!.main)
+        assertEquals(true, NoLiveText.onceADay("06:00", "06:00"))
+        assertEquals(false, NoLiveText.onceADay("06:00", "22:20"))
+    }
 }
