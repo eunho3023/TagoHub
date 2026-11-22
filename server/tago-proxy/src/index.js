@@ -28,7 +28,9 @@ export const isApiPath = (p) => API_PREFIXES.some((x) => (x.endsWith("/") ? p.st
  * 부르는 곳: 집 노트북 국내 중계가 1분마다(server/relay/relay.mjs, CRON_KEY 있을 때), 예비로 GitHub Actions(.github/workflows/server-cron.yml, 실제로는 몇 시간에 한 번꼴)
  */
 export async function runCron(env, now = Date.now(), { fetcher = fetch } = {}) {
-  if (await healthDue(env, now).catch(() => false)) return { health: await healthCron(env, fetcher).catch(() => null) != null };
+  // 고장 확인도 실제 요청처럼 국내 중계를 거침 (공공데이터포털은 Cloudflare 에서 바로 물으면 매달리거나 막혀 고장으로 잘못 보였음)
+  const viaRelay = fetcher === fetch ? (u, i) => upstreamFetch(u, i || {}, env) : fetcher;
+  if (await healthDue(env, now).catch(() => false)) return { health: await healthCron(env, viaRelay).catch(() => null) != null };
   await pollCron(env).catch(() => null);
   await shapeCron(env).catch(() => null);
   return { poll: true, shape: true };
