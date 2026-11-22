@@ -74,7 +74,7 @@ async function web(request, url, env, ctx) {
     const r = await runCron(env).catch((e) => ({ error: String(e && e.message || e) }));
     return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
-  // 국내 중계(이 PC)가 지금 주소를 알림·켜져 있는지 (src/krrelay.js)
+  // 국내 중계(집 노트북)가 지금 주소를 알림·켜져 있는지 (src/krrelay.js)
   if (url.pathname.startsWith("/w/relay/")) return handleRelay(request, url, env);
   // 앱 제보 (POST, 주소마다 분당 요청 수 제한을 같이 씀) — src/report.js
   if (url.pathname === "/w/report") {
@@ -155,7 +155,7 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     return out;
   }
 
-  // 국내 중계(이 PC) 먼저, 안 되면 바로 묻되 3초마다 새 연결로 (Cloudflare → 공공데이터포털 연결이 자주 매달림, src/krrelay.js)
+  // 국내 중계(집 노트북) 먼저, 안 되면 바로 묻되 3초마다 새 연결로 (Cloudflare → 공공데이터포털 연결이 자주 매달림, src/krrelay.js)
   const upstream = await upstreamFetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
     headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
   }, env);

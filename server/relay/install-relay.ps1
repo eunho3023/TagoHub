@@ -1,4 +1,4 @@
-﻿# 타볼까 국내 중계를 이 PC 에 켜 둠: 로그인할 때와 5분마다 start-relay.ps1 을 부르는 작업 스케줄러 작업 "TagoHub 국내 중계" 를 만들고 지금 바로 켬
+﻿# 타볼까 국내 중계를 이 PC 에 켜 둠 (2026-11-23부터 중계는 집 노트북이 맡아 이 작업은 지움. 노트북이 고장 나면 이걸로 다시 켬): 로그인할 때와 5분마다 start-relay.ps1 을 부르는 작업 스케줄러 작업 "TagoHub 국내 중계" 를 만들고 지금 바로 켬
 # 끄려면: Unregister-ScheduledTask -TaskName 'TagoHub 국내 중계' -Confirm:$false ; Get-Process node | Where-Object { $_.CommandLine -match 'relay.mjs' } | Stop-Process
 $name = 'TagoHub 국내 중계'
 $start = Join-Path $PSScriptRoot 'start-relay.ps1'
