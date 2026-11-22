@@ -85,15 +85,6 @@ export const CHECKS = [
     ok: (b) => /<resultCode>200<\/resultCode>/.test(b),
   },
   {
-    // 아직 앱·웹에서 쓰지 않음: 2026-11-16 공공데이터포털이 울산 서버에 닿지 못해 60초 시간 초과(오류 05),
-    // 2026-11-17 0시부터는 결과 코드는 정상(00)인데 도로 목록·소통정보가 0건(totalCount 0).
-    // 살아나면 구간 속도·선 좌표로 서울처럼 울산 도로 소통을 그릴 수 있음 → 도로가 1건 이상 와야 정상으로 봄
-    // 준비 중(optional): 아직 쓰지 않는 곳이라 "잘 안 되는 곳" 수에는 넣지 않음 (웹 설정 화면)
-    name: "ulsan_road", label: "울산 도로정보 (준비 중)", optional: true,
-    url: (e) => e.DATA_GO_KR_KEY && `${DG}6310000/roadinformation/RoadInfo?serviceKey=${encodeKey(e.DATA_GO_KR_KEY)}&numOfRows=1&pageNo=1&_type=xml`,
-    ok: (b) => /<resultCode>00<\/resultCode>/.test(b) && /<RoadID>/.test(b),
-  },
-  {
     name: "jeju_bus", label: "제주 버스",
     url: () => "https://bus.jeju.go.kr/publicTrafficInformation/getBusRouteNum",
     init: { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "Mozilla/5.0 (compatible; TagoHub/1.0)" }, body: "GROUTE_TYPE=1" },

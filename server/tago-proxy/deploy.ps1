@@ -1,5 +1,6 @@
-﻿# TagoHub 중계 서버 배포 (한 번만 실행). 브라우저 로그인 대신 Cloudflare API 토큰을 씀.
-# 1) 서버를 올리고  2) 비밀 값(앱 토큰, local.properties 의 API 키들)을 넣고  3) local.properties 에 서버 주소·앱 토큰을 적음.
+﻿# 타볼까 배포 (Cloudflare Pages: 화면·자료·서버 코드). 브라우저 로그인 대신 Cloudflare API 토큰을 씀.
+# 1) 비밀 값(앱 토큰, local.properties 의 API 키들)을 넣고  2) local.properties 에 서버 주소·앱 토큰을 적고  3) 타볼까를 올림.
+# 예전 서버(workers.dev, tagohub-proxy)는 2026-11-22 뺐음: 지우려면 remove-old-server.ps1 을 한 번 실행
 # 다시 실행해도 됨: 앱 토큰은 local.properties 에 있으면 그대로 씀 (앱을 다시 빌드하지 않아도 되게).
 # 키와 토큰은 화면에 보여 주지 않음. 공공데이터포털 키는 local.properties 의 TAGO_SERVICE_KEY 를 그대로 씀.
 # npx 가 경고를 stderr 로 내도 멈추지 않게 (PowerShell 5.1 은 그것을 오류로 봄). 실패는 아래에서 직접 확인
@@ -45,13 +46,7 @@ if ($null -ne $dbs) {
         if (-not $db) { $d1Why = $made }
     }
 }
-$config = 'wrangler.toml'
 if ($db -and $db.uuid) {
-    # 데이터베이스 번호를 넣은 배포용 설정 (저장소에는 안 올림: .gitignore)
-    $toml = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'wrangler.toml'), [Text.Encoding]::UTF8)
-    $toml += "`n[[d1_databases]]`nbinding = `"DB`"`ndatabase_name = `"tagohub-log`"`ndatabase_id = `"$($db.uuid)`"`n"
-    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'wrangler.deploy.toml'), $toml, (New-Object Text.UTF8Encoding $false))
-    $config = 'wrangler.deploy.toml'
     Write-Host '  데이터베이스 있음'
 } else {
     Write-Host '  데이터베이스를 만들지 못했어요. 지난 운행 기록 모으기만 빼고 서버는 그대로 올려요. 이유:'
@@ -82,24 +77,13 @@ if ($py) {
     Write-Host '  파이썬이 없어서 자료 조각은 건너뜀 (웹·PC 버전의 정류장 찾기만 빠짐)'
 }
 
-# 웹 화면은 타볼까(Cloudflare Pages)에만 올림 (아래 4/4). 예전 서버(workers.dev)에는 자료 조각(data)과 _headers 만:
-# 화면 주소로 들어오면 서버 코드가 타볼까로 넘김 (src/index.js)
+# public 에는 자료 조각(data)과 _headers 만 둠 (아래 3/3 에서 화면과 합쳐 올림)
 $pub = Join-Path $PSScriptRoot 'public'
 Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
 Get-ChildItem $pub -Directory | Where-Object { $_.Name -ne 'data' } | Remove-Item -Recurse -Force
 # 카카오 지도 JavaScript 키 (local.properties 의 KAKAO_JS_KEY). 웹 페이지에 들어가는 키라 공개돼도 되는 종류이고, 카카오에 등록한 도메인에서만 동작
 # 키가 없으면 빈 값 → 웹 버전은 OpenStreetMap 지도
 $jsKey = (Prop 'KAKAO_JS_KEY') -replace '[^A-Za-z0-9]', ''
-
-Write-Host '1/4 예전 서버(이미 깔린 앱용) 올리는 중...'
-$out = (& npx --yes wrangler@4.45.0 deploy --config $config 2>&1 | Out-String)
-Write-Host $out
-$m = [regex]::Match($out, 'https://[A-Za-z0-9.-]+\.workers\.dev')
-if (-not $m.Success) {
-    if ($out -match 'workers\.dev subdomain') { Write-Host 'workers.dev 주소 이름을 아직 안 정했어요: https://dash.cloudflare.com 에서 Workers & Pages 를 열고 주소 이름(subdomain)을 정한 뒤 다시 실행해 주세요' }
-    throw '서버 주소를 찾지 못했어요. 위 메시지를 확인해 주세요'
-}
-$url = $m.Value
 
 # 타볼까 (Cloudflare Pages): 화면·자료·서버 코드 모두 (pages/functions 가 같은 src/index.js 를 돌림)
 # API 토큰에 "Cloudflare Pages: Edit" 권한이 있어야 함
@@ -109,16 +93,15 @@ $pagesRoot = Join-Path $PSScriptRoot 'pages'
 Push-Location $pagesRoot
 $null = (& npx --yes wrangler@4.45.0 pages project create $pagesProject --production-branch main 2>&1 | Out-String)
 Pop-Location
-# 비밀 값은 예전 서버와 타볼까 두 곳에 같이 (값은 화면에 쓰지 않음)
+# 비밀 값은 타볼까에 (값은 화면에 쓰지 않음)
 function PutSecret([string]$name, [string]$value) {
     if (-not $value) { return }
-    $value | & npx --yes wrangler@4.45.0 secret put $name --config $config | Out-Null
     Push-Location $pagesRoot
     $value | & npx --yes wrangler@4.45.0 pages secret put $name --project-name $pagesProject | Out-Null
     Pop-Location
 }
 
-Write-Host '2/4 비밀 값 넣는 중 (예전 서버·타볼까)...'
+Write-Host '1/3 비밀 값 넣는 중...'
 $appToken = Prop 'TAGO_PROXY_TOKEN'
 if (-not $appToken) { $appToken = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N') }
 PutSecret 'APP_TOKEN' $appToken
@@ -187,12 +170,12 @@ if (Test-Path $gs) {
     Write-Host '  app/google-services.json 없음 → 웹 제보는 깃허브로'
 }
 
-Write-Host '3/4 local.properties 에 서버 주소(타볼까) 적는 중...'
+Write-Host '2/3 local.properties 에 서버 주소(타볼까) 적는 중...'
 $keep = Get-Content $props -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*TAGO_PROXY_(URL|TOKEN)\s*=' }
-# 새로 빌드하는 앱은 타볼까 주소를 씀 (이미 깔린 예전 앱은 예전 서버 주소 그대로 — 그 서버도 계속 돎)
+# 앱은 타볼까 주소를 씀
 $keep + "TAGO_PROXY_URL=$pagesUrl" + "TAGO_PROXY_TOKEN=$appToken" | Set-Content $props -Encoding UTF8
 
-Write-Host "4/4 타볼까 올리는 중 ($pagesUrl)..."
+Write-Host "3/3 타볼까 올리는 중 ($pagesUrl)..."
 # dist = 화면(site) + 자료 조각(public/data) + 카카오 키(config.js) + _headers + _routes.json(서버 길만 서버 코드로)
 $dist = Join-Path $pagesRoot 'dist'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
@@ -215,4 +198,4 @@ if ($jsKey) { Write-Host "  카카오 지도: 카카오 개발자 사이트 Java
 
 Start-Sleep -Seconds 3
 try { $h = (Invoke-WebRequest "$pagesUrl/health" -UseBasicParsing).Content } catch { $h = $_.Exception.Message }
-Write-Host "끝: $pagesUrl (상태: $h) · 이미 깔린 예전 앱용 서버: $url"
+Write-Host "끝: $pagesUrl (상태: $h)"
