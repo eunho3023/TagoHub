@@ -15,6 +15,7 @@ import { handleEdits } from "./edits.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
 import { healthCron, handleHealth } from "./health.js";
+import { hedgedFetch } from "./hedge.js";
 
 /** 사용자·관리자 모두 쓰는 웹 주소 (Cloudflare Pages). 이 서버 코드도 거기서 돎 (pages/functions) */
 export const USER_WEB = "https://tabolkka.pages.dev";
@@ -162,13 +163,15 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     return out;
   }
 
-  const upstream = await fetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
+  // 3초 안에 답이 없으면 새 연결로 다시 (Cloudflare → 공공데이터포털 연결이 20초 매달렸다 522 로 끝나는 일이 잦음, src/hedge.js)
+  const upstream = await hedgedFetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
     headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
   });
   const body = await upstream.text();
   const headers = {
     "Content-Type": upstream.headers.get("Content-Type") || "application/xml; charset=utf-8",
     "X-Cache": "MISS",
+    "X-Tries": upstream.headers.get("X-Tries") || "1",
   };
   if (cacheable(upstream.status, body)) {
     const ttl = ttlFor(path);
@@ -218,10 +221,10 @@ async function relay(request, url, env, ctx) {
   } catch (e) {
     return new Response("server key missing: " + e.message.replace("missing ", ""), { status: 500 });
   }
-  const upstream = await fetch(target, { headers });
+  const upstream = await hedgedFetch(target, { headers });
   const body = await upstream.arrayBuffer();
   const text = new TextDecoder().decode(body.slice(0, 4000));
-  const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS" };
+  const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS", "X-Tries": upstream.headers.get("X-Tries") || "1" };
   if (upstream.status === 200 && cacheable(200, text)) {
     const ttl = hostTtl(t.host, t.path);
     const stored = new Response(body, { status: 200, headers: { ...out, "Cache-Control": `public, max-age=${ttl}` } });
@@ -256,9 +259,10 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   let res, body;
   try {
     // post: 폼 내용을 POST 로 (제주 누리집 노선 정보처럼 GET 으로는 답하지 않는 곳)
-    res = await fetch(upstream, post == null ? { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } }
+    res = await hedgedFetch(upstream, post == null ? { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } }
       : { method: "POST", body: post, headers: { "User-Agent": MOBILE_UA, Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", ...extraHeaders } });
     body = await res.text();
+    headers["X-Tries"] = res.headers.get("X-Tries") || "1";
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
   }
