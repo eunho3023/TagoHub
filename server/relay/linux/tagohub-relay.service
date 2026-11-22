@@ -1,0 +1,29 @@
+# 타볼까 국내 중계 (Ubuntu 노트북). install.sh 가 /etc/systemd/system/ 에 복사함
+# 부팅하면 로그인 없이 켜지고, 멈추면 5초 뒤 다시 켬. 열쇠(RELAY_KEY)는 /etc/tagohub-relay.env (root 만 읽음)
+[Unit]
+Description=TagoHub domestic relay (tabolkka)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=tagohub
+Group=tagohub
+EnvironmentFile=/etc/tagohub-relay.env
+Environment=RELAY_LOG_DIR=/var/log/tagohub-relay
+LogsDirectory=tagohub-relay
+# cloudflared 가 쓸 집 폴더 (/var/lib/tagohub-relay)
+StateDirectory=tagohub-relay
+Environment=HOME=/var/lib/tagohub-relay
+WorkingDirectory=/opt/tagohub-relay
+ExecStart=/usr/bin/node /opt/tagohub-relay/relay.mjs
+Restart=always
+RestartSec=5
+# 이 서비스는 파일을 고칠 일이 없음 (기록 폴더만 씀)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
