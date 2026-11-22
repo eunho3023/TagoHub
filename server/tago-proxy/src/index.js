@@ -17,8 +17,6 @@ import { handleAppShape } from "./appshape.js";
 import { healthCron, handleHealth } from "./health.js";
 import { upstreamFetch, handleRelay } from "./krrelay.js";
 
-/** 사용자·관리자 모두 쓰는 웹 주소 (Cloudflare Pages). 이 서버 코드도 거기서 돎 (pages/functions) */
-export const USER_WEB = "https://tabolkka.pages.dev";
 /** 서버 코드가 받는 길 (나머지는 화면·자료 파일). pages/_routes.json 과 같음 */
 export const API_PREFIXES = ["/health", "/w/", "/log/", "/appshape/", "/h/", "/dg/"];
 export const isApiPath = (p) => API_PREFIXES.some((x) => (x.endsWith("/") ? p.startsWith(x) : p === x));
@@ -27,7 +25,7 @@ export const isApiPath = (p) => API_PREFIXES.some((x) => (x.endsWith("/") ? p.st
  * 예약 작업 한 번 (1분에 한 번 부름). 30분마다(0분·30분)는 자료 제공처 고장 확인만 (src/health.js):
  * 한 번 실행의 외부 요청 수 한도(50번)를 다른 작업과 나누지 않게.
  * 그 밖에는 관심 노선 버스 위치 모으기(정류장 시간표, src/poll.js) → 노선 모양 하나 만들기(src/shape.js).
- * 부르는 곳: 타볼까(Pages)는 GitHub Actions 가 /w/cron 으로 (.github/workflows/server-cron.yml), 예전 서버(workers.dev)의 예약은 껐음
+ * 부르는 곳: GitHub Actions 가 타볼까 /w/cron 으로 (.github/workflows/server-cron.yml)
  */
 export async function runCron(env, now = Date.now()) {
   if (new Date(now).getUTCMinutes() % 30 === 0) return { health: await healthCron(env).catch(() => null) != null };
@@ -45,16 +43,8 @@ function sameText(a, b) {
 }
 
 export default {
-  // 예전 서버(workers.dev)의 예약 작업. wrangler.toml 에서 껐음 (타볼까 쪽 /w/cron 이 대신). 다시 켜면 그대로 돎
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(runCron(env, event.scheduledTime || Date.now()).catch(() => null));
-  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    // 예전 서버 주소로 화면을 열면 타볼까로 (서버 기능 길은 이미 깔린 예전 앱이 계속 씀)
-    if (url.hostname.endsWith(".workers.dev") && !isApiPath(url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
-      return Response.redirect(USER_WEB + url.pathname + url.search, 301);
-    }
     if (url.pathname === "/health") return new Response("ok");
     if (url.pathname.startsWith("/w/")) return web(request, url, env, ctx);
     if (!env.APP_TOKEN || request.headers.get("X-TagoHub-Token") !== env.APP_TOKEN) {
