@@ -8,6 +8,7 @@
  * - cloudflared 가 죽으면 다시 띄움. 이 PC 가 꺼지면 타볼까는 예전처럼 바로 물음 (느리지만 됨)
  *
  *   node server/relay/relay.mjs        # local.properties 의 RELAY_KEY 사용 (deploy.ps1 이 만들어 둠)
+ *   리눅스 노트북: server/relay/linux/README.md (systemd 서비스, 열쇠는 /etc/tagohub-relay.env)
  *
  * 키·주소는 화면에 쓰지 않음 (기록에는 호스트·상태·걸린 시간만)
  */
@@ -26,7 +27,8 @@ const BEAT_MS = 5 * 60 * 1000;
 // 터널 스스로 확인: 1분마다 바깥 주소로 /health 를 물어 2번 잇달아 안 되면 cloudflared 를 다시 띄움 (새 주소로 다시 알림).
 // 2026-11-22 12:3x UTC 에 중계는 살아 있는데 터널만 530(연결 끊김)을 내서, 그동안 타볼까가 느린 바로 묻기로 갔음
 const CHECK_MS = 60 * 1000, CHECK_FAILS = 2;
-const LOG_DIR = join(ROOT, "server", "relay", "logs");
+// 리눅스 노트북(server/relay/linux)에서는 systemd 가 RELAY_LOG_DIR·RELAY_KEY 를 줌
+const LOG_DIR = process.env.RELAY_LOG_DIR || join(ROOT, "server", "relay", "logs");
 
 function prop(name) {
   const f = join(ROOT, "local.properties");
@@ -156,7 +158,7 @@ function main() {
   // 왜 꺼졌는지 남김 (기록 없이 꺼지면 원인을 알 수 없었음)
   process.on("uncaughtException", (e) => { log(`멈춤: ${e && e.stack ? e.stack.split(String.fromCharCode(10))[0] : e}`); process.exit(1); });
   process.on("exit", (code) => { try { appendFileSync(join(LOG_DIR, new Date().toISOString().slice(0, 10) + ".log"), `${new Date().toISOString()} 끝남 (${code})` + String.fromCharCode(10)); } catch { /* 무시 */ } });
-  const key = prop("RELAY_KEY");
+  const key = (process.env.RELAY_KEY || "").trim() || prop("RELAY_KEY");
   if (!key) {
     console.error("local.properties 에 RELAY_KEY 가 없어요. deploy.ps1 을 한 번 실행하면 만들어져요");
     process.exit(1);
