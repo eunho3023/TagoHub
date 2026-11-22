@@ -3,8 +3,11 @@ package com.eunho.tagohub.data
 import java.time.Duration
 import java.time.LocalDateTime
 
-/** 환승 1회 경로: 첫 열차로 [hub] 까지 가서 [waitMinutes] 분 기다렸다가 둘째 열차로 도착역까지 */
-data class TrainTransfer(val hub: String, val waitMinutes: Int, val legs: List<Trip>) {
+/**
+ * 환승 1회 경로: 첫 열차로 [hub] 까지 가서 [waitMinutes] 분 기다렸다가 둘째 열차로 도착역까지.
+ * [to] 가 있으면 같은 도시의 다른 역으로 옮겨 탐 (서울역 → 용산역처럼 지하철·택시로, [waitMinutes] 는 옮기는 시간까지)
+ */
+data class TrainTransfer(val hub: String, val waitMinutes: Int, val legs: List<Trip>, val to: String? = null) {
     val dep: LocalDateTime? get() = legs.first().dep
     val arr: LocalDateTime? get() = legs.last().arr
 
@@ -30,15 +33,27 @@ object TrainTransfers {
     /** 갈아타는 데 필요한 최소 시간(분) */
     const val MIN_WAIT_MIN = 10
 
+    /**
+     * 같은 도시의 다른 역: 한 역에 내려 다른 역에서 타는 환승도 찾음 (예: 일요일 강릉 → 목포는 서울역에 내려 용산역에서 탐).
+     * 웹 trips.js CITY_STATIONS 와 같음
+     */
+    val CITY_STATIONS = listOf(
+        listOf("서울", "용산", "청량리", "영등포", "상봉", "행신"), listOf("대전", "서대전"), listOf("광주송정", "광주"),
+        listOf("부산", "부전"), listOf("동대구", "대구"), listOf("천안아산", "천안"),
+    )
+
+    /** 다른 역으로 옮겨 탈 때 필요한 최소 시간(분): 지하철·택시로 옮기는 시간 */
+    const val MOVE_MIN = 30
+
     /** 첫 열차마다, 환승 시간을 지키면서 가장 빨리 도착하는 둘째 열차 하나를 짝지음 */
-    fun combine(first: List<Trip>, second: List<Trip>, hub: String, minWait: Int = MIN_WAIT_MIN): List<TrainTransfer> {
+    fun combine(first: List<Trip>, second: List<Trip>, hub: String, minWait: Int = MIN_WAIT_MIN, to: String? = null): List<TrainTransfer> {
         val seconds = second.filter { it.dep != null && it.arr != null }
         return first.mapNotNull { a ->
             val aArr = a.arr ?: return@mapNotNull null
             val b = seconds
                 .filter { !it.dep!!.isBefore(aArr.plusMinutes(minWait.toLong())) }
                 .minByOrNull { it.arr!! } ?: return@mapNotNull null
-            TrainTransfer(hub, Duration.between(aArr, b.dep).toMinutes().toInt(), listOf(a, b))
+            TrainTransfer(hub, Duration.between(aArr, b.dep).toMinutes().toInt(), listOf(a, b), to)
         }
     }
 

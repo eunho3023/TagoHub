@@ -9,11 +9,18 @@ const DG = "https://apis.data.go.kr/";
 /** 공공데이터포털·기관이 키·한도 문제를 200 응답 안에 적어 보내는 말 */
 const BAD = /SERVICE_KEY_IS_NOT|LIMITED_NUMBER_OF_SERVICE|SERVICE_ACCESS_DENIED|returnAuthMsg|SERVICE ERROR|APPLICATION_ERROR|ERROR-\d{3}|INFO-100|Unauthorized/i;
 
-/** 사람이 읽을 이유 (키 문제·한도 초과·기타) */
+/**
+ * 사람이 읽을 이유 (키 문제·한도 초과·기타). 공공데이터포털은 키 문제가 아닌 오류(기관 서버 시간 초과 등)도 returnAuthMsg 에 담아 보내서,
+ * 예전엔 그것도 "인증 실패"로 적었음 (2026-11-22 울산 도로정보 SERVICETIMEOUT_ERROR). errMsg 를 보고 가르고, 무엇이 왔는지 같이 적음
+ */
 export function reason(status, body) {
   const b = String(body || "");
+  const err = (/<errMsg>([^<]+)<\/errMsg>/.exec(b) || /"errMsg"\s*:\s*"([^"]+)"/.exec(b) || [])[1] || "";
   if (/LIMITED_NUMBER_OF_SERVICE/.test(b)) return "하루 요청 한도 초과";
-  if (status === 401 || status === 403 || /SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|returnAuthMsg|Unauthorized|INFO-100/i.test(b)) return "인증 실패 (키 확인 필요)";
+  if (/SERVICE_?TIME_?OUT|연결실패/i.test(b)) return `제공처 기관 서버에 닿지 못함 (${err || "시간 초과"})`;
+  if (/SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|INFO-100/i.test(b)) return `인증 실패 (키 확인 필요: ${(/SERVICE_KEY_IS_NOT\w*|SERVICE_ACCESS_DENIED\w*|INFO-100/i.exec(b) || [""])[0]})`;
+  if (status === 401 || status === 403 || /Unauthorized/i.test(b)) return `인증 실패 (키 확인 필요: HTTP ${status})`;
+  if (/returnAuthMsg/.test(b)) return `제공처 오류 응답 (${err || "returnAuthMsg"})`;
   if (status === 429) return "요청이 너무 많음";
   if (status >= 500) return `제공처 서버 오류 (HTTP ${status})`;
   if (status !== 200) return `HTTP ${status}`;
@@ -81,7 +88,8 @@ export const CHECKS = [
     // 아직 앱·웹에서 쓰지 않음: 2026-11-16 공공데이터포털이 울산 서버에 닿지 못해 60초 시간 초과(오류 05),
     // 2026-11-17 0시부터는 결과 코드는 정상(00)인데 도로 목록·소통정보가 0건(totalCount 0).
     // 살아나면 구간 속도·선 좌표로 서울처럼 울산 도로 소통을 그릴 수 있음 → 도로가 1건 이상 와야 정상으로 봄
-    name: "ulsan_road", label: "울산 도로정보 (준비 중)",
+    // 준비 중(optional): 아직 쓰지 않는 곳이라 "잘 안 되는 곳" 수에는 넣지 않음 (웹 설정 화면)
+    name: "ulsan_road", label: "울산 도로정보 (준비 중)", optional: true,
     url: (e) => e.DATA_GO_KR_KEY && `${DG}6310000/roadinformation/RoadInfo?serviceKey=${encodeKey(e.DATA_GO_KR_KEY)}&numOfRows=1&pageNo=1&_type=xml`,
     ok: (b) => /<resultCode>00<\/resultCode>/.test(b) && /<RoadID>/.test(b),
   },
@@ -159,7 +167,8 @@ export async function handleHealth(env) {
   const by = Object.fromEntries(rows.map((r) => [r.name, r]));
   const checks = CHECKS.map((c) => {
     const r = by[c.name];
-    return r ? { name: c.name, label: c.label, ok: !!r.ok, msg: r.msg || "", ms: r.ms, at: r.at, lastOk: r.last_ok, failSince: r.fail_since } : { name: c.name, label: c.label, ok: null };
+    const opt = c.optional ? { optional: true } : {};
+    return r ? { name: c.name, label: c.label, ok: !!r.ok, msg: r.msg || "", ms: r.ms, at: r.at, lastOk: r.last_ok, failSince: r.fail_since, ...opt } : { name: c.name, label: c.label, ok: null, ...opt };
   });
   return new Response(JSON.stringify({ at: Math.max(0, ...rows.map((r) => r.at || 0)) || null, checks }), { headers: head });
 }

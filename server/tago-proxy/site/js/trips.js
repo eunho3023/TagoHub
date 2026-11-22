@@ -129,11 +129,21 @@ function runsOn(remark, d) {
   if (r === "일") return d === 7;
   return !!r && [...r].every((c) => WEEK.includes(c)) && r.includes(WEEK[d - 1]);
 }
-async function trainInfo(depId, arrId, day) {
+/** "20261123053000" → 그날 0시부터 분 (다음 날이면 1440 을 더함) */
+const planMin = (s, day) => { const d = String(s || "").replace(/\D/g, ""); if (d.length < 12) return null; return (d.slice(0, 8) > day ? 1440 : 0) + +d.slice(8, 10) * 60 + +d.slice(10, 12); };
+/**
+ * 국토교통부 그날 열차 (출발역 → 도착역): 종류·요금, 그리고 시간표 파일에 없는 열차를 채우는 데 씀.
+ * 시간표 파일은 한국철도공사 운행 기록이라 주말 열차가 적음 (일요일 217편, 평일 871편, 2026-11) → 국토교통부가 더 많이 주면 그쪽을 씀
+ */
+async function trainApi(depId, arrId, day) {
   try {
     const rows = xmlRows(await getText("w/dg/1613000/TrainInfo/GetStrtpntAlocFndTrainInfo", { depPlaceId: depId, arrPlaceId: arrId, depPlandTime: day }));
-    return new Map(rows.filter((r) => r.trainno).map((r) => [r.trainno.replace(/^0+/, "") || "0", [r.traingradename || null, parseInt(r.adultcharge, 10) > 0 ? parseInt(r.adultcharge, 10) : null]]));
-  } catch (e) { return new Map(); }
+    const seen = new Set();
+    return rows.filter((r) => r.trainno).map((r) => ({
+      no: r.trainno.replace(/^0+/, "") || "0", kind: r.traingradename || null, fare: parseInt(r.adultcharge, 10) > 0 ? parseInt(r.adultcharge, 10) : null,
+      depMin: planMin(r.depplandtime, day), arrMin: planMin(r.arrplandtime, day),
+    })).filter((x) => x.depMin != null && x.arrMin != null && !seen.has(x.no + "|" + x.depMin) && seen.add(x.no + "|" + x.depMin)).sort((a, b) => a.depMin - b.depMin);
+  } catch (e) { return []; }
 }
 /** from 에서 to 로 가는 그날 직통 열차 (출발 순) */
 function directTrips(all, d, from, to) {
@@ -150,27 +160,35 @@ const HUBS = ["서울", "용산", "영등포", "수원", "평택", "천안아산
 /** 갈아타는 데 필요한 최소 시간(분), 너무 오래 기다리는 환승은 뺌 */
 const MIN_WAIT = 10, MAX_WAIT = 180;
 /**
+ * 같은 도시의 다른 역: 한 역에 내려 다른 역에서 타는 환승도 찾음 (예: 일요일 강릉 → 목포는 서울역에 내려 용산역에서 탐).
+ * 옮기는 데 지하철·택시로 MOVE_MIN 분 넘게. 앱 TrainTransfers.CITY_STATIONS 와 같음
+ */
+const CITY_STATIONS = [["서울", "용산", "청량리", "영등포", "상봉", "행신"], ["대전", "서대전"], ["광주송정", "광주"], ["부산", "부전"], ["동대구", "대구"], ["천안아산", "천안"]];
+const MOVE_MIN = 30;
+/**
  * 1회 환승 경로: 환승역마다 (출발 → 환승역) 첫 열차에 가장 빨리 도착하는 (환승역 → 도착) 둘째 열차를 짝지음.
  * 같은 첫 열차는 하나만, 더 늦게 떠나면서 더 일찍 도착하는 다른 경로가 있으면 뺌. 출발 순, 많으면 하루에 고르게 20개
  */
 export function trainTransfers(all, d, dep, arr) {
   const out = [];
-  for (const hub of HUBS) {
-    const hk = norm(hub);
-    if (hk === norm(dep) || hk === norm(arr)) continue;
+  // [hub] 에 내려 [to] 에서 탐 (같은 역이면 to 는 hub)
+  const pair = (hub, to, minWait) => {
+    if (norm(hub) === norm(dep) || norm(to) === norm(arr)) return;
     const first = directTrips(all, d, dep, hub);
-    if (!first.length) continue;
-    const second = directTrips(all, d, hub, arr);
-    if (!second.length) continue;
+    if (!first.length) return;
+    const second = directTrips(all, d, to, arr);
+    if (!second.length) return;
     for (const a of first) {
       let best = null;
       for (const b of second) {
         const w = b.depMin - a.arrMin;
-        if (w >= MIN_WAIT && w <= MAX_WAIT && b.no !== a.no && (!best || b.arrMin < best.arrMin)) best = b;
+        if (w >= minWait && w <= MAX_WAIT && b.no !== a.no && (!best || b.arrMin < best.arrMin)) best = b;
       }
-      if (best) out.push({ hub, wait: best.depMin - a.arrMin, legs: [a, best], depMin: a.depMin, arrMin: best.arrMin });
+      if (best) out.push({ hub, to: to === hub ? null : to, wait: best.depMin - a.arrMin, legs: [a, best], depMin: a.depMin, arrMin: best.arrMin });
     }
-  }
+  };
+  for (const hub of HUBS) pair(hub, hub, MIN_WAIT);
+  for (const city of CITY_STATIONS) for (const a of city) for (const b of city) if (a !== b) pair(a, b, MOVE_MIN);
   const per = new Map();
   for (const t of out.sort((x, y) => x.arrMin - y.arrMin || y.depMin - x.depMin)) { const k = t.legs[0].no + "|" + t.legs[0].depMin; if (!per.has(k)) per.set(k, t); }
   const all2 = [...per.values()];
@@ -198,9 +216,19 @@ export function trainScreen(root, chipsHtml) {
     draw();
     const st2 = await trainStations().catch(() => []);
     const ds = st2.find((s) => norm(s.name) === norm(train.dep)), as = st2.find((s) => norm(s.name) === norm(train.arr));
-    if (ds && as && trips.length) {
-      const info = await trainInfo(ds.id, as.id, ymd(t));
-      if (info.size && alive) { trips = trips.map((x) => { const i = info.get(x.no.replace(/^0+/, "") || "0"); return i ? { ...x, kind: i[0] || x.kind, fare: i[1] ?? x.fare } : x; }); draw(); }
+    if (ds && as && !failed) {
+      const want = `${train.dep}|${train.arr}|${train.day}`;
+      const api = await trainApi(ds.id, as.id, ymd(t));
+      if (!alive || want !== `${train.dep}|${train.arr}|${train.day}` || !api.length) return;
+      if (api.length > trips.length) {
+        // 시간표 파일보다 국토교통부가 더 많으면 그쪽 (주말 등). 직통이 생겼으면 환승은 버튼으로
+        trips = api;
+        if (showTransfers && trips.length) { showTransfers = false; transfers = null; }
+      } else {
+        const info = new Map(api.map((x) => [x.no, x]));
+        trips = trips.map((x) => { const i = info.get(x.no.replace(/^0+/, "") || "0"); return i ? { ...x, kind: i.kind || x.kind, fare: i.fare ?? x.fare } : x; });
+      }
+      draw();
     }
   };
   const redraw = () => { if (train.searched && !train.editing) load(); else draw(); };
@@ -210,7 +238,7 @@ export function trainScreen(root, chipsHtml) {
     if (!transfers.length) return note("환승 1회로 갈 수 있는 열차를 찾지 못했어요. 2회 이상 환승이 필요하거나 그날 운행이 없을 수 있어요.");
     const now = nowMin(train), leg = (x) => `${[x.kind, x.no].filter(Boolean).join(" ")} ${clock(x.depMin)}→${clock(x.arrMin)}`;
     return sectionHead("환승해서 가기 · 1회 환승") + `<div class="list">${transfers.map((x) => `<div class="row ${x.depMin < now ? "gone" : ""}"><span class="grow"><b class="trip">${clock(x.depMin)}  →  ${clock(x.arrMin)}</b>
-      <small>${duration(x.arrMin - x.depMin)} · ${esc(x.hub)} 환승 (${x.wait}분 기다림)</small><small>${esc(leg(x.legs[0]))} · ${esc(leg(x.legs[1]))}</small></span>
+      <small>${duration(x.arrMin - x.depMin)} · ${x.to ? `${esc(x.hub)}역에서 내려 ${esc(x.to)}역으로 옮겨 타기 (${x.wait}분)` : `${esc(x.hub)} 환승 (${x.wait}분 기다림)`}</small><small>${esc(leg(x.legs[0]))} · ${esc(leg(x.legs[1]))}</small></span>
       ${x.legs.every((l) => l.kind) ? `<span class="right"><b class="sm">${esc(x.legs.map((l) => l.kind).join(" → "))}</b></span>` : ""}</div>`).join("")}</div>`;
   };
   function draw() {
