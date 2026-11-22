@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { upstreamFetch, handleRelay, relayUrl, _reset } from "../src/krrelay.js";
-import { handle, allowedTarget } from "../../relay/relay.mjs";
+import { handle, allowedTarget, cronOnce } from "../../relay/relay.mjs";
 
 /** kr_relay 표 하나만 흉내 내는 D1 */
 function fakeDb() {
@@ -142,4 +142,15 @@ test("중계가 전혀 답이 없으면 504 로 끝냄 (바로 묻기로 더 기
   assert.ok(seen.every((u) => u.includes("trycloudflare")));
   const fast = async (u) => { seen.push(u); return new Response("direct"); };
   assert.equal(await (await upstreamFetch(DG, {}, env, { fetcher: fast })).text(), "direct");
+});
+
+test("노트북 중계가 타볼까 예약 작업을 부름 (POST /w/cron, X-Cron-Key)", async () => {
+  let seen = null;
+  const st = await cronOnce("ck", async (u, init) => { seen = { u, init }; return new Response("{}", { status: 200 }); });
+  assert.equal(st, 200);
+  assert.equal(seen.u, "https://tabolkka.pages.dev/w/cron");
+  assert.equal(seen.init.method, "POST");
+  assert.equal(seen.init.headers["X-Cron-Key"], "ck");
+  assert.equal(await cronOnce("bad", async () => new Response("forbidden", { status: 403 })), 403);
+  assert.equal(await cronOnce("ck", async () => { throw new TypeError("fetch failed"); }), "error");
 });

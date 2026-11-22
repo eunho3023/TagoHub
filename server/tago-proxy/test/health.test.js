@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reason, checkOne, healthCron, handleHealth, CHECKS } from "../src/health.js";
+import { reason, checkOne, healthCron, healthDue, handleHealth, CHECKS, HEALTH_EVERY_MS } from "../src/health.js";
 
 test("고장 이유: 키 문제·한도 초과·제공처 오류를 사람이 읽을 말로", () => {
   assert.equal(reason(401, "Unauthorized"), "인증 실패 (키 확인 필요: HTTP 401)");
@@ -46,4 +46,16 @@ test("예약 작업이 기록하고 /w/health 가 이름표와 함께 돌려줌"
   assert.equal(seoul.label, "서울 버스");
   assert.equal(seoul.msg, "인증 실패 (키 확인 필요: HTTP 401)");
   assert.equal(j.checks.find((x) => x.name === "kakao").ok, null);   // 확인 안 한 곳
+});
+
+test("고장 확인은 정각이 아니어도 마지막 확인이 29분 지났으면 함 (GitHub 예약이 몇 시간씩 건너뛰어서)", async () => {
+  let last = null;
+  const env = { DB: { prepare: () => ({ run: async () => ({}), first: async () => ({ at: last }) }) } };
+  const now = Date.UTC(2026, 10, 23, 7, 13);   // 13분: 예전 방식이면 건너뜀
+  assert.equal(await healthDue(env, now), true);   // 기록 없음
+  last = now - HEALTH_EVERY_MS - 1000;
+  assert.equal(await healthDue(env, now), true);
+  last = now - 5 * 60 * 1000;
+  assert.equal(await healthDue(env, now), false);   // 5분 전에 했음
+  assert.equal(await healthDue({}, now), false);   // DB 없음
 });

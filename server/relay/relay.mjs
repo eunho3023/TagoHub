@@ -6,6 +6,7 @@
  * - 127.0.0.1:8792 에서 GET /f?u=<공공데이터포털 주소> 만 받음 (X-Relay-Key 가 맞아야, 호스트는 apis.data.go.kr 만)
  * - cloudflared 빠른 터널(*.trycloudflare.com)을 열고, 그 주소를 타볼까 POST /w/relay/register 로 알림 (켤 때 + 5분마다)
  * - cloudflared 가 죽으면 다시 띄움. 중계가 꺼지면 타볼까는 예전처럼 바로 물음 (느리지만 됨)
+ * - 환경 변수 CRON_KEY 가 있으면 타볼까 예약 작업(POST /w/cron)도 1분마다 부름 (cronLoop)
  *
  *   node server/relay/relay.mjs        # local.properties 의 RELAY_KEY 사용 (deploy.ps1 이 만들어 둠)
  *   리눅스 노트북: server/relay/linux/README.md (systemd 서비스, 열쇠는 /etc/tagohub-relay.env)
@@ -104,6 +105,39 @@ async function register(tunnel, key) {
   }
 }
 
+/**
+ * 타볼까 예약 작업을 1분마다 부름 (CRON_KEY 가 있을 때만: 리눅스 노트북의 /etc/tagohub-relay.env).
+ * GitHub Actions 의 5분 예약이 실제로는 6시간에 한 번꼴로만 돌아서(2026-11-23 잰 것) 고장 확인·정류장 시간표 모으기가 멈췄음.
+ * 24시간 켜져 있는 노트북이 대신 부름. 한 번 끝나야 다음을 부름 (겹치지 않게), 시작 기준 1분 간격.
+ */
+export const CRON_MS = 60 * 1000;
+export async function cronOnce(cronKey, fetcher = fetch) {
+  try {
+    const r = await fetcher(SERVER + "/w/cron", { method: "POST", headers: { "X-Cron-Key": cronKey }, signal: AbortSignal.timeout(55000) });
+    await r.arrayBuffer().catch(() => null);
+    return r.status;
+  } catch (e) {
+    return e && e.name === "TimeoutError" ? "timeout" : "error";
+  }
+}
+function cronLoop(cronKey) {
+  let lastOk = null, runs = 0, bad = 0, hour = new Date().getUTCHours();
+  const tick = async () => {
+    const t0 = Date.now();
+    const st = await cronOnce(cronKey);
+    const ok = st === 200;
+    runs++;
+    if (!ok) bad++;
+    // 기록은 바뀔 때와 한 시간에 한 번만 (1분마다 쓰면 너무 많음)
+    if (ok !== lastOk) log(ok ? "예약 작업 부름: 200" : `예약 작업 실패: ${st}${st === 403 ? " (CRON_KEY 가 타볼까와 달라요)" : ""}`);
+    lastOk = ok;
+    const h = new Date().getUTCHours();
+    if (h !== hour) { log(`예약 작업 지난 한 시간 ${runs}번 (실패 ${bad})`); runs = 0; bad = 0; hour = h; }
+    setTimeout(tick, Math.max(1000, CRON_MS - (Date.now() - t0)));
+  };
+  setTimeout(tick, 15000);
+}
+
 function findCloudflared() {
   const tries = [
     process.env.CLOUDFLARED,
@@ -170,6 +204,8 @@ function main() {
   }).listen(PORT, "127.0.0.1", () => {
     log(`중계 켜짐 127.0.0.1:${PORT}`);
     startTunnel(key);
+    const cronKey = (process.env.CRON_KEY || "").trim();
+    if (cronKey) { log("예약 작업도 1분마다 부름"); cronLoop(cronKey); }
   });
 }
 

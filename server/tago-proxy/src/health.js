@@ -129,6 +129,16 @@ async function ensure(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS api_health (name TEXT PRIMARY KEY, ok INTEGER NOT NULL, msg TEXT, ms INTEGER, at INTEGER NOT NULL, last_ok INTEGER, fail_since INTEGER) WITHOUT ROWID").run();
 }
 
+/** 확인할 때가 됐는지 (마지막 확인이 29분 넘게 지났거나 기록이 없음).
+ * 예전엔 정각 0분·30분에 불렸을 때만 확인했는데, GitHub 예약이 6시간에 한 번꼴로만 돌아(2026-11-23) 13시간씩 멈췄음 */
+export const HEALTH_EVERY_MS = 29 * 60 * 1000;
+export async function healthDue(env, now = Date.now()) {
+  if (!env.DB) return false;
+  await ensure(env.DB);
+  const row = await env.DB.prepare("SELECT MAX(at) AS at FROM api_health").first();
+  return !row || row.at == null || now - row.at >= HEALTH_EVERY_MS;
+}
+
 /** 예약 작업: 모두 확인해 기록 (한 번에 13곳 + D1 쓰기 몇 번: 바깥 요청 50번 한도 안) */
 export async function healthCron(env, fetcher = fetch) {
   if (!env.DB) return { skip: "no db" };
