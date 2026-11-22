@@ -418,6 +418,26 @@ def write_files(db, folder):
     return n
 
 
+def jeju_ssl_context():
+    """
+    제주 버스정보(bus.jeju.go.kr)는 중간 인증서를 보내지 않아서(Sectigo DV R36), 그 인증서를 미리 갖고 있지 않은 계정
+    (데이터 갱신 러너 서비스 = LocalSystem)의 파이썬은 CERTIFICATE_VERIFY_FAILED 로 바로 못 붙음. 그러면 노선 990개를
+    모두 중계 서버로 물었고, 중계 서버 → 제주가 자주 502 를 내던 2026-11-22 에는 몇 시간이 걸렸음.
+    공개 중간 인증서(pipeline/certs, 2036-03 만료)를 같이 믿게 해서 바로 붙음. 인증서 확인은 그대로 함
+    """
+    import ssl
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass
+    pem = pathlib.Path(__file__).resolve().parent / "certs" / "sectigo_dv_r36.pem"
+    if pem.exists():
+        ctx.load_verify_locations(cafile=str(pem))
+    return ctx
+
+
 def fetch_jeju(get=None):
     """
     제주: 노선 목록(한 번) + 노선마다 정류장 목록 → {노선 id: {"route": 노선 행, "stops": [행]}} 와 다 받았는지 (노선 약 990개, 2026-11)
@@ -443,6 +463,7 @@ def fetch_jeju(get=None):
             return JEJU_WEB + "/data/search/getLineInfoByLineId", f"lineId={m.group(1)}".encode()
         return f"{JEJU}/{path}", None
 
+    ctx = jeju_ssl_context()
     direct = [True]  # 제주 서버에 바로 붙기가 한 번 다 실패하면 남은 노선은 처음부터 중계 서버로 (노선마다 100초씩 기다리면 갱신이 시간 한도에 걸림)
 
     def fetch(path):
@@ -456,7 +477,7 @@ def fetch_jeju(get=None):
                 try:
                     req = urllib.request.Request(url, data=post, headers={"User-Agent": "Mozilla/5.0 TagoHub-pipeline",
                                                                           **({"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"} if post else {})})
-                    with urllib.request.urlopen(req, timeout=30) as r:
+                    with urllib.request.urlopen(req, timeout=30, context=ctx if url == own else None) as r:
                         return json.loads(r.read().decode("utf-8"))
                 except Exception as e:
                     err[0] = f"{type(e).__name__}: {str(e)[:120]}"

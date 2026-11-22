@@ -460,8 +460,15 @@ def test_jeonju_urls_direct_first():
     assert len(bd.jeonju_urls("line/x", key="k")) == 1
 
 
+def test_jeju_ssl_context_has_intermediate():
+    """제주 서버가 안 보내는 중간 인증서(Sectigo DV R36)를 믿을 목록에 넣음 (러너 서비스 계정에서 바로 붙게)"""
+    ctx = bd.jeju_ssl_context()
+    names = [dict(x[0] for x in c["subject"]).get("commonName") for c in ctx.get_ca_certs()]
+    assert "Sectigo Public Server Authentication CA DV R36" in names
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
 
