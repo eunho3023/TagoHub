@@ -467,8 +467,27 @@ def test_jeju_ssl_context_has_intermediate():
     assert "Sectigo Public Server Authentication CA DV R36" in names
 
 
+def test_jeonju_gives_up_when_all_fail():
+    """전주: 바로 묻기(하루 한도)·중계 서버(502)가 다 안 되면 몇 번 뒤 남은 요청은 건너뜀 (요청마다 1분 넘게 걸려 갱신이 몇 시간 늘어졌음)"""
+    import urllib.request
+    calls = []
+    def fail(req, timeout=None):
+        calls.append(req.full_url)
+        raise OSError("down")
+    old_open, old_sleep = urllib.request.urlopen, bd.time.sleep
+    urllib.request.urlopen, bd.time.sleep = fail, (lambda s: None)
+    try:
+        served, ok, _ = bd.fetch_jeonju_served()
+    finally:
+        urllib.request.urlopen, bd.time.sleep = old_open, old_sleep
+    stops = bd.sqlite3.connect(bd.BASE_DB).execute("SELECT COUNT(*) FROM stops WHERE id LIKE 'JUB%'").fetchone()[0]
+    if stops:
+        assert not ok and served == {}
+        assert len(calls) <= bd.JEONJU_GIVE_UP * 3 * 2, len(calls)
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
 
