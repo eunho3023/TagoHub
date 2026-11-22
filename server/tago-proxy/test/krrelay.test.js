@@ -36,15 +36,21 @@ test("중계가 켜져 있으면 공공데이터포털은 중계로", async () =
   assert.equal(seen[0][1], KEY);
 });
 
-test("중계가 실패하면 바로 묻고, 1분 동안은 중계를 건너뜀", async () => {
+test("중계가 실패하면 바로 묻고(이유를 X-Relay-Why 에), 잇달아 3번 실패해야 잠깐 건너뜀", async () => {
   const db = fakeDb(); db.set({ url: "https://abc.trycloudflare.com", at: Date.now() });
   const seen = [];
   const fetcher = async (u) => { seen.push(u); if (u.includes("trycloudflare")) throw new Error("down"); return new Response("direct"); };
   const env = { DB: db, RELAY_KEY: KEY };
-  assert.equal(await (await upstreamFetch(DG, {}, env, { fetcher })).text(), "direct");
-  assert.equal(await (await upstreamFetch(DG, {}, env, { fetcher })).text(), "direct");
-  // 중계에 두 번(새 연결로 한 번 더) 물은 뒤 바로, 다음 요청은 중계를 건너뜀
-  assert.deepEqual(seen.map((u) => u.includes("trycloudflare")), [true, true, false, false]);
+  const r1 = await upstreamFetch(DG, {}, env, { fetcher });
+  assert.equal(await r1.text(), "direct");
+  assert.equal(r1.headers.get("X-Via"), "direct");
+  assert.match(r1.headers.get("X-Relay-Why"), /^error /);
+  await upstreamFetch(DG, {}, env, { fetcher });          // 두 번째 실패: 아직 중계에 물음
+  await upstreamFetch(DG, {}, env, { fetcher });          // 세 번째 실패: 이제 잠깐 건너뜀
+  const r4 = await upstreamFetch(DG, {}, env, { fetcher });
+  assert.equal(r4.headers.get("X-Relay-Why"), "down");
+  // 중계 두 번(새 연결로 한 번 더) × 3 + 바로 3, 넷째는 바로만
+  assert.deepEqual(seen.map((u) => u.includes("trycloudflare")), [true, true, false, true, true, false, true, true, false, false]);
 });
 
 test("중계 자체 오류(X-Relay-Upstream 없음)도 바로 묻기로", async () => {
@@ -126,7 +132,7 @@ test("중계가 기관 오류(X-Relay-Upstream 0)를 내도 중계는 살아 있
   assert.ok(seen.every((u) => u.includes("trycloudflare")));   // 바로 묻기로 넘어가지 않음
 });
 
-test("중계가 전혀 답이 없으면 504 로 끝내고(바로 묻기로 더 기다리지 않음) 1분 건너뜀", async () => {
+test("중계가 전혀 답이 없으면 504 로 끝냄 (바로 묻기로 더 기다리지 않음)", async () => {
   const db = fakeDb(); db.set({ url: "https://abc.trycloudflare.com", at: Date.now() });
   const seen = [];
   const fetcher = (u, init) => { seen.push(u); return new Promise((r, j) => init.signal.addEventListener("abort", () => j(new Error("abort")))); };

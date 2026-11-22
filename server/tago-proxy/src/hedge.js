@@ -9,7 +9,8 @@
  * 모두 실패하면 마지막 응답, 응답이 하나도 없으면 마지막 오류를 던짐. [totalMs] 가 지나면 504.
  * GET 만 겹쳐 보냄 (POST 는 한 번만).
  */
-const RETRY_STATUS = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
+// 530: Cloudflare 터널(국내 중계) 쪽 연결이 잠깐 끊겼을 때
+const RETRY_STATUS = new Set([502, 503, 504, 520, 521, 522, 523, 524, 530]);
 export const HEDGE_MS = 3000, HEDGE_TRIES = 3, HEDGE_TOTAL_MS = 15000;
 
 export function hedgedFetch(url, init = {}, { hedgeMs = HEDGE_MS, tries = HEDGE_TRIES, totalMs = HEDGE_TOTAL_MS, fetcher = fetch } = {}) {
