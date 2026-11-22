@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, seoulPositionRequest, seoulPositionUrl, kakaoWebRequest, kacWebRequest, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, seoulPositionRequest, seoulPositionUrl, kakaoWebRequest, kacWebRequest, ovWebRequest, cctvRows, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
 import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps, gpsInfo } from "./gps.js";
@@ -120,6 +120,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/topis/")) return handleSeoulTraffic(url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/ov/")) return ovWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
   // 지자체 공식 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미 버스정보 사이트, src/timetable.js)
@@ -275,8 +276,8 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
 async function exWeb(request, url, env, ctx) {
   const r = exWebRequest(url.pathname, url.search);
   if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
-  return cachedJson(request, env, ctx, "https://cache.tagohub/ex/" + r.path + "?pageNo=" + r.page,
-    env.EX_API_KEY ? exUrl(r.path, r.page, env.EX_API_KEY) : null, r.ttl, (b) => /"code"\s*:\s*"SUCCESS"/i.test(b));
+  return cachedJson(request, env, ctx, "https://cache.tagohub/ex/" + r.path + "?pageNo=" + r.page + r.extra,
+    env.EX_API_KEY ? exUrl(r.path, r.page, env.EX_API_KEY, r.extra) : null, r.ttl, (b) => /"code"\s*:\s*"SUCCESS"/i.test(b));
 }
 
 /** 웹 버전 서울 실시간 지하철 역 도착 (proxy.js seoulWebRequest). "데이터 없음"(INFO-200)도 정상으로 저장 */
@@ -299,6 +300,38 @@ async function kakaoWeb(request, url, env, ctx) {
   const key = (env.KAKAO_REST_KEY || "").trim();
   return cachedJson(request, env, ctx, "https://cache.tagohub/kakao/" + r.cacheKey, key ? r.url : null, r.ttl,
     (b) => /"(documents|routes|status)"\s*:/.test(b), { Authorization: "KakaoAK " + key });
+}
+
+/** 웹 버전 CCTV 목록 (proxy.js ovWebRequest): 집 PC 가 올린 전국 목록 파일을 받아 [[이름, 위도, 경도, 영상 주소]] 로 줄여 10분 저장 */
+const OV_RELEASE = "https://github.com/eunho3023/TagoHub/releases/download/data-latest/";
+async function ovWeb(request, url, env, ctx) {
+  const r = ovWebRequest(url.pathname);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  const cache = caches.default;
+  const key = new Request("https://cache.tagohub/ov/" + r.file);
+  const hit = await cache.match(key);
+  if (hit) {
+    const out = new Response(hit.body, hit);
+    for (const [k, v] of Object.entries(WEB_HEADERS)) out.headers.set(k, v);
+    return out;
+  }
+  if (env.WEB_LIMIT) {
+    const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+  }
+  const headers = { "Content-Type": "application/json; charset=utf-8", ...WEB_HEADERS };
+  try {
+    const res = await fetch(OV_RELEASE + r.file, { headers: { "User-Agent": "TagoHub" } });
+    if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+    const xml = await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).text();
+    const rows = cctvRows(xml);
+    if (!rows.length) throw new Error("empty");
+    const stored = new Response(JSON.stringify(rows), { status: 200, headers: { ...headers, "Cache-Control": "public, max-age=" + r.ttl } });
+    ctx.waitUntil(cache.put(key, stored.clone()));
+    return stored;
+  } catch (e) {
+    return new Response(JSON.stringify({ code: "ERROR", message: String(e.message || e) }), { status: 502, headers });
+  }
 }
 
 /** 웹 버전 한국공항공사 (proxy.js kacWebRequest). 키는 KAC_API_KEY (없으면 공공데이터포털 키) */

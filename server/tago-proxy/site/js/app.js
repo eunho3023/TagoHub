@@ -130,7 +130,7 @@ export function stopsMap(host, focus) {
   let stops = [], picked = focus, stations = [];
   let timer = null, alive = true;
   /** 서울 실시간 교통 점(돌발·교통량 지점)을 눌렀을 때 카드 내용 */
-  let info = null;
+  let info = null, cardSeq = 0;
   /** 관리자: 카드에 붙는 "위치 고치기" (역·자전거·주차장·편의시설 점, 지도 고치기 → fixpoint.js) */
   let infoFix = "";
   const fixBtn = (go2) => (Edits.editing() ? `<button class="link" ${act(go2)}>📍 위치 고치기</button>` : "");
@@ -162,7 +162,8 @@ export function stopsMap(host, focus) {
         .map((s) => { const on = picked && s.id === picked.id; return { id: s.id, lat: s.lat, lng: s.lng, color: on ? "#D7262E" : BUS_STOP_COLOR, ring: "#fff", r: on ? 11 : 8, bus: true, label: on ? s.name : null, labelUp: on }; }),
       ...(traffic ? traffic.dots() : [])], MapView.metersPerPx()),
       (d) => {
-        // 돌발·공영자전거·주차장·편의시설 점은 카드 (topis.js card)
+        cardSeq++;
+        // 돌발·공영자전거·주차장·편의시설·주유소·휴게소·CCTV 점은 카드 (topis.js card)
         if (d.id.startsWith("sub:")) {
           const g = stations[+d.id.slice(4)];
           if (!g) return;
@@ -173,9 +174,11 @@ export function stopsMap(host, focus) {
           draw();
           return;
         }
-        if (/^(acc|bike|park|pl):/.test(d.id)) {
+        if (/^(acc|bike|park|pl|cctv|rest|gas):/.test(d.id)) {
           picked = null;
-          info = traffic && traffic.card(d.id, (h) => { if (info != null) { info = h; draw(); } });
+          // 늦게 채워지는 카드(휴게소 상세)는 그사이 다른 점을 눌렀으면 버림
+          const asked = cardSeq;
+          info = traffic && traffic.card(d.id, (h) => { if (info != null && asked === cardSeq) { info = h; draw(); } });
           infoFix = /^(bike|park|pl):/.test(d.id) ? fixBtn(() => go("fixpoint", "place", { pid: d.id, lat: d.lat, lng: d.lng, name: card.querySelector("b")?.textContent || "" })) : "";
           draw();
           return;

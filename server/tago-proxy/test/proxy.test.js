@@ -121,11 +121,15 @@ test("웹 버전: 고속·시외버스 (터미널 id 모양 검사)", () => {
 import { exWebRequest, exUrl } from "../src/proxy.js";
 
 test("웹 한국도로공사: 허락한 기능과 쪽 번호만", () => {
-  assert.deepEqual(exWebRequest("/w/ex/burstInfo/realTimeSms", ""), { path: "burstInfo/realTimeSms", page: "1", ttl: 120 });
+  assert.deepEqual(exWebRequest("/w/ex/burstInfo/realTimeSms", ""), { path: "burstInfo/realTimeSms", page: "1", ttl: 120, extra: "" });
   assert.equal(exWebRequest("/w/ex/business/curStateStation", "?pageNo=3&key=evil").page, "3");
   assert.equal(exWebRequest("/w/ex/business/curStateStation", "?pageNo=21"), null);
   assert.equal(exWebRequest("/w/ex/business/curStateStation", "?pageNo=0"), null);
+  // 휴게소 상세: 휴게소 번호(6자리)가 있어야만
   assert.equal(exWebRequest("/w/ex/restinfo/restBrandList", ""), null);
+  assert.equal(exWebRequest("/w/ex/restinfo/restBrandList", "?stdRestCd=12&x=1"), null);
+  assert.equal(exWebRequest("/w/ex/restinfo/restBrandList", "?stdRestCd=000001").extra, "&stdRestCd=000001");
+  assert.equal(exUrl("restinfo/restBrandList", "1", "k", "&stdRestCd=000001"), "https://data.ex.co.kr/openapi/restinfo/restBrandList?key=k&type=json&numOfRows=99&pageNo=1&stdRestCd=000001");
   assert.equal(exWebRequest("/w/ex/../burstInfo/realTimeSms", ""), null);
   const u = exUrl("burstInfo/realTimeSms", "2", " k+/ ");
   assert.equal(u, "https://data.ex.co.kr/openapi/burstInfo/realTimeSms?key=k%2B%2F&type=json&numOfRows=99&pageNo=2");
@@ -314,4 +318,31 @@ test("웹 서울 지하철 열차 위치: 아는 노선만, 10초 저장", async
   assert.equal(seoulPositionRequest("/w/seoul/position/" + encodeURIComponent("부산1호선")), null);
   assert.equal(seoulPositionRequest("/w/seoul/position/x/y"), null);
   assert.equal(seoulPositionUrl("2호선", " k "), "http://swopenapi.seoul.go.kr/api/subway/k/json/realtimePosition/0/300/" + encodeURIComponent("2호선"));
+});
+
+import { ovWebRequest, cctvRows, kakaoWebRequest as kakaoWebRequest2, webRequest as webRequest2 } from "../src/proxy.js";
+
+test("웹 CCTV 목록: 고속도로·국도 파일만, XML 을 [이름, 위도, 경도, 주소]로", () => {
+  assert.deepEqual(ovWebRequest("/w/ov/cctv/ex"), { file: "ov_its_cctv_ex.xml.gz", type: "ex", ttl: 600 });
+  assert.equal(ovWebRequest("/w/ov/cctv/x"), null);
+  assert.equal(ovWebRequest("/w/ov/../ov_meta.json"), null);
+  const xml = "<response><data><cctvurl>http://a.kr/1/x+y==</cctvurl><coordy>37.4067123</coordy><cctvname>[경부선] 판교</cctvname><coordx>127.097</coordx></data>" +
+    "<data><cctvurl></cctvurl><coordy>37.1</coordy><coordx>127.1</coordx><cctvname>주소 없음</cctvname></data>" +
+    "<data><cctvurl>http://a.kr/2</cctvurl><coordy>0</coordy><coordx>0</coordx><cctvname>위치 없음</cctvname></data></response>";
+  assert.deepEqual(cctvRows(xml), [["[경부선] 판교", 37.40671, 127.097, "http://a.kr/1/x+y=="]]);
+});
+
+test("웹 주유소: 카카오 장소 분류는 주유소(OL7)와 좁은 칸만", () => {
+  const r = kakaoWebRequest2("/w/kakao/category", "?code=OL7&rect=127.02,37.5,127.04,37.52&page=2");
+  assert.ok(r.url.includes("category_group_code=OL7&rect=127.02000,37.50000,127.04000,37.52000&page=2&size=15"));
+  assert.equal(r.ttl, 86400);
+  assert.equal(kakaoWebRequest2("/w/kakao/category", "?code=FD6&rect=127.02,37.5,127.04,37.52"), null);
+  assert.equal(kakaoWebRequest2("/w/kakao/category", "?code=OL7&rect=126,37,127,38"), null);
+  assert.equal(kakaoWebRequest2("/w/kakao/category", "?code=OL7&rect=127.02,37.5,127.04,37.52&page=4"), null);
+});
+
+test("웹 여객선 운항: 날짜만 받고 JSON 으로", () => {
+  const r = webRequest2("/w/dg/B554035/oprt-schd-info-v2/get-oprt-schd-info-v2", "?rlvtYmd=20261122&serviceKey=evil");
+  assert.equal(r.search, "?rlvtYmd=20261122&pageNo=1&numOfRows=1000&dataType=JSON");
+  assert.equal(webRequest2("/w/dg/B554035/oprt-schd-info-v2/get-oprt-schd-info-v2", "?rlvtYmd=2026-11-22"), null);
 });

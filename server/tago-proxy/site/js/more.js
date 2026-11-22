@@ -8,9 +8,9 @@ import * as Edits from "./edits.js";
 import * as Account from "./account.js";
 import { directionsScreen } from "./places.js";
 
-// ── 대중교통 탭: 버스·지하철·기차·고속시외·항공·도로 ──
+// ── 대중교통 탭: 버스·지하철·기차·고속시외·항공·여객선·도로 ──
 export const MODES = [
-  ["bus", "버스"], ["subway", "지하철"], ["train", "기차"], ["coach", "고속·시외"], ["air", "항공"], ["road", "도로"],
+  ["bus", "버스"], ["subway", "지하철"], ["train", "기차"], ["coach", "고속·시외"], ["air", "항공"], ["ferry", "여객선"], ["road", "도로"],
 ];
 /** 다른 모듈이 수단 화면을 넣음 (subway 등) */
 export const modeScreens = {};

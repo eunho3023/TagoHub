@@ -9,12 +9,15 @@ import { offsetRight } from "./sideline.js";
 import { BIKE_ZOOM, bikeDots } from "./bikes.js";
 import { PARKING_ZOOM, parkingDots, parkingIn, parkingLines } from "./parking.js";
 import { PLACE_KINDS, PLACE_NAMES, placeDots, placesIn } from "./amenity.js";
+import { CCTV_ZOOM, cctvAll, cctvDots, cctvCard, REST_ZOOM, restAll, restDots, restCard, GAS_ZOOM, GAS_ON, gasIn, gasDots, gasCard } from "./roadlayers.js";
 
 const SEOUL = { s: 37.41, n: 37.72, w: 126.76, e: 127.19 };
 const SAVE = "tagohub.traffic";   // 예전: 모두 한꺼번에 켜고 끄기 ("1")
 const LAYERS = "tagohub.layers";   // 지금: 레이어마다 {traffic, bike, park, pl:종류…}
 /** 레이어 고르기 목록 [열쇠, 이름, 설명] */
-export const LAYER_LIST = [["traffic", "실시간 교통", "서울 도로 소통·돌발"], ["bike", "공영자전거", "빌릴 수 있는 대수"], ["park", "주차장", ""],
+export const LAYER_LIST = [["traffic", "실시간 교통", "서울 도로 소통·돌발"], ["cctv", "CCTV", "고속도로·국도 실시간 영상"],
+  ["rest", "휴게소", "주유 가격·편의시설·메뉴"], ["gas", "주유소", GAS_ON() ? "" : "11월 29일부터"],
+  ["bike", "공영자전거", "빌릴 수 있는 대수"], ["park", "주차장", ""],
   ...Object.keys(PLACE_KINDS).map((k) => ["pl:" + k, PLACE_NAMES[k] || k, ""])];
 /** 저장해 둔 레이어 켜짐 (예전 "모두 켜기"였으면 모두 켬) */
 export function loadLayers() {
@@ -93,6 +96,7 @@ export function trafficLayer(onChange) {
   const L = (k) => !!layers[k];
   let on = LAYER_LIST.some(([k]) => L(k));
   let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0, parks = [], parkSeq = 0;
+  let cctvs = [], rests = [], gases = [], gasSeq = 0;
   const places = {}, placeSeq = {};
   const speeds = new Map(); // 링크 id → [km/h, 초]
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
@@ -152,6 +156,14 @@ export function trafficLayer(onChange) {
     if (L("park") && b && MapView.zoom() >= PARKING_ZOOM) {
       const seq = ++parkSeq;
       parkingIn(b).then((v) => { if (seq !== parkSeq) return; parks = v; if (alive) onChange(); }).catch(() => {});
+    }
+    // CCTV(고속도로·국도 전국 목록, 10분마다)·휴게소(고정 파일): 한 번 받아 화면 안만 그림
+    if (L("cctv") && MapView.zoom() >= CCTV_ZOOM) cctvAll().then((v) => { if (v !== cctvs) { cctvs = v; if (alive) onChange(); } });
+    if (L("rest") && MapView.zoom() >= REST_ZOOM && !rests.length) restAll().then((v) => { rests = v; if (alive) onChange(); });
+    // 주유소: 화면 칸마다 카카오 장소에서 (칸마다 한 번). 늦게 온 옛 화면 것은 버림
+    if (L("gas") && b && MapView.zoom() >= GAS_ZOOM) {
+      const seq = ++gasSeq;
+      gasIn(b).then((v) => { if (seq !== gasSeq) return; gases = v; if (alive) onChange(); }).catch(() => {});
     }
     // 편의시설: 주차장과 같은 방식, 종류마다 보이기 시작하는 확대가 다름
     for (const [kind, k] of Object.entries(PLACE_KINDS)) {
@@ -222,13 +234,16 @@ export function trafficLayer(onChange) {
       }
       return out;
     },
-    /** 돌발 점(서울일 때), 확대했으면 공영자전거 대여소·주차장·편의시설 점(어디서나) — 켜져 있을 때 */
+    /** 돌발 점(서울일 때), 확대했으면 공영자전거 대여소·주차장·편의시설·주유소·휴게소·CCTV 점(어디서나) — 켜져 있을 때 */
     dots() {
       const b = MapView.bounds();
       if (!on || !b) return [];
       const out = L("traffic") && inSeoul(b) ? acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 })) : [];
       for (const [kind, k] of Object.entries(PLACE_KINDS)) if (L("pl:" + kind) && MapView.zoom() >= k.zoom) out.push(...placeDots(places[kind] || [], b));
       if (L("park") && MapView.zoom() >= PARKING_ZOOM) out.push(...parkingDots(parks, b));
+      if (L("gas") && MapView.zoom() >= GAS_ZOOM) out.push(...gasDots(gases, b));
+      if (L("rest") && MapView.zoom() >= REST_ZOOM) out.push(...restDots(rests, b));
+      if (L("cctv") && MapView.zoom() >= CCTV_ZOOM) out.push(...cctvDots(cctvs, b));
       if (L("bike") && MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
       // 관리자가 지도 고치기로 옮긴 점은 고친 자리에 (fixpoint.js)
       return out.map((d) => { const f = placeFix(d.id); return f ? { ...d, lat: f[0], lng: f[1] } : d; });
@@ -251,6 +266,18 @@ export function trafficLayer(onChange) {
         const x = (places[id.split(":")[1]] || []).find((v) => "pl:" + v.id === id);
         if (!x) return null;
         return `<div><b>${esc(x.name)}</b>${x.lines.map((l) => `<small>${esc(l)}</small>`).join("")}</div>`;
+      }
+      if (id.startsWith("cctv:")) {
+        const x = cctvs.find((v) => "cctv:" + v.id === id);
+        return x ? cctvCard(x) : null;
+      }
+      if (id.startsWith("rest:")) {
+        const x = rests.find((v) => "rest:" + v.id === id);
+        return x ? restCard(x, fill) : null;
+      }
+      if (id.startsWith("gas:")) {
+        const x = gases.find((v) => "gas:" + v.id === id);
+        return x ? gasCard(x) : null;
       }
       if (id.startsWith("bike:")) {
         const x = bikes.find((v) => "bike:" + v.id === id);

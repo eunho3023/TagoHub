@@ -150,6 +150,8 @@ export const WEB_OPS = {
   "1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo": ["depTerminalId", "arrTerminalId", "depPlandTime"],
   "1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo": ["depTerminalId", "arrTerminalId", "depPlandTime"],
   "1613000/SuburbsBusInfo/GetSuberbsBusTrminlList": ["terminalNm"],
+  // 연안여객선 그날 운항 스케줄 (한국해양교통안전공단, 하루 700편 남짓을 한 번에, 1분 저장). 앱 data/Ferry.kt 와 같은 자료
+  "B554035/oprt-schd-info-v2/get-oprt-schd-info-v2": ["rlvtYmd"],
 };
 const WEB_VALUE = {
   cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, gpsLati: /^3[3-8]\.\d{1,6}$/, gpsLong: /^12[4-9]\.\d{1,6}$|^13[01]\.\d{1,6}$/, routeId: /^[A-Za-z0-9_-]{1,24}$/,
@@ -157,11 +159,13 @@ const WEB_VALUE = {
   dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
   depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,
   depTerminalId: /^NA[A-Z0-9]{3,10}$/, arrTerminalId: /^NA[A-Z0-9]{3,10}$/, terminalNm: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/,
+  rlvtYmd: /^20\d{6}$/,
 };
 /** 한 번에 받는 개수 (지하철 역 시간표는 하루치가 수백 개라 한 쪽에) */
 const WEB_ROWS = {
   "1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList": "1000", "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": "1000", "1613000/BusSttnInfoInqireService/getSttnThrghRouteList": "300", "1613000/TrainInfo/GetStrtpntAlocFndTrainInfo": "300",
   "1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo": "300", "1613000/SuburbsBusInfo/GetStrtpntAlocFndSuberbsBusInfo": "300",
+  "B554035/oprt-schd-info-v2/get-oprt-schd-info-v2": "1000",
 };
 
 /** "/w/dg/1613000/..." + 검색 조건 → {path, search} (질의는 허락한 것만, 쪽 번호·개수는 정해 둠). 허락하지 않으면 null */
@@ -179,7 +183,9 @@ export function webRequest(pathname, search) {
   }
   out.set("pageNo", "1");
   out.set("numOfRows", WEB_ROWS[path] || "100");
-  out.set("_type", "xml");
+  // 여객선 스케줄은 _type 을 모르는 이름이라며 거절함(NOT_MANAGE_PARAM) → dataType=JSON
+  if (path.startsWith("B554035/")) out.set("dataType", "JSON");
+  else out.set("_type", "xml");
   return { path, search: "?" + out.toString() };
 }
 
@@ -189,6 +195,10 @@ export const WEB_EX = {
   "burstInfo/realTimeSms": 120,
   "odtraffic/trafficAmountByCongest": 120,
   "business/curStateStation": 21600,
+  // 휴게소 상세 (웹 지도 휴게소 점을 눌렀을 때): 편의시설·입점 브랜드·대표 메뉴. 휴게소 번호(stdRestCd) 하나씩, 하루 저장
+  "restinfo/restConvList": 86400,
+  "restinfo/restBrandList": 86400,
+  "restinfo/restBestfoodList": 86400,
 };
 
 /** "/w/ex/burstInfo/realTimeSms" + "?pageNo=2" → { path, page, ttl }. 허락하지 않으면 null */
@@ -197,14 +207,22 @@ export function exWebRequest(pathname, search) {
   const path = pathname.slice(6);
   const ttl = WEB_EX[path];
   if (!ttl) return null;
-  const p = new URLSearchParams(search).get("pageNo") || "1";
+  const q = new URLSearchParams(search);
+  const p = q.get("pageNo") || "1";
   if (!/^([1-9]|1\d|20)$/.test(p)) return null;
-  return { path, page: p, ttl };
+  // 휴게소 상세는 휴게소 번호(6자리)가 꼭 있어야 함
+  let extra = "";
+  if (path.startsWith("restinfo/")) {
+    const cd = q.get("stdRestCd") || "";
+    if (!/^\d{6}$/.test(cd)) return null;
+    extra = "&stdRestCd=" + cd;
+  }
+  return { path, page: p, ttl, extra };
 }
 
 /** 한국도로공사 요청 주소 (한 쪽 99건이 최대) */
-export function exUrl(path, page, key) {
-  return `https://data.ex.co.kr/openapi/${path}?key=${encodeURIComponent(key.trim())}&type=json&numOfRows=99&pageNo=${page}`;
+export function exUrl(path, page, key, extra = "") {
+  return `https://data.ex.co.kr/openapi/${path}?key=${encodeURIComponent(key.trim())}&type=json&numOfRows=99&pageNo=${page}${extra}`;
 }
 
 // ── 웹 버전 서울 실시간 지하철 (/w/seoul/arrival/<역 이름>) ──────────────────────
@@ -258,6 +276,18 @@ export function kakaoWebRequest(pathname, search) {
     const near = x && y && COORD.test(x) && COORD.test(y) ? `&x=${round5(x)}&y=${round5(y)}&sort=accuracy` : "";
     const qs = `query=${encodeURIComponent(q)}&size=15${near}`;
     return { url: "https://dapi.kakao.com/v2/local/search/keyword.json?" + qs, cacheKey: "place?" + qs, ttl: 86400 };
+  }
+  // 지도 화면 안 주유소 (카카오 장소 분류 OL7, 웹 지도 주유소 층). 칸(rect)은 화면이 0.02도 칸으로 맞춰 보내 여러 사람이 같은 저장을 씀
+  if (pathname === "/w/kakao/category") {
+    if (p.get("code") !== "OL7") return null;
+    const r = (p.get("rect") || "").split(",");
+    if (r.length !== 4 || !r.every((v) => COORD.test(v))) return null;
+    const [x1, y1, x2, y2] = r.map(Number);
+    if (!(x2 > x1 && y2 > y1) || x2 - x1 > 0.05 || y2 - y1 > 0.05) return null;
+    const page = p.get("page") || "1";
+    if (!/^[1-3]$/.test(page)) return null;
+    const qs = `category_group_code=OL7&rect=${r.map(round5).join(",")}&page=${page}&size=15`;
+    return { url: "https://dapi.kakao.com/v2/local/search/category.json?" + qs, cacheKey: "category?" + qs, ttl: 86400 };
   }
   if (pathname === "/w/kakao/transit") {
     const v = ["sx", "sy", "ex", "ey"].map((k) => p.get(k));
@@ -406,4 +436,26 @@ export function icnWebRequest(pathname, search) {
   const op = m[1] === "dep" ? "getFltDeparturesDeOdp" : "getFltArrivalsDeOdp";
   const qs = `type=json&numOfRows=1000&pageNo=${page}&searchdtCode=S&searchDate=${date}&searchFrom=0000&searchTo=2400&passengerOrCargo=P`;
   return { url: `https://apis.data.go.kr/B551177/statusOfAllFltDeOdp/${op}?serviceKey=KEY&${qs}`, cacheKey: `icn/${m[1]}?${qs}`, ttl: 60 };
+}
+
+// ── 웹 버전 CCTV 목록 (/w/ov/cctv/<ex|its>) ───────────────────────────────────────
+// 국가교통정보센터 CCTV 는 9443 포트라 Cloudflare 가 직접 못 부름 → 집 PC 러너가 10분마다 받아 Release(data-latest)에 올린
+// 전국 목록(앱 OverlaySnapshot 과 같은 파일)을 서버가 받아 줄인 JSON 으로 나눠 줌. ex = 고속도로, its = 국도
+export function ovWebRequest(pathname) {
+  const m = /^\/w\/ov\/cctv\/(ex|its)$/.exec(pathname);
+  if (!m) return null;
+  return { file: `ov_its_cctv_${m[1]}.xml.gz`, type: m[1], ttl: 600 };
+}
+
+/** CCTV 목록 XML → [[이름, 위도, 경도, 영상 주소]] (위치·주소가 없는 것은 뺌) */
+export function cctvRows(xml) {
+  const out = [];
+  const tag = (block, name) => { const m = new RegExp("<" + name + ">([^<]*)</" + name + ">").exec(block); return m ? m[1].trim() : ""; };
+  for (const m of String(xml).matchAll(/<data>([\s\S]*?)<\/data>/g)) {
+    const b = m[1];
+    const lat = parseFloat(tag(b, "coordy")), lng = parseFloat(tag(b, "coordx")), url = tag(b, "cctvurl");
+    if (!(lat > 32 && lat < 39.5 && lng > 124 && lng < 132) || !/^https?:\/\//.test(url)) continue;
+    out.push([tag(b, "cctvname").replace(/&amp;/g, "&"), Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5, url.replace(/&amp;/g, "&")]);
+  }
+  return out;
 }
