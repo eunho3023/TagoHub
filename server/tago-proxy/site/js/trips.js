@@ -1,11 +1,32 @@
 // 기차(서버에 올린 한국철도공사 시간표 + 국토교통부 종류·요금)와 고속·시외버스(국토교통부) 시간표.
-import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, onReturn, cachedText } from "./core.js";
+import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, onReturn, cachedText, storeGet, storeSet } from "./core.js";
 import { act, header, note } from "./ui.js";
 import { clock } from "./subway.js";
 
 export const duration = (min) => (min >= 60 ? `${Math.floor(min / 60)}시간${min % 60 ? " " + (min % 60) + "분" : ""}` : min + "분");
 const won = (n) => n.toLocaleString("ko-KR") + "원";
 const WEEK = "월화수목금토일";
+
+/**
+ * 최근 조회한 구간 (앱 RecentRoutes 처럼 수단마다 3개, 이 브라우저에 저장). 화면을 다시 열면 마지막 구간부터 보여 줌.
+ * 처음 기본 구간(서울→부산 등)은 직접 고르거나 바꾼 뒤에만 남김 (st.chosen)
+ */
+export const RecentRoutes = {
+  load(key) {
+    try { const v = JSON.parse(storeGet("recent." + key) || "[]"); return Array.isArray(v) ? v.filter((r) => r && r.dep && r.arr) : []; } catch (e) { return []; }
+  },
+  add(key, dep, arr) {
+    const id = (x) => JSON.stringify(x);
+    const next = [{ dep, arr }, ...this.load(key).filter((r) => !(id(r.dep) === id(dep) && id(r.arr) === id(arr)))].slice(0, 3);
+    storeSet("recent." + key, JSON.stringify(next));
+  },
+};
+/** 출발·도착 칸 아래 "최근" 알약 줄 (누르면 그 구간으로) */
+export function recentRow(key, label, pick) {
+  const list = RecentRoutes.load(key);
+  if (!list.length) return "";
+  return `<div class="recentrow"><small>최근</small><div class="pills">${list.map((r) => `<button class="pillbtn" ${act(() => pick(r))}>${esc(label(r.dep))} → ${esc(label(r.arr))}</button>`).join("")}</div></div>`;
+}
 
 /** 오늘·내일 칸 + 날짜 */
 export function dayRow(st, redraw) {
@@ -16,7 +37,7 @@ export function dayRow(st, redraw) {
 /** 출발·도착 칸 */
 export function boxes(st, depName, arrName, redraw) {
   const b = (k, title, name) => `<button class="pbox ${st.editing === k ? "on" : ""}" ${act(() => { st.editing = k; st.q = ""; redraw(); })}><small>${title}</small><b>${esc(name)}</b></button>`;
-  return `<div class="pboxes">${b("dep", "출발", depName)}<button class="swap" ${act(() => { [st.dep, st.arr] = [st.arr, st.dep]; redraw(); })}>⇄</button>${b("arr", "도착", arrName)}</div>`;
+  return `<div class="pboxes">${b("dep", "출발", depName)}<button class="swap" ${act(() => { [st.dep, st.arr] = [st.arr, st.dep]; st.chosen = true; redraw(); })}>⇄</button>${b("arr", "도착", arrName)}</div>`;
 }
 /** 편 목록: 지난 것은 흐리게, 다음 편으로 내려감 */
 export function tripList(root, list, now, row) {
@@ -60,12 +81,15 @@ async function trainInfo(depId, arrId, day) {
   } catch (e) { return new Map(); }
 }
 
-const train = { dep: "서울", arr: "부산", tomorrow: false, editing: null, q: "" };
+const lastTrain = RecentRoutes.load("train")[0];
+const train = { dep: lastTrain?.dep || "서울", arr: lastTrain?.arr || "부산", tomorrow: false, editing: null, q: "", chosen: false };
 export function trainScreen(root, chipsHtml) {
   let alive = true, trips = null, failed = false, stations = [];
   trainStations().then((s) => { stations = s; if (train.editing) draw(); }).catch(() => {});
   const load = async () => {
-    trips = null; failed = false; draw();
+    trips = null; failed = false;
+    if (train.chosen) RecentRoutes.add("train", train.dep, train.arr);
+    draw();
     const t = train.tomorrow ? addDays(seoulNow(), 1) : seoulNow(), d = isoDay(t);
     try {
       const dk = norm(train.dep), ak = norm(train.arr), seen = new Set();
@@ -85,12 +109,12 @@ export function trainScreen(root, chipsHtml) {
   };
   function draw() {
     if (!alive) return;
-    let h = header("타볼까", "기차 시간표") + chipsHtml + `<div class="searchtop">${boxes(train, train.dep, train.arr, () => { if (!train.editing) load(); else draw(); })}${dayRow(train, load)}</div>`;
+    let h = header("타볼까", "기차 시간표") + chipsHtml + `<div class="searchtop">${boxes(train, train.dep, train.arr, () => { if (!train.editing) load(); else draw(); })}${dayRow(train, load)}${train.editing ? "" : recentRow("train", (x) => x, (r) => { train.dep = r.dep; train.arr = r.arr; train.chosen = true; load(); })}</div>`;
     if (train.editing) {
       const q = norm(train.q);
       const shown = stations.filter((s) => !q || norm(s.name).includes(q)).sort((a, b) => (norm(a.name).startsWith(q) ? 0 : 1) - (norm(b.name).startsWith(q) ? 0 : 1) || a.name.length - b.name.length).slice(0, 80);
       root.innerHTML = h + `<div class="searchbox"><input id="q" type="search" placeholder="${train.editing === "dep" ? "출발역" : "도착역"} 이름" value="${esc(train.q)}" autocomplete="off"></div>
-        <div class="list">${shown.map((s) => `<button class="row" ${act(() => { train[train.editing] = s.name; train.editing = null; load(); })}><span class="grow"><b>${esc(s.name)}</b><small>${esc(s.region)}</small></span></button>`).join("")}</div>`;
+        <div class="list">${shown.map((s) => `<button class="row" ${act(() => { train[train.editing] = s.name; train.editing = null; train.chosen = true; load(); })}><span class="grow"><b>${esc(s.name)}</b><small>${esc(s.region)}</small></span></button>`).join("")}</div>`;
       const inp = root.querySelector("#q");
       inp.focus({ preventScroll: true });
       inp.oninput = () => { train.q = inp.value; const pos = inp.selectionStart; draw(); const i2 = root.querySelector("#q"); i2.focus(); i2.setSelectionRange(pos, pos); };
@@ -138,20 +162,22 @@ async function coachTrips(dep, arr, day) {
   }).filter((x) => x && !seen.has(x.depMin + "|" + x.grade) && seen.add(x.depMin + "|" + x.grade)).sort((a, b) => a.depMin - b.depMin);
 }
 
-const coach = { dep: null, arr: null, tomorrow: false, editing: "dep", q: "" };
+const lastCoach = RecentRoutes.load("coach")[0];
+const coach = { dep: lastCoach?.dep || null, arr: lastCoach?.arr || null, tomorrow: false, editing: lastCoach ? null : "dep", q: "" };
 export function coachScreen(root, chipsHtml) {
   let alive = true, trips = null, failed = false, list = [], extra = [], seq = 0;
   terminals().then((l) => { list = l; if (coach.editing) draw(); }).catch(() => {});
   const load = async () => {
     trips = null; failed = false; draw();
     if (!coach.dep || !coach.arr) return;
+    RecentRoutes.add("coach", coach.dep, coach.arr);
     const t = coach.tomorrow ? addDays(seoulNow(), 1) : seoulNow();
     try { trips = await coachTrips(coach.dep, coach.arr, ymd(t)); } catch (e) { failed = true; trips = []; }
     draw();
   };
   function draw() {
     if (!alive) return;
-    let h = header("타볼까", "고속·시외버스 시간표") + chipsHtml + `<div class="searchtop">${boxes(coach, coach.dep?.name || "터미널 고르기", coach.arr?.name || "터미널 고르기", () => { if (!coach.editing) load(); else draw(); })}${dayRow(coach, load)}</div>`;
+    let h = header("타볼까", "고속·시외버스 시간표") + chipsHtml + `<div class="searchtop">${boxes(coach, coach.dep?.name || "터미널 고르기", coach.arr?.name || "터미널 고르기", () => { if (!coach.editing) load(); else draw(); })}${dayRow(coach, load)}${coach.editing ? "" : recentRow("coach", (x) => x.name, (r) => { coach.dep = r.dep; coach.arr = r.arr; load(); })}</div>`;
     if (coach.editing) {
       const q = coach.q.replace(/ /g, ""), other = coach.editing === "arr" ? coach.dep : coach.arr, seen = new Set();
       const shown = [...list, ...extra].filter((x) => !seen.has(x.id) && seen.add(x.id))

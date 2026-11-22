@@ -318,3 +318,8 @@ textarea:focus { border-color: var(--primary); }
 .cctvx { border: 0; background: transparent; color: inherit; font-size: 20px; cursor: pointer; padding: 4px 8px; }
 .cctvbox video { width: 100%; aspect-ratio: 16 / 10; background: #000; border-radius: 10px; }
 .cctvnote:empty { display: none; }
+
+/* 최근 조회 구간 (기차·고속시외·항공·여객선, trips.js recentRow) */
+.recentrow { display: flex; align-items: center; gap: 8px; margin-top: 10px; min-width: 0; }
+.recentrow > small { flex: none; color: var(--muted); font-weight: 700; }
+.recentrow .pills { min-width: 0; }

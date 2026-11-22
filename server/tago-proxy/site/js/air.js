@@ -3,6 +3,7 @@ import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, c
 import { act, header, note, sectionHead, chips } from "./ui.js";
 import { go } from "./nav.js";
 import { clock } from "./subway.js";
+import { RecentRoutes, recentRow } from "./trips.js";
 
 const duration = (min) => (min >= 60 ? `${Math.floor(min / 60)}시간${min % 60 ? " " + (min % 60) + "분" : ""}` : min + "분");
 const WEEK = "월화수목금토일";
@@ -118,11 +119,16 @@ async function staticInfo(code) {
 const levelLabel = (l) => ({ 1: "원활", 2: "보통", 3: "혼잡", 4: "매우 혼잡" })[l] || "정보 없음";
 const levelColor = (l) => ({ 1: "#2E9E5B", 2: "#3B7DDD", 3: "#F08C00", 4: "#D7262E" })[l] || "#9E9E9E";
 
+// 국내 공항 이름 (공항 이름 파일 air_airports.tsv 에 김해·사천이 빠져 "PUS"·"HIN" 으로 보였음)
+const KR_AIRPORTS = { GMP: "김포", CJU: "제주", PUS: "김해", TAE: "대구", CJJ: "청주", KWJ: "광주", YNY: "양양", USN: "울산", RSU: "여수",
+  HIN: "사천", KPO: "포항경주", KUV: "군산", WJU: "원주", MWX: "무안", ICN: "인천" };
+
 // ── 국내선 시간표 화면 (대중교통 → 항공) ──
-const air = { dep: "GMP", arr: "CJU", tomorrow: false, editing: null };
+const lastAir = RecentRoutes.load("air")[0];
+const air = { dep: lastAir?.dep || "GMP", arr: lastAir?.arr || "CJU", tomorrow: false, editing: null, chosen: false };
 export function airScreen(root, chipsHtml) {
   let alive = true, data = null, failed = false, liveMap = new Map();
-  const name = (c) => { const n = data?.airports[c]; return n ? (n.endsWith("공항") ? n : n + "공항") : c; };
+  const name = (c) => { const n = data?.airports[c] || KR_AIRPORTS[c]; return n ? (n.endsWith("공항") ? n : n + "공항") : c; };
   const loadLive = async () => {
     liveMap = new Map();
     if (air.tomorrow) return;
@@ -137,14 +143,15 @@ export function airScreen(root, chipsHtml) {
     if (!data) { root.innerHTML = h + note("시간표를 불러오는 중..."); return; }
     const t = air.tomorrow ? addDays(seoulNow(), 1) : seoulNow();
     const box = (k, title) => `<button class="pbox ${air.editing === k ? "on" : ""}" ${act(() => { air.editing = k; draw(); })}><small>${title}</small><b>${esc(name(air[k]))}</b></button>`;
-    h += `<div class="searchtop"><div class="pboxes">${box("dep", "출발")}<button class="swap" ${act(() => { [air.dep, air.arr] = [air.arr, air.dep]; draw(); loadLive(); })}>⇄</button>${box("arr", "도착")}</div>
-      <div class="toolrow"><div class="segs">${[["오늘", false], ["내일", true]].map(([l, v]) => `<button class="${air.tomorrow === v ? "on" : ""}" ${act(() => { air.tomorrow = v; draw(); loadLive(); })}>${l}</button>`).join("")}</div><small>${t.m}월 ${t.d}일 (${WEEK[isoDay(t) - 1]})</small></div></div>`;
+    h += `<div class="searchtop"><div class="pboxes">${box("dep", "출발")}<button class="swap" ${act(() => { [air.dep, air.arr] = [air.arr, air.dep]; air.chosen = true; draw(); loadLive(); })}>⇄</button>${box("arr", "도착")}</div>
+      <div class="toolrow"><div class="segs">${[["오늘", false], ["내일", true]].map(([l, v]) => `<button class="${air.tomorrow === v ? "on" : ""}" ${act(() => { air.tomorrow = v; draw(); loadLive(); })}>${l}</button>`).join("")}</div><small>${t.m}월 ${t.d}일 (${WEEK[isoDay(t) - 1]})</small></div>${air.editing ? "" : recentRow("air", name, (r) => { air.dep = r.dep; air.arr = r.arr; air.chosen = true; draw(); loadLive(); })}</div>`;
     if (air.editing) {
       const codes = [...new Set(data.rows.filter((r) => !r.intl).flatMap((r) => [r.dep, r.arr]))].sort((a, b) => (PREFERRED.indexOf(a) + 100) % 100 - (PREFERRED.indexOf(b) + 100) % 100);
-      root.innerHTML = h + `<div class="list">${codes.map((c) => `<button class="row" ${act(() => { air[air.editing] = c; air.editing = null; draw(); loadLive(); })}><b class="grow">${esc(name(c))}</b><small>${c}</small></button>`).join("")}</div>`;
+      root.innerHTML = h + `<div class="list">${codes.map((c) => `<button class="row" ${act(() => { air[air.editing] = c; air.editing = null; air.chosen = true; draw(); loadLive(); })}><b class="grow">${esc(name(c))}</b><small>${c}</small></button>`).join("")}</div>`;
       return;
     }
     h += `<div class="links">${[air.dep, air.arr].map((c) => `<button class="link" ${act(() => go("airport", c, { name: name(c) }))}>${esc(name(c))} 정보</button>`).join("")}<button class="link" ${act(() => go("airport", ICN, { name: "인천국제공항" }))}>인천공항 운항</button></div>`;
+    if (air.chosen) RecentRoutes.add("air", air.dep, air.arr);
     const r = flights(data.rows, air.dep, air.arr, t);
     if (!r.list.length) { root.innerHTML = h + note(`${name(air.dep)} → ${name(air.arr)} 그날 운항편이 없어요`); return; }
     const now = air.tomorrow ? -1 : seoulNow().h * 60 + seoulNow().mi;
