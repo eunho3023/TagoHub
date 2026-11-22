@@ -33,3 +33,9 @@ test("저장한 응답은 정한 기간 안에서만 줌 (서버 안 사흘·웹
   assert.equal(await getStored(db, "stops:35010:R", 30 * DAY_MS, now), "<xml/>");
   assert.equal(await getStored(null, "stops:35010:R", DAY_MS, now), null);
 });
+
+test("지하철 역 시간표도 저장 열쇠 (하루 한도가 차면 지난 시간표를 쓰게)", () => {
+  assert.equal(storeKey("/1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList", "subwayStationId=MTRBS10119&dailyTypeCode=03&upDownTypeCode=U"), "subway:MTRBS10119:03:U");
+  assert.equal(storeKey("/1613000/SubwayInfo/GetSubwaySttnAcctoSchdulList", "subwayStationId=../x&dailyTypeCode=03&upDownTypeCode=U"), null);
+  assert.equal(storeKey("/1613000/SubwayInfo/GetKwrdFndSubwaySttnList", "subwayStationName=서면"), null);
+});

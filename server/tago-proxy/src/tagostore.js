@@ -4,7 +4,8 @@
 //  - 서버 안에서 쓸 때: 사흘 안에 받은 것이 있으면 다시 묻지 않음
 //  - 웹 중계: 하루 안에 받은 것이 있으면 그것을 주고, 공공데이터가 한도 초과 등으로 실패하면 30일 안의 지난 응답을 줌
 
-const KEEP = /getRouteAcctoThrghSttnList|getRouteInfoIem/;
+// 지하철 역 시간표(TAGO 지하철정보)도: 하루 한도가 차면 "시간표를 받지 못했어요"가 떴음 (2026-11-22 부산 서면)
+const KEEP = /getRouteAcctoThrghSttnList|getRouteInfoIem|GetSubwaySttnAcctoSchdulList/;
 export const DAY_MS = 24 * 3600 * 1000;
 let ready = false;
 
@@ -18,6 +19,10 @@ async function ensure(db) {
 export function storeKey(path, search) {
   if (!KEEP.test(path || "")) return null;
   const q = new URLSearchParams(search || "");
+  if (/Subway/.test(path)) {
+    const sid = q.get("subwayStationId"), day = q.get("dailyTypeCode"), ud = q.get("upDownTypeCode");
+    return /^[A-Za-z0-9]{1,20}$/.test(sid || "") && /^\d{2}$/.test(day || "") && /^[UD]$/.test(ud || "") ? `subway:${sid}:${day}:${ud}` : null;
+  }
   const city = q.get("cityCode"), id = q.get("routeId");
   if (!/^\d{1,6}$/.test(city || "") || !/^[A-Za-z0-9_-]{1,32}$/.test(id || "")) return null;
   return (/ThrghSttn/.test(path) ? "stops:" : "info:") + city + ":" + id;

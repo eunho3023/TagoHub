@@ -254,6 +254,12 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
     for (const [k, v] of Object.entries(WEB_HEADERS)) out.headers.set(k, v);
     return out;
   }
+  // 하루씩 두는 자료(경기 노선 정류장·정류장 경유 노선, 전주 노선 등)는 D1 에도 저장: Cloudflare 임시 저장은 곳마다 따로라 금방 비고,
+  // 공공데이터포털 하루 한도가 차면 "받지 못했어요"가 떴음 (2026-11-22 경기 노선 정류장). 하루 안 것은 바로, 실패하면 30일 안 것
+  const sk = env.DB && ttl >= 3600 && !post ? "web:" + cacheUrl.replace(/^https:\/\/cache\.tagohub\//, "") : null;
+  const storedResponse = (body, tag) => new Response(body, { status: 200, headers: { "Content-Type": body.trimStart().startsWith("<") ? "application/xml; charset=utf-8" : "application/json; charset=utf-8", "X-Cache": tag, "Cache-Control": "public, max-age=" + (tag === "STORE" ? ttl : 600), ...WEB_HEADERS } });
+  const fresh = sk ? await getStored(env.DB, sk, DAY_MS) : null;
+  if (fresh) { const r = storedResponse(fresh, "STORE"); ctx.waitUntil(cache.put(key, r.clone())); return r; }
   if (env.WEB_LIMIT) {
     const { success } = await env.WEB_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
@@ -270,15 +276,20 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
     headers["X-Via"] = res.headers.get("X-Via") || "direct";
     if (res.headers.get("X-Relay-Why")) headers["X-Relay-Why"] = res.headers.get("X-Relay-Why");
   } catch {
+    const stale = sk ? await getStored(env.DB, sk, 30 * DAY_MS) : null;
+    if (stale) return storedResponse(stale, "STALE");
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
   }
   // allowXml: XML 로만 답하는 기관(전주시 버스)은 XML 도 그대로 저장·전달
   const json = /^[[{]/.test(body.trimStart()) || (allowXml && body.trimStart().startsWith("<"));
   if (!res.ok || !json || !ok(body)) {
+    const stale = sk ? await getStored(env.DB, sk, 30 * DAY_MS) : null;
+    if (stale) return storedResponse(stale, "STALE");
     return new Response(json ? body : "{\"code\":\"ERROR\",\"message\":\"upstream " + res.status + "\"}", { status: 502, headers });
   }
   const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": "public, max-age=" + ttl } });
   ctx.waitUntil(cache.put(key, stored.clone()));
+  if (sk) ctx.waitUntil(putStored(env.DB, sk, body));
   return stored;
 }
 
