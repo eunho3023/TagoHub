@@ -80,3 +80,15 @@ test("xmlRows: 공공데이터포털이 바쁠 때 JSON 으로 오는 오류 99 
   assert.throws(() => xmlRows("{깨진 JSON"), /오류/);
   assert.deepEqual(xmlRows('{"response":{"header":{"resultCode":"00"},"body":{}}}'), []);
 });
+
+test("livePoll: 받는 중에 새로고침(now)하면 끝나는 대로 한 번 더 받고, 그 두 번째가 끝날 때 now() 도 끝남", async () => {
+  let n = 0, done = 0;
+  const p = livePoll(async () => { n++; await wait(40); done++; return true; }, 100000);
+  await wait(5);              // 첫 번째 받는 중
+  const t0 = Date.now();
+  await p.now();              // 예전엔 첫 번째가 끝나면 그냥 끝(다시 안 받음)
+  p.stop();
+  assert.equal(n, 2);
+  assert.equal(done, 2);
+  assert.ok(Date.now() - t0 >= 60);
+});

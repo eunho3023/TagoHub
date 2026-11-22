@@ -66,10 +66,12 @@ export function onReturn(cb) {
  * - 가려져 있는 동안은 주기 실행을 건너뜀
  * - run 이 false 를 주거나 오류면 실패: 2·4·6초 뒤 다시 (세 번). run({ lastTry }) 의 lastTry 가 true 일 때만 화면에 "받지 못했어요"를,
  *   그 전에는 받아 둔 것을 그대로 두거나 "다시 받는 중"을 보여 주면 됨
- * 돌려주는 { now, stop }: now() 는 바로 다시 (새로고침 단추), stop() 은 멈춤
+ * 돌려주는 { now, stop }: now() 는 바로 다시 (새로고침 단추), stop() 은 멈춤.
+ * now() 를 눌렀을 때 받는 중인 것이 있으면, 그것이 끝나는 대로 한 번 더 받음 (예전엔 받는 중이면 아무것도 안 해서,
+ * 공공데이터가 15초 넘게 늦을 때 새로고침이 안 먹히는 것처럼 보였음)
  */
 export function livePoll(run, everyMs, { minGapMs = 5000, retries = 3, stepMs = 2000 } = {}) {
-  let okAt = 0, fails = 0, retryT = null, stopped = false, busy = null;
+  let okAt = 0, fails = 0, retryT = null, stopped = false, busy = null, again = false;
   const go = () => {
     if (stopped) return Promise.resolve();
     if (busy) return busy;
@@ -79,6 +81,7 @@ export function livePoll(run, everyMs, { minGapMs = 5000, retries = 3, stepMs = 
       try { ok = (await run({ lastTry: fails >= retries })) !== false; } catch (e) { ok = false; }
       busy = null;
       if (stopped) return;
+      if (again) { again = false; fails = 0; go(); return; }
       if (ok) { okAt = Date.now(); fails = 0; }
       else if (fails < retries) { fails++; retryT = setTimeout(go, stepMs * fails); }
     })();
@@ -88,7 +91,8 @@ export function livePoll(run, everyMs, { minGapMs = 5000, retries = 3, stepMs = 
   const off = onReturn(() => { if (Date.now() - okAt > minGapMs) { fails = 0; go(); } });
   go();
   return {
-    now: () => { fails = 0; return go(); },
+    // 받는 중이면 끝난 뒤 한 번 더 받고, 그 두 번째가 끝날 때 끝나는 약속을 돌려줌
+    now: () => { fails = 0; if (busy) { again = true; return busy.then(() => busy); } return go(); },
     stop: () => {
       stopped = true; clearInterval(timer); clearTimeout(retryT); off();
     },
