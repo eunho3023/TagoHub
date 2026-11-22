@@ -857,6 +857,9 @@ def jeonju_urls(path, key=None):
 # 전주 요청이 이만큼 잇달아 실패하면 남은 전주 요청은 건너뜀. 2026-11-22: 바로 묻기는 하루 한도 초과, 중계 서버는 502(20초)라
 # 요청마다 1분 넘게 걸려 전주 800번에 갱신이 몇 시간 늘어졌음. 건너뛰면 다 받음 False 라 지난 전주 노선이 그대로 남음
 JEONJU_GIVE_UP = 8
+# 전주 수집에 쓰는 시간 한도(초). 중계 서버가 저장본만 가끔 답하면(나머지는 20초 뒤 502) "잇달아 실패" 가 자꾸 0 으로 돌아가
+# 8번 규칙만으로는 안 끝났음 (2026-11-22, 1시간 넘게). 넘으면 남은 요청은 건너뜀 (다 받음 False → 지난 전주 노선 그대로)
+JEONJU_BUDGET_S = 600
 
 
 def fetch_jeonju_served(get=None):
@@ -870,6 +873,13 @@ def fetch_jeonju_served(get=None):
     def fetch(path):
         # 잇달아 여러 번 못 받았으면 남은 요청은 건너뜀 (다 받음 False → DB 의 지난 전주 노선을 그대로 둠)
         if misses[0] >= JEONJU_GIVE_UP:
+            return None
+        if not started:
+            started.append(time.monotonic())
+        elif time.monotonic() - started[0] > JEONJU_BUDGET_S:
+            if misses[0] < JEONJU_GIVE_UP:
+                misses[0] = JEONJU_GIVE_UP
+                print(f"전주: {JEONJU_BUDGET_S // 60}분이 넘어 남은 전주 요청은 건너뜀 (지난 전주 노선 그대로)", flush=True)
             return None
         for wait in (0, 3, 10):
             time.sleep(wait)
@@ -898,7 +908,7 @@ def fetch_jeonju_served(get=None):
         if misses[0] == JEONJU_GIVE_UP:
             print(f"전주: {JEONJU_GIVE_UP}번 잇달아 받지 못해 남은 전주 요청은 건너뜀 (지난 전주 노선 그대로)", flush=True)
         return None
-    limited, misses, direct_ok = [0], [0], [True]
+    limited, misses, direct_ok, started = [0], [0], [True], []
     get = get or fetch
     lists = lambda x: re.findall(r'<list class="object">(.*?)</list>', x or "", re.S)
     val = lambda m, k: (re.search(rf"<{k}[^>]*>([^<]*)<", m) or [None, None])[1]
