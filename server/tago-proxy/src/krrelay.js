@@ -13,7 +13,7 @@ import { hedgedFetch } from "./hedge.js";
 export const RELAY_HOSTS = new Set(["apis.data.go.kr"]);
 const TUNNEL = /^https:\/\/[a-z0-9-]{1,80}\.trycloudflare\.com$/;
 const STALE_MS = 15 * 60 * 1000;
-export const RELAY_TIMEOUT_MS = 6000;
+export const RELAY_HEDGE_MS = 2500, RELAY_TOTAL_MS = 13000;
 const DOWN_MS = 60 * 1000;
 
 let memo = { at: 0, url: null };
@@ -67,30 +67,35 @@ export async function relayUrl(env) {
 }
 
 /**
- * 바깥 기관에 묻기: 공공데이터포털 GET 은 국내 중계 먼저 (6초), 안 되면 바로 (hedgedFetch).
- * 중계가 실패하면 1분 동안은 중계를 건너뜀 (꺼진 중계를 매번 6초씩 기다리지 않게)
+ * 바깥 기관에 묻기: 공공데이터포털 GET 은 국내 중계 먼저, 중계가 꺼져 있으면 바로 (hedgedFetch).
+ *
+ * 중계에 물을 때도 2.5초 안에 답이 없으면 하나 더 물음 (최대 2번, 13초): 전주시 도착처럼 기관이 가끔 7초씩 늦게 답해서
+ * (2026-11-22 잰 것: 같은 정류장 0.15~7초). 예전엔 6초에 끊고 바로 묻기로 넘어가 15~20초를 더 기다렸고(바로 묻기는 거의 안 됨),
+ * 그 뒤 1분 동안 중계를 건너뛰어 그동안 모든 요청이 느렸음.
+ * - 중계가 답함(X-Relay-Upstream, 기관이 늦거나 오류여도): 그 답을 씀. 중계는 살아 있으니 건너뛰지 않음
+ * - 중계가 꺼짐(연결 실패·터널 오류처럼 X-Relay-Upstream 없는 답): 1분 동안 건너뛰고 바로 물음
+ * - 13초 안에 아무 답이 없음: 중계가 멈춘 것으로 보고 1분 건너뜀, 이번 요청은 504 (바로 묻기로 15초 더 기다리지 않음)
  */
-export async function upstreamFetch(target, init = {}, env = {}, { fetcher = fetch, timeoutMs = RELAY_TIMEOUT_MS } = {}) {
+export async function upstreamFetch(target, init = {}, env = {}, { fetcher = fetch, hedgeMs = RELAY_HEDGE_MS, totalMs = RELAY_TOTAL_MS } = {}) {
   let host = "";
   try { host = new URL(target).hostname; } catch { /* 아래에서 바로 물음 */ }
   const get = !init.method || init.method === "GET";
   if (get && RELAY_HOSTS.has(host) && Date.now() >= downUntil) {
     const base = await relayUrl(env);
     if (base) {
-      try {
-        const res = await fetcher(base + "/f?u=" + encodeURIComponent(target), {
-          headers: { ...(init.headers || {}), "X-Relay-Key": env.RELAY_KEY },
-          signal: AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined,
-        });
-        // 중계가 기관에 닿았으면 X-Relay-Upstream 이 붙음 (기관이 낸 오류도 그대로 씀). 없으면 중계 자체 문제 → 바로 물음
-        if (res.headers.get("X-Relay-Upstream")) {
-          const out = new Response(res.body, res);
-          out.headers.set("X-Via", "kr-relay");
-          out.headers.set("X-Tries", "1");
-          return out;
-        }
-      } catch { /* 시간 초과·연결 실패 */ }
+      const res = await hedgedFetch(base + "/f?u=" + encodeURIComponent(target), { headers: { ...(init.headers || {}), "X-Relay-Key": env.RELAY_KEY } },
+        { fetcher, hedgeMs, tries: 2, totalMs }).catch(() => null);
+      if (res && res.headers.get("X-Relay-Upstream")) {
+        const out = new Response(res.body, res);
+        out.headers.set("X-Via", "kr-relay");
+        return out;
+      }
       downUntil = Date.now() + DOWN_MS;
+      if (res && res.headers.get("X-Timeout")) {
+        const out = new Response("relay timeout", { status: 504 });
+        out.headers.set("X-Via", "kr-relay");
+        return out;
+      }
     }
   }
   return hedgedFetch(target, init, { fetcher });

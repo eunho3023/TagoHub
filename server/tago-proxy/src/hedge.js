@@ -59,7 +59,7 @@ export function hedgedFetch(url, init = {}, { hedgeMs = HEDGE_MS, tries = HEDGE_
     };
     const cap = setTimeout(() => {
       abortOthers(null);
-      finish(resolve, lastRes || new Response("upstream timeout", { status: 504 }));
+      finish(resolve, lastRes || new Response("upstream timeout", { status: 504, headers: { "X-Timeout": "1" } }));
     }, totalMs);
     launch();
   });
