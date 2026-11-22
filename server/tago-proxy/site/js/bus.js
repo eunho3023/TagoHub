@@ -9,7 +9,7 @@ import { Alight } from "./alight.js";
 import * as Edits from "./edits.js";
 import { tidyRoad } from "./roadline.js";
 import * as Ahead from "./busahead.js";
-import { MAX_SIDE_M, twoWayMask, offsetRight } from "./sideline.js";
+import { MAX_SIDE_M, twoWayMask, offsetRight, shiftRight } from "./sideline.js";
 export { offsetRight };
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;

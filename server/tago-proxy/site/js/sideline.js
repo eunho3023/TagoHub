@@ -49,7 +49,7 @@ export function twoWayMask(line, others = []) {
   return out;
 }
 /** 점 p 를 방향 deg(북쪽 0도, 시계 방향)의 오른쪽으로 m 미터 */
-function shiftRight(p, deg, m) {
+export function shiftRight(p, deg, m) {
   const a = ((deg + 90) * Math.PI) / 180;
   return [p[0] + (m * Math.cos(a)) / 110540, p[1] + (m * Math.sin(a)) / (111320 * Math.cos((p[0] * Math.PI) / 180))];
 }
