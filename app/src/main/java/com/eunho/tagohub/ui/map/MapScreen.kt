@@ -493,10 +493,15 @@ fun MapScreen(
             editing?.let { MapEditBar(vm, it) }
             val fixingStops by vm.stopFix.collectAsStateWithLifecycle()
             if (editing == null) fixingStops?.let { StopFixBar(vm, it) }
-            // 지도 고치기 중 (설정에서 시작): 패널에 고치기 단추, 여기서 정류장 한꺼번에·끝내기
+            // 지도 고치기 (설정에서 시작): 시작하자마자 정류장·역을 바로 옮기는 상태로, 막대에는 저장하기·끝내기.
+            // 노선 모양 고치기 등을 마치고 돌아와도 다시 이 상태 (옮겨 둔 것은 그대로)
             val editOn by com.eunho.tagohub.data.MapEdits.editing.collectAsStateWithLifecycle()
-            if (editOn && editing == null && fixingStops == null) EditSessionBar(vm)
-            val busyEditing = editing != null || fixingStops != null
+            LaunchedEffect(editOn, editing == null, fixingStops == null) {
+                if (editOn && editing == null) { if (fixingStops == null) vm.startStopFixMode() else vm.redrawStopFix() }
+                if (!editOn && fixingStops != null) vm.stopFixClose()
+            }
+            // 고치기 중에도 정류장·역 패널은 보여서 노선 모양 고치기·묶기로 갈 수 있음 (묶기 중에만 숨김)
+            val busyEditing = editing != null || fixingStops?.joining == true
             if (!busyEditing) pickedPlace?.let { PickCard(vm, it) }
             if (!busyEditing) when (panel) {
                 MapPanel.Stop -> selected?.let { StopPanel(vm, it, hasRoute = route != null) }
@@ -521,8 +526,8 @@ fun MapScreen(
                         )
                         }
                         val admin by com.eunho.tagohub.data.MapEdits.editing.collectAsStateWithLifecycle()   // 설정에서 지도 고치기를 시작했을 때만
-                        if (admin) MapEditLinks(listOf<Pair<String, () -> Unit>>("역 위치 고치기" to { vm.startStationEdit() }) +
-                            d.group.displayLines.map { line -> "$line 모양 고치기" to { vm.startRailEdit(line) } })
+                        // 역 위치는 지도에서 바로 옮김 (고치기 중 역을 누르면 이미 골라져 있음), 여기서는 노선 모양
+                        if (admin) MapEditLinks(d.group.displayLines.map { line -> "$line 모양 고치기" to { vm.startRailEdit(line) } })
                     }
                 }
                 MapPanel.Train -> trainView?.let { TrainPanel(vm, it, hasStation = station != null) }
@@ -1396,7 +1401,8 @@ private fun StopPanel(vm: MapViewModel, d: BusDest.Stop, hasRoute: Boolean) {
         val timetable by vm.stopTimetable.collectAsStateWithLifecycle()
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         val admin by com.eunho.tagohub.data.MapEdits.editing.collectAsStateWithLifecycle()   // 설정에서 지도 고치기를 시작했을 때만
-        if (admin && d.stop.lat != null) MapEditLinks(listOf("정류장 위치 고치기" to { vm.startStopFixMode(d.stop) }))
+        // 위치는 지도에서 바로 옮김 (고치기 중 정류장을 누르면 이미 골라져 있음). 같은 자리 묶기는 아래 막대에서
+        if (admin && d.stop.lat != null) Text("지도에서 새 위치를 누르면 이 정류장이 옮겨져요", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         liveNote?.let {
             Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }

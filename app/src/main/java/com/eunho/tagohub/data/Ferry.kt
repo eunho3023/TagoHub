@@ -140,16 +140,13 @@ object FerryClient {
     fun ports(): List<Ferry.Port> { load(); return portsCache }
     fun lines(): Map<String, Ferry.Line> { load(); return linesCache }
 
-    /** 고를 수 있는 항구 (노선에 나오는 곳만), 시·도는 짧게 */
+    /** 고를 수 있는 항구 (노선에 나오는 곳만), 시·도는 정식 이름 (전남광주통합특별시·강원특별자치도…) */
     fun places(): List<Place> {
         val used = lines().values.flatMap { l -> l.stops.map { it.first } }.toSet()
         return ports().filter { it.code in used }.distinctBy { it.code }
-            .map { Place(it.code, it.name, it.sido.takeIf { s -> s.isNotEmpty() }?.let(::shortSido)) }
+            .map { Place(it.code, it.name, it.sido.takeIf { s -> s.isNotEmpty() }?.let(PlaceGroups::fullRegion)) }
             .sortedBy { it.name }
     }
-
-    private fun shortSido(s: String) = s.replace("특별자치도", "").replace("특별자치시", "").replace("광역시", "").replace("특별시", "")
-        .let { if (it.length == 4 && it.endsWith("도")) "${it[0]}${it[2]}" else it.removeSuffix("도") }
 
     private val sailCache = HashMap<String, Pair<Long, List<Ferry.Sailing>>>()
 
