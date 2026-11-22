@@ -449,7 +449,19 @@ def test_incheon_info_and_tidy():
     assert db.execute("SELECT rtype FROM routes WHERE id = 'IKB0'").fetchone() == ("시외버스",)      # 섞여 있는 도시는 그대로
 
 
+def test_jeonju_urls_direct_first():
+    """전주 API 는 이 PC 에서 바로 먼저 (인증키가 있을 때), 그다음 중계 서버. 키는 한 번만 인코딩"""
+    u = bd.jeonju_urls("routes/305032824", key="a/b+c==")
+    assert u[0] == "https://apis.data.go.kr/4641000/busstop/general_busstop_common?stopStandardid=305032824&stopStdid=305032824&serviceKey=a%2Fb%2Bc%3D%3D"
+    assert u[1].endswith("/w/bus/jeonju/routes/305032824")
+    assert bd.jeonju_urls("stops/305001764", key="a%2Fb")[0].endswith("brtStdid=305001764&serviceKey=a%2Fb")
+    # 키가 없거나 모르는 모양이면 중계 서버만
+    assert len(bd.jeonju_urls("routes/305032824", key="")) == 1
+    assert len(bd.jeonju_urls("line/x", key="k")) == 1
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
+
