@@ -23,6 +23,9 @@ export const ALLOWED = new Set(["apis.data.go.kr"]);
 const SERVER = "https://tabolkka.pages.dev";
 const UPSTREAM_TIMEOUT_MS = 12000;
 const BEAT_MS = 5 * 60 * 1000;
+// 터널 스스로 확인: 1분마다 바깥 주소로 /health 를 물어 2번 잇달아 안 되면 cloudflared 를 다시 띄움 (새 주소로 다시 알림).
+// 2026-11-22 12:3x UTC 에 중계는 살아 있는데 터널만 530(연결 끊김)을 내서, 그동안 타볼까가 느린 바로 묻기로 갔음
+const CHECK_MS = 60 * 1000, CHECK_FAILS = 2;
 const LOG_DIR = join(ROOT, "server", "relay", "logs");
 
 function prop(name) {
@@ -32,8 +35,11 @@ function prop(name) {
   return m ? m[1] : "";
 }
 
+// 시험에서 불러 쓸 때는 기록 파일에 쓰지 않음 (main 이 켬)
+let toFile = false;
 function log(msg) {
   const line = `${new Date().toISOString()} ${msg}`;
+  if (!toFile) return;
   console.log(line);
   try { mkdirSync(LOG_DIR, { recursive: true }); appendFileSync(join(LOG_DIR, new Date().toISOString().slice(0, 10) + ".log"), line + "\n"); } catch { /* 기록 실패는 무시 */ }
 }
@@ -107,7 +113,7 @@ function findCloudflared() {
 }
 
 function startTunnel(key) {
-  let tunnel = null, beat = null;
+  let tunnel = null, beat = null, check = null, misses = 0;
   const exe = findCloudflared();
   const child = spawn(exe, ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${PORT}`], { windowsHide: true });
   const onData = (buf) => {
@@ -119,6 +125,14 @@ function startTunnel(key) {
       setTimeout(() => register(tunnel, key), 5000);
       clearInterval(beat);
       beat = setInterval(() => register(tunnel, key), BEAT_MS);
+      clearInterval(check);
+      check = setInterval(async () => {
+        const ok = await fetch(tunnel + "/health", { signal: AbortSignal.timeout(10000) }).then((r) => r.ok, () => false);
+        if (ok) { misses = 0; return; }
+        misses++;
+        log(`터널 확인 실패 ${misses}번`);
+        if (misses >= CHECK_FAILS) { log("터널이 안 닿아 cloudflared 를 다시 띄움"); child.kill(); }
+      }, CHECK_MS);
     }
   };
   child.stdout.on("data", onData);
@@ -129,6 +143,7 @@ function startTunnel(key) {
     if (again) return;
     again = true;
     clearInterval(beat);
+    clearInterval(check);
     log(`${why}, ${ms / 1000}초 뒤 다시`);
     setTimeout(() => startTunnel(key), ms);
   };
@@ -137,6 +152,10 @@ function startTunnel(key) {
 }
 
 function main() {
+  toFile = true;
+  // 왜 꺼졌는지 남김 (기록 없이 꺼지면 원인을 알 수 없었음)
+  process.on("uncaughtException", (e) => { log(`멈춤: ${e && e.stack ? e.stack.split(String.fromCharCode(10))[0] : e}`); process.exit(1); });
+  process.on("exit", (code) => { try { appendFileSync(join(LOG_DIR, new Date().toISOString().slice(0, 10) + ".log"), `${new Date().toISOString()} 끝남 (${code})` + String.fromCharCode(10)); } catch { /* 무시 */ } });
   const key = prop("RELAY_KEY");
   if (!key) {
     console.error("local.properties 에 RELAY_KEY 가 없어요. deploy.ps1 을 한 번 실행하면 만들어져요");
