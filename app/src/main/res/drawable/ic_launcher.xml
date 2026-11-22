@@ -1,18 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 타볼까: 파란 둥근 칸 위에 세 번 접힌 지도와 빨간 위치 핀 -->
+<!-- 타볼까: 파란 둥근 칸 위에 버스·전철로 보이는 탈것 정면, 앞유리에 지도(길·위치 핀) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path android:fillColor="#2563EB" android:pathData="M32,10h44a22,22 0,0 1,22 22v44a22,22 0,0 1,-22 22h-44a22,22 0,0 1,-22 -22v-44a22,22 0,0 1,22 -22z" />
-    <!-- 접힌 지도 세 칸 (가운데 칸은 그늘) -->
-    <path android:fillColor="#FFFFFF" android:pathData="M26,40L44,34L44,76L26,82z" />
-    <path android:fillColor="#CFDDFF" android:pathData="M44,34L64,40L64,82L44,76z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M64,40L82,34L82,76L64,82z" />
-    <!-- 지도 위 길 -->
-    <path android:strokeColor="#2FC4A3" android:strokeWidth="3.5" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M30,70C38,64 46,70 54,64S70,58 78,52" />
-    <!-- 위치 핀 -->
-    <path android:fillColor="#FF5A6E" android:pathData="M54,66C47,57 42,52 42,44.5A12,12 0,1 1,66 44.5C66,52 61,57 54,66z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M54,44.5m-4.8,0a4.8,4.8 0,1 1,9.6 0a4.8,4.8 0,1 1,-9.6 0" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.86" android:scaleY="0.86">
+        <path android:fillColor="#FFFFFF" android:pathData="M36,20h36a12,12 0,0 1,12 12v40a8,8 0,0 1,-8 8h-44a8,8 0,0 1,-8 -8v-40a12,12 0,0 1,12 -12z" />
+        <!-- 앞유리 속 지도: 연한 초록 땅, 접힌 줄, 초록 길 -->
+        <group>
+            <clip-path android:pathData="M38,27h32a7,7 0,0 1,7 7v22h-46v-22a7,7 0,0 1,7 -7z" />
+            <path android:fillColor="#DDF6EF" android:pathData="M30,26h48v31h-48z" />
+            <path android:strokeColor="#FFFFFF" android:strokeWidth="2" android:pathData="M44,26V58M64,26V58" />
+            <path android:strokeColor="#2FC4A3" android:strokeWidth="4" android:fillColor="#00000000" android:pathData="M28,50C40,44 46,52 56,44S70,34 80,36" />
+        </group>
+        <!-- 위치 핀 -->
+        <path android:fillColor="#FF5A6E" android:pathData="M58,44C54.5,39.5 52,37 52,33A6,6 0,1 1,64 33C64,37 61.5,39.5 58,44z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M55.6,33a2.4,2.4 0,1 1,4.8 0a2.4,2.4 0,1 1,-4.8 0z" />
+        <!-- 전조등 -->
+        <path android:fillColor="#FFC43D" android:pathData="M35.8,68a4.2,4.2 0,1 1,8.4 0a4.2,4.2 0,1 1,-8.4 0z" />
+        <path android:fillColor="#FFC43D" android:pathData="M63.8,68a4.2,4.2 0,1 1,8.4 0a4.2,4.2 0,1 1,-8.4 0z" />
+        <!-- 바퀴 -->
+        <path android:fillColor="#0B2A7A" android:pathData="M33.5,80h5a2.5,2.5 0,0 1,2.5 2.5v3a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-3a2.5,2.5 0,0 1,2.5 -2.5z" />
+        <path android:fillColor="#0B2A7A" android:pathData="M69.5,80h5a2.5,2.5 0,0 1,2.5 2.5v3a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-3a2.5,2.5 0,0 1,2.5 -2.5z" />
+    </group>
 </vector>
