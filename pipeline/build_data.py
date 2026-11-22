@@ -854,6 +854,11 @@ def jeonju_urls(path, key=None):
     return out
 
 
+# 전주 요청이 이만큼 잇달아 실패하면 남은 전주 요청은 건너뜀. 2026-11-22: 바로 묻기는 하루 한도 초과, 중계 서버는 502(20초)라
+# 요청마다 1분 넘게 걸려 전주 800번에 갱신이 몇 시간 늘어졌음. 건너뛰면 다 받음 False 라 지난 전주 노선이 그대로 남음
+JEONJU_GIVE_UP = 8
+
+
 def fetch_jeonju_served(get=None):
     """
     전주: 노선마다 정류장 목록을 받아 지금 노선이 서는 정류장 {정류장 id: 지금 이름}, 다 받았는지, 노선 {노선 std: {"route": 노선 칸, "stops": [(순번, 정류장 std, 이름)]}}.
@@ -863,10 +868,16 @@ def fetch_jeonju_served(get=None):
     import re, urllib.request
 
     def fetch(path):
+        # 잇달아 여러 번 못 받았으면 남은 요청은 건너뜀 (다 받음 False → DB 의 지난 전주 노선을 그대로 둠)
+        if misses[0] >= JEONJU_GIVE_UP:
+            return None
         for wait in (0, 3, 10):
             time.sleep(wait)
-            # 이 PC 에서 전주시 API 에 바로 묻고, 안 되면 중계 서버로
-            for url in jeonju_urls(path):
+            # 이 PC 에서 전주시 API 에 바로 묻고, 안 되면 중계 서버로. 바로 묻기가 하루 한도에 걸렸으면 그날은 중계 서버만
+            urls = jeonju_urls(path)
+            if not direct_ok[0]:
+                urls = urls[-1:]
+            for url in urls:
                 try:
                     # 이름표 없는 파이썬 기본 요청은 서버 앞단에서 403 으로 막힘
                     req = urllib.request.Request(url, headers={"User-Agent": "TagoHub-pipeline", "Accept": "application/xml"})
@@ -875,12 +886,19 @@ def fetch_jeonju_served(get=None):
                     # 한도 초과·키 오류 응답은 "노선 없음"이 아니라 실패 (예전엔 빈 목록으로 읽어 그 정류장을 노선 없는 곳으로 봤음)
                     if re.search(r"LIMITED_NUMBER_OF_SERVICE|SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|returnAuthMsg|<code[^>]*>(?!000)\d+</code>", body):
                         limited[0] += "LIMITED" in body
+                        if "LIMITED" in body and url.startswith("https://apis.data.go.kr/") and direct_ok[0]:
+                            direct_ok[0] = False
+                            print("전주: 이 PC 의 전주시 API 하루 한도 초과, 이제부터 중계 서버로만", flush=True)
                         continue
+                    misses[0] = 0
                     return body
                 except Exception:
                     pass
+        misses[0] += 1
+        if misses[0] == JEONJU_GIVE_UP:
+            print(f"전주: {JEONJU_GIVE_UP}번 잇달아 받지 못해 남은 전주 요청은 건너뜀 (지난 전주 노선 그대로)", flush=True)
         return None
-    limited = [0]
+    limited, misses, direct_ok = [0], [0], [True]
     get = get or fetch
     lists = lambda x: re.findall(r'<list class="object">(.*?)</list>', x or "", re.S)
     val = lambda m, k: (re.search(rf"<{k}[^>]*>([^<]*)<", m) or [None, None])[1]
