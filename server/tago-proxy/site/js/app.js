@@ -6,7 +6,6 @@ import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
 import { cachedText, subwayColor } from "./core.js";
 import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations.js";
-import { fixPointScreen } from "./fixpoint.js";
 import { applyTheme } from "./store.js";
 import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
 /** 버스 정류장 아이콘 바탕색 (파란 둥근 네모, 폰 앱 정류장 아이콘과 같게) */
@@ -49,7 +48,6 @@ const SCREENS = {
   report: more.reportScreen,
   fix: fixScreen,
   fixstops: fixStopsScreen,
-  fixpoint: fixPointScreen,
   login: loginScreen,
 };
 /** 다른 모듈이 화면을 더함 (지하철·기차 등) */

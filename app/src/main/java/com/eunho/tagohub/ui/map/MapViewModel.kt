@@ -2677,30 +2677,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 정류장 패널에서: 정류장 위치 고치기 */
-    fun startStopEdit() {
-        val s = selected.value?.stop ?: return
-        val la = s.lat ?: return
-        val lo = s.lng ?: return
-        val here = LatLng(la, lo)
-        startEdit(MapEditState(
-            com.eunho.tagohub.data.MapEdits.Kind.Stop, listOf(s.nodeId), "${s.name} 위치 고치기", listOf(here), listOf(here),
-            busRouteColor(null).toArgb(), hasEdit = com.eunho.tagohub.data.MapEdits.stop(s.nodeId) != null,
-        ))
-    }
-
-    /** 역 패널에서: 역 위치 고치기 (환승역은 노선별 역을 같은 만큼 같이 옮김) */
-    fun startStationEdit() {
-        val g = station.value?.group ?: return
-        val keys = g.stations.map { com.eunho.tagohub.data.MapEdits.stationKey(it) to LatLng(it.lat, it.lng) }
-        val here = LatLng(g.lat, g.lng)
-        startEdit(MapEditState(
-            com.eunho.tagohub.data.MapEdits.Kind.Station, keys.map { it.first }, "${g.name}역 위치 고치기", listOf(here), listOf(here),
-            subwayLineColor(g.displayLines.firstOrNull() ?: "").toArgb(),
-            hasEdit = keys.any { com.eunho.tagohub.data.MapEdits.has(com.eunho.tagohub.data.MapEdits.Kind.Station, it.first) }, group = keys,
-        ))
-    }
-
     /** 역 패널에서: 이 지하철 노선 모양 고치기 (처음 모양은 같은 권역의 역을 이은 선) */
     fun startRailEdit(lineName: String) {
         val idx = index ?: return
@@ -3077,8 +3053,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         stopFix.value = s.copy(moves = s.moves - id)
         pushStopFix()
     }
-
-    fun stopFixClearAll() { stopFix.value = stopFix.value?.copy(moves = emptyMap(), sel = null, msg = null); pushStopFix() }
 
     /** 옮긴 정류장·역 모두 저장 */
     fun stopFixSaveAll() {

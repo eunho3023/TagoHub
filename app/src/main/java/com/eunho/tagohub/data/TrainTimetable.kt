@@ -126,6 +126,14 @@ object TrainTimetable {
      * [dep]→[arr] 을 한 번 갈아타서 갈 수 있는 역(환승역) 후보, 많이 이어지는 순으로 [limit] 곳.
      * 출발역이나 도착역이 시간표에 없으면 null (그때는 호출하는 쪽이 정해 둔 환승역을 씀), 이어지는 곳이 없으면 빈 목록.
      */
+    /** 시간표에 [dep] 에서 [arr] 로 가는 열차가 하나라도 있는지 (요일 상관없이) */
+    fun connects(dep: String, arr: String): Boolean {
+        ensure()
+        val d = norm(dep)
+        val a = norm(arr)
+        return trains.any { t -> val i = t.keys.indexOf(d); i >= 0 && t.keys.indexOf(a) > i }
+    }
+
     fun hubsBetween(dep: String, arr: String, limit: Int = 12): List<String>? {
         val d = norm(dep)
         val a = norm(arr)

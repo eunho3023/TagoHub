@@ -345,8 +345,20 @@ class TagoRepository(private val api: TagoApi) {
         val hubs = (names ?: TrainTransfers.HUBS).mapNotNull { n ->
             stations.firstOrNull { TrainTimetable.norm(it.name) == TrainTimetable.norm(n) && it.id != dep && it.id != arr }
         }
+        // 같은 도시의 다른 역으로 옮겨 타기 (서울역에 내려 용산역에서 타기 등): 시간표로 이어지는 짝만, 많아야 6짝
+        val moves = if (depName == null || arrName == null) emptyList() else TrainTransfers.CITY_STATIONS.flatMap { city ->
+            city.flatMap { a -> city.filter { it != a }.map { b -> a to b } }
+        }.filter { (a, b) ->
+            TrainTimetable.norm(a) != TrainTimetable.norm(depName) && TrainTimetable.norm(b) != TrainTimetable.norm(arrName) &&
+                TrainTimetable.connects(depName, a) && TrainTimetable.connects(b, arrName)
+        }.mapNotNull { (a, b) ->
+            val sa = stations.firstOrNull { TrainTimetable.norm(it.name) == TrainTimetable.norm(a) }
+            val sb = stations.firstOrNull { TrainTimetable.norm(it.name) == TrainTimetable.norm(b) }
+            if (sa == null || sb == null || sa.id == dep || sb.id == arr) null else sa to sb
+        }.take(6)
         val results = coroutineScope {
-            hubs.map { h -> async { attempt { TrainTransfers.combine(trainLeg(dep, h.id, date), trainLeg(h.id, arr, date), h.name, minWait) } } }.awaitAll()
+            (hubs.map { h -> async { attempt { TrainTransfers.combine(trainLeg(dep, h.id, date), trainLeg(h.id, arr, date), h.name, minWait) } } } +
+                moves.map { (a, b) -> async { attempt { TrainTransfers.combine(trainLeg(dep, a.id, date), trainLeg(b.id, arr, date), a.name, maxOf(minWait, TrainTransfers.MOVE_MIN), b.name) } } }).awaitAll()
         }
         if (results.isNotEmpty() && results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
         TrainTransfers.select(results.mapNotNull { it.getOrNull() }.flatten())

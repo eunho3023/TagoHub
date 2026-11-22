@@ -538,7 +538,7 @@ private fun TransferCard(t: TrainTransfer, accent: Color, stopsMap: Map<String, 
                 if (c.supportsHistory) HistorySection(historyMap[c.stopsKey(leg)], accent) { c.toggleHistory(leg) }
                 if (i == 0) {
                     Text(
-                        "${t.hub}에서 ${t.waitMinutes}분 기다려 갈아타기",
+                        if (t.to != null) "${t.hub}역에서 내려 ${t.to}역으로 옮겨 타기 (지하철·택시, ${t.waitMinutes}분)" else "${t.hub}에서 ${t.waitMinutes}분 기다려 갈아타기",
                         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 16.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,

@@ -45,8 +45,9 @@ export function settings(root) {
     if (!health) return sectionHead("자료 연결 상태") + note("확인 중...");
     const list = (health.checks || []).filter((c) => c.ok !== null);
     if (!list.length) return sectionHead("자료 연결 상태") + note("아직 확인한 기록이 없어요 (30분마다 확인해요)");
-    const bad = list.filter((c) => !c.ok).length;
-    return sectionHead("자료 연결 상태") + `<div class="list">${list.map((c) => `<div class="row"><span class="grow"><b>${c.ok ? "✅" : "⚠️"} ${esc(c.label)}</b><small>${c.ok ? "정상" : esc(c.msg || "고장") + (c.failSince ? " · " + ago(c.failSince) + "부터" : "")}</small></span></div>`).join("")}</div>` +
+    // 준비 중(아직 쓰지 않는 곳)은 잘 안 되는 곳 수에 넣지 않음
+    const bad = list.filter((c) => !c.ok && !c.optional).length;
+    return sectionHead("자료 연결 상태") + `<div class="list">${list.map((c) => `<div class="row"><span class="grow"><b>${c.ok ? "✅" : "⚠️"} ${esc(c.label)}</b><small>${c.ok ? "정상" : (c.optional ? "아직 쓰지 않음 · " : "") + esc(c.msg || "고장") + (c.failSince ? " · " + ago(c.failSince) + "부터" : "")}</small></span></div>`).join("")}</div>` +
       note((bad ? `${bad}곳이 지금 잘 안 돼요. 그곳 정보는 늦거나 보이지 않을 수 있어요. ` : "모든 제공처와 잘 연결돼 있어요. ") + (health.at ? ago(health.at) + " 확인 · 30분마다 확인해요" : ""));
   };
   // 관리자 키: 맞는 키를 넣은 브라우저에서만 노선 모양·정류장 위치 고치기 단추가 보임 (키는 배포한 컴퓨터의 local.properties EDIT_ADMIN_KEY)

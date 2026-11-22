@@ -37,6 +37,19 @@ class TrainExtrasTest {
     }
 
     @Test
+    fun movingToAnotherStationInTheSameCityNeedsMoreTime() {
+        // 서울역에 내려 용산역에서 탐: 옮기는 시간(30분)보다 일찍 떠나는 열차는 못 탐
+        val first = listOf(trip("802", at(5, 20), at(7, 22), to = "서울"))
+        val second = listOf(trip("411", at(7, 40), at(10, 0), from = "용산"), trip("1401", at(8, 4), at(13, 5), from = "용산"))
+        val r = TrainTransfers.combine(first, second, "서울", TrainTransfers.MOVE_MIN, "용산")
+        assertEquals("1401", r.single().legs[1].number)
+        assertEquals("용산", r.single().to)
+        assertEquals(42, r.single().waitMinutes)
+        assertNull(TrainTransfers.combine(first, second, "대전").single().to)
+        assertTrue(TrainTransfers.CITY_STATIONS.any { "서울" in it && "용산" in it })
+    }
+
+    @Test
     fun noConnectionMeansNoTransfer() {
         assertTrue(TrainTransfers.combine(listOf(trip("1", at(8, 0), at(12, 0))), listOf(trip("2", at(9, 0), at(10, 0))), "대전").isEmpty())
     }

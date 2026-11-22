@@ -245,7 +245,7 @@ export function trafficLayer(onChange) {
       if (L("rest") && MapView.zoom() >= REST_ZOOM) out.push(...restDots(rests, b));
       if (L("cctv") && MapView.zoom() >= CCTV_ZOOM) out.push(...cctvDots(cctvs, b));
       if (L("bike") && MapView.zoom() >= BIKE_ZOOM) out.push(...bikeDots(bikes, b));
-      // 관리자가 지도 고치기로 옮긴 점은 고친 자리에 (fixpoint.js)
+      // 관리자가 지도 고치기로 옮긴 점은 고친 자리에 (app.js 지도 고치기)
       return out.map((d) => { const f = placeFix(d.id); return f ? { ...d, lat: f[0], lng: f[1] } : d; });
     },
     /** 점을 눌렀을 때 카드 내용 (모르는 점이면 null) */
