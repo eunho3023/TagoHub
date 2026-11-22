@@ -77,7 +77,7 @@ object PlaceGroups {
         list.sortedBy { it.name }.groupBy { initial(it.name) }.toSortedMap(compareBy<Char>({ it == '#' }, { CHO.indexOf(it) })).map { (k, v) -> k.toString() to v }
 
     private val REGIONS = listOf(
-        listOf("서울"), listOf("세종"), listOf("부산"), listOf("대구"), listOf("인천"), listOf("광주"), listOf("대전"), listOf("울산"),
+        listOf("서울"), listOf("세종"), listOf("부산"), listOf("대구"), listOf("인천"), listOf("광주", "전남광주"), listOf("대전"), listOf("울산"),
         listOf("경기"), listOf("강원"), listOf("충청북", "충북"), listOf("충청남", "충남"), listOf("전북", "전라북"), listOf("전라남", "전남"),
         listOf("경상북", "경북"), listOf("경상남", "경남"), listOf("제주"),
     )
@@ -85,19 +85,25 @@ object PlaceGroups {
     private fun rank(region: String): Int =
         REGIONS.indexOfFirst { names -> names.any { region.startsWith(it) } }.let { if (it < 0) REGIONS.size else it }
 
-    /** 화면에 보여줄 시·도 이름: 충청·경상·전라는 남북을 구분해 충북·충남·경북·경남·전북·전남으로 짧게 (나머지는 그대로) */
-    fun shortRegion(name: String): String = when {
-        name.startsWith("충청북") || name.startsWith("충북") -> "충북"
-        name.startsWith("충청남") || name.startsWith("충남") -> "충남"
-        name.startsWith("경상북") || name.startsWith("경북") -> "경북"
-        name.startsWith("경상남") || name.startsWith("경남") -> "경남"
-        name.startsWith("전라북") || name.startsWith("전북") -> "전북"
-        name.startsWith("전라남") || name.startsWith("전남") -> "전남"
-        else -> name
+    /**
+     * 화면에 보여줄 시·도 이름은 정식 이름: "강원" → "강원특별자치도", "전북" → "전북특별자치도", "충남" → "충청남도", "인천" → "인천광역시".
+     * 광주광역시와 전라남도는 전남광주통합특별시로 합쳐짐 (한국해양교통안전공단 여객선 자료도 이 이름). 모르는 이름은 그대로. 웹 trips.js fullSido 와 같음
+     */
+    fun fullRegion(name: String): String {
+        val t = name.trim()
+        return SIDO.firstOrNull { (prefixes, _) -> prefixes.any { t.startsWith(it) } }?.second ?: t
     }
 
+    private val SIDO = listOf(
+        listOf("서울") to "서울특별시", listOf("부산") to "부산광역시", listOf("대구") to "대구광역시", listOf("인천") to "인천광역시",
+        listOf("광주", "전남광주", "전라남", "전남") to "전남광주통합특별시", listOf("대전") to "대전광역시", listOf("울산") to "울산광역시",
+        listOf("세종") to "세종특별자치시", listOf("경기") to "경기도", listOf("강원") to "강원특별자치도", listOf("충청북", "충북") to "충청북도",
+        listOf("충청남", "충남") to "충청남도", listOf("전라북", "전북") to "전북특별자치도", listOf("경상북", "경북") to "경상북도",
+        listOf("경상남", "경남") to "경상남도", listOf("제주") to "제주특별자치도",
+    )
+
     fun byRegion(list: List<Place>): List<Pair<String, List<Place>>> =
-        list.groupBy { it.sub?.takeIf(String::isNotBlank)?.let(::shortRegion) ?: "기타" }
+        list.groupBy { it.sub?.takeIf(String::isNotBlank)?.let(::fullRegion) ?: "기타" }
             .toList().sortedWith(compareBy({ rank(it.first) }, { it.first }))
             .map { (k, v) -> k to v.sortedBy { it.name } }
 }

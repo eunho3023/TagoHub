@@ -58,17 +58,18 @@ internal fun MapEditBar(vm: MapViewModel, s: MapViewModel.MapEditState) {
     }
 }
 
-/** 지도 고치기 창(정류장 위치 한꺼번에) 아래 막대 */
+/** 지도 고치기 막대: 정류장·역을 누르고 새 자리를 누르면 옮김, "저장하기"로 한 번에 저장, "끝내기"로 마침 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
     Surface(Modifier.fillMaxWidth(), tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text("지도 고치기 · 정류장 위치", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("✏️ 지도 고치기", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 if (s.joining) "「${s.sel?.name}」과(와) 한 정류장으로 묶을 정류장을 지도에서 누르세요 (다시 누르면 빠져요)."
                 else s.sel?.let { "「${it.name}」${s.toward?.let { t -> " ($t 방면)" } ?: ""} 고름 → 지도에서 새 위치를 누르면 옮겨져요." }
-                    ?: "지도를 확대하면 정류장이 모두 보여요. 정류장을 누르고 → 새 위치를 누르면 옮겨지고, 여러 곳을 옮긴 뒤 한 번에 저장해요.",
+                    ?: s.selStation?.let { "「${it.name}역」 고름 → 지도에서 새 위치를 누르면 옮겨져요." }
+                    ?: "정류장·역을 누르고 → 지도에서 새 위치를 누르면 옮겨져요. 여러 곳을 옮긴 뒤 저장하기로 한 번에 저장해요.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -108,24 +109,19 @@ internal fun StopFixBar(vm: MapViewModel, s: MapViewModel.StopFixState) {
                     if (com.eunho.tagohub.data.MapEdits.stop(sel.nodeId) != null) TextButton(onClick = vm::stopFixReset, enabled = !s.busy) { Text("고친 위치 지우기") }
                     TextButton(onClick = vm::stopFixUnpick, enabled = !s.busy) { Text("고르기 취소") }
                 }
-                if (s.moves.isNotEmpty()) TextButton(onClick = vm::stopFixClearAll, enabled = !s.busy) { Text("모두 취소") }
-                TextButton(onClick = vm::stopFixClose, enabled = !s.busy) { Text("닫기") }
-                Button(onClick = vm::stopFixSaveAll, enabled = !s.busy && s.moves.isNotEmpty()) {
-                    Text(if (s.busy) "저장 중…" else if (s.moves.isEmpty()) "저장" else "저장 (${s.moves.size}곳)")
+                s.selStation?.let { g ->
+                    if (s.stationMoves.containsKey(g.id)) TextButton(onClick = vm::stopFixStationUndo, enabled = !s.busy) { Text("이 역 되돌리기") }
+                    TextButton(onClick = vm::stopFixUnpick, enabled = !s.busy) { Text("고르기 취소") }
                 }
             }
-        }
-    }
-}
-
-/** 지도 고치기 중 막대 (설정 → 관리자 → 지도 고치기 시작). 정류장·노선·역 패널의 고치기 단추는 이때만 보임 */
-@Composable
-internal fun EditSessionBar(vm: MapViewModel) {
-    Surface(Modifier.fillMaxWidth(), tonalElevation = 3.dp, shadowElevation = 6.dp) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("✏️ 지도 고치기 중", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { vm.startStopFixMode() }) { Text("정류장 한꺼번에") }
-            TextButton(onClick = { com.eunho.tagohub.data.MapEdits.editing.value = false }) { Text("끝내기") }
+            // 늘 보이는 두 단추: 저장하기 · 끝내기
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = vm::stopFixSaveAll, enabled = !s.busy && s.count > 0, modifier = Modifier.weight(1f)) {
+                    Text(if (s.busy) "저장 중…" else if (s.count == 0) "저장하기" else "저장하기 (${s.count}곳)")
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = vm::stopFixEnd, enabled = !s.busy) { Text("끝내기") }
+            }
         }
     }
 }
