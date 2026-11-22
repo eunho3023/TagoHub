@@ -75,7 +75,8 @@ export async function handle(req, key, fetcher = fetch) {
     return { status: r.status, headers: { "Content-Type": r.headers.get("content-type") || "application/octet-stream", "X-Relay-Upstream": String(r.status) }, body };
   } catch (e) {
     log(`실패 ${e.name} ${Date.now() - t0}ms`);
-    return { status: 502, headers: {}, body: "relay upstream failed" };
+    // 중계는 살아 있고 기관이 늦거나 끊김: X-Relay-Upstream 0 (타볼까가 중계를 꺼진 것으로 보지 않게)
+    return { status: e.name === "TimeoutError" ? 504 : 502, headers: { "X-Relay-Upstream": "0" }, body: "relay upstream failed" };
   }
 }
 

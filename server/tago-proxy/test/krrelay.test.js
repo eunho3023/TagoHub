@@ -43,7 +43,8 @@ test("중계가 실패하면 바로 묻고, 1분 동안은 중계를 건너뜀",
   const env = { DB: db, RELAY_KEY: KEY };
   assert.equal(await (await upstreamFetch(DG, {}, env, { fetcher })).text(), "direct");
   assert.equal(await (await upstreamFetch(DG, {}, env, { fetcher })).text(), "direct");
-  assert.deepEqual(seen.map((u) => u.includes("trycloudflare")), [true, false, false]);
+  // 중계에 두 번(새 연결로 한 번 더) 물은 뒤 바로, 다음 요청은 중계를 건너뜀
+  assert.deepEqual(seen.map((u) => u.includes("trycloudflare")), [true, true, false, false]);
 });
 
 test("중계 자체 오류(X-Relay-Upstream 없음)도 바로 묻기로", async () => {
@@ -98,6 +99,41 @@ test("PC 중계: 열쇠·허락한 호스트만, 기관 답에 X-Relay-Upstream"
   assert.equal(ok.body.toString(), "<ok/>");
   const fail = await handle(req(DG, KEY), KEY, async () => { throw new Error("x"); });
   assert.equal(fail.status, 502);
-  assert.equal(fail.headers["X-Relay-Upstream"], undefined);
+  assert.equal(fail.headers["X-Relay-Upstream"], "0");   // 중계는 살아 있음 (기관 쪽 문제)
   assert.equal(allowedTarget("https://apis.data.go.kr:8443/x"), false);
+});
+
+test("기관이 늦으면 2.5초 뒤 중계에 한 번 더 묻고 빠른 답을 씀", async () => {
+  const db = fakeDb(); db.set({ url: "https://abc.trycloudflare.com", at: Date.now() });
+  let n = 0;
+  const fetcher = async (u, init) => {
+    const i = n++;
+    await new Promise((r, j) => { const t = setTimeout(r, i === 0 ? 2000 : 5); init.signal.addEventListener("abort", () => { clearTimeout(t); j(new Error("abort")); }); });
+    return new Response("n" + i, { headers: { "X-Relay-Upstream": "200" } });
+  };
+  const r = await upstreamFetch(DG, {}, { DB: db, RELAY_KEY: KEY }, { fetcher, hedgeMs: 30, totalMs: 1000 });
+  assert.equal(await r.text(), "n1");
+  assert.equal(r.headers.get("X-Via"), "kr-relay");
+});
+
+test("중계가 기관 오류(X-Relay-Upstream 0)를 내도 중계는 살아 있는 것으로", async () => {
+  const db = fakeDb(); db.set({ url: "https://abc.trycloudflare.com", at: Date.now() });
+  const seen = [];
+  const fetcher = async (u) => { seen.push(u); return new Response("x", { status: 504, headers: { "X-Relay-Upstream": "0" } }); };
+  const env = { DB: db, RELAY_KEY: KEY };
+  assert.equal((await upstreamFetch(DG, {}, env, { fetcher, hedgeMs: 10 })).status, 504);
+  await upstreamFetch(DG, {}, env, { fetcher, hedgeMs: 10 });
+  assert.ok(seen.every((u) => u.includes("trycloudflare")));   // 바로 묻기로 넘어가지 않음
+});
+
+test("중계가 전혀 답이 없으면 504 로 끝내고(바로 묻기로 더 기다리지 않음) 1분 건너뜀", async () => {
+  const db = fakeDb(); db.set({ url: "https://abc.trycloudflare.com", at: Date.now() });
+  const seen = [];
+  const fetcher = (u, init) => { seen.push(u); return new Promise((r, j) => init.signal.addEventListener("abort", () => j(new Error("abort")))); };
+  const env = { DB: db, RELAY_KEY: KEY };
+  const r = await upstreamFetch(DG, {}, env, { fetcher, hedgeMs: 10, totalMs: 60 });
+  assert.equal(r.status, 504);
+  assert.ok(seen.every((u) => u.includes("trycloudflare")));
+  const fast = async (u) => { seen.push(u); return new Response("direct"); };
+  assert.equal(await (await upstreamFetch(DG, {}, env, { fetcher: fast })).text(), "direct");
 });
