@@ -3,9 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>타볼까</title>
+  <title>타볼까 - 버스·지하철·기차 실시간 도착 정보</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2210%2010%2088%2088%22%3E%3Cpath%20fill%3D%22%232563EB%22%20d%3D%22M32%2010h44a22%2022%200%200%201%2022%2022v44a22%2022%200%200%201-22%2022H32a22%2022%200%200%201-22-22V32a22%2022%200%200%201%2022-22z%22%2F%3E%3Cg%20transform%3D%22translate(54%2054)%20scale(.86)%20translate(-54%20-54)%22%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M36%2020h36a12%2012%200%200%201%2012%2012v40a8%208%200%200%201-8%208H32a8%208%200%200%201-8-8V32a12%2012%200%200%201%2012-12z%22%2F%3E%3CclipPath%20id%3D%22tbw%22%3E%3Cpath%20d%3D%22M38%2027h32a7%207%200%200%201%207%207v22H31V34a7%207%200%200%201%207-7z%22%2F%3E%3C%2FclipPath%3E%3Cg%20clip-path%3D%22url(%23tbw)%22%3E%3Cpath%20fill%3D%22%23DDF6EF%22%20d%3D%22M30%2026h48v31H30z%22%2F%3E%3Cpath%20d%3D%22M44%2026v32M64%2026v32%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222%22%2F%3E%3Cpath%20d%3D%22M28%2050c12-6%2018%202%2028-6s14-10%2024-8%22%20fill%3D%22none%22%20stroke%3D%22%232FC4A3%22%20stroke-width%3D%224%22%2F%3E%3C%2Fg%3E%3Cpath%20fill%3D%22%23FF5A6E%22%20d%3D%22M58%2044c-3.5-4.5-6-7-6-11a6%206%200%201%201%2012%200c0%204-2.5%206.5-6%2011z%22%2F%3E%3Ccircle%20cx%3D%2258%22%20cy%3D%2233%22%20r%3D%222.4%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2268%22%20r%3D%224.2%22%20fill%3D%22%23FFC43D%22%2F%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%2268%22%20r%3D%224.2%22%20fill%3D%22%23FFC43D%22%2F%3E%3Crect%20x%3D%2231%22%20y%3D%2280%22%20width%3D%2210%22%20height%3D%228%22%20rx%3D%222.5%22%20fill%3D%22%230B2A7A%22%2F%3E%3Crect%20x%3D%2267%22%20y%3D%2280%22%20width%3D%2210%22%20height%3D%228%22%20rx%3D%222.5%22%20fill%3D%22%230B2A7A%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
   <meta name="description" content="원하는 곳 어디든지! 버스·지하철·기차·고속시외·항공·도로 실시간 정보">
+  <!-- 검색·공유 미리보기 (네이버·구글·카카오톡). 주소는 하나: tabolkka.pages.dev -->
+  <link rel="canonical" href="https://tabolkka.pages.dev/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="타볼까">
+  <meta property="og:title" content="타볼까 - 버스·지하철·기차 실시간 도착 정보">
+  <meta property="og:description" content="원하는 곳 어디든지! 버스·지하철·기차·고속시외·항공·여객선·도로 실시간 정보">
+  <meta property="og:url" content="https://tabolkka.pages.dev/">
+  <meta property="og:locale" content="ko_KR">
   <meta name="theme-color" content="#0f2747">
   <link rel="stylesheet" href="app.css">
   <!-- 카카오 지도 키 (서버 배포 때 만들어 넣음; 없으면 OpenStreetMap 지도) -->
@@ -17,6 +25,8 @@
     <div id="left">
       <div id="alight" hidden></div>
       <main id="panel"><div id="splash"><b>타볼까</b><span>불러오는 중...</span></div></main>
+      <!-- 자바스크립트를 돌리지 않는 검색 로봇·브라우저에 보이는 소개 -->
+      <noscript><p>타볼까는 전국 버스 실시간 도착, 지하철, 기차·고속시외버스·항공·여객선 시간표, 도로 소통 정보를 한곳에서 보는 웹 서비스예요. 자바스크립트를 켜야 쓸 수 있어요.</p></noscript>
       <nav id="nav"></nav>
     </div>
     <div id="side"></div>

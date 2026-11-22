@@ -1,0 +1,10 @@
+# 타볼까 (tabolkka.pages.dev): 화면은 모두 열어 두고, 서버 길(자료 중계·기록)은 검색에서 뺌
+User-agent: *
+Allow: /
+Disallow: /w/
+Disallow: /h/
+Disallow: /dg/
+Disallow: /log/
+Disallow: /appshape/
+
+Sitemap: https://tabolkka.pages.dev/sitemap.xml
