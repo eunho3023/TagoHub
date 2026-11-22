@@ -9,6 +9,7 @@
 //  GET /w/topis/status                 확인용: 서울 API 에 닿는지
 
 import { STD_BIKES } from "./bikestations.js";
+import { upstreamFetch } from "./krrelay.js";
 
 const BASE = "http://openapi.seoul.go.kr:8088/";
 const HEAD = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8" };
@@ -263,7 +264,9 @@ export async function handleSeoulTraffic(url, env, ctx, fetcher = fetch) {
     if (op === "bike") {
       // 서울 따릉이 + 전국(서울 밖). 한쪽이 실패해도 받은 쪽은 보여 줌 (둘 다 실패면 빈 목록을 짧게)
       const dg = (env.DATA_GO_KR_KEY || "").trim();
-      const [seoul, kr] = await Promise.all([bikes(key, ctx, fetcher).catch(() => null), dg ? nationalBikes(dg, ctx, fetcher).catch(() => null) : null]);
+      // 전국 공영자전거(한국지역정보개발원)는 Cloudflare 에서 물으면 막혀(HTTP_ERROR, 2026-11-17부터) 국내 중계를 거침 (src/krrelay.js)
+      const viaRelay = fetcher === fetch ? (u, i) => upstreamFetch(u, i || {}, env) : fetcher;
+      const [seoul, kr] = await Promise.all([bikes(key, ctx, fetcher).catch(() => null), dg ? nationalBikes(dg, ctx, viaRelay).catch(() => null) : null]);
       const live = [...(seoul || []), ...(kr || [])];
       const v = [...live, ...stdBikes(live, !!seoul)];
       return json(v, seoul && (kr || !dg) ? 60 : 30);
