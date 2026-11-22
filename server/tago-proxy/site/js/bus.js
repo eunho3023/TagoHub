@@ -258,7 +258,13 @@ export function stopScreen(root, p) {
     poll = livePoll(tick, REFRESH_MS);
     // 새로고침 단추: 도착 정보만 다시 (3초 안에 여러 번 누르면 한 번만)
     let lastRefresh = 0;
-    refresh = () => { if (Date.now() - lastRefresh < 3000) return; lastRefresh = Date.now(); poll.now(); };
+    refresh = () => {
+      if (Date.now() - lastRefresh < 3000) return;
+      lastRefresh = Date.now();
+      // 받지 못했어요가 떠 있으면 누르자마자 "다시 받는 중"으로 (그대로 남아 안 눌린 것 같았음)
+      if (live?.state === "failed") { live = { state: "retry", list: [], at: Date.now() }; draw(); }
+      poll.now();
+    };
     timers.push(setInterval(tickTimes, 1000));
   };
   start();
@@ -425,7 +431,7 @@ function snapStopsFull(stops, road) {
 const plateTail =(no) => (no || "").replace(/\D/g, "").slice(-4) || null;
 
 export function routeScreen(root, p, ctx) {
-  let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null, linesOf = null;
+  let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null, linesOf = null, refreshing = false;
   // 화면에 그린 노선 선 (도로 선을 진행 방향 오른쪽으로 비킨 것)과 그때의 m/px·비킨 거리(m)
   let drawn = null, drawnMpp = 0, sideM = 0, roadTwoWay = null, twoWayOf = null;
   const timers = [];
@@ -521,7 +527,7 @@ export function routeScreen(root, p, ctx) {
     if (!r || !alive) return;
     const color = busColor(r.type);
     const at = B.busAtStops(r.stops, pos?.buses || []);
-    const status = !pos ? "버스 위치를 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
+    const status = !pos ? "버스 위치를 받는 중..." : refreshing && pos.state !== "ok" ? "버스 위치를 다시 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
       pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 10초마다 새로` :
       // 운행 시간 안인데 버스가 없음: 위치를 보내지 않는 노선일 수 있음 (여수 365-5 초도처럼 버스가 다녀도 위치 자료가 아예 안 옴)
       r.sum && B.inService(r.sum.first, r.sum.last, B.kstMinute()) ? `실시간 위치가 들어오지 않아요 · 시간표상 운행 시간이에요 (${r.sum.first}~${r.sum.last})` :
@@ -576,7 +582,11 @@ export function routeScreen(root, p, ctx) {
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
       `<div class="map-slot"></div><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="stops" class="list"></div>`;
     let tickNow = () => {};
-    root.querySelector("#rrefresh")?.addEventListener("click", () => tickNow());
+    // 새로고침: 누르자마자 "다시 받는 중"으로 바꾸고(받지 못했어요가 그대로 남아 안 눌린 것 같았음) 받는 대로 그림
+    root.querySelector("#rrefresh")?.addEventListener("click", () => {
+      refreshing = true; drawList();
+      Promise.resolve(tickNow()).finally(() => { refreshing = false; if (alive) drawList(); });
+    });
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
     // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림
