@@ -966,7 +966,7 @@ def fetch_jeonju_served(get=None):
 
 
 def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=None, complete=False, served_api=None, tago_cities=(),
-             gbis_stops=None, jeju=None, tsb_info=None, unserved_check=None, incheon_info=None):
+             gbis_stops=None, jeju=None, tsb_info=None, unserved_check=None, incheon_info=None, prev_db=None):
     shutil.copyfile(base_db, out_db)
     db = sqlite3.connect(out_db)
     db.execute("CREATE TABLE IF NOT EXISTS route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER) WITHOUT ROWID")
@@ -1057,6 +1057,8 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     api_served, api_ok, api_routes = (tuple(served_api) + ({},))[:3] if served_api else ({}, False, {})
     if api_ok and api_routes:
         added_routes += write_jeonju(db, api_routes, known)
+    else:
+        carry_jeonju(db, prev_db)
     jeju_routes, jeju_ok = jeju or ({}, False)
     if jeju_ok and jeju_routes:
         added_routes += write_jeju(db, jeju_routes, known)
@@ -1099,6 +1101,48 @@ def jeonju_no(no, cls):
     """화면에 보일 전주 노선 번호 (앱 JeonjuMappers.routeNo 와 같음): brtId 에 가지 번호를 붙임 (3 + brtClass 1 → 3-1, 0·빈 값은 그대로)"""
     no, cls = (no or "").strip(), (cls or "").strip()
     return no if not no or not cls or cls == "0" or "-" in no else f"{no}-{cls}"
+
+
+# 지난번에 올린 정류장 DB (전주처럼 이번에 다 못 받은 지역은 여기서 그대로 가져옴)
+PREV_DB_URL = "https://github.com/eunho3023/TagoHub/releases/download/data-latest/bus_stops.db.gz"
+
+
+def fetch_prev_db(dest):
+    """지난번에 올린 bus_stops.db 를 받아 [dest] 에 풂. 못 받으면 None"""
+    import urllib.request
+    try:
+        req = urllib.request.Request(PREV_DB_URL, headers={"User-Agent": "TagoHub-pipeline"})
+        with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
+            f.write(gzip.decompress(r.read()))
+        return dest
+    except Exception as e:
+        print(f"지난번 정류장 DB 를 받지 못함: {type(e).__name__}: {str(e)[:120]}", flush=True)
+        return None
+
+
+def carry_jeonju(db, prev_db):
+    """
+    전주를 이번에 다 받지 못했을 때 지난번 DB 의 전주 노선·정류장 순서·첫차막차를 그대로 넣음.
+    예전엔 앱 기본 DB(전주 노선 없음)에서 시작해서, 전주를 건너뛴 날(2026-11-22, 전주시 API 하루 한도) 전주 노선이 317개 → 0개가 됐음
+    """
+    if not prev_db:
+        return 0
+    db.commit()   # 하던 쓰기를 끝내야 ATTACH 가 됨
+    db.execute("ATTACH DATABASE ? AS prev", (str(prev_db),))
+    try:
+        n = db.execute("SELECT COUNT(*) FROM prev.routes WHERE id LIKE 'JUB%'").fetchone()[0]
+        if n:
+            db.execute("DELETE FROM route_stops WHERE route_id LIKE 'JUB%'")
+            db.execute("DELETE FROM route_info WHERE id LIKE 'JUB%'")
+            db.execute("DELETE FROM routes WHERE id LIKE 'JUB%'")
+            db.execute("INSERT INTO routes SELECT * FROM prev.routes WHERE id LIKE 'JUB%'")
+            db.execute("INSERT INTO route_stops SELECT * FROM prev.route_stops WHERE route_id LIKE 'JUB%'")
+            db.execute("INSERT OR REPLACE INTO route_info SELECT * FROM prev.route_info WHERE id LIKE 'JUB%'")
+        print(f"전주: 이번에 다 받지 못해 지난번 전주 노선 {n}개를 그대로 넣음", flush=True)
+        db.commit()
+        return n
+    finally:
+        db.execute("DETACH DATABASE prev")
 
 
 def write_jeonju(db, routes, known):
@@ -1246,9 +1290,11 @@ def main():
     unserved_check = fetch_unserved_check(fx, BASE_DB, new_used)
     jeju = fetch_jeju()
     print(f"TAGO 도시 목록: {len(cities)}곳", flush=True)
+    # 전주를 다 받지 못했으면 지난번에 올린 DB 에서 전주 노선을 가져옴
+    prev = None if (jeonju and len(jeonju) > 1 and jeonju[1]) else fetch_prev_db(OUT / "prev_bus_stops.db")
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju, tago_cities=cities,
                             gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info, incheon_info=incheon_info,
-                            unserved_check=unserved_check)
+                            unserved_check=unserved_check, prev_db=prev)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))

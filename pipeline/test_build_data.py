@@ -514,8 +514,36 @@ def test_jeonju_gives_up_when_all_fail():
         assert len(calls) <= bd.JEONJU_GIVE_UP * 3 * 2, len(calls)
 
 
+def test_carry_jeonju_from_previous_db():
+    """전주를 다 받지 못한 날: 지난번 DB 의 전주 노선을 그대로 넣음 (앱 기본 DB 에는 전주 노선이 없어 0개가 됐었음)"""
+    import tempfile, os
+    d = tempfile.mkdtemp()
+    def make(path, with_jeonju):
+        db = bd.sqlite3.connect(path)
+        db.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT NOT NULL, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT NOT NULL, region TEXT, rtype TEXT, realtime TEXT)")
+        db.execute("CREATE TABLE route_stops(route_id TEXT NOT NULL, seq INTEGER NOT NULL, stop_id TEXT, name TEXT NOT NULL, lat REAL, lng REAL, updown TEXT, PRIMARY KEY(route_id, seq))")
+        db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+        db.execute("INSERT INTO routes VALUES('SEB1','1',NULL,NULL,NULL,NULL,'11',NULL,NULL,'tago')")
+        if with_jeonju:
+            db.execute("INSERT INTO routes VALUES('JUB305001764','5',NULL,NULL,NULL,NULL,'35010','전주',NULL,'jeonju')")
+            db.execute("INSERT INTO route_stops VALUES('JUB305001764',1,'JUB306101023','백자삼거리',NULL,NULL,NULL)")
+            db.execute("INSERT INTO route_info VALUES('JUB305001764','05:30','22:40',15,NULL,NULL)")
+        db.commit()
+        return db
+    prev = os.path.join(d, "prev.db")
+    make(prev, True).close()
+    cur = make(os.path.join(d, "cur.db"), False)
+    assert bd.carry_jeonju(cur, prev) == 1
+    assert cur.execute("SELECT realtime FROM routes WHERE id='JUB305001764'").fetchone() == ("jeonju",)
+    assert cur.execute("SELECT COUNT(*) FROM route_stops WHERE route_id LIKE 'JUB%'").fetchone() == (1,)
+    assert cur.execute("SELECT first FROM route_info WHERE id='JUB305001764'").fetchone() == ("05:30",)
+    assert cur.execute("SELECT COUNT(*) FROM routes WHERE id='SEB1'").fetchone() == (1,)   # 다른 노선은 그대로
+    assert bd.carry_jeonju(cur, None) == 0                                                     # 지난번 DB 를 못 받으면 아무것도 안 함
+    cur.close()
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
 
