@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * 타볼까 국내 중계 (이 PC에서 돎)
+ * 타볼까 국내 중계 (2026-11-23부터 집 노트북 Ubuntu 에서 systemd 로 돎. Windows PC 에서도 돌 수 있음: install-relay.ps1)
  *
- * Cloudflare(타볼까 서버) → 공공데이터포털 연결이 자주 매달려서(2026-11-22 잰 것: 10번 중 8번), 국내 PC 가 대신 물어 줌.
+ * Cloudflare(타볼까 서버) → 공공데이터포털 연결이 자주 매달려서(2026-11-22 잰 것: 10번 중 8번), 국내 기계가 대신 물어 줌.
  * - 127.0.0.1:8792 에서 GET /f?u=<공공데이터포털 주소> 만 받음 (X-Relay-Key 가 맞아야, 호스트는 apis.data.go.kr 만)
  * - cloudflared 빠른 터널(*.trycloudflare.com)을 열고, 그 주소를 타볼까 POST /w/relay/register 로 알림 (켤 때 + 5분마다)
- * - cloudflared 가 죽으면 다시 띄움. 이 PC 가 꺼지면 타볼까는 예전처럼 바로 물음 (느리지만 됨)
+ * - cloudflared 가 죽으면 다시 띄움. 중계가 꺼지면 타볼까는 예전처럼 바로 물음 (느리지만 됨)
  *
  *   node server/relay/relay.mjs        # local.properties 의 RELAY_KEY 사용 (deploy.ps1 이 만들어 둠)
  *   리눅스 노트북: server/relay/linux/README.md (systemd 서비스, 열쇠는 /etc/tagohub-relay.env)

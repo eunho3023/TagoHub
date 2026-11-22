@@ -6,7 +6,7 @@
 - **키 보호**: 공공데이터포털 키를 서버의 비밀 값(`DATA_GO_KR_KEY`)으로 둡니다. 앱·웹에는 키가 들어가지 않습니다.
 - **호출 절약**: 같은 요청을 잠시 저장해 두고 나눠 줍니다(버스 도착·위치 5초, 노선·정류장 목록 하루, 하루 자료는 D1 에도).
 - **막기**: 앱이 보내는 토큰(`APP_TOKEN`)이 맞아야 응답합니다. 허락한 기관(`src/proxy.js`)만 중계합니다.
-- **국내 중계**: 공공데이터포털 요청은 이 PC 의 `server/relay` 를 먼저 거칩니다(Cloudflare → 포털 연결이 자주 매달려서, `src/krrelay.js`).
+- **국내 중계**: 공공데이터포털 요청은 국내 중계 `server/relay`(2026-11-23부터 집 노트북 Ubuntu, `server/relay/linux/README.md`)를 먼저 거칩니다(Cloudflare → 포털 연결이 자주 매달려서, `src/krrelay.js`).
 
 앱은 `https://tabolkka.pages.dev/dg/1613000/ArvlInfoInqireService/...`처럼 키 없이 묻고, 서버가 `https://apis.data.go.kr/1613000/...`에 키를 붙여 묻습니다.
 

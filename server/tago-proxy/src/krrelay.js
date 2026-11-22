@@ -1,5 +1,5 @@
 /**
- * 국내 중계 (이 PC에서 도는 server/relay/relay.mjs, Cloudflare 빠른 터널 *.trycloudflare.com)
+ * 국내 중계 (집 노트북 Ubuntu 에서 도는 server/relay/relay.mjs, 예전엔 이 PC, Cloudflare 빠른 터널 *.trycloudflare.com)
  *
  * 왜: Cloudflare → 공공데이터포털(apis.data.go.kr) 연결이 자주 매달림 (2026-11-22 잰 것: 10번 중 8번 15초 넘게 답 없음,
  * 새 연결로 다시 물어도 같음). 같은 키로 국내 PC 에서 물으면 늘 0.2~2.6초.
