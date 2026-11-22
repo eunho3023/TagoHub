@@ -14,10 +14,10 @@ export const RELAY_HOSTS = new Set(["apis.data.go.kr"]);
 const TUNNEL = /^https:\/\/[a-z0-9-]{1,80}\.trycloudflare\.com$/;
 const STALE_MS = 15 * 60 * 1000;
 export const RELAY_HEDGE_MS = 2500, RELAY_TOTAL_MS = 13000;
-const DOWN_MS = 60 * 1000;
+const DOWN_MS = 30 * 1000, FAILS_TO_SKIP = 3, DIRECT_TOTAL_MS = 10000;
 
 let memo = { at: 0, url: null };
-let downUntil = 0;
+let downUntil = 0, fails = 0;
 
 /** 같은 문자열인지 (시간 차로 값을 알아내지 못하게) */
 function same(a, b) {
@@ -80,26 +80,37 @@ export async function upstreamFetch(target, init = {}, env = {}, { fetcher = fet
   let host = "";
   try { host = new URL(target).hostname; } catch { /* 아래에서 바로 물음 */ }
   const get = !init.method || init.method === "GET";
-  if (get && RELAY_HOSTS.has(host) && Date.now() >= downUntil) {
-    const base = await relayUrl(env);
-    if (base) {
-      const res = await hedgedFetch(base + "/f?u=" + encodeURIComponent(target), { headers: { ...(init.headers || {}), "X-Relay-Key": env.RELAY_KEY } },
-        { fetcher, hedgeMs, tries: 2, totalMs }).catch(() => null);
-      if (res && res.headers.get("X-Relay-Upstream")) {
-        const out = new Response(res.body, res);
-        out.headers.set("X-Via", "kr-relay");
-        return out;
-      }
-      downUntil = Date.now() + DOWN_MS;
-      if (res && res.headers.get("X-Timeout")) {
-        const out = new Response("relay timeout", { status: 504 });
-        out.headers.set("X-Via", "kr-relay");
-        return out;
-      }
+  if (!get || !RELAY_HOSTS.has(host)) return hedgedFetch(target, init, { fetcher });
+  // 왜 바로 물었는지 (X-Relay-Why): 배포 뒤 바로 묻기가 섞이는 까닭을 보려고
+  let why = Date.now() < downUntil ? "down" : null;
+  const base = why ? null : await relayUrl(env);
+  if (!why && !base) why = "nourl";
+  if (base) {
+    let err = null;
+    const res = await hedgedFetch(base + "/f?u=" + encodeURIComponent(target), { headers: { ...(init.headers || {}), "X-Relay-Key": env.RELAY_KEY } },
+      { fetcher, hedgeMs, tries: 2, totalMs }).catch((e) => { err = e; return null; });
+    if (res && res.headers.get("X-Relay-Upstream")) {
+      fails = 0;
+      const out = new Response(res.body, res);
+      out.headers.set("X-Via", "kr-relay");
+      return out;
     }
+    // 한 번 실패로는 건너뛰지 않음: 잇달아 FAILS_TO_SKIP 번 실패해야 잠깐 건너뜀
+    // (예전엔 한 번 실패하면 1분 동안 그 서버 실행 단위의 모든 요청이 바로 묻기(대부분 15초 매달림)로 갔음)
+    if (++fails >= FAILS_TO_SKIP) { downUntil = Date.now() + DOWN_MS; fails = 0; }
+    if (res && res.headers.get("X-Timeout")) return tag(new Response("relay timeout", { status: 504 }), "kr-relay", "timeout");
+    why = res ? "status " + res.status : "error " + String((err && (err.name + " " + err.message)) || "").slice(0, 80);
   }
-  return hedgedFetch(target, init, { fetcher });
+  // 바로 묻기는 Cloudflare → 공공데이터포털이 자주 매달려서 10초까지만
+  const out = await hedgedFetch(target, init, { fetcher, totalMs: DIRECT_TOTAL_MS });
+  return tag(out, "direct", why);
+}
+function tag(res, via, why) {
+  const out = new Response(res.body, res);
+  out.headers.set("X-Via", via);
+  if (why) out.headers.set("X-Relay-Why", why.replace(/[^ -~]/g, "?"));
+  return out;
 }
 
 /** 시험용: 기억한 것 지우기 */
-export function _reset() { memo = { at: 0, url: null }; downUntil = 0; }
+export function _reset() { memo = { at: 0, url: null }; downUntil = 0; fails = 0; }

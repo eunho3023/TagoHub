@@ -175,6 +175,7 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     "X-Cache": "MISS",
     "X-Tries": upstream.headers.get("X-Tries") || "1",
     "X-Via": upstream.headers.get("X-Via") || "direct",
+    ...(upstream.headers.get("X-Relay-Why") ? { "X-Relay-Why": upstream.headers.get("X-Relay-Why") } : {}),
   };
   if (cacheable(upstream.status, body)) {
     const ttl = ttlFor(path);
@@ -227,7 +228,7 @@ async function relay(request, url, env, ctx) {
   const upstream = await upstreamFetch(target, { headers }, env);
   const body = await upstream.arrayBuffer();
   const text = new TextDecoder().decode(body.slice(0, 4000));
-  const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS", "X-Tries": upstream.headers.get("X-Tries") || "1", "X-Via": upstream.headers.get("X-Via") || "direct" };
+  const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS", "X-Tries": upstream.headers.get("X-Tries") || "1", "X-Via": upstream.headers.get("X-Via") || "direct", ...(upstream.headers.get("X-Relay-Why") ? { "X-Relay-Why": upstream.headers.get("X-Relay-Why") } : {}) };
   if (upstream.status === 200 && cacheable(200, text)) {
     const ttl = hostTtl(t.host, t.path);
     const stored = new Response(body, { status: 200, headers: { ...out, "Cache-Control": `public, max-age=${ttl}` } });
@@ -267,6 +268,7 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
     body = await res.text();
     headers["X-Tries"] = res.headers.get("X-Tries") || "1";
     headers["X-Via"] = res.headers.get("X-Via") || "direct";
+    if (res.headers.get("X-Relay-Why")) headers["X-Relay-Why"] = res.headers.get("X-Relay-Why");
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
   }
