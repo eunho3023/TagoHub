@@ -159,6 +159,17 @@ if (-not $cronKey) {
 PutSecret 'CRON_KEY' $cronKey
 Write-Host '  예약 작업 열쇠 넣음'
 
+# 국내 중계 열쇠: 이 PC 의 server/relay/relay.mjs 가 타볼까에 터널 주소를 알리고, 타볼까가 중계에 물을 때 씀 (src/krrelay.js).
+# 없으면 새로 만들어 local.properties 의 RELAY_KEY 에 적음 (중계는 같은 파일에서 읽음)
+$relayKey = Prop 'RELAY_KEY'
+if (-not $relayKey) {
+    $relayKey = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
+    @(Get-Content $props -Encoding UTF8) + "RELAY_KEY=$relayKey" | Set-Content $props -Encoding UTF8
+    Write-Host '  국내 중계 열쇠를 새로 만들어 local.properties 의 RELAY_KEY 에 적었어요'
+}
+PutSecret 'RELAY_KEY' $relayKey
+Write-Host '  국내 중계 열쇠 넣음'
+
 # 웹 버전 앱 제보 → 폰 앱과 같은 Firebase(Firestore reports). app/google-services.json 에서 (값은 화면에 쓰지 않음)
 $gs = Join-Path $PSScriptRoot '..\..\app\google-services.json'
 if (Test-Path $gs) {

@@ -15,7 +15,7 @@ import { handleEdits } from "./edits.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
 import { healthCron, handleHealth } from "./health.js";
-import { hedgedFetch } from "./hedge.js";
+import { upstreamFetch, handleRelay } from "./krrelay.js";
 
 /** 사용자·관리자 모두 쓰는 웹 주소 (Cloudflare Pages). 이 서버 코드도 거기서 돎 (pages/functions) */
 export const USER_WEB = "https://tabolkka.pages.dev";
@@ -84,6 +84,8 @@ async function web(request, url, env, ctx) {
     const r = await runCron(env).catch((e) => ({ error: String(e && e.message || e) }));
     return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
+  // 국내 중계(이 PC)가 지금 주소를 알림·켜져 있는지 (src/krrelay.js)
+  if (url.pathname.startsWith("/w/relay/")) return handleRelay(request, url, env);
   // 앱 제보 (POST, 주소마다 분당 요청 수 제한을 같이 씀) — src/report.js
   if (url.pathname === "/w/report") {
     if (env.WEB_LIMIT) {
@@ -163,15 +165,16 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     return out;
   }
 
-  // 3초 안에 답이 없으면 새 연결로 다시 (Cloudflare → 공공데이터포털 연결이 20초 매달렸다 522 로 끝나는 일이 잦음, src/hedge.js)
-  const upstream = await hedgedFetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
+  // 국내 중계(이 PC) 먼저, 안 되면 바로 묻되 3초마다 새 연결로 (Cloudflare → 공공데이터포털 연결이 자주 매달림, src/krrelay.js)
+  const upstream = await upstreamFetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
     headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
-  });
+  }, env);
   const body = await upstream.text();
   const headers = {
     "Content-Type": upstream.headers.get("Content-Type") || "application/xml; charset=utf-8",
     "X-Cache": "MISS",
     "X-Tries": upstream.headers.get("X-Tries") || "1",
+    "X-Via": upstream.headers.get("X-Via") || "direct",
   };
   if (cacheable(upstream.status, body)) {
     const ttl = ttlFor(path);
@@ -221,10 +224,10 @@ async function relay(request, url, env, ctx) {
   } catch (e) {
     return new Response("server key missing: " + e.message.replace("missing ", ""), { status: 500 });
   }
-  const upstream = await hedgedFetch(target, { headers });
+  const upstream = await upstreamFetch(target, { headers }, env);
   const body = await upstream.arrayBuffer();
   const text = new TextDecoder().decode(body.slice(0, 4000));
-  const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS", "X-Tries": upstream.headers.get("X-Tries") || "1" };
+  const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS", "X-Tries": upstream.headers.get("X-Tries") || "1", "X-Via": upstream.headers.get("X-Via") || "direct" };
   if (upstream.status === 200 && cacheable(200, text)) {
     const ttl = hostTtl(t.host, t.path);
     const stored = new Response(body, { status: 200, headers: { ...out, "Cache-Control": `public, max-age=${ttl}` } });
@@ -259,10 +262,11 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   let res, body;
   try {
     // post: 폼 내용을 POST 로 (제주 누리집 노선 정보처럼 GET 으로는 답하지 않는 곳)
-    res = await hedgedFetch(upstream, post == null ? { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } }
-      : { method: "POST", body: post, headers: { "User-Agent": MOBILE_UA, Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", ...extraHeaders } });
+    res = await upstreamFetch(upstream, post == null ? { headers: { "User-Agent": MOBILE_UA, Accept: "application/json", ...extraHeaders } }
+      : { method: "POST", body: post, headers: { "User-Agent": MOBILE_UA, Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", ...extraHeaders } }, env);
     body = await res.text();
     headers["X-Tries"] = res.headers.get("X-Tries") || "1";
+    headers["X-Via"] = res.headers.get("X-Via") || "direct";
   } catch {
     return new Response("{\"code\":\"ERROR\",\"message\":\"upstream fetch failed\"}", { status: 502, headers });
   }
