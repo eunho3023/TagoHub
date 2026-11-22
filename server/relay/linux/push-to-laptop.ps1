@@ -13,6 +13,9 @@ $props = Join-Path $root 'local.properties'
 $key = (Get-Content $props -Encoding UTF8 | Where-Object { $_ -match '^\s*RELAY_KEY\s*=' } | Select-Object -First 1)
 if (-not $key) { throw 'local.properties 에 RELAY_KEY 가 없어요 (deploy.ps1 을 한 번 실행하면 생겨요)' }
 $key = ($key -split '=', 2)[1].Trim()
+# 예약 작업 열쇠: 있으면 노트북이 타볼까 예약 작업(/w/cron)도 1분마다 부름 (GitHub 예약이 몇 시간에 한 번꼴로만 돌아서)
+$cron = (Get-Content $props -Encoding UTF8 | Where-Object { $_ -match '^\s*CRON_KEY\s*=' } | Select-Object -First 1)
+$cron = if ($cron) { ($cron -split '=', 2)[1].Trim() } else { '' }
 
 # 보낼 파일을 임시 폴더에 (줄 끝을 리눅스식 LF 로, BOM 없이)
 $tmp = Join-Path $env:TEMP 'tagohub-relay'
@@ -23,7 +26,9 @@ foreach ($f in @((Join-Path $here '..\relay.mjs'), (Join-Path $here 'install.sh'
     $text = [IO.File]::ReadAllText((Resolve-Path $f), [Text.Encoding]::UTF8) -replace "`r`n", "`n"
     [IO.File]::WriteAllText((Join-Path $tmp (Split-Path $f -Leaf)), $text, $utf8)
 }
-[IO.File]::WriteAllText((Join-Path $tmp 'relay.env'), "RELAY_KEY=$key`n", $utf8)
+$envText = "RELAY_KEY=$key`n"
+if ($cron) { $envText += "CRON_KEY=$cron`n" } else { Write-Host '(local.properties 에 CRON_KEY 가 없어 예약 작업 부르기는 빼고 보내요)' }
+[IO.File]::WriteAllText((Join-Path $tmp 'relay.env'), $envText, $utf8)
 
 try {
     Write-Host "1/2 노트북($Addr)으로 파일 보내는 중... (노트북 비밀번호)"

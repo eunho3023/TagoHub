@@ -14,7 +14,7 @@ import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
-import { healthCron, handleHealth } from "./health.js";
+import { healthCron, healthDue, handleHealth } from "./health.js";
 import { upstreamFetch, handleRelay } from "./krrelay.js";
 
 /** 서버 코드가 받는 길 (나머지는 화면·자료 파일). pages/_routes.json 과 같음 */
@@ -22,13 +22,13 @@ export const API_PREFIXES = ["/health", "/w/", "/log/", "/appshape/", "/h/", "/d
 export const isApiPath = (p) => API_PREFIXES.some((x) => (x.endsWith("/") ? p.startsWith(x) : p === x));
 
 /**
- * 예약 작업 한 번 (1분에 한 번 부름). 30분마다(0분·30분)는 자료 제공처 고장 확인만 (src/health.js):
+ * 예약 작업 한 번 (1분에 한 번 부름). 마지막 고장 확인이 29분 넘게 지났으면 그 번엔 자료 제공처 고장 확인만 (src/health.js):
  * 한 번 실행의 외부 요청 수 한도(50번)를 다른 작업과 나누지 않게.
  * 그 밖에는 관심 노선 버스 위치 모으기(정류장 시간표, src/poll.js) → 노선 모양 하나 만들기(src/shape.js).
- * 부르는 곳: GitHub Actions 가 타볼까 /w/cron 으로 (.github/workflows/server-cron.yml)
+ * 부르는 곳: 집 노트북 국내 중계가 1분마다(server/relay/relay.mjs, CRON_KEY 있을 때), 예비로 GitHub Actions(.github/workflows/server-cron.yml, 실제로는 몇 시간에 한 번꼴)
  */
-export async function runCron(env, now = Date.now()) {
-  if (new Date(now).getUTCMinutes() % 30 === 0) return { health: await healthCron(env).catch(() => null) != null };
+export async function runCron(env, now = Date.now(), { fetcher = fetch } = {}) {
+  if (await healthDue(env, now).catch(() => false)) return { health: await healthCron(env, fetcher).catch(() => null) != null };
   await pollCron(env).catch(() => null);
   await shapeCron(env).catch(() => null);
   return { poll: true, shape: true };
