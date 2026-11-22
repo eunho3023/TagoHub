@@ -1752,7 +1752,7 @@ private fun RoutePanel(vm: MapViewModel, d: BusDest.Route, hasStop: Boolean) {
             line = listOfNotNull(r?.startName, r?.endName).joinToString(" → "),
             detail = listOfNotNull(
                 r?.interval?.let { "배차 ${it}분" },
-                if (noLive) "실시간 위치가 들어오지 않아요 (운행 시간 ${r?.firstTime}~${r?.lastTime})" else "운행 중 ${buses.size}대",
+                if (noLive) "실시간 위치가 들어오지 않아요 (${if (com.eunho.tagohub.data.NoLiveText.onceADay(r?.firstTime, r?.lastTime)) "하루 1번 ${r?.firstTime}" else "운행 시간 ${r?.firstTime}~${r?.lastTime}"})" else "운행 중 ${buses.size}대",
             ).joinToString(" · "),
             color = color,
             onClose = vm::closePanel,

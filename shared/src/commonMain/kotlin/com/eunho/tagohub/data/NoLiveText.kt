@@ -25,12 +25,20 @@ object NoLiveText {
 
     private fun after(m: Int) = if (m <= 0) "곧" else "${duration(m)} 후"
 
+    /** 하루 한 번만 다니는 노선인지 (첫차와 막차가 같은 시각) */
+    fun onceADay(first: String?, last: String?): Boolean { val f = min(first); return f != null && f == min(last) }
+
     fun describe(first: String?, last: String?, interval: Int?, nowMin: Int): Text? {
         val f = min(first) ?: return null
         var l = min(last) ?: return null
         var n = nowMin
         if (l < f) { l += 1440; if (n < f) n += 1440 }   // 자정 넘어 막차
         val fc = clock(f)
+        // 하루 한 번만 다니는 갈래 노선(첫차 = 막차, 전주 165 효자로전북도청→전주동물원 06:00 등): "첫차 06:00 · 막차 06:00" 대신
+        if (f == l) {
+            if (n <= f) return Text("하루 1번 $fc", "${after(f - n)} · 기점", false)
+            return Text(if (n > l + 90) "운행종료" else "출발함", "내일 $fc · 하루 1번 · ${after(f + 1440 - n)}", n > l + 90)
+        }
         if (n < f - 30) return Text("운행종료", "첫차 $fc · ${after(f - n)}", true)
         if (n > l + 90) return Text("운행종료", "내일 첫차 $fc · ${after(f + 1440 - n)}", true)
         if (n > l) return Text("막차 출발함", "내일 첫차 $fc · ${after(f + 1440 - n)}", false)

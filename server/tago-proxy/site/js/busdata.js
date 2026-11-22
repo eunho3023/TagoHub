@@ -1131,12 +1131,25 @@ const clockOf = (m) => { const x = ((m % 1440) + 1440) % 1440; return `${String(
 /** 분 → "곧" / "25분" / "1시간" / "8시간 20분" */
 export function waitText(m) { return m <= 0 ? "곧" : m < 60 ? `${m}분` : m % 60 === 0 ? `${m / 60}시간` : `${Math.floor(m / 60)}시간 ${m % 60}분`; }
 const afterText = (m) => (m <= 0 ? "곧" : `${waitText(m)} 후`);
+/** 노선 운행 문구: "첫차 06:00 · 막차 22:20 · 배차 15분", 하루 한 번만 다니면 "하루 1번 06:00" */
+export function planText(s, day) {
+  if (!s) return "";
+  const f = toMin(s.first);
+  if (f != null && f === toMin(s.last)) return `하루 1번 ${clockOf(f)}`;
+  const iv = intervalOn(s, day);
+  return [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, iv > 0 && "배차 " + iv + "분"].filter(Boolean).join(" · ");
+}
 export function noLive(first, last, interval, nowMin) {
   const f = toMin(first);
   let l = toMin(last), n = nowMin;
   if (f == null || l == null) return null;
   if (l < f) { l += 1440; if (n < f) n += 1440; }
   const fc = clockOf(f);
+  // 하루 한 번만 다니는 갈래 노선(첫차 = 막차, 전주 165 효자로전북도청→전주동물원 06:00 등): "첫차 06:00 · 막차 06:00" 대신 (앱 NoLiveText 와 같음)
+  if (f === l) {
+    if (n <= f) return { main: `하루 1번 ${fc}`, sub: `${afterText(f - n)} · 기점`, ended: false };
+    return { main: n > l + 90 ? "운행종료" : "출발함", sub: `내일 ${fc} · 하루 1번 · ${afterText(f + 1440 - n)}`, ended: n > l + 90 };
+  }
   if (n < f - 30) return { main: "운행종료", sub: `첫차 ${fc} · ${afterText(f - n)}`, ended: true };
   if (n > l + 90) return { main: "운행종료", sub: `내일 첫차 ${fc} · ${afterText(f + 1440 - n)}`, ended: true };
   if (n > l) return { main: "막차 출발함", sub: `내일 첫차 ${fc} · ${afterText(f + 1440 - n)}`, ended: false };

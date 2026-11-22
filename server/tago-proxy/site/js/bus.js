@@ -114,7 +114,7 @@ export function stopScreen(root, p) {
       const sn = seoulNow();
       const nl = s && live && live.state === "ok" ? B.noLive(s.first, s.last, B.intervalOn(s, day), sn.h * 60 + sn.mi) : null;
       if (nl) return `<span class="muted">${esc(nl.main)}</span><small>${esc(nl.sub)}</small>`;
-      const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, day) > 0 && "배차 " + B.intervalOn(s, day) + "분"].filter(Boolean).join(" · ") : "";
+      const plan = B.planText(s, day);
       return `<span class="muted">${live && live.state === "ok" ? "도착 정보 없음" : ""}</span>${plan ? `<small>${esc(plan)}</small>` : ""}`;
     }
     const parts = B.arrivalParts(f, elapsed);
@@ -311,7 +311,7 @@ export function stopTable(root, p) {
     if (!rows.length) {
       html += note("아직 이 요일 기록이 모자라고, 계산할 첫차·막차 정보도 없어요.");
       html += sectionHead("노선별 첫차·막차·배차") + `<div class="list">${sums.map((s) => {
-        const plan = [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, day) > 0 && "배차 " + B.intervalOn(s, day) + "분"].filter(Boolean).join(" · ");
+        const plan = B.planText(s, day);
         return `<div class="row"><span class="badge" style="background:${busColor(s.type)}">${esc(s.no)}</span><span class="grow"><small>${esc(plan || "정보 없음")}</small></span></div>`;
       }).join("")}</div>`;
       root.innerHTML = html;
@@ -530,10 +530,10 @@ export function routeScreen(root, p, ctx) {
     const status = !pos ? "버스 위치를 받는 중..." : refreshing && pos.state !== "ok" ? "버스 위치를 다시 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
       pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 10초마다 새로` :
       // 운행 시간 안인데 버스가 없음: 위치를 보내지 않는 노선일 수 있음 (여수 365-5 초도처럼 버스가 다녀도 위치 자료가 아예 안 옴)
-      r.sum && B.inService(r.sum.first, r.sum.last, B.kstMinute()) ? `실시간 위치가 들어오지 않아요 · 시간표상 운행 시간이에요 (${r.sum.first}~${r.sum.last})` :
+      r.sum && B.inService(r.sum.first, r.sum.last, B.kstMinute()) ? `실시간 위치가 들어오지 않아요 · 시간표상 운행 시간이에요 (${B.planText({ first: r.sum.first, last: r.sum.last }, 0).startsWith("하루") ? B.planText({ first: r.sum.first, last: r.sum.last }, 0) : r.sum.first + "~" + r.sum.last})` :
       "지금 운행 중인 버스가 없어요";
     const s = r.sum;
-    const plan = s ? [s.first && "첫차 " + s.first, s.last && "막차 " + s.last, B.intervalOn(s, isoDay()) > 0 && "배차 " + B.intervalOn(s, isoDay()) + "분"].filter(Boolean).join(" · ") : "";
+    const plan = B.planText(s, isoDay());
     const list = root.querySelector("#stops");
     // 들어온 정류장까지 오는 버스: "3정류장 전 · 5분 후" (앞 두 대, 걸리는 시간은 정류장 시간표와 같은 거리 어림)
     let come = "";

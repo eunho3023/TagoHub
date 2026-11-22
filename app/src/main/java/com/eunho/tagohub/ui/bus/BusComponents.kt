@@ -212,7 +212,7 @@ internal fun StopRouteItem(
                 for ((i, a) in listOf(first, second).withIndex()) {
                     if (a == null) {
                         // 다음 차: 막차 시각을 알면 그것, 모르면 정보없음
-                        if (i == 1) Text(row.lastTime?.let { "막차 $it" } ?: "정보없음", style = MaterialTheme.typography.bodyMedium, color = variant)
+                        if (i == 1) Text(row.lastTime?.let { if (com.eunho.tagohub.data.NoLiveText.onceADay(row.firstTime, it)) "하루 1번 $it" else "막차 $it" } ?: "정보없음", style = MaterialTheme.typography.bodyMedium, color = variant)
                         continue
                     }
                     AnimatedValueText(arrivalLine(a, elapsedSec), label = "bus-stop-arrival-$i") { value ->
