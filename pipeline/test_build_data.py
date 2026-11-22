@@ -467,6 +467,34 @@ def test_jeju_ssl_context_has_intermediate():
     assert "Sectigo Public Server Authentication CA DV R36" in names
 
 
+def test_jeonju_time_budget():
+    """전주: 가끔만 받히는(나머지는 실패) 때도 시간 한도가 지나면 남은 요청은 건너뜀"""
+    import urllib.request
+    clock = [0.0]
+    calls = []
+    class Ok:
+        def __init__(self): self.b = b'<list class="object"></list>'
+        def read(self): return self.b
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    def flaky(req, timeout=None):
+        calls.append(1)
+        clock[0] += 30                     # 요청마다 30초
+        if len(calls) % 3 == 0:
+            return Ok()                    # 세 번에 한 번은 받힘 → 잇달아 실패 규칙으로는 안 끝남
+        raise OSError("502")
+    old = urllib.request.urlopen, bd.time.sleep, bd.time.monotonic
+    urllib.request.urlopen, bd.time.sleep, bd.time.monotonic = flaky, (lambda s: None), (lambda: clock[0])
+    try:
+        served, ok, _ = bd.fetch_jeonju_served()
+    finally:
+        urllib.request.urlopen, bd.time.sleep, bd.time.monotonic = old
+    stops = bd.sqlite3.connect(bd.BASE_DB).execute("SELECT COUNT(*) FROM stops WHERE id LIKE 'JUB%'").fetchone()[0]
+    if stops:
+        assert not ok
+        assert clock[0] <= bd.JEONJU_BUDGET_S + 30 * 6 * 2, clock[0]   # 한도를 넘긴 뒤로는 묻지 않음
+
+
 def test_jeonju_gives_up_when_all_fail():
     """전주: 바로 묻기(하루 한도)·중계 서버(502)가 다 안 되면 몇 번 뒤 남은 요청은 건너뜀 (요청마다 1분 넘게 걸려 갱신이 몇 시간 늘어졌음)"""
     import urllib.request
@@ -487,7 +515,7 @@ def test_jeonju_gives_up_when_all_fail():
 
 
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
 
