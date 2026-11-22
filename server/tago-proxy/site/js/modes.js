@@ -3,10 +3,12 @@ import { modeScreens } from "./more.js";
 import { subwaySearch } from "./subway.js";
 import { trainScreen, coachScreen } from "./trips.js";
 import { airScreen } from "./air.js";
+import { ferryScreen } from "./ferry.js";
 
 modeScreens.subway = (root, chipsHtml) => subwaySearch(root, chipsHtml);
 modeScreens.train = (root, chipsHtml) => trainScreen(root, chipsHtml);
 modeScreens.coach = (root, chipsHtml) => coachScreen(root, chipsHtml);
 modeScreens.air = (root, chipsHtml) => airScreen(root, chipsHtml);
+modeScreens.ferry = (root, chipsHtml) => ferryScreen(root, chipsHtml);
 import { roadScreen } from "./road.js";
 modeScreens.road = (root, chipsHtml, ctx) => roadScreen(root, chipsHtml, ctx);

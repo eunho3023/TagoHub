@@ -3,23 +3,23 @@ import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, onReturn, cached
 import { act, header, note } from "./ui.js";
 import { clock } from "./subway.js";
 
-const duration = (min) => (min >= 60 ? `${Math.floor(min / 60)}시간${min % 60 ? " " + (min % 60) + "분" : ""}` : min + "분");
+export const duration = (min) => (min >= 60 ? `${Math.floor(min / 60)}시간${min % 60 ? " " + (min % 60) + "분" : ""}` : min + "분");
 const won = (n) => n.toLocaleString("ko-KR") + "원";
 const WEEK = "월화수목금토일";
 
 /** 오늘·내일 칸 + 날짜 */
-function dayRow(st, redraw) {
+export function dayRow(st, redraw) {
   const t = st.tomorrow ? addDays(seoulNow(), 1) : seoulNow();
   return `<div class="toolrow"><div class="segs">${[["오늘", false], ["내일", true]].map(([l, v]) => `<button class="${st.tomorrow === v ? "on" : ""}" ${act(() => { st.tomorrow = v; redraw(); })}>${l}</button>`).join("")}</div>
     <small>${t.m}월 ${t.d}일 (${WEEK[isoDay(t) - 1]})</small></div>`;
 }
 /** 출발·도착 칸 */
-function boxes(st, depName, arrName, redraw) {
+export function boxes(st, depName, arrName, redraw) {
   const b = (k, title, name) => `<button class="pbox ${st.editing === k ? "on" : ""}" ${act(() => { st.editing = k; st.q = ""; redraw(); })}><small>${title}</small><b>${esc(name)}</b></button>`;
   return `<div class="pboxes">${b("dep", "출발", depName)}<button class="swap" ${act(() => { [st.dep, st.arr] = [st.arr, st.dep]; redraw(); })}>⇄</button>${b("arr", "도착", arrName)}</div>`;
 }
 /** 편 목록: 지난 것은 흐리게, 다음 편으로 내려감 */
-function tripList(root, list, now, row) {
+export function tripList(root, list, now, row) {
   const next = Math.max(0, list.findIndex((t) => t.depMin >= now));
   const left = list.filter((t) => t.depMin >= now).length;
   const html = `<p class="note">${list.length}편${now >= 0 ? ` · 남은 ${left}편` : ""}</p><div class="list">${list.map((t, i) => `<div class="row ${t.depMin < now ? "gone" : ""}" data-i="${i}">${row(t)}</div>`).join("")}</div>`;

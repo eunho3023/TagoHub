@@ -46,7 +46,7 @@ async function jams() {
       lat: pos ? +pos[0] : null, lng: pos ? +pos[1] : null };
   }).sort((a, b) => (a.speed ?? 1e9) - (b.speed ?? 1e9));
 }
-async function gas() {
+export async function gasPrices() {
   const w = (v) => { const n = parseInt((v || "").replace(/\D/g, ""), 10); return n > 0 ? n : null; };
   const seen = new Set();
   return (await allRows("business/curStateStation")).filter((r) => r.serviceAreaName).map((r) => ({
@@ -107,7 +107,7 @@ const road = { tab: 0, picked: null, q: "", incidents: null, jams: null, gas: nu
 export function roadScreen(root, chipsHtml, ctx) {
   let alive = true, offIdle = null, sigTimer = null, tickTimer = null;
   const load = (i) => {
-    const [fn, key] = [[incidents, "incidents"], [jams, "jams"], [gas, "gas"]][i];
+    const [fn, key] = [[incidents, "incidents"], [jams, "jams"], [gasPrices, "gas"]][i];
     road.failed.delete(i);
     fn().then((x) => { road[key] = x; }).catch(() => { road.failed.add(i); road[key] = []; }).finally(() => { if (alive && road.tab === i) draw(); });
   };
