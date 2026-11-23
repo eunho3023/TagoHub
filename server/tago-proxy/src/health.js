@@ -159,6 +159,84 @@ export async function healthCron(env, fetcher = fetch) {
   return { at, checked: stmts.length, failed: results.filter(([, r]) => r && !r.ok).map(([c]) => c.name) };
 }
 
+// ── 실제 요청에서 하루 한도 초과 알아보기 ──
+// 고장 확인은 기관마다 한 가지 요청만 해 봐서, 지하철 시간표·경기 노선 정류장처럼 다른 서비스의 한도가 차도 몰랐음 (2026-11-22).
+// 그래서 사용자 요청에 대한 실제 응답에 LIMITED_NUMBER_OF_SERVICE 가 오면 서비스별로 적어 두고 /w/health 에 오늘 것을 보여 줌.
+
+/** 공공데이터포털 서비스 이름 (기관번호/서비스) → 사람이 읽을 이름. 없으면 서비스 이름 그대로 */
+export const QUOTA_LABELS = {
+  "1613000/SubwayInfoService": "TAGO 지하철 정보",
+  "1613000/BusRouteInfoInqireService": "TAGO 노선 정보",
+  "1613000/ArvlInfoInqireService": "TAGO 버스 도착",
+  "1613000/BusLcInfoInqireService": "TAGO 버스 위치",
+  "1613000/BusSttnInfoInqireService": "TAGO 정류장 정보",
+  "6410000/busrouteservice": "경기 버스 노선",
+  "6410000/busarrivalservice": "경기 버스 도착",
+  "6410000/busstationservice": "경기 정류장",
+  "6410000/buslocationservice": "경기 버스 위치",
+  "6300000/arrive": "대전 버스 도착",
+  "6310000/bis": "울산 버스",
+  "4641000/nosun": "전주 버스 노선",
+  "B551982/pbdo_v2": "전국 공영자전거",
+};
+
+/** 주소·경로 → "기관번호/서비스" (apis.data.go.kr 만, 아니면 null) */
+export function quotaService(target) {
+  const m = /^(?:https?:\/\/apis\.data\.go\.kr)?\/?(\w+)\/(\w+)/.exec(String(target || ""));
+  if (!m || !/^(?:https?:\/\/apis\.data\.go\.kr|\/?\d|\/?B\d)/.test(String(target))) return null;
+  return m[1] + "/" + m[2];
+}
+
+/** 하루 한도 초과 응답인지 */
+export function isQuotaBody(body) { return /LIMITED_NUMBER_OF_SERVICE/.test(String(body || "").slice(0, 4000)); }
+
+const quotaMemo = new Map();
+/** 실제 응답이 한도 초과면 서비스별로 적어 둠 (같은 서비스는 1분에 한 번만 씀). 실패해도 조용히 */
+export async function noteQuota(env, target, body, now = Date.now()) {
+  if (!env.DB || !isQuotaBody(body)) return false;
+  const svc = quotaService(target);
+  if (!svc || now - (quotaMemo.get(svc) || 0) < 60000) return false;
+  quotaMemo.set(svc, now);
+  try {
+    await env.DB.prepare("CREATE TABLE IF NOT EXISTS api_quota (svc TEXT PRIMARY KEY, at INTEGER NOT NULL, first INTEGER NOT NULL) WITHOUT ROWID").run();
+    // first: 오늘(한국 시각) 처음 넘은 때. 날이 바뀐 뒤 다시 넘으면 새로 씀
+    await env.DB.prepare(`INSERT INTO api_quota (svc, at, first) VALUES (?1, ?2, ?2)
+      ON CONFLICT(svc) DO UPDATE SET at = ?2, first = CASE WHEN api_quota.at < ?3 THEN ?2 ELSE api_quota.first END`).bind(svc, now, kstMidnight(now)).run();
+    return true;
+  } catch { return false; }
+}
+export function _resetQuotaMemo() { quotaMemo.clear(); }
+
+/** 한국 시각 오늘 0시 (ms). 공공데이터포털 하루 한도는 한국 자정에 풀림 */
+export function kstMidnight(now = Date.now()) {
+  const K = 9 * 3600 * 1000;
+  return Math.floor((now + K) / 86400000) * 86400000 - K;
+}
+
+/** 중계·예약 작업·오늘 한도 초과를 고장 확인 줄 모양으로 (D1 에 이미 있는 기록으로 바로 계산, 바깥 요청 없음) */
+export async function extraChecks(env, now = Date.now()) {
+  const out = [];
+  const min = (ms) => Math.max(0, Math.round(ms / 60000));
+  // 국내 중계 (집 노트북): 5분마다 안부, 15분 넘게 없으면 꺼진 것 (src/krrelay.js)
+  const relay = await env.DB.prepare("SELECT at FROM kr_relay WHERE id = 1").first().catch(() => null);
+  if (env.RELAY_KEY || relay) {
+    const ago = relay ? now - relay.at : null;
+    const ok = ago != null && ago < 15 * 60 * 1000;
+    out.push({ name: "kr_relay", label: "국내 중계 (집 노트북)", ok, msg: ok ? "" : relay ? `${min(ago)}분째 소식 없음 · 노트북·와이파이 확인 필요` : "등록된 적 없음",
+      ms: null, at: relay ? relay.at : null, lastOk: relay ? relay.at : null, failSince: ok || !relay ? null : relay.at + 15 * 60 * 1000 });
+  }
+  // 예약 작업 (노트북이 1분마다 /w/cron, GitHub 은 예비): 10분 넘게 안 불렸으면 고장
+  const cron = await env.DB.prepare("SELECT v FROM poll_meta WHERE k = 'cron:last'").first().catch(() => null);
+  if (cron && cron.v) {
+    const ago = now - cron.v, ok = ago < 10 * 60 * 1000;
+    out.push({ name: "cron", label: "예약 작업 (1분마다)", ok, msg: ok ? "" : `${min(ago)}분째 안 돎 · 노트북 중계 확인 필요`, ms: null, at: cron.v, lastOk: cron.v, failSince: ok ? null : cron.v });
+  }
+  // 오늘 하루 한도를 넘은 서비스 (실제 요청에서 알아본 것)
+  const rows = (await env.DB.prepare("SELECT svc, at, first FROM api_quota WHERE at >= ?").bind(kstMidnight(now)).all().catch(() => null))?.results || [];
+  for (const r of rows) out.push({ name: "quota:" + r.svc, label: (QUOTA_LABELS[r.svc] || r.svc) + " 하루 한도", ok: false, msg: "오늘 하루 요청 한도 초과 · 밤 12시에 풀려요", ms: null, at: r.at, lastOk: null, failSince: r.first });
+  return out;
+}
+
 /** /w/health */
 export async function handleHealth(env) {
   const head = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" };
@@ -171,5 +249,6 @@ export async function handleHealth(env) {
     const opt = c.optional ? { optional: true } : {};
     return r ? { name: c.name, label: c.label, ok: !!r.ok, msg: r.msg || "", ms: r.ms, at: r.at, lastOk: r.last_ok, failSince: r.fail_since, ...opt } : { name: c.name, label: c.label, ok: null, ...opt };
   });
-  return new Response(JSON.stringify({ at: Math.max(0, ...rows.map((r) => r.at || 0)) || null, checks }), { headers: head });
+  const extra = await extraChecks(env).catch(() => []);
+  return new Response(JSON.stringify({ at: Math.max(0, ...rows.map((r) => r.at || 0)) || null, checks: checks.concat(extra) }), { headers: head });
 }

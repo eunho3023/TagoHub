@@ -16,7 +16,11 @@ const form = { autoLogin: true, emailId: "", emailDomain: "naver.com", emailCust
 export function loginScreen(root, p) {
   const page = TITLES[p.id] ? p.id : "login";
   const adminOn = () => Edits.isAdmin();
-  const adminLink = () => `<button class="link authlink" ${act(() => go("login", "admin"))}>${adminOn() ? "관리자 모드 켜짐" : "관리자로 로그인"}</button>`;
+  // 관리자 로그인 버튼은 관리자 모드일 때만 보임 (일반 사용자가 헷갈리지 않게, 2026-11-23).
+  // 관리자는 로그인 화면 제목 「로그인」을 3초 안에 5번 누르거나 #/login/admin 주소로 들어감
+  const adminLink = () => adminOn() ? `<button class="link authlink" ${act(() => go("login", "admin"))}>관리자 모드 켜짐</button>` : "";
+  let taps = [];
+  const tapTitle = () => { const now = Date.now(); taps = taps.filter((t) => now - t < 3000).concat(now); if (taps.length >= 5) { taps = []; go("login", "admin"); } };
   let busy = false, error = "", info = "", found = null, mailSent = false;
   /** 아이디 중복확인 결과 { u: 확인한 아이디, free: true|false|null } */
   let idCheck = null;
@@ -151,7 +155,7 @@ export function loginScreen(root, p) {
 
   function draw() {
     root.innerHTML = header(TITLES[page], null, { back: true }) +
-      `<form class="authform" autocomplete="on" onsubmit="return false"><h2>${TITLES[page]}</h2>` +
+      `<form class="authform" autocomplete="on" onsubmit="return false"><h2 ${page === "login" ? act(tapTitle) : ""}>${TITLES[page]}</h2>` +
       (page === "login" && !current() ? `<p class="authsub">타볼까 아이디로 로그인해요. 폰 앱과 같은 아이디예요.</p>` : "") +
       body() +
       (info ? `<p class="authinfo">${esc(info)}</p>` : "") + (error ? `<p class="autherr">${esc(error)}</p>` : "") + `</form>`;

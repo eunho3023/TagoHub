@@ -1,5 +1,5 @@
 // 항공: 국내선 시간표(서버에 올린 운항 파일) + 한국공항공사 실시간 운항, 공항 화면(실시간 혼잡도·출발·도착·기본 정보), 인천공항 운항.
-import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, cachedText } from "./core.js";
+import { getText, cached, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, cachedText, tryLater } from "./core.js";
 import { act, header, note, sectionHead, chips } from "./ui.js";
 import { go } from "./nav.js";
 import { clock } from "./subway.js";
@@ -145,7 +145,7 @@ export function airScreen(root, chipsHtml) {
   function draw() {
     if (!alive) return;
     let h = header("타볼까", "국내선 항공 시간표") + chipsHtml;
-    if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
+    if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. " + tryLater()); return; }
     if (!data) { root.innerHTML = h + note("시간표를 불러오는 중..."); return; }
     if (air.editing) {
       const box = (k, title) => `<button class="pbox ${air.editing === k ? "on" : ""} ${air[k] ? "" : "empty"}" ${act(() => { air.editing = k; draw(); })}><small>${title}</small><b>${esc(air[k] ? name(air[k]) : title + " 고르기")}</b></button>`;

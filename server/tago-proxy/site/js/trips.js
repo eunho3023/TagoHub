@@ -1,7 +1,7 @@
 // 기차(서버에 올린 한국철도공사 시간표 + 국토교통부 종류·요금)와 고속·시외버스(국토교통부) 시간표.
 // 앱 TimetablePane 처럼: 출발·도착은 빈칸에서 시작(직접 고른 것만), 아래 날짜와 "시간표 조회" 버튼, 그 아래 최근 조회.
 // 조회하면 구간 요약·수정, 날짜 막대(전날·다음날·달력), 편 목록.
-import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, cachedText, storeGet, storeSet } from "./core.js";
+import { getText, xmlRows, esc, seoulNow, addDays, ymd, isoDay, pad2, onReturn, cachedText, storeGet, storeSet, tryLater } from "./core.js";
 import { act, header, note, sectionHead } from "./ui.js";
 import { clock } from "./subway.js";
 
@@ -267,7 +267,7 @@ export function trainScreen(root, chipsHtml) {
     h += resultTop(train, train.dep, train.arr, MAX, redraw);
     const done = (html) => { root.innerHTML = h + html; bindDate(root, train, MAX, redraw); };
     if (!trips) return done(note("시간표를 불러오는 중..."));
-    if (failed) return done(note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."));
+    if (failed) return done(note("시간표를 받지 못했어요. " + tryLater()));
     if (!trips.length) return done(note(`${train.dep} → ${train.arr} 그날 직통 열차가 시간표에 없어요`) + transferHtml());
     const r = tripList(root, trips, nowMin(train), (x) => `<span class="grow"><b class="trip">${clock(x.depMin)}  →  ${clock(x.arrMin)}</b><small>${duration(x.arrMin - x.depMin)}</small></span>
       <span class="right"><b class="sm">${esc([x.kind, x.no].filter(Boolean).join(" "))}</b>${x.fare ? `<small>${won(x.fare)}</small>` : ""}</span>`);
@@ -350,7 +350,7 @@ export function coachScreen(root, chipsHtml) {
     }
     h += resultTop(coach, coach.dep.name, coach.arr.name, MAX, redraw);
     const done = (html) => { root.innerHTML = h + html; bindDate(root, coach, MAX, redraw); };
-    if (failed) return done(note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."));
+    if (failed) return done(note("시간표를 받지 못했어요. " + tryLater()));
     if (!trips) return done(note("시간표를 불러오는 중..."));
     if (!trips.length) return done(note(`${coach.dep.name} → ${coach.arr.name} 그날 버스가 없어요`));
     const r = tripList(root, trips, nowMin(coach), (x) => `<span class="grow"><b class="trip">${clock(x.depMin)}${x.arrMin != null ? "  →  " + clock(x.arrMin) : ""}</b>${x.arrMin != null ? `<small>${duration(x.arrMin - x.depMin)}</small>` : ""}</span>
