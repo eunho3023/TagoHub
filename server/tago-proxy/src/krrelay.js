@@ -10,7 +10,8 @@
  */
 import { hedgedFetch } from "./hedge.js";
 
-export const RELAY_HOSTS = new Set(["apis.data.go.kr"]);
+// 브이월드(api.vworld.kr)는 Cloudflare 에서 물으면 HTTP 520·빈 답 (2026-11-23 배포 뒤 잰 것, 국내 PC 에서는 잘 됨)
+export const RELAY_HOSTS = new Set(["apis.data.go.kr", "api.vworld.kr"]);
 const TUNNEL = /^https:\/\/[a-z0-9-]{1,80}\.trycloudflare\.com$/;
 const STALE_MS = 15 * 60 * 1000;
 export const RELAY_HEDGE_MS = 2500, RELAY_TOTAL_MS = 13000;

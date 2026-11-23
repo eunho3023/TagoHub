@@ -107,3 +107,12 @@ test("주유소: 오피넷에 KATEC 좌표로 묻고, 키가 없으면 500", asy
   const miss = await handlePub(new Request("https://x/"), new URL("https://x/w/pub/gas?lat=37.5&lng=127&r=1000"), {}, ctx, { fetcher: f });
   assert.equal(miss.status, 500);
 });
+
+test("장소: 브이월드가 오류면 카카오 결과는 5분만 저장 (브이월드가 돌아오면 바로)", async () => {
+  const f = fakeFetch([["dapi.kakao.com", { documents: [{ place_name: "서울역", x: "126.97", y: "37.55" }] }]]);
+  const res = await handlePub(new Request("https://x/"), new URL("https://x/w/pub/place?q=서울역"), { VWORLD_KEY: "vk", KAKAO_REST_KEY: "kk" }, ctx, { fetcher: f });
+  const j = await res.json();
+  assert.equal(j.src, "kakao");
+  assert.equal(j.short, undefined);
+  assert.equal(res.headers.get("Cache-Control"), "public, max-age=300");
+});

@@ -154,3 +154,10 @@ test("노트북 중계가 타볼까 예약 작업을 부름 (POST /w/cron, X-Cro
   assert.equal(await cronOnce("bad", async () => new Response("forbidden", { status: 403 })), 403);
   assert.equal(await cronOnce("ck", async () => { throw new TypeError("fetch failed"); }), "error");
 });
+
+test("브이월드도 국내 중계로 (Cloudflare 에서 막힘), 다른 곳은 안 됨", async () => {
+  const { RELAY_HOSTS } = await import("../src/krrelay.js");
+  assert.ok(RELAY_HOSTS.has("api.vworld.kr"));
+  assert.equal(allowedTarget("https://api.vworld.kr/req/search?x=1"), true);
+  assert.equal(allowedTarget("https://www.opinet.co.kr/api/aroundAll.do"), false);
+});

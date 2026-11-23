@@ -180,10 +180,12 @@ export function pubRequest(pathname, search) {
         const body = await get(vwUrl("search", { service: "search", request: "search", version: "2.0", crs: "EPSG:4326", size: "30", page: "1", query: q, type: "place" }, env.VWORLD_KEY)).catch(() => null);
         const places = vworldPlaces(body, q, at).slice(0, 15);
         if (places.length || !env.KAKAO_REST_KEY) return { src: "vworld", places };
+        // 브이월드가 답을 못 함(오류) → 카카오 결과는 5분만 저장 (브이월드가 돌아오면 바로 브이월드로)
+        const short = !body;
         // 브이월드가 못 찾음(띄어 쓴 검색어 "스타벅스 강남" 등) → 카카오
         const qs = new URLSearchParams({ query: q, size: "15", ...(at ? { x: at[1], y: at[0], sort: "accuracy" } : {}) });
         const kb = await get(KAKAO_KEYWORD + "?" + qs, { Authorization: "KakaoAK " + env.KAKAO_REST_KEY.trim() }).catch(() => null);
-        return { src: "kakao", places: kakaoPlaces(kb) };
+        return { src: "kakao", places: kakaoPlaces(kb), ...(short ? { short: true } : {}) };
       },
     };
   }
@@ -239,7 +241,8 @@ export async function handlePub(request, url, env, ctx, { fetcher = fetch, limit
   if (!job) return new Response(JSON.stringify({ error: "bad request" }), { status: 400, headers: HEADERS });
   if (!env[NEEDS[url.pathname]]) return new Response(JSON.stringify({ error: "server key missing" }), { status: 500, headers: HEADERS });
   const cache = typeof caches !== "undefined" ? caches.default : null;
-  const key = new Request("https://cache.tagohub/pub/" + job.cacheKey);
+  // pub2: 첫 배포 때 브이월드가 막혀 카카오·빈 결과가 저장됐던 것 버림
+  const key = new Request("https://cache.tagohub/pub2/" + job.cacheKey);
   const hit = cache && await cache.match(key);
   if (hit) { const out = new Response(hit.body, hit); out.headers.set("X-Cache", "HIT"); return out; }
   if (limit && !(await limit())) return new Response(JSON.stringify({ error: "too many requests" }), { status: 429, headers: { ...HEADERS, "Retry-After": "60" } });
@@ -250,12 +253,14 @@ export async function handlePub(request, url, env, ctx, { fetcher = fetch, limit
   };
   try {
     const data = await job.run(env, get);
-    const out = new Response(JSON.stringify(data), { headers: { ...HEADERS, "Cache-Control": "public, max-age=" + job.ttl, "X-Cache": "MISS" } });
+    const short = !!data.short;
+    delete data.short;
+    const out = new Response(JSON.stringify(data), { headers: { ...HEADERS, "Cache-Control": "public, max-age=" + (short ? 300 : job.ttl), "X-Cache": "MISS" } });
     // 빈 결과는 짧게 (공공기관이 잠깐 안 될 때 하루 동안 빈 답이 나가지 않게)
     const empty = Array.isArray(data.places) ? !data.places.length : Array.isArray(data.stations) ? !data.stations.length : !data.name;
     if (cache) {
       const keep = out.clone();
-      if (empty) keep.headers.set("Cache-Control", "public, max-age=300");
+      if (empty || short) keep.headers.set("Cache-Control", "public, max-age=300");
       ctx.waitUntil(cache.put(key, keep));
     }
     return out;

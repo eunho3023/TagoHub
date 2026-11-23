@@ -21,7 +21,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PORT = 8792;
-export const ALLOWED = new Set(["apis.data.go.kr"]);
+// 타볼까 krrelay.js RELAY_HOSTS 와 같게 (브이월드는 Cloudflare 에서 막힘)
+export const ALLOWED = new Set(["apis.data.go.kr", "api.vworld.kr"]);
 const SERVER = "https://tabolkka.pages.dev";
 const UPSTREAM_TIMEOUT_MS = 12000;
 const BEAT_MS = 5 * 60 * 1000;
