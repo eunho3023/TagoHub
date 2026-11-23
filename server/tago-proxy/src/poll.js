@@ -44,6 +44,16 @@ async function ordMap(env, routeId) {
   } catch (_) { return null; }
 }
 
+/** 실패 까닭 이름 (/w/poll/status 의 why): 무엇 때문에 실패가 많은지 보려고 (2026-11-23 실패가 성공보다 많았음) */
+export function badWhy(status, body) {
+  const b = String(body || "").slice(0, 4000);
+  if (/LIMITED_NUMBER_OF_SERVICE/.test(b)) return "quota";
+  if (/SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED/.test(b)) return "key";
+  if (/<resultCode>99<\/resultCode>|"resultCode"\s*:\s*"?99\b/.test(b)) return "busy99";
+  if (status !== 200) return "http" + status;
+  return "other";
+}
+
 /** 상태 숫자 (set 이면 바꿈, 아니면 더함) */
 async function bump(db, k, v, set = false) {
   await db.prepare(`INSERT INTO poll_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = ${set ? "excluded.v" : "v + excluded.v"}`).bind(k, v).run();
@@ -55,10 +65,11 @@ export async function pollStatus(env, nowMs = Date.now()) {
   if (!db) return { db: false };
   await ensure(db);
   const { day } = kst(nowMs);
-  const meta = Object.fromEntries(((await db.prepare("SELECT k, v FROM poll_meta WHERE k IN (?, ?, ?, ?, ?)").bind("cron:last", "day:" + day, "hits:" + day, "bad:" + day, "err:" + day).all()).results || []).map((r) => [r.k.split(":")[0], r.v]));
+  const meta = Object.fromEntries(((await db.prepare("SELECT k, v FROM poll_meta WHERE k IN (?, ?, ?, ?, ?, ?)").bind("cron:last", "day:" + day, "ok:" + day, "hits:" + day, "bad:" + day, "err:" + day).all()).results || []).map((r) => [r.k.split(":")[0], r.v]));
   const top = ((await db.prepare("SELECT route_id, city, score, polled FROM route_interest ORDER BY score DESC LIMIT ?").bind(ACTIVE).all()).results || [])
     .map((r) => ({ route: r.route_id, city: r.city, score: Math.round(r.score * 10) / 10, polledAgoS: r.polled ? Math.round((nowMs - r.polled) / 1000) : null }));
-  return { db: true, key: !!env.DATA_GO_KR_KEY, cronAgoS: meta.cron ? Math.round((nowMs - meta.cron) / 1000) : null, today: { polled: meta.day || 0, hits: meta.hits || 0, bad: meta.bad || 0, err: meta.err || 0 }, top };
+  const why = Object.fromEntries(((await db.prepare("SELECT k, v FROM poll_meta WHERE k LIKE ?").bind(`why:${day}:%`).all()).results || []).map((r) => [r.k.split(":")[2], r.v]));
+  return { db: true, key: !!env.DATA_GO_KR_KEY, why, cronAgoS: meta.cron ? Math.round((nowMs - meta.cron) / 1000) : null, today: { polled: meta.day || 0, ok: meta.ok || 0, hits: meta.hits || 0, bad: meta.bad || 0, err: meta.err || 0 }, top };
 }
 
 /** 예약 작업 (1분마다): 관심 노선 중 2분 넘게 안 물은 것 3개까지 물어 기록. {polled, left} 또는 쉬는 까닭 */
@@ -81,17 +92,19 @@ export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
     const w = webRequest("/w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", `?cityCode=${r.city}&routeId=${encodeURIComponent(r.route_id)}`);
     if (!w) continue;
     n++;
+    // 묻기 전에 바로 셈: 예전엔 끝에 한꺼번에 세서, 요청이 매달려 작업이 끊기면 빠졌음 (실패 340 > 물은 수 186, 2026-11-23)
+    await bump(db, "day:" + day, 1);
     try {
       const res = await fetcher(upstreamUrl(w.path, w.search, env.DATA_GO_KR_KEY), { headers: { Accept: "application/xml" } });
       const body = await res.text();
       if (cacheable(res.status, body)) {
         const got = await hitsFromBusLc(db, prevStore(db), r.route_id, body, nowMs, await ordMap(env, r.route_id));
+        await bump(db, "ok:" + day, 1);
         if (got) await bump(db, "hits:" + day, got);
         await recordGps(db, r.route_id, r.city, body).catch(() => 0);
-      } else await bump(db, "bad:" + day, 1);
+      } else { await bump(db, "bad:" + day, 1); await bump(db, `why:${day}:${badWhy(res.status, body)}`, 1); }
     } catch (_) { await bump(db, "err:" + day, 1); }
     await db.prepare("UPDATE route_interest SET polled = ? WHERE route_id = ?").bind(nowMs, r.route_id).run();
   }
-  if (n) await db.prepare("INSERT INTO poll_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = v + excluded.v").bind("day:" + day, n).run();
   return { polled: n, used: used + n };
 }

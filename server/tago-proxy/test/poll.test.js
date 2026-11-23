@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pollCron } from "../src/poll.js";
+import { pollCron, badWhy } from "../src/poll.js";
 import { hitsFromBusLc } from "../src/log.js";
 
 const xml = (ord, node) => `<response><header><resultCode>00</resultCode></header><body><items><item><vehicleno>70자1234</vehicleno><nodeord>${ord}</nodeord><nodeid>${node}</nodeid><gpslati>35.87</gpslati><gpslong>128.6</gpslong></item></items></body></response>`;
@@ -48,4 +48,13 @@ test("예약 작업: 관심 노선을 2분 간격으로, 하루 한도 안에서
   assert.equal((await pollCron(env, fetcher, noon + 60000)).polled, 0);   // 2분 안 됨
   assert.equal((await pollCron(env, fetcher, noon + 120000)).polled, 1);
   assert.equal((await pollCron(env, fetcher, noon + 240000)).skip, "daily limit");   // 하루 2번 한도
+});
+
+test("실패 까닭 이름: 한도·키·잠시 바쁨(99)·HTTP 상태", () => {
+  assert.equal(badWhy(200, "<returnAuthMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</returnAuthMsg>"), "quota");
+  assert.equal(badWhy(200, "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"), "key");
+  assert.equal(badWhy(200, "<resultCode>99</resultCode>"), "busy99");
+  assert.equal(badWhy(200, '{"response":{"header":{"resultCode":99}}}'), "busy99");
+  assert.equal(badWhy(522, "error code: 522"), "http522");
+  assert.equal(badWhy(200, "<resultCode>995</resultCode>"), "other");
 });
