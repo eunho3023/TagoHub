@@ -81,7 +81,8 @@ function meEl() {
   return d;
 }
 
-// 11월 22일까지 쓰던 것 (core.js PUB_FROM 뒤에는 브이월드). 그 뒤 지울 것
+// 카카오 지도: 11월 22일까지 모두가 쓰던 것. 지금은 관리자가 "지도 고치기" 중일 때만 (브이월드 그림에는 버스 정류장 표시가 없어
+// 정류장 자리를 맞춰 볼 수 없음). 관리자 자신의 브라우저에서만 카카오로 지도 화면을 받음
 async function kakaoImpl() {
   const key = window.TAGOHUB_KAKAO_JS_KEY || "";
   if (!key) throw new Error("키 없음");
@@ -249,10 +250,13 @@ const MAPTYPE = "tagohub.mapType";
 let mapType = "normal";
 try { mapType = localStorage.getItem(MAPTYPE) === "sky" ? "sky" : "normal"; } catch (e) { /* 못 읽음 */ }
 
+/** 지도 고치기 중인지 (edits.js editing 과 같은 저장 칸, 관리자만 켤 수 있음). 켜고 끌 때 edits.js 가 페이지를 다시 읽어 지도를 바꿈 */
+const editingMap = () => { try { return sessionStorage.getItem("tagohub.editing") === "1"; } catch (e) { return false; } };
+
 const ready = (async () => {
   // 크기가 생긴 뒤에 지도를 만듦
   while (!el.isConnected || el.clientWidth === 0) await new Promise((r) => setTimeout(r, 100));
-  if (PUB_ON()) impl = await leafletImpl();
+  if (PUB_ON() && !editingMap()) impl = await leafletImpl();
   else try { impl = await kakaoImpl(); } catch (e) { el.innerHTML = ""; impl = await leafletImpl(); }
   new ResizeObserver(() => impl.relayout()).observe(el);
   el.appendChild(locBtn);
