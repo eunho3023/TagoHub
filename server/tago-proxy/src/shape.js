@@ -633,7 +633,8 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
     const made = await makeShape(id, stops, routeNo, env, fetcher);
     if (!made.shape) {
       if (env.DB) ctx.waitUntil(enqueue(env.DB, id, city, routeNo, 2));
-      if (!old) return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
+      // 못 만듦: 브라우저가 10분 동안 이 답을 들고 있으면 웹이 다시 물어도(30초·1분 30초 뒤) 정류장 직선만 보여서 1분만
+      if (!old) return new Response("no shape", { status: 404, headers: { ...HEAD, "Cache-Control": "public, max-age=60" } });
       poly = old; partial = true; // 다시 못 만듦: 예전 모양을 잠깐만 (예약 작업이 이어서)
     } else {
       poly = encode(made.shape, 5);
