@@ -28,11 +28,13 @@ export const isApiPath = (p) => API_PREFIXES.some((x) => (x.endsWith("/") ? p.st
  * 부르는 곳: 집 노트북 국내 중계가 1분마다(server/relay/relay.mjs, CRON_KEY 있을 때), 예비로 GitHub Actions(.github/workflows/server-cron.yml, 실제로는 몇 시간에 한 번꼴)
  */
 export async function runCron(env, now = Date.now(), { fetcher = fetch } = {}) {
-  // 고장 확인도 실제 요청처럼 국내 중계를 거침 (공공데이터포털은 Cloudflare 에서 바로 물으면 매달리거나 막혀 고장으로 잘못 보였음)
+  // 예약 작업의 바깥 요청은 모두 실제 요청처럼 국내 중계를 거침 (공공데이터포털은 Cloudflare 에서 바로 물으면 매달리거나 막힘).
+  // upstreamFetch 는 apis.data.go.kr 만 중계로 보내고 나머지는 바로 물음
   const viaRelay = fetcher === fetch ? (u, i) => upstreamFetch(u, i || {}, env) : fetcher;
   if (await healthDue(env, now).catch(() => false)) return { health: await healthCron(env, viaRelay).catch(() => null) != null };
-  await pollCron(env).catch(() => null);
-  await shapeCron(env).catch(() => null);
+  // 버스 위치 모으기·노선 모양 만들기도 중계를 거침: 바로 물어서 실패가 성공보다 많았음 (2026-11-23 bad 250, hits 240)
+  await pollCron(env, viaRelay).catch(() => null);
+  await shapeCron(env, viaRelay).catch(() => null);
   return { poll: true, shape: true };
 }
 
