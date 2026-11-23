@@ -120,6 +120,8 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .map { width: 100%; height: 100%; background: var(--sv); }
 .map-slot { height: 42vh; min-height: 220px; flex: none; position: relative; }
 .map-slot.full { flex: 1; height: auto; }
+/* 노선 화면: 지도는 그대로 두고 아래 정류장 목록만 올라감 (예전엔 지도까지 같이 밀려 올라갔음, 2026-11-23) */
+.under-map { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .map-slot.home-map { height: 46vh; margin-top: -24px; z-index: 0; }
 .homecard { position: relative; z-index: 1; }
 .home-map .leaflet-top, .home-map .locbtn { top: 34px; }

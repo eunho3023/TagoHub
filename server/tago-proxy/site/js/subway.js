@@ -360,7 +360,7 @@ export function lineScreen(root, p, ctx) {
     if (!L) { root.innerHTML = header("지하철 노선", null, { back: true }) + note("이 노선은 노선 모양 자료가 없어요"); return; }
     adj = adjacency(L);
     root.innerHTML = header(L.name, focus ? `${focus}역에서 연 노선` : "실시간 열차 위치", { back: true }) +
-      `<div class="map-slot"></div><div id="status" class="status"></div><div id="stops" class="list"></div>`;
+      `<div class="map-slot"></div><div class="under-map"><div id="status" class="status"></div><div id="stops" class="list"></div></div>`;
     ctx.useMap(root.querySelector(".map-slot"));
     drawList(); drawMap();
     const offIdle = MapView.onIdle(drawMap);
