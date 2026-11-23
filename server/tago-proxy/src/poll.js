@@ -51,6 +51,11 @@ export function badWhy(status, body) {
   if (/SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED/.test(b)) return "key";
   if (/<resultCode>99<\/resultCode>|"resultCode"\s*:\s*"?99\b/.test(b)) return "busy99";
   if (status !== 200) return "http" + status;
+  // 공공데이터포털이 200 안에 적어 보낸 오류 이름 (HTTP_ERROR·SERVICETIMEOUT_ERROR·APPLICATION_ERROR 등). 예전엔 모두 "other" 라 원인을 몰랐음
+  const err = (/<errMsg>\s*([A-Za-z_ ]{2,40}?)\s*<\/errMsg>/.exec(b) || /"errMsg"\s*:\s*"([A-Za-z_ ]{2,40})"/.exec(b) || [])[1];
+  if (err) return err.trim().replace(/\s+/g, "_").toLowerCase();
+  const code = (/<resultCode>\s*(\w{1,6})\s*<\/resultCode>/.exec(b) || /"resultCode"\s*:\s*"?(\w{1,6})/.exec(b) || [])[1];
+  if (code && code !== "00" && code !== "0") return "code" + code;
   return "other";
 }
 

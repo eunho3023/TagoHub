@@ -85,9 +85,11 @@ export const CHECKS = [
     ok: (b) => /<resultCode>200<\/resultCode>/.test(b),
   },
   {
+    // 웹·앱이 실제로 쓰는 정류장 도착(제주시청 406000110). 예전엔 노선 번호 목록(POST getBusRouteNum)을 물었는데,
+    // 그 기능만 Cloudflare 에서 504 가 나 도착은 되는데도 고장으로 보였음 (2026-11-23)
     name: "jeju_bus", label: "제주 버스",
-    url: () => "https://bus.jeju.go.kr/publicTrafficInformation/getBusRouteNum",
-    init: { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "Mozilla/5.0 (compatible; TagoHub/1.0)" }, body: "GROUTE_TYPE=1" },
+    url: () => "https://bus.jeju.go.kr/api/searchArrivalInfoList.do?station_id=406000110",
+    init: { headers: { "User-Agent": "Mozilla/5.0 (compatible; TagoHub/1.0)", Accept: "application/json" } },
     ok: (b) => b.trim().startsWith("[") || b.trim().startsWith("{"),
   },
   {
