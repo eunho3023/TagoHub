@@ -1,4 +1,4 @@
-// 지도 하나 (화면 전체에서 같은 지도를 옮겨 씀). 11월 30일부터(core.js PUB_FROM): 그리는 도구는 Leaflet(타볼까가 직접 줌, site/vendor),
+// 지도 하나 (화면 전체에서 같은 지도를 옮겨 씀). 11월 23일부터(core.js PUB_FROM): 그리는 도구는 Leaflet(타볼까가 직접 줌, site/vendor),
 // 지도 그림은 브이월드(국토교통부), 브이월드 키가 없거나 그림이 안 오면 OpenStreetMap.
 // 그 전까지는 카카오 지도(키·도메인이 안 맞으면 Leaflet + OpenStreetMap). 확대 단계는 웹 지도 기준 z (카카오 레벨 = 20 - z).
 // dots: [{id, lat, lng, color, ring, r, label, bus}], lines: [{pts:[[위도,경도]...], color, width}]
@@ -81,7 +81,7 @@ function meEl() {
   return d;
 }
 
-// 11월 29일까지만 (core.js PUB_FROM 뒤에는 브이월드). 그 뒤 지울 것
+// 11월 22일까지 쓰던 것 (core.js PUB_FROM 뒤에는 브이월드). 그 뒤 지울 것
 async function kakaoImpl() {
   const key = window.TAGOHUB_KAKAO_JS_KEY || "";
   if (!key) throw new Error("키 없음");

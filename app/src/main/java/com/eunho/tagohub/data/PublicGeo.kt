@@ -15,12 +15,12 @@ import kotlin.math.hypot
  * - 장소 이름 검색: 브이월드(국토교통부), 못 찾으면 서버가 카카오로 한 번 더
  * - 주소 → 좌표, 좌표 → 주소·법정동: 브이월드
  * - 주변 주유소: 오피넷(한국석유공사), 주변 주차장: 앱 주차장 자료(공공데이터)
- * 검색어·좌표를 받는 곳이 바뀌어 개인정보 처리방침 7일 전 공지(2026-11-23) 뒤 [FROM_MS](2026-11-30 0시, 한국 시간)부터 씀.
+ * 검색어·좌표를 받는 곳이 바뀌어 개인정보 처리방침을 고쳐 [FROM_MS](2026-11-23 0시, 한국 시간)부터 씀 (처음 11-30 에서 앞당김).
  * 서버 주소가 없거나 실패하면 null → 부르는 쪽이 예전처럼 카카오로.
  */
 object PublicGeo {
-    /** 2026-11-30T00:00:00+09:00 (웹 site/js/core.js PUB_FROM 과 같은 때) */
-    const val FROM_MS = 1_795_964_400_000L
+    /** 2026-11-23T00:00:00+09:00 (웹 site/js/core.js PUB_FROM 과 같은 때) */
+    const val FROM_MS = 1_795_359_600_000L
 
     fun on(now: Long = System.currentTimeMillis()): Boolean = now >= FROM_MS && DataProxy.current != null
 

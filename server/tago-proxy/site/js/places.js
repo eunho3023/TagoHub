@@ -1,4 +1,4 @@
-// 길찾기 (카카오): 장소 찾기 /w/kakao/place(11월 30일부터 공공기관 /w/pub/place), 대중교통 /w/kakao/transit, 자동차 /w/kakao/car(카카오모빌리티), 도보·자전거 /w/kakao/walk·bicycle.
+// 길찾기 (카카오): 장소 찾기 /w/kakao/place(11월 23일부터 공공기관 /w/pub/place), 대중교통 /w/kakao/transit, 자동차 /w/kakao/car(카카오모빌리티), 도보·자전거 /w/kakao/walk·bicycle.
 // 앱처럼 수단마다 걸리는 시간을 함께 보여 주고, 경유지 5곳까지. 집·회사·학교 저장, 최근 목적지.
 import { getText, esc, distText, onReturn, tryLater, PUB_ON } from "./core.js";
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
@@ -10,9 +10,9 @@ import { currentLocation } from "./alight.js";
 export const MY_PLACE = "내 위치";
 /**
  * 길찾기·장소 검색은 좌표를 카카오로 보내야 해서 웹에서는 막아 두었다가(2026-11-05), 개인정보 처리방침·이용약관을 바꾸고
- * 7일 전에 공지(2026-11-22, notices.json)한 뒤 2026-11-29 0시(한국 시간)부터 켬
+ * 공지(2026-11-22, notices.json)한 뒤 2026-11-23 부터 켬 (처음엔 11-29 였다가 사용자 결정으로 앞당김)
  */
-export const KAKAO_ROUTING_FROM = Date.parse("2026-11-29T00:00:00+09:00");
+export const KAKAO_ROUTING_FROM = Date.parse("2026-11-23T00:00:00+09:00");
 export const KAKAO_ROUTING = Date.now() >= KAKAO_ROUTING_FROM;
 /** 길찾기 상태 (다른 화면에 다녀와도 남음) */
 export const dir = { from: null, to: null, vias: [], editing: "from", q: "", routes: null, status: null, picked: null, mode: "transit", other: {} };
@@ -28,7 +28,7 @@ const legsOf = () => { const pts = [dir.from, ...dir.vias, dir.to]; return pts.s
 function changed() { dir.routes = null; dir.picked = null; dir.other = {}; }
 
 export async function searchPlaces(q, near) {
-  // 11월 30일부터 공공기관(브이월드, 못 찾으면 서버가 카카오로 한 번 더): 서버가 정리한 모양 그대로
+  // 11월 23일부터 공공기관(브이월드, 못 찾으면 서버가 카카오로 한 번 더): 서버가 정리한 모양 그대로
   if (PUB_ON()) {
     const body = JSON.parse(await getText("w/pub/place", { q: q.trim(), x: near?.lng, y: near?.lat }));
     return (body.places || []).filter((p) => p.name && Number.isFinite(p.lat) && Number.isFinite(p.lng));

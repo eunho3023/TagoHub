@@ -32,8 +32,8 @@ class PublicGeoTest {
 
     @Test
     fun switchDay() {
-        // 2026-11-30 0시(한국 시간) 전에는 쓰지 않음 (개인정보 처리방침 7일 전 공지)
+        // 2026-11-23 0시(한국 시간) 전에는 쓰지 않음 (개인정보 처리방침 시행일)
         assertFalse(PublicGeo.on(PublicGeo.FROM_MS - 1))
-        assertEquals(java.time.OffsetDateTime.parse("2026-11-30T00:00:00+09:00").toInstant().toEpochMilli(), PublicGeo.FROM_MS)
+        assertEquals(java.time.OffsetDateTime.parse("2026-11-23T00:00:00+09:00").toInstant().toEpochMilli(), PublicGeo.FROM_MS)
     }
 }

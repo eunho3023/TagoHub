@@ -8,9 +8,9 @@ export const BASE = (qs.get("server") || (typeof window !== "undefined" && windo
 /** 글자 받기 (실패하면 오류) */
 /**
  * 지도·장소 검색·주소·주유소를 카카오에서 공공기관(브이월드·오피넷)으로 바꾸는 날. 검색어·좌표를 받는 곳이 바뀌어
- * 개인정보 처리방침을 고치고 7일 전에 공지(2026-11-23, notices.json)한 뒤 2026-11-30 0시(한국 시간)부터
+ * 개인정보 처리방침을 고쳐 2026-11-23 부터 시행 (처음엔 7일 전 공지 뒤 11-30 으로 잡았다가 사용자 결정으로 앞당김)
  */
-export const PUB_FROM = Date.parse("2026-11-30T00:00:00+09:00");
+export const PUB_FROM = Date.parse("2026-11-23T00:00:00+09:00");
 export const PUB_ON = () => Date.now() >= PUB_FROM;
 
 export async function getText(path, query) {

@@ -135,7 +135,7 @@ export function restCard(x, fill) {
 }
 
 // ── 주유소 (오피넷, 한국석유공사) ──
-// 위치를 오피넷으로 보내는 일이라 11월 30일부터 (개인정보 처리방침 7일 전 공지, core.js PUB_FROM).
+// 위치를 오피넷으로 보내는 일이라 처리방침 시행일(11월 23일)부터 (개인정보 처리방침 7일 전 공지, core.js PUB_FROM).
 // 예전 계획(11월 29일부터 카카오 장소 분류 OL7)은 하루 앞당겨 공공기관으로 바꿈
 export const GAS_ON = PUB_ON;
 export const GAS_ZOOM = 14;

@@ -11,7 +11,7 @@ const COORD = /^-?\d{1,3}(\.\d{1,17})?$/;
 const HEADERS = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" };
 
 /** 웹·앱이 공공기관 자료로 바꾸는 날 (개인정보 처리방침 7일 전 공지, 2026-11-23 공지) */
-export const PUB_FROM = Date.parse("2026-11-30T00:00:00+09:00");
+export const PUB_FROM = Date.parse("2026-11-23T00:00:00+09:00");
 
 // ── KATEC(TM128) ↔ 위도·경도 (오피넷 좌표) ──
 // KATEC: Bessel 타원체, 원점 북위 38°·동경 128°, 축척 0.9999, 원점 값 (400000, 600000)
