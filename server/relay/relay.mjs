@@ -204,7 +204,8 @@ function main() {
   }).listen(PORT, "127.0.0.1", () => {
     log(`중계 켜짐 127.0.0.1:${PORT}`);
     startTunnel(key);
-    const cronKey = (process.env.CRON_KEY || "").trim();
+    // 노트북은 /etc/tagohub-relay.env 의 CRON_KEY, 이 PC 는 local.properties 의 CRON_KEY (노트북이 꺼져 이 PC 가 대신 맡을 때, 2026-11-23)
+    const cronKey = (process.env.CRON_KEY || prop("CRON_KEY") || "").trim();
     if (cronKey) { log("예약 작업도 1분마다 부름"); cronLoop(cronKey); }
   });
 }
