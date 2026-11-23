@@ -29,15 +29,19 @@ DEFAULT_OUT = os.path.join(ROOT, "app", "src", "main", "assets", "train_timetabl
 
 
 def read_key():
+    """
+    인증키 (인코딩 안 된 원래 글자로). 주소에 넣을 때 다시 인코딩하므로, 이미 인코딩된 키(%2B 등)면 먼저 풂.
+    예전엔 인코딩된 키를 한 번 더 인코딩해 403 이 났고, 10/23 뒤로 열차 시간표가 갱신되지 않았음 (2026-11-23)
+    """
     key = os.environ.get("TAGO_SERVICE_KEY", "").strip()
-    if key:
-        return key
-    path = os.path.join(ROOT, "local.properties")
-    if os.path.exists(path):
-        for line in open(path, encoding="utf-8"):
-            if line.startswith("TAGO_SERVICE_KEY="):
-                return re.sub(r"\\(.)", r"\1", line.split("=", 1)[1].strip())
-    return ""
+    if not key:
+        path = os.path.join(ROOT, "local.properties")
+        if os.path.exists(path):
+            for line in open(path, encoding="utf-8"):
+                if line.startswith("TAGO_SERVICE_KEY="):
+                    key = re.sub(r"\\(.)", r"\1", line.split("=", 1)[1].strip())
+                    break
+    return urllib.parse.unquote(key)
 
 
 def pick_days(today):

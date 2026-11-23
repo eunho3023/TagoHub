@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pollCron, badWhy } from "../src/poll.js";
+import { pollCron, badWhy, pruneMeta } from "../src/poll.js";
 import { hitsFromBusLc } from "../src/log.js";
 
 const xml = (ord, node) => `<response><header><resultCode>00</resultCode></header><body><items><item><vehicleno>70자1234</vehicleno><nodeord>${ord}</nodeord><nodeid>${node}</nodeid><gpslati>35.87</gpslati><gpslong>128.6</gpslong></item></items></body></response>`;
@@ -57,4 +57,15 @@ test("실패 까닭 이름: 한도·키·잠시 바쁨(99)·HTTP 상태", () => 
   assert.equal(badWhy(200, '{"response":{"header":{"resultCode":99}}}'), "busy99");
   assert.equal(badWhy(522, "error code: 522"), "http522");
   assert.equal(badWhy(200, "<resultCode>995</resultCode>"), "other");
+});
+
+test("날짜별 숫자는 7일 지난 것만 지움 (cron:last 는 그대로)", async () => {
+  const { DatabaseSync } = await import("node:sqlite").catch(() => ({}));
+  if (!DatabaseSync) return;   // node:sqlite 가 없는 Node 에서는 건너뜀
+  const mem = new DatabaseSync(":memory:");
+  mem.exec("CREATE TABLE poll_meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)");
+  for (const k of ["cron:last", "day:2026-11-10", "why:2026-11-10:http522", "ok:2026-11-16", "bad:2026-11-17", "day:2026-11-23"]) mem.prepare("INSERT INTO poll_meta VALUES (?, 1)").run(k);
+  const db = { prepare: (sql) => ({ bind: (...a) => ({ run: async () => mem.prepare(sql).run(...a) }) }) };
+  await pruneMeta(db, Date.UTC(2026, 10, 23, 3));   // 한국 11/23 12시 → 11/16 이전 지움
+  assert.deepEqual(mem.prepare("SELECT k FROM poll_meta ORDER BY k").all().map((r) => r.k), ["bad:2026-11-17", "cron:last", "day:2026-11-23", "ok:2026-11-16"]);
 });

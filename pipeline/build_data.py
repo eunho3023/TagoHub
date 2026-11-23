@@ -100,9 +100,20 @@ def total_count(text):
 
 
 def result_code(text):
-    """TAGO JSON 의 response.header.resultCode (JSON 이 아니거나 없으면 None)"""
+    """
+    TAGO JSON 의 response.header.resultCode (JSON 이 아니거나 없으면 None).
+    경기 GBIS v2 는 response.msgHeader.resultCode (0 = 정상) → "00" 으로 맞춤.
+    예전엔 코드가 없을 때 str(None) = "None" 을 돌려줘, 경기 노선 정류장 순서·교통안전공단 시간표 응답을 '비정상'으로 보고
+    저장하지 않았음 → 경기 노선 1,700여 개를 매주 처음부터 다시 받다 하루 한도(1,000번)에 걸려 끝내 다 못 받았음 (2026-11-23)
+    """
     try:
-        return str(json.loads(text).get("response", {}).get("header", {}).get("resultCode"))
+        resp = json.loads(text).get("response", {}) or {}
+        code = (resp.get("header") or {}).get("resultCode")
+        if code is None:
+            code = (resp.get("msgHeader") or {}).get("resultCode")
+            if code is not None and str(code) in ("0", "00"):
+                return "00"
+        return None if code is None else str(code)
     except (TypeError, ValueError, AttributeError):
         return None
 
@@ -356,27 +367,34 @@ def fetch_gbis_stops(fx, base_db, gbis_routes):
     db = sqlite3.connect(base_db)
     have = {r[0] for r in db.execute("SELECT DISTINCT route_id FROM route_stops WHERE route_id LIKE 'GGB%'")}
     db.close()
-    out, new = {}, 0
-    try:
-        for rid, *_ in gbis_routes:
-            gid = "GGB" + rid
-            if gid in have:
-                continue
-            cache = f"gbis/stops_{rid}.json"
+    out, new, limited, stale = {}, 0, False, 0
+    for rid, *_ in gbis_routes:
+        gid = "GGB" + rid
+        if gid in have:
+            continue
+        cache = f"gbis/stops_{rid}.json"
+        t = None
+        if not limited:
             if not (CACHE / cache).exists():
                 new += 1
-            t = fx.get(GBIS_STOPS, {"format": "json", "routeId": rid}, cache, 30 * DAY)
             try:
-                rows = json.loads(t or "{}").get("response", {}).get("msgBody", {}).get("busRouteStationList", [])
-            except ValueError:
-                rows = []
-            if isinstance(rows, dict):
-                rows = [rows]
-            if rows:
-                out[gid] = rows
-    except Limit:
-        print("경기 노선 정류장 순서: 호출 한도", flush=True)
-    print(f"경기 노선 정류장 순서: {len(out)}개 노선 (새로 받음 {new}, 이미 있던 노선 {len(have)})", flush=True)
+                t = fx.get(GBIS_STOPS, {"format": "json", "routeId": rid}, cache, 30 * DAY)
+            except Limit:
+                limited = True
+                print("경기 노선 정류장 순서: 호출 한도 — 남은 노선은 저장해 둔 것(30일 넘은 것도)으로", flush=True)
+        if t is None and (CACHE / cache).exists():
+            # 한도에 걸렸거나 못 받았으면 지난번에 받은 것 (노선 정류장은 거의 안 바뀜)
+            t = (CACHE / cache).read_text(encoding="utf-8")
+            stale += 1
+        try:
+            rows = json.loads(t or "{}").get("response", {}).get("msgBody", {}).get("busRouteStationList", [])
+        except ValueError:
+            rows = []
+        if isinstance(rows, dict):
+            rows = [rows]
+        if rows:
+            out[gid] = rows
+    print(f"경기 노선 정류장 순서: {len(out)}개 노선 (새로 받음 {new}, 저장본 {stale}, 이미 있던 노선 {len(have)})", flush=True)
     return out
 
 
@@ -750,7 +768,7 @@ def sttn_route_count(fx, city, sid):
 
 def fetch_unserved_check(fx, base_db, extra_used=()):
     """
-    노선 정류장 표에 없는 정류장마다 TAGO 에 경유노선을 물어 {정류장 id: 노선 수} 와 믿을 만한 지역 접두사 목록을 돌려줌.
+    노선 정류장 표에 없는 정류장마다 TAGO 에 경유노선을 물어 {정류장 id: 노선 수} 와 믿을 만한 묶음(지역 접두사|도시코드) 목록을 돌려줌.
     노선 자료가 일부만 있는 지역(경기·교통안전공단·경산·원주·세종 …)은 표에 없다고 지우면 쓰는 정류장까지 지워져서, TAGO 가 0 이라고 할 때만 지움.
     지역마다 노선이 있는 걸로 아는 정류장 몇 곳을 먼저 물어 TAGO 답을 믿을 수 있는지 봄 (TAGO 가 경유노선을 안 주는 지역은 빼려고).
     """
@@ -762,40 +780,47 @@ def fetch_unserved_check(fx, base_db, extra_used=()):
     stops = [(sid, alias.get(city, city)) for sid, city in db.execute("SELECT id, city FROM stops")]
     db.close()
     stops = [(sid, city) for sid, city in stops if prefix(sid) not in LOCAL_ROUTE_PREFIX and city and not str(city).startswith("TS")]
-    by_prefix = {}
+    # 믿을 만한지는 지역 접두사 + 도시마다 봄: 같은 충남(CNB)이라도 청양·태안은 TAGO 답이 맞는데 다른 시군은 0 으로만 답해서,
+    # 접두사 하나로 보면 충남 전체를 못 믿어 청양의 버스 안 서는 정류장 1,193곳을 못 지웠음 (2026-11-23)
+    by_group = {}
     for sid, city in stops:
-        by_prefix.setdefault(prefix(sid), []).append((sid, city))
-    todo = {p for p, lst in by_prefix.items() if any(sid not in used for sid, _ in lst)}
+        by_group.setdefault(group_key(sid, city), []).append((sid, city))
+    todo = {g for g, lst in by_group.items() if any(sid not in used for sid, _ in lst)}
     counts, sample_ok, sample_n = {}, {}, {}
     lock = threading.Lock()
 
     def one(job):
-        kind, p, sid, city = job
+        kind, g, sid, city = job
         n = sttn_route_count(fx, city, sid)
         with lock:
             if kind == "sample":
                 if n is not None:
-                    sample_n[p] = sample_n.get(p, 0) + 1
-                    sample_ok[p] = sample_ok.get(p, 0) + (n > 0)
+                    sample_n[g] = sample_n.get(g, 0) + 1
+                    sample_ok[g] = sample_ok.get(g, 0) + (n > 0)
             elif n is not None:
                 counts[sid] = n
-    samples = [("sample", p, sid, city) for p in sorted(todo) for sid, city in [x for x in by_prefix[p] if x[0] in used][:TAGO_CHECK_SAMPLE]]
-    checks = [("check", prefix(sid), sid, city) for p in sorted(todo) for sid, city in by_prefix[p] if sid not in used]
+    samples = [("sample", g, sid, city) for g in sorted(todo) for sid, city in [x for x in by_group[g] if x[0] in used][:TAGO_CHECK_SAMPLE]]
+    checks = [("check", g, sid, city) for g in sorted(todo) for sid, city in by_group[g] if sid not in used]
     try:
         run_parallel(fx, samples, one, "TAGO 경유노선 믿을 만한지")
         run_parallel(fx, checks, one, "노선 없는 정류장 TAGO 확인")
     except (Limit, KeyError_):
         print("노선 없는 정류장 TAGO 확인: 한도 — 받은 데까지만 (못 물어본 정류장은 지우지 않음)", flush=True)
-    # 노선이 있는 걸로 아는 정류장이 하나도 없는 지역(칠곡처럼 노선 자료가 아예 없음)은 그 지역 정류장 중 노선이 나온 비율로 봄
-    for p in todo:
-        if p not in sample_n:
-            got = [counts[sid] for sid, _ in by_prefix[p] if sid in counts]
+    # 노선이 있는 걸로 아는 정류장이 하나도 없는 곳(칠곡처럼 노선 자료가 아예 없음)은 그곳 정류장 중 노선이 나온 비율로 봄
+    for g in todo:
+        if g not in sample_n:
+            got = [counts[sid] for sid, _ in by_group[g] if sid in counts]
             if got:
-                sample_n[p], sample_ok[p] = len(got), sum(1 for n in got if n > 0)
-    trusted = {p for p in todo if sample_n.get(p, 0) >= 5 and sample_ok.get(p, 0) / sample_n[p] >= TAGO_CHECK_TRUST}
-    zero = sum(1 for sid, n in counts.items() if n == 0 and prefix(sid) in trusted)
-    print(f"노선 없는 정류장 TAGO 확인: {len(checks)}곳 중 {len(counts)}곳 답 받음, 믿을 만한 지역 {len(trusted)}/{len(todo)}, 노선 0개 {zero}곳", flush=True)
+                sample_n[g], sample_ok[g] = len(got), sum(1 for n in got if n > 0)
+    trusted = {g for g in todo if sample_n.get(g, 0) >= 5 and sample_ok.get(g, 0) / sample_n[g] >= TAGO_CHECK_TRUST}
+    zero = sum(1 for g in trusted for sid, _ in by_group[g] if counts.get(sid) == 0)
+    print(f"노선 없는 정류장 TAGO 확인: {len(checks)}곳 중 {len(counts)}곳 답 받음, 믿을 만한 지역·도시 {len(trusted)}/{len(todo)}, 노선 0개 {zero}곳", flush=True)
     return counts, trusted
+
+
+def group_key(sid, city):
+    """TAGO 답을 믿을지 정하는 묶음: 지역 접두사|TAGO 도시코드 (예: CNB|34350)"""
+    return f"{prefix(sid)}|{city}"
 
 
 def compare(kotsa, tago_items):
@@ -1192,6 +1217,10 @@ def prune_unserved(db, complete, api_served=None, api_ok=False, tago_counts=None
         return 0
     used = {r[0] for r in db.execute("SELECT DISTINCT stop_id FROM route_stops WHERE stop_id IS NOT NULL")}
     ids = [r[0] for r in db.execute("SELECT id FROM stops")]
+    # 정류장의 TAGO 도시코드 (믿을 만한 지역·도시 묶음을 찾으려고, fetch_unserved_check 와 같게 city_alias 를 거침)
+    cols = {r[1] for r in db.execute("PRAGMA table_info(stops)")}
+    alias = dict(db.execute("SELECT code, tago FROM city_alias")) if db.execute("SELECT 1 FROM sqlite_master WHERE name = 'city_alias'").fetchone() else {}
+    city_of = {sid: alias.get(c, c) for sid, c in db.execute("SELECT id, city FROM stops")} if "city" in cols else {}
     total, served = {}, {}
     for sid in ids:
         p = prefix(sid)
@@ -1202,7 +1231,8 @@ def prune_unserved(db, complete, api_served=None, api_ok=False, tago_counts=None
     gone = [sid for sid in ids if prefix(sid) in covered and sid not in used]
     # 노선 자료가 일부만 있는 지역(경기·교통안전공단 등)과 아예 없는 지역: TAGO 가 이 정류장 경유노선이 0개라고 한 곳만
     counts = tago_counts or {}
-    by_tago = [sid for sid in ids if sid not in used and prefix(sid) not in covered and prefix(sid) in tago_trusted and counts.get(sid) == 0]
+    trusted_here = lambda sid: prefix(sid) in tago_trusted or group_key(sid, city_of.get(sid)) in tago_trusted
+    by_tago = [sid for sid in ids if sid not in used and prefix(sid) not in covered and trusted_here(sid) and counts.get(sid) == 0]
     gone += by_tago
     jub = [sid for sid in ids if sid.startswith("JUB")]
     # 다 받았고 정류장의 3/4 넘게 나왔을 때만 (2026-11: 2,913곳 중 2,565곳)

@@ -168,10 +168,17 @@ def test_only_normal_responses_cached():
         old = bd.CACHE
         bd.CACHE = pathlib.Path(d)
         try:
-            for text, name, saved in ((bad, "bad.json", False), (good, "good.json", True)):
+            # 경기 GBIS v2 (msgHeader.resultCode 0) 와 교통안전공단 파일 API(코드 없음)도 정상으로 저장 — 예전엔 "None" 으로 보고 버렸음
+            gbis = '{"response":{"comMsgHeader":"","msgHeader":{"resultCode":0,"resultMessage":"정상"},"msgBody":{"busRouteStationList":[]}}}'
+            gbis_none = '{"response":{"comMsgHeader":"","msgHeader":{"resultCode":4,"resultMessage":"결과가 존재하지 않습니다."}}}'
+            kotsa = '{"currentCount":1,"data":[{"노선 아이디":1}]}'
+            for url, text, name, saved in ((bd.TAGO + "/x", bad, "bad.json", False), (bd.TAGO + "/x", good, "good.json", True),
+                                           (bd.GBIS_STOPS, gbis, "gbis.json", True), (bd.GBIS_STOPS, gbis_none, "gbis4.json", False),
+                                           (bd.KOTSA_TT, kotsa, "kotsa.json", True)):
                 fx = bd.Fetcher.__new__(bd.Fetcher)
                 fx.key, fx.s, fx.calls, fx.lock, fx.last = "k", S(text), 0, threading.Lock(), ""
-                assert fx.get(bd.TAGO + "/x", {}, name, 0) == text
+                fx.sleep = lambda s: None
+                assert fx.get(url, {}, name, 0) == text
                 assert (pathlib.Path(d) / name).exists() is saved, name
                 assert fx.last == text                          # 0개일 때 로그에 보여줄 마지막 응답
         finally:
@@ -307,6 +314,33 @@ def test_prune_unserved():
     assert "JUB_OLD" in left(db) and "BSB_OLD" not in left(db) and "GGB_OLD" in left(db)
 
 
+def test_unserved_trust_per_city():
+    """TAGO 답을 믿을지는 지역 접두사|도시마다: 같은 충남이라도 청양(답이 맞음)은 지우고, 보령(서는 정류장도 0 이라고 함)은 그대로"""
+    with tempfile.TemporaryDirectory() as d:
+        path = pathlib.Path(d) / "b.db"
+        db = sqlite3.connect(path)
+        db.execute("CREATE TABLE stops(id TEXT PRIMARY KEY, name TEXT, city TEXT)")
+        db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT)")
+        used = [f"CNB1{i}" for i in range(6)] + [f"CNB2{i}" for i in range(6)]
+        db.executemany("INSERT INTO stops VALUES(?, ?, ?)", [(s, s, "34350" if s.startswith("CNB1") else "34030") for s in used + ["CNB1_OLD", "CNB2_OLD"]])
+        db.executemany("INSERT INTO route_stops VALUES('R', 1, ?)", [(s,) for s in used])
+        db.commit(); db.close()
+
+        class F:
+            calls = 0
+            def get(self, url, params, cache_file, max_age):
+                sid = params["nodeid"]
+                n = 0 if sid.endswith("_OLD") or sid.startswith("CNB2") else 3   # 보령은 서는 정류장도 0
+                return json.dumps({"response": {"header": {"resultCode": "00"}, "body": {"totalCount": n}}})
+        counts, trusted = bd.fetch_unserved_check(F(), path)
+        assert trusted == {"CNB|34350"} and counts == {"CNB1_OLD": 0, "CNB2_OLD": 0}
+        db = sqlite3.connect(path)
+        bd.prune_unserved(db, True, None, False, counts, trusted)
+        left = {r[0] for r in db.execute("SELECT id FROM stops")}
+        db.close()
+        assert "CNB1_OLD" not in left and "CNB2_OLD" in left
+
+
 def test_jeonju_served_walk():
     """전주: 정류장 경유 노선 → 노선 정류장 목록으로 노선이 서는 정류장과 지금 이름을 모음 (중계 서버 응답 모양)"""
     route = lambda rid: (f'<list class="object"><brtStdId type="string">{rid}</brtStdId><brtId type="string">2</brtId><brtClass type="string">0</brtClass>'
@@ -377,6 +411,30 @@ def test_gbis_stops_written():
     bd.write_gbis_stops(db, {"GGB9": rows}, {"GGB1", "GGB2"})
     assert db.execute("SELECT seq, stop_id, name, lat, updown FROM route_stops ORDER BY seq").fetchall() == [
         (1, "GGB1", "", None, "0"), (2, "GGB2", "", None, "0"), (3, "GGB3", "새곳", 37.4, "1")]
+
+
+def test_gbis_stops_use_stored_after_limit():
+    """경기 노선 정류장 순서: 하루 한도에 걸리면 남은 노선은 저장해 둔 것(30일 넘은 것도)으로"""
+    with tempfile.TemporaryDirectory() as d:
+        old = bd.CACHE
+        bd.CACHE = pathlib.Path(d)
+        try:
+            (pathlib.Path(d) / "gbis").mkdir()
+            row = '{"response":{"msgHeader":{"resultCode":0},"msgBody":{"busRouteStationList":[{"stationId":5,"stationSeq":1}]}}}'
+            (pathlib.Path(d) / "gbis/stops_900000002.json").write_text(row, encoding="utf-8")
+
+            class F:
+                calls = 0
+                def get(self, url, params, cache_file, max_age):
+                    F.calls += 1
+                    if F.calls > 1:
+                        raise bd.Limit()
+                    return row
+            out = bd.fetch_gbis_stops(F(), BASE, [("900000001", "1", None, None), ("900000002", "2", None, None), ("900000003", "3", None, None)])
+            assert set(out) == {"GGB900000001", "GGB900000002"}      # 1: 받음, 2: 한도 뒤 저장본, 3: 저장본 없음
+            assert F.calls == 2                                       # 한도 뒤엔 더 묻지 않음
+        finally:
+            bd.CACHE = old
 
 
 def test_files_written():
@@ -543,7 +601,7 @@ def test_carry_jeonju_from_previous_db():
 
 
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
 
