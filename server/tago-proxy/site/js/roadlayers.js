@@ -1,6 +1,6 @@
 // 지도 층: CCTV(국가교통정보센터 고속도로·국도), 휴게소(한국도로공사: 주유 가격·편의시설·브랜드·대표 메뉴), 주유소(카카오 장소).
 // 앱 지도설정의 "CCTV"·"휴게소" 층과 검색의 "주유소"와 같은 자료. 그리기·켜기는 topis.js 교통 층
-import { getText, getJson, esc, cachedText, tryLater } from "./core.js";
+import { getText, getJson, esc, cachedText, tryLater, PUB_ON } from "./core.js";
 import { act } from "./ui.js";
 import { gasPrices } from "./road.js";
 
@@ -134,29 +134,22 @@ export function restCard(x, fill) {
   return head + "<small>주유 가격·편의시설을 불러오는 중...</small></div>";
 }
 
-// ── 주유소 (카카오 장소 분류 OL7) ──
-// 카카오 장소 검색은 웹에서 11월 29일부터 (개인정보 처리방침 7일 전 공지, places.js KAKAO_ROUTING_FROM 과 같은 날)
-export const GAS_FROM = Date.parse("2026-11-29T00:00:00+09:00");
-export const GAS_ON = () => Date.now() >= GAS_FROM;
+// ── 주유소 (오피넷, 한국석유공사) ──
+// 위치를 오피넷으로 보내는 일이라 11월 30일부터 (개인정보 처리방침 7일 전 공지, core.js PUB_FROM).
+// 예전 계획(11월 29일부터 카카오 장소 분류 OL7)은 하루 앞당겨 공공기관으로 바꿈
+export const GAS_ON = PUB_ON;
 export const GAS_ZOOM = 14;
 const GAS_COLOR = "#E65100";
 const CELL = 0.02;
 const cellP = new Map();
-/** 0.02도 칸 하나의 주유소 (세 쪽, 45곳까지). 칸마다 한 번만 */
+/** 0.02도 칸 하나의 주유소 (칸 가운데에서 1.5km 안, 서버 /w/pub/gas). 칸마다 한 번만 */
 function gasCell(a, o) {
   const k = a + "_" + o;
   if (!cellP.has(k)) {
-    const rect = [o * CELL, a * CELL, (o + 1) * CELL, (a + 1) * CELL].map((v) => v.toFixed(5)).join(",");
-    const page = (n) => getJson("w/kakao/category", { code: "OL7", rect, page: n });
-    cellP.set(k, (async () => {
-      const out = [];
-      for (let n = 1; n <= 3; n++) {
-        const r = await page(n);
-        out.push(...(r.documents || []));
-        if (r.meta?.is_end !== false) break;
-      }
-      return out.map((d) => ({ id: d.id, name: d.place_name, lat: parseFloat(d.y), lng: parseFloat(d.x), addr: d.road_address_name || d.address_name || "", phone: d.phone || "", url: d.place_url || "" }));
-    })().catch(() => { cellP.delete(k); return []; }));
+    const lat = ((a + 0.5) * CELL).toFixed(4), lng = ((o + 0.5) * CELL).toFixed(4);
+    cellP.set(k, getJson("w/pub/gas", { lat, lng, r: 1500 })
+      .then((r) => (r.stations || []).filter((g) => g.lat >= a * CELL && g.lat < (a + 1) * CELL && g.lng >= o * CELL && g.lng < (o + 1) * CELL))
+      .catch(() => { cellP.delete(k); return []; }));
   }
   return cellP.get(k);
 }
@@ -176,6 +169,5 @@ export function gasDots(list, b) {
   return nearCenter(list, b, 120).map((x) => ({ id: "gas:" + x.id, lat: x.lat, lng: x.lng, color: GAS_COLOR, ring: "#fff", r: 8, label: "주" }));
 }
 export function gasCard(x) {
-  return `<div><b>${esc(x.name)}</b>${x.addr ? `<small>${esc(x.addr)}</small>` : ""}${x.phone ? `<small>${esc(x.phone)}</small>` : ""}</div>` +
-    (x.url ? `<a class="btn" href="${esc(x.url.replace(/^http:/, "https:"))}" target="_blank" rel="noopener">카카오맵</a>` : "");
+  return `<div><b>${esc(x.name)}</b>${x.brand ? `<small>${esc(x.brand)}</small>` : ""}${x.price ? `<small>휘발유 ${Number(x.price).toLocaleString("ko-KR")}원 (오피넷)</small>` : ""}</div>`;
 }

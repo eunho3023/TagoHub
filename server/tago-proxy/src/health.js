@@ -98,12 +98,24 @@ export const CHECKS = [
     init: (e) => ({ headers: { Authorization: "KakaoAK " + (e.KAKAO_REST_KEY || "").trim() } }),
     ok: (b) => /"documents"/.test(b),
   },
+  {
+    // 장소·주소 검색, 좌표 → 주소 (src/pubgeo.js, 11월 30일부터 카카오 대신)
+    name: "vworld", label: "브이월드 장소·주소 (국토교통부)",
+    url: (e) => e.VWORLD_KEY && `https://api.vworld.kr/req/search?service=search&request=search&version=2.0&crs=EPSG:4326&size=1&page=1&type=place&format=json&errorformat=json&query=${encodeURIComponent("서울역")}&key=${encodeURIComponent(e.VWORLD_KEY.trim())}`,
+    ok: (b) => /"status"\s*:\s*"OK"/.test(b),
+  },
+  {
+    // 주유소 (src/pubgeo.js): 서울역 둘레 1km
+    name: "opinet", label: "오피넷 주유소 (한국석유공사)",
+    url: (e) => e.OPINET_KEY && `https://www.opinet.co.kr/api/aroundAll.do?code=${encodeURIComponent(e.OPINET_KEY.trim())}&x=309251&y=550771&radius=1000&prodcd=B027&sort=2&out=json`,
+    ok: (b) => /"OIL"\s*:\s*\[/.test(b),
+  },
 ];
 
 /** 키 글자를 지움 (기록·응답에 키가 남지 않게) */
 function scrub(text, env) {
   let t = String(text || "");
-  for (const k of [env.DATA_GO_KR_KEY, env.SEOUL_SUBWAY_KEY, env.KAKAO_REST_KEY]) {
+  for (const k of [env.DATA_GO_KR_KEY, env.SEOUL_SUBWAY_KEY, env.KAKAO_REST_KEY, env.VWORLD_KEY, env.OPINET_KEY]) {
     const v = (k || "").trim();
     if (v) t = t.split(v).join("").split(encodeKey(v)).join("").split(encodeURIComponent(v)).join("");
   }

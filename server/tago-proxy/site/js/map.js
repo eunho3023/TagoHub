@@ -1,9 +1,11 @@
-// 지도 하나 (화면 전체에서 같은 지도를 옮겨 씀). 카카오 지도(폰 앱과 같음), 키·도메인이 안 맞으면 OpenStreetMap(Leaflet).
-// 확대 단계는 웹 지도 기준 z (카카오 레벨 = 20 - z).
+// 지도 하나 (화면 전체에서 같은 지도를 옮겨 씀). 11월 30일부터(core.js PUB_FROM): 그리는 도구는 Leaflet(타볼까가 직접 줌, site/vendor),
+// 지도 그림은 브이월드(국토교통부), 브이월드 키가 없거나 그림이 안 오면 OpenStreetMap.
+// 그 전까지는 카카오 지도(키·도메인이 안 맞으면 Leaflet + OpenStreetMap). 확대 단계는 웹 지도 기준 z (카카오 레벨 = 20 - z).
 // dots: [{id, lat, lng, color, ring, r, label, bus}], lines: [{pts:[[위도,경도]...], color, width}]
 // bus: 버스 정류장 아이콘 (둥근 네모 + 흰 버스, color 바탕)
 import { follow } from "./geo.js";
 import { reconcile, dotKey, lineKey } from "./mapdiff.js";
+import { PUB_ON } from "./core.js";
 
 const el = document.createElement("div");
 el.className = "map";
@@ -58,7 +60,7 @@ function dotEl(d) {
     t.style.cssText = d.labelUp ? `bottom:${d.r + 8}px;background:${d.labelColor || d.color}` : `left:${d.r + 6}px;background:${d.labelColor || d.color}`;
     wrap.appendChild(t);
   }
-  // 카카오 지도는 마우스 누름을 지도 끌기로 가져가서, 점을 누른 것은 직접 받음 (끌다가 놓은 것은 무시)
+  // 지도가 마우스 누름을 지도 끌기로 가져가지 않게, 점을 누른 것은 직접 받음 (끌다가 놓은 것은 무시)
   let down = null;
   wrap.addEventListener("pointerdown", (e) => { down = [e.clientX, e.clientY]; e.stopPropagation(); });
   wrap.addEventListener("pointerup", (e) => {
@@ -79,6 +81,7 @@ function meEl() {
   return d;
 }
 
+// 11월 29일까지만 (core.js PUB_FROM 뒤에는 브이월드). 그 뒤 지울 것
 async function kakaoImpl() {
   const key = window.TAGOHUB_KAKAO_JS_KEY || "";
   if (!key) throw new Error("키 없음");
@@ -133,19 +136,66 @@ async function kakaoImpl() {
   };
 }
 
+const LEAFLET = "vendor/leaflet-1.9.4/";
+const dark = () => document.documentElement.dataset.theme === "dark";
+
+/** OpenStreetMap 그림 (브이월드 키가 없거나 브이월드가 안 될 때). 위성은 Esri */
+function osmSet(L) {
+  const day = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
+  return { vworld: false, day, night: day, sky: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imagery © Esri" }) };
+}
+
+/**
+ * 브이월드(국토교통부 공간정보 오픈플랫폼) WMTS 그림: 일반(Base)·야간(midnight)·위성(Satellite)+글자(Hybrid).
+ * 우리나라만 그려져 있어 6단계보다 멀리는 못 봄. 키는 웹 페이지에 들어가는 공개 키(config.js, deploy.ps1)
+ */
+function tileSet(L) {
+  const key = (window.TAGOHUB_VWORLD_KEY || "").replace(/[^A-Za-z0-9-]/g, "");
+  if (!key || !PUB_ON()) return osmSet(L);
+  const url = (layer, ext) => `https://api.vworld.kr/req/wmts/1.0.0/${key}/${layer}/{z}/{y}/{x}.${ext}`;
+  const opt = { minZoom: 6, maxZoom: 19, attribution: "© 브이월드(국토교통부)" };
+  return {
+    vworld: true,
+    day: L.tileLayer(url("Base", "png"), opt),
+    night: L.tileLayer(url("midnight", "png"), opt),
+    sky: L.layerGroup([L.tileLayer(url("Satellite", "jpeg"), opt), L.tileLayer(url("Hybrid", "png"), opt)]),
+  };
+}
+
 async function leafletImpl() {
   const css = document.createElement("link");
-  css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  css.rel = "stylesheet"; css.href = LEAFLET + "leaflet.css";
   document.head.appendChild(css);
-  await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
+  await loadScript(LEAFLET + "leaflet.js");
   const L = window.L;
   const map = L.map(el, { zoomControl: true }).setView([START[0], START[1]], 16);
-  const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-  // 위성: Esri World Imagery (카카오 지도를 못 쓸 때)
-  const sky = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imagery © Esri" });
+  const tiles = tileSet(L);
+  let base = null, type = "normal";
+  /** 지금 지도 종류·밝기에 맞는 그림 층 (브이월드 그림이 안 오면 OpenStreetMap 으로 바꿈) */
+  const paint = () => {
+    const want = type === "sky" ? tiles.sky : dark() ? tiles.night : tiles.day;
+    if (want === base) return;
+    if (base) map.removeLayer(base);
+    base = want.addTo(map);
+  };
+  // 처음 8초 동안 브이월드 그림이 하나도 안 오고 실패만 있으면(키·서비스 주소 문제, 브이월드 고장) OpenStreetMap 으로.
+  // 바다·나라 밖 칸은 원래 그림이 없어 실패하므로 하나라도 오면 그대로 둠
+  if (tiles.vworld) {
+    let loaded = 0, failed = 0;
+    const watch = (layer) => (layer.eachLayer ? layer.eachLayer(watch) : layer.on({ tileload: () => { loaded++; }, tileerror: () => { failed++; } }));
+    [tiles.day, tiles.night, tiles.sky].forEach(watch);
+    setTimeout(() => {
+      if (loaded || !failed) return;
+      if (base) map.removeLayer(base);
+      base = null; Object.assign(tiles, osmSet(L)); paint();
+    }, 8000);
+  }
+  // 웹 설정에서 밝게·어둡게를 바꾸면 지도 그림도 (브이월드 야간 지도)
+  new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   map.on("moveend", () => idleCbs.forEach((f) => f()));
   map.on("click", (e) => tapCb && tapCb(e && e.latlng ? [e.latlng.lat, e.latlng.lng] : null));
   const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map), meLayer = L.layerGroup().addTo(map);
+  paint();
   let meMark = null, meCircle = null, lineObjs = new Map(), dotObjs = new Map();
   return {
     view(lat, lng, z) { map.setView([lat, lng], z); },
@@ -165,7 +215,8 @@ async function leafletImpl() {
     zoom() { return map.getZoom(); },
     center() { const c = map.getCenter(); return [c.lat, c.lng]; },
     relayout() { map.invalidateSize(); },
-    setType(t) { if (t === "sky") { map.removeLayer(osm); sky.addTo(map); } else { map.removeLayer(sky); osm.addTo(map); } },
+    /** 지도 종류: normal 일반(어두운 화면이면 야간) · sky 위성(도로명·지명 함께) */
+    setType(t) { type = t === "sky" ? "sky" : "normal"; paint(); },
     me(p) {
       if (!p) { meLayer.clearLayers(); meMark = meCircle = null; return; }
       if (!meMark) {
@@ -201,7 +252,8 @@ try { mapType = localStorage.getItem(MAPTYPE) === "sky" ? "sky" : "normal"; } ca
 const ready = (async () => {
   // 크기가 생긴 뒤에 지도를 만듦
   while (!el.isConnected || el.clientWidth === 0) await new Promise((r) => setTimeout(r, 100));
-  try { impl = await kakaoImpl(); } catch (e) { el.innerHTML = ""; impl = await leafletImpl(); }
+  if (PUB_ON()) impl = await leafletImpl();
+  else try { impl = await kakaoImpl(); } catch (e) { el.innerHTML = ""; impl = await leafletImpl(); }
   new ResizeObserver(() => impl.relayout()).observe(el);
   el.appendChild(locBtn);
   if (mapType !== "normal") impl.setType(mapType);
