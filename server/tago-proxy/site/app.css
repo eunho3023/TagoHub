@@ -84,6 +84,10 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .searchbox { background: var(--surface); padding: 10px 16px 12px; flex: none; }
 .searchbox input, .bigsearch input { width: 100%; border: 1px solid var(--line); border-radius: var(--r-search); padding: 12px 14px; background: var(--surface); outline: none; }
 .searchbox input:focus { border-color: var(--primary); }
+/* 관리자 공지 쓰기: 날짜·제목·내용 칸 사이 */
+.notice-form input { margin-bottom: 8px; }
+/* 공지 내용은 쓴 그대로 줄을 나눠 보임 */
+.notice-body { white-space: pre-line; }
 
 .note { margin: 0; padding: 14px 16px; color: var(--muted); }
 .shead { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px; background: var(--sv); color: var(--muted); font-size: 14px; }

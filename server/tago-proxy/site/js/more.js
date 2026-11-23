@@ -117,19 +117,60 @@ export function reportScreen(root) {
   draw();
 }
 
-// ── 공지사항 (저장소 notices.json, 폰 앱과 같은 파일) ──
+// ── 공지사항: 서버 /w/notices (관리자가 이 화면에서 쓴 공지 + 저장소 notices.json, 폰 앱과 같음). 서버가 안 되면 저장소 파일 ──
 let notices = null;
-const noticesP = getText("https://raw.githubusercontent.com/eunho3023/TagoHub/main/notices.json")
-  .then((t) => { notices = (JSON.parse(t) || []).filter((n) => n && n.title).sort((a, b) => (b.date || "").localeCompare(a.date || "")); return notices; })
+const sortNotices = (l) => (Array.isArray(l) ? l : []).filter((n) => n && n.title).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+const noticesP = getJson("w/notices").then((l) => { if (!Array.isArray(l)) throw new Error("형식"); return l; })
+  .catch(() => getText("https://raw.githubusercontent.com/eunho3023/TagoHub/main/notices.json").then((t) => JSON.parse(t)))
+  .then((l) => (notices = sortNotices(l)))
   .catch(() => (notices = []));
 export const latestNotice = () => (notices && notices[0]) || null;
+/** 오늘 날짜 (한국 시간) */
+const todayKst = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 
 export function noticesScreen(root) {
+  // 관리자 쓰기: form = {id?, key?, date, title, body} (null 이면 목록만)
+  let form = null, saving = false, err = null;
+  const admin = () => Edits.isAdmin();
+  const formHtml = () => `<div class="searchbox notice-form">
+      <input id="nd" type="date" value="${esc(form.date)}" aria-label="날짜">
+      <input id="nt" maxlength="80" placeholder="제목" value="${esc(form.title)}">
+      <textarea id="nb" rows="8" maxlength="4000" placeholder="내용">${esc(form.body)}</textarea>
+      <div class="flexrow">${form.id != null || form.key ? `<button class="mini" ${saving ? "disabled" : ""} ${act(remove)}>지우기</button>` : ""}<span class="grow"></span>
+        <button class="mini" ${act(() => { form = null; err = null; draw(); })}>취소</button>
+        <button class="btn" ${saving ? "disabled" : ""} ${act(save)}>${saving ? "저장하는 중..." : form.id != null || form.key ? "고쳐 올리기" : "올리기"}</button></div>
+      ${err ? `<p class="note">${esc(err)}</p>` : ""}</div>`;
   const draw = () => {
     root.innerHTML = header("공지사항", null, { back: true, action: { label: "제보하기", run: () => go("report") } }) +
+      (admin() && !form ? `<div class="list"><button class="row" ${act(() => { form = { date: todayKst(), title: "", body: "" }; draw(); })}><b class="blue grow">+ 공지 쓰기</b><small>관리자</small></button></div>` : "") +
+      (form ? formHtml() : "") +
       (notices == null ? note("공지사항을 불러오는 중...") : !notices.length ? note("공지사항이 없어요") :
-        `<div class="list">${notices.map((n) => `<div class="row col"><b>${esc(n.title)}</b>${n.date ? `<small>${esc(n.date)}</small>` : ""}${n.body ? `<p>${esc(n.body)}</p>` : ""}</div>`).join("")}</div>`);
+        `<div class="list">${notices.map((n, i) => `<div class="row col"><b>${esc(n.title)}</b>${n.date ? `<small>${esc(n.date)}</small>` : ""}${n.body ? `<p class="notice-body">${esc(n.body)}</p>` : ""}${admin() && !form && (n.id != null || n.key) ? `<button class="mini" ${act(() => { const x = notices[i]; form = { id: x.id ?? null, key: x.id == null ? x.key : null, date: x.date || todayKst(), title: x.title, body: x.body || "" }; draw(); root.scrollTop = 0; })}>고치기</button>` : ""}</div>`).join("")}</div>`);
+    if (form) {
+      const bind = (sel, k) => { const el = root.querySelector(sel); if (el) el.oninput = () => { form[k] = el.value; }; };
+      bind("#nd", "date"); bind("#nt", "title"); bind("#nb", "body");
+    }
   };
+  async function send(body) {
+    saving = true; err = null; draw();
+    try {
+      const r = await fetch(BASE + "w/notices", { method: "POST", headers: { "Content-Type": "application/json", ...(await Edits.authHeaders()) }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(r.status === 403 ? "관리자만 쓸 수 있어요. 설정에서 관리자 키나 개발자 로그인을 확인해 주세요" : r.status === 429 ? "잠시 뒤에 다시 해 주세요" : r.status === 400 ? "날짜와 제목을 확인해 주세요 (제목 80자, 내용 4000자까지)" : "저장하지 못했어요 (" + r.status + ")");
+      notices = sortNotices(j.notices);
+      form = null;
+    } catch (e) { err = e.message; }
+    saving = false; draw();
+  }
+  function save() {
+    if (saving || !form) return;
+    if (!form.title.trim()) { err = "제목을 써 주세요"; draw(); return; }
+    send({ ...(form.id != null ? { id: form.id } : form.key ? { key: form.key } : {}), date: form.date, title: form.title, body: form.body });
+  }
+  function remove() {
+    if (saving || !form || !confirm("이 공지를 지울까요? 앱과 웹에서 모두 사라져요.")) return;
+    send(form.id != null ? { id: form.id, delete: true } : { key: form.key, delete: true });
+  }
   draw();
   noticesP.then(draw);
 }

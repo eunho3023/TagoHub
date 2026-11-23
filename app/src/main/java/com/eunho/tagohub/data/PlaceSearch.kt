@@ -388,11 +388,18 @@ object KacIntlClient {
     }
 }
 
-/** 공지사항 받기 (깃허브 notices.json) */
+/**
+ * 공지사항 받기: 타볼까 서버 /w/notices (관리자가 웹에서 쓴 공지 + 깃허브 notices.json, server/tago-proxy/src/notices.js).
+ * 서버에 못 물으면 예전처럼 깃허브 notices.json. 서버가 빈 목록을 주면(관리자가 모두 지움) 그대로 빈 목록
+ */
 object NoticeClient {
     private val client = Http.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
+    private fun get(url: String): String? = client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+        r.body?.string()?.takeIf { r.isSuccessful && it.trimStart().startsWith("[") }
+    }
     suspend fun load(): List<Notices.Notice> = withContext(Dispatchers.IO) {
-        runCatching { client.newCall(Request.Builder().url(Notices.URL).build()).execute().use { Notices.parse(it.body?.string().orEmpty()) } }
-            .getOrDefault(emptyList())
+        val server = DataProxy.current?.url?.trimEnd('/')?.let { base -> runCatching { get("$base/w/notices") }.getOrNull() }
+        if (server != null) return@withContext Notices.parse(server)
+        runCatching { get(Notices.URL)?.let(Notices::parse) }.getOrNull().orEmpty()
     }
 }

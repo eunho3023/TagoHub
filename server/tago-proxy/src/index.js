@@ -13,6 +13,7 @@ import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
+import { handleNotices } from "./notices.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
 import { healthCron, healthDue, handleHealth, noteQuota, isQuotaBody } from "./health.js";
@@ -98,6 +99,14 @@ async function web(request, url, env, ctx) {
       if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
     }
     return handleEdits(request, env, ctx, url.pathname);
+  }
+  // 공지사항 (src/notices.js): 관리자가 웹에서 쓰고 고침. 쓰기(POST)는 주소마다 분당 제한
+  if (url.pathname === "/w/notices") {
+    if (request.method === "POST" && env.WEB_LIMIT) {
+      const { success } = await env.WEB_LIMIT.limit({ key: "notice:" + (request.headers.get("CF-Connecting-IP") || "unknown") });
+      if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
+    }
+    return handleNotices(request, env);
   }
   if (request.method !== "GET") return new Response("GET only", { status: 405, headers: WEB_HEADERS });
   // 자료 제공처 연결 상태 (src/health.js, 30분마다 확인한 기록)

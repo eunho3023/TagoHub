@@ -93,10 +93,15 @@ export function groupListedBy(id) {
   return Object.entries(groupEdits()).filter(([o, v]) => legacyKey(o) !== k && Array.isArray(v) && v.some((x) => legacyKey(x) === k)).map(([o]) => o);
 }
 
+/** 관리자 요청 머리말: 관리자 키, 없으면 개발자 아이디의 로그인 토큰 (서버 src/edits.js·notices.js 가 둘 다 받음) */
+export async function authHeaders() {
+  return adminKey() ? { "X-TagoHub-Admin": adminKey() } : { Authorization: "Bearer " + ((await Account.token()) || "") };
+}
+
 /** 저장 (data 가 null 이면 원래대로). 성공하면 목록을 다시 받음 */
 export async function save(kind, id, payload) {
   // 관리자 키가 없으면 개발자 아이디의 로그인 토큰으로 (서버 src/edits.js 가 둘 다 받음)
-  const auth = adminKey() ? { "X-TagoHub-Admin": adminKey() } : { Authorization: "Bearer " + ((await Account.token()) || "") };
+  const auth = await authHeaders();
   const r = await fetch(BASE + "w/edits", { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ kind, id, data: payload }) });
   if (!r.ok) throw new Error(r.status === 429 ? "잠시 뒤에 다시 저장해 주세요" : r.status === 403 ? "관리자만 고칠 수 있어요. 설정에서 관리자 키를 확인해 주세요" : "저장하지 못했어요 (" + r.status + ")");
   // 방금 고친 것을 이 화면에 바로 반영 (서버 판 번호도 맞춰 다시 받지 않게)
