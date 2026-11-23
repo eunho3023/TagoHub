@@ -1,7 +1,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { upstreamFetch, handleRelay, relayUrl, _reset } from "../src/krrelay.js";
-import { handle, allowedTarget, cronOnce } from "../../relay/relay.mjs";
+import { handle, allowedTarget, cronOnce, askUpstream, flaky } from "../../relay/relay.mjs";
 
 /** kr_relay 표 하나만 흉내 내는 D1 */
 function fakeDb() {
@@ -109,7 +109,7 @@ test("PC 중계: 열쇠·허락한 호스트만, 기관 답에 X-Relay-Upstream"
   assert.equal(allowedTarget("https://apis.data.go.kr:8443/x"), false);
 });
 
-test("기관이 늦으면 2.5초 뒤 중계에 한 번 더 묻고 빠른 답을 씀", async () => {
+test("중계가 늦으면 4초 뒤 중계에 한 번 더 묻고 빠른 답을 씀", async () => {
   const db = fakeDb(); db.set({ url: "https://abc.trycloudflare.com", at: Date.now() });
   let n = 0;
   const fetcher = async (u, init) => {
@@ -160,4 +160,60 @@ test("브이월드도 국내 중계로 (Cloudflare 에서 막힘), 다른 곳은
   assert.ok(RELAY_HOSTS.has("api.vworld.kr"));
   assert.equal(allowedTarget("https://api.vworld.kr/req/search?x=1"), true);
   assert.equal(allowedTarget("https://www.opinet.co.kr/api/aroundAll.do"), false);
+});
+
+/** 시험용 기관: 차례마다 [지연ms, 본문] (끊기면 abort 오류) */
+function slowUpstream(plan, seen = []) {
+  return (u, init) => {
+    const i = seen.length;
+    seen.push(u);
+    const [ms, body, status = 200] = plan[Math.min(i, plan.length - 1)];
+    return new Promise((r, j) => {
+      const t = setTimeout(() => r(new Response(body, { status, headers: { "content-type": "application/json" } })), ms);
+      init.signal.addEventListener("abort", () => { clearTimeout(t); j(Object.assign(new Error("abort"), { name: "AbortError" })); });
+    });
+  };
+}
+const BAD = '{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"HTTP_ERROR","returnReasonCode":"04"}}}';
+
+test("노트북 중계: 공공데이터포털이 늦으면 하나 더 물어 먼저 온 좋은 답 (HTTP_ERROR 는 건너뜀)", async () => {
+  assert.equal(flaky(200, Buffer.from(BAD)), true);
+  assert.equal(flaky(200, Buffer.from('{"response":{"header":{"resultCode":"00"}}}')), false);
+  assert.equal(flaky(502, Buffer.from("x")), true);
+
+  // 첫 요청은 늦게 HTTP_ERROR, 둘째는 빨리 정상 → 둘째 답
+  let seen = [];
+  let r = await askUpstream(DG, {}, slowUpstream([[300, BAD], [5, "ok2"]], seen), { hedgeMs: 20, tries: 3, totalMs: 1000 });
+  assert.equal(r.body.toString(), "ok2");
+  assert.equal(r.tries, 2);
+
+  // HTTP_ERROR 가 빨리 와도 다음 요청을 바로 보냄
+  seen = [];
+  r = await askUpstream(DG, {}, slowUpstream([[5, BAD], [5, BAD], [5, "ok3"]], seen), { hedgeMs: 500, tries: 3, totalMs: 1000 });
+  assert.equal(r.body.toString(), "ok3");
+  assert.equal(seen.length, 3);
+
+  // 모두 탈 나면 마지막 답 그대로 (예전처럼 HTTP_ERROR 를 돌려줌)
+  r = await askUpstream(DG, {}, slowUpstream([[5, BAD]]), { hedgeMs: 5, tries: 3, totalMs: 1000 });
+  assert.equal(flaky(r.status, r.body), true);
+  assert.equal(r.tries, 3);
+
+  // 빠른 정상 답이면 한 번만
+  seen = [];
+  r = await askUpstream(DG, {}, slowUpstream([[5, "ok"]], seen), { hedgeMs: 200, tries: 3, totalMs: 1000 });
+  assert.equal(seen.length, 1);
+
+  // 브이월드는 겹쳐 묻지 않음
+  seen = [];
+  await askUpstream("https://api.vworld.kr/req/search?x=1", {}, slowUpstream([[60, "v"]], seen), { hedgeMs: 5, tries: 3, totalMs: 1000 });
+  assert.equal(seen.length, 1);
+
+  // 아무 답도 없으면 TimeoutError → handle 은 504
+  const never = (u, init) => new Promise((_, j) => init.signal.addEventListener("abort", () => j(new Error("abort"))));
+  await assert.rejects(askUpstream(DG, {}, never, { hedgeMs: 5, tries: 2, totalMs: 40 }), (e) => e.name === "TimeoutError");
+  const req = { url: "/f?u=" + encodeURIComponent(DG), method: "GET", headers: { "x-relay-key": KEY } };
+  assert.equal((await handle(req, KEY, never, { hedgeMs: 5, tries: 2, totalMs: 40 })).status, 504);
+  const ok = await handle(req, KEY, slowUpstream([[300, BAD], [5, "fine"]]), { hedgeMs: 20, tries: 3, totalMs: 1000 });
+  assert.equal(ok.body.toString(), "fine");
+  assert.equal(ok.headers["X-Relay-Tries"], "2");
 });

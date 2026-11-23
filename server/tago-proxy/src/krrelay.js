@@ -14,7 +14,8 @@ import { hedgedFetch } from "./hedge.js";
 export const RELAY_HOSTS = new Set(["apis.data.go.kr", "api.vworld.kr"]);
 const TUNNEL = /^https:\/\/[a-z0-9-]{1,80}\.trycloudflare\.com$/;
 const STALE_MS = 15 * 60 * 1000;
-export const RELAY_HEDGE_MS = 2500, RELAY_TOTAL_MS = 13000;
+// 중계가 기관에 스스로 겹쳐 물으므로(1.2초마다 최대 3개, relay.mjs askUpstream) 중계에 다시 묻는 건 4초 뒤 (터널이 잠깐 끊겼을 때용)
+export const RELAY_HEDGE_MS = 4000, RELAY_TOTAL_MS = 13000;
 const DOWN_MS = 30 * 1000, FAILS_TO_SKIP = 3, DIRECT_TOTAL_MS = 10000;
 
 let memo = { at: 0, url: null };
@@ -70,7 +71,7 @@ export async function relayUrl(env) {
 /**
  * 바깥 기관에 묻기: 공공데이터포털 GET 은 국내 중계 먼저, 중계가 꺼져 있으면 바로 (hedgedFetch).
  *
- * 중계에 물을 때도 2.5초 안에 답이 없으면 하나 더 물음 (최대 2번, 13초): 전주시 도착처럼 기관이 가끔 7초씩 늦게 답해서
+ * 중계에 물을 때도 4초(예전 2.5초) 안에 답이 없으면 하나 더 물음 (최대 2번, 13초): 전주시 도착처럼 기관이 가끔 7초씩 늦게 답해서
  * (2026-11-22 잰 것: 같은 정류장 0.15~7초). 예전엔 6초에 끊고 바로 묻기로 넘어가 15~20초를 더 기다렸고(바로 묻기는 거의 안 됨),
  * 그 뒤 1분 동안 중계를 건너뛰어 그동안 모든 요청이 느렸음.
  * - 중계가 답함(X-Relay-Upstream, 기관이 늦거나 오류여도): 그 답을 씀. 중계는 살아 있으니 건너뛰지 않음
