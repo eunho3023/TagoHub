@@ -312,7 +312,7 @@ internal fun TimelineRow(
                 Column(horizontalAlignment = Alignment.End) {
                     // 차량번호는 ... 으로 잘리지 않게: 자리가 모자라면 글자만 줄여 끝까지 보임
                     FitText(
-                        (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + (b.crowd?.let { " · $it" } ?: "") + if (buses.size > 1) " 외 ${buses.size - 1}" else "",
+                        (busTag(b) ?: "운행 중") + (b.crowd?.let { " · $it" } ?: "") + if (buses.size > 1) " 외 ${buses.size - 1}" else "",
                         Modifier
                             .padding(end = 6.dp)
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
@@ -326,7 +326,7 @@ internal fun TimelineRow(
             between.firstOrNull()?.let { b ->
                 Column(Modifier.align(Alignment.BottomEnd).padding(bottom = 2.dp), horizontalAlignment = Alignment.End) {
                     FitText(
-                        (b.vehicleNo?.takeIf { !it.startsWith("#") } ?: "운행 중") + (b.crowd?.let { " · $it" } ?: "") + if (between.size > 1) " 외 ${between.size - 1}" else "",
+                        (busTag(b) ?: "운행 중") + (b.crowd?.let { " · $it" } ?: "") + if (between.size > 1) " 외 ${between.size - 1}" else "",
                         Modifier
                             .padding(end = 6.dp)
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))

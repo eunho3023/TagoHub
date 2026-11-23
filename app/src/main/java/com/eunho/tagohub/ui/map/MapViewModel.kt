@@ -60,6 +60,7 @@ import com.eunho.tagohub.data.UticSafetyRepository
 import com.eunho.tagohub.ui.bus.BusDest
 import com.eunho.tagohub.ui.bus.RouteBusCache
 import com.eunho.tagohub.ui.bus.StopRouteRow
+import com.eunho.tagohub.ui.bus.busTag
 import com.eunho.tagohub.ui.bus.loadRouteData
 import com.eunho.tagohub.ui.bus.loadStopBoard
 import com.eunho.tagohub.ui.bus.loadDirection
@@ -3345,7 +3346,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         canvas?.setBuses(d.buses.value.mapIndexedNotNull { n, b ->
             val id = b.vehicleNo ?: "bus$n"
-            val label = b.vehicleNo?.takeIf { !it.startsWith("#") }?.takeLast(4).orEmpty()
+            val label = busTag(b).orEmpty()
             val state = b.vehicleNo?.let { d.gps[it] }
             val g = state?.track
             // GPS 좌표가 없는 버스(정류장 순번만 주는 지역, TAGO 가 정류장 좌표만 주는 버스)는 지도에 그리지 않는다.

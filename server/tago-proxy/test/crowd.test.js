@@ -81,3 +81,15 @@ test("하루 한 번만 다니는 노선(첫차 = 막차): 하루 1번 시각으
   assert.equal(planText({ first: "06:00", last: "06:00", interval: 15 }, 1), "하루 1번 06:00");
   assert.equal(planText({ first: "06:00", last: "22:20", interval: 15 }, 1), "첫차 06:00 · 막차 22:20 · 배차 15분");
 });
+
+test("차 종류: 서울 busType·경기 lowPlate (모르는 값은 null)", async () => {
+  const { seoulKind, ggKind } = await import("../site/js/busdata.js");
+  assert.equal(seoulKind("1"), "저상");
+  assert.equal(seoulKind("0"), "일반");
+  assert.equal(seoulKind("2"), "굴절");
+  assert.equal(seoulKind(undefined), null);
+  assert.equal(ggKind(1), "저상");
+  assert.equal(ggKind(0), "일반");
+  assert.equal(ggKind(2), "2층");
+  assert.equal(ggKind(9), null);
+});

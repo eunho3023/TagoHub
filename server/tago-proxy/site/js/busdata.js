@@ -1075,17 +1075,24 @@ export async function downFor(stop) {
   return h.checks.filter((c) => names.includes(c.name) && !c.ok).map((c) => ({ label: c.label, since: c.failSince || c.at }));
 }
 
-/** 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt}]} (dataAt = 자료 시각 ms, 서울만) */
+/** 서울 버스 위치 busType → 차 종류 (0 일반, 1 저상, 2 굴절) */
+export const seoulKind = (t) => ({ 0: "일반", 1: "저상", 2: "굴절" })[String(t ?? "").trim()] || null;
+/** 경기 버스 위치 lowPlate → 차 종류 (0 일반, 1 저상, 2 2층, 5 전세, 6 예약, 7 트롤리) */
+export const ggKind = (t) => ({ 0: "일반", 1: "저상", 2: "2층", 5: "전세", 6: "예약", 7: "트롤리" })[String(t ?? "").trim()] || null;
+/**
+ * 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt, kind}]} (dataAt = 자료 시각 ms, 서울만)
+ * kind: 차 종류("저상"·"일반"·"굴절"·"2층"…), 위치 자료가 알려 주는 서울·경기만 (대전 BIS·TAGO 위치 자료에는 없어 null)
+ */
 export async function positions(r) {
   try {
     const sid = seoulId(r.id), gid = ggId(r.id);
     if (sid) {
       const rows = findRows(JSON.parse(await getText("w/bus/seoul/pos/" + sid)), "vehId");
-      return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX), dataAt: seoulTime(x.dataTm), crowd: crowdSeoul(x.congetion ?? x.congestion, x.isFullFlag) })) };
+      return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX), dataAt: seoulTime(x.dataTm), crowd: crowdSeoul(x.congetion ?? x.congestion, x.isFullFlag), kind: seoulKind(x.busType) })) };
     }
     if (gid && ggCity(r.city)) {
       const rows = findRows(JSON.parse(await getText("w/bus/gg/pos/" + gid)), "plateNo");
-      return { state: "ok", buses: rows.map((x) => ({ nodeId: x.stationId != null ? "GGB" + x.stationId : null, ord: int(x.stationSeq), vehicleNo: str(x.plateNo), lat: null, lng: null })) };
+      return { state: "ok", buses: rows.map((x) => ({ nodeId: x.stationId != null ? "GGB" + x.stationId : null, ord: int(x.stationSeq), vehicleNo: str(x.plateNo), lat: null, lng: null, kind: ggKind(x.lowPlate) })) };
     }
     // 대전 BIS (앱과 같음): 못 받거나 비면 아래 TAGO
     if (/^DJB\d{8}$/.test(r.id)) {
