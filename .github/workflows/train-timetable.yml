@@ -1,4 +1,5 @@
-# 열차 시간표 파일(app/src/main/assets/train_timetable.tsv)을 매주 한국철도공사 운행기록으로 다시 만들어 바뀌었으면 PR 로 올린다.
+# 열차 시간표(train_timetable.tsv)는 한국철도공사 운행기록으로, 항공 시간표(air_*.tsv)는 한국공항공사 운항 스케줄 API 로
+# 매주 다시 만들어 바뀌었으면 PR 로 올린다.
 # PC 가 꺼져 있어도 되도록 GitHub 기본 서버에서 돈다. 머지는 직접 해야 하고, 머지한 뒤 앱을 다시 설치해야 반영된다.
 #
 # 먼저 해 둘 것 (처음 한 번):
@@ -18,7 +19,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45   # 열차 5분 + 항공 10분 남짓
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +35,21 @@ jobs:
           TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
         run: python pipeline/build_train_timetable.py
 
+      # 항공 시간표도 같이 (한국공항공사 운항 스케줄 API, 공공데이터포털 15158949). 실패해도 열차 시간표는 올림
+      - name: 항공 시간표 만들기
+        continue-on-error: true
+        env:
+          TAGO_SERVICE_KEY: ${{ secrets.TAGO_SERVICE_KEY }}
+        run: |
+          python pipeline/test_build_air_schedule_api.py
+          python pipeline/build_air_schedule_api.py
+
       - name: 바뀌었으면 PR 만들기
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- app/src/main/assets/train_timetable.tsv; then
+          files="app/src/main/assets/train_timetable.tsv app/src/main/assets/air_schedule.tsv app/src/main/assets/air_airlines.tsv app/src/main/assets/air_airports.tsv"
+          if git diff --quiet -- $files; then
             echo "시간표가 그대로입니다."
             exit 0
           fi
@@ -46,9 +57,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add app/src/main/assets/train_timetable.tsv
-          git commit -m "열차 시간표 갱신 (자동): 최근 운행기록 기준"
+          git add $files
+          git commit -m "열차·항공 시간표 갱신 (자동): 최근 운행기록·운항 스케줄 기준"
           git push origin "$branch"
           gh pr create --base main --head "$branch" \
-            --title "열차 시간표 갱신 (자동)" \
-            --body "한국철도공사 여객열차 운행정보의 최근 평일·토·일 운행기록으로 \`train_timetable.tsv\` 를 다시 만들었습니다. 머지한 뒤 앱을 다시 설치하면 반영됩니다. (\`pipeline/build_train_timetable.py\`)"
+            --title "열차·항공 시간표 갱신 (자동)" \
+            --body "한국철도공사 여객열차 운행정보의 최근 평일·토·일 운행기록으로 \`train_timetable.tsv\` 를, 한국공항공사 운항 스케줄 API 로 \`air_schedule.tsv\` 를 다시 만들었습니다. 머지한 뒤 앱을 다시 설치하면 반영됩니다. (\`pipeline/build_train_timetable.py\`)"
