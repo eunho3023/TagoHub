@@ -149,6 +149,8 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .rname { padding: 6px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rname.here { color: var(--soon); font-weight: 700; }
 .plate { color: #fff; font-size: 12px; font-weight: 700; border-radius: 8px; padding: 2px 8px; white-space: nowrap; }
+/* 노선 정류장 줄의 버스: 차량번호 전체·차 종류라 길어서, 정류장 이름을 밀어내지 않게 줄바꿈 */
+.rstop .plate { white-space: normal; max-width: 48%; text-align: right; line-height: 1.35; }
 
 /* 홈 */
 .homecard { background: var(--surface); border-radius: 0 0 var(--r-sheet) var(--r-sheet); box-shadow: 0 4px 12px rgba(0,0,0,.08); padding: 14px 16px; flex: none; }

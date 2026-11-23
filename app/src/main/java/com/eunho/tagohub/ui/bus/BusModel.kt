@@ -840,6 +840,15 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
 }
 
 /**
+ * 버스 이름표 (노선 띠 알약·지도): 차량번호 전체 + 저상/일반 (위치 자료가 알려 주는 서울·경기·전주·제주만, 모르면 번호만).
+ * 번호가 없는 버스(#로 시작하는 임시 이름)는 null
+ */
+internal fun busTag(b: BusLocation): String? {
+    val no = b.vehicleNo?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("#") } ?: return null
+    return when (b.lowFloor) { true -> "$no · 저상"; false -> "$no · 일반"; null -> no }
+}
+
+/**
  * 전주 버스: TAGO 위치(GPS 있음)가 있으면 그것을, 없으면 전주시 API 목록(GPS 없음)을.
  * TAGO 목록에는 저상 여부가 없어서 전주시 API 의 같은 차량(번호판 끝 4자리)에서 가져옴. 둘 다 없으면 null.
  */

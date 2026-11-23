@@ -430,7 +430,9 @@ function snapStopsFull(stops, road) {
     return { pt: h.pt, seg: i, t: h.t };
   });
 }
-const plateTail =(no) => (no || "").replace(/\D/g, "").slice(-4) || null;
+/** 버스 이름표: 차량번호 전체 + 차 종류(아는 지역만: 저상·일반·굴절·2층) */
+export const busLabel = (b) => [str0(b.vehicleNo), b.kind].filter(Boolean).join(" · ") || null;
+const str0 = (v) => (v == null ? "" : String(v).trim());
 
 export function routeScreen(root, p, ctx) {
   let r = null, pos = null, road = null, snapped = null, alive = true, fitted = false, focusSeq = null, linesOf = null, refreshing = false;
@@ -510,13 +512,13 @@ export function routeScreen(root, p, ctx) {
     for (const b of pos?.buses || []) {
       if (b.lat == null) continue;
       const xy = busXY(b);
-      dots.push({ id: "b:" + b.vehicleNo, lat: xy[0], lng: xy[1], color, ring: "#fff", r: 8, label: plateTail(b.vehicleNo) });
+      dots.push({ id: "b:" + b.vehicleNo, lat: xy[0], lng: xy[1], color, ring: "#fff", r: 8, label: busLabel(b) });
     }
     // 좌표가 없는 지역(경기 등): 버스가 있는 정류장 자리에 (폰 앱과 같음)
     for (const [i, list] of B.busAtStops(r.stops, (pos?.buses || []).filter((b) => b.lat == null))) {
       const xy = at(i);
       if (!xy) continue;
-      list.forEach((b, k) => dots.push({ id: "b:" + b.vehicleNo, lat: xy[0] + k * 0.00008, lng: xy[1], color, ring: "#fff", r: 8, label: plateTail(b.vehicleNo) }));
+      list.forEach((b, k) => dots.push({ id: "b:" + b.vehicleNo, lat: xy[0] + k * 0.00008, lng: xy[1], color, ring: "#fff", r: 8, label: busLabel(b) }));
     }
     MapView.dots(dots, (d) => {
       const seq = d.id.startsWith("s:") ? +d.id.slice(2) : null;
@@ -564,7 +566,7 @@ export function routeScreen(root, p, ctx) {
           const s2 = (await B.stopAt(st.id, st.lat, st.lng).catch(() => null)) || { id: st.id, name: st.name, lat: st.lat, lng: st.lng, no: st.no || null, city: r.city, routes: [] };
           remember(s2); go("stop", s2.id, stopParams(s2));
         })}>${esc(st.name)}</button>
-        ${buses.length ? `<span class="plate" style="background:${color}">${esc(buses.map((b) => (plateTail(b.vehicleNo) || "버스") + (b.crowd ? " " + b.crowd : "")).join(" "))}</span>` : ""}
+        ${buses.length ? `<span class="plate" style="background:${color}">${esc(buses.map((b) => (busLabel(b) || "버스") + (b.crowd ? " · " + b.crowd : "")).join(", "))}</span>` : ""}
         ${Alight.supported && st.lat != null ? `<button class="mini ${alightOn ? "on" : ""}" ${act(() => { alightOn ? Alight.stop() : Alight.start(st.name, st.lat, st.lng); drawList(); })}>${alightOn ? "알림 끄기" : "내릴 곳"}</button>` : ""}
       </div>`;
     }).join("");

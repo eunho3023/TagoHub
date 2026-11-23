@@ -139,7 +139,8 @@ object SeoulMappers2 {
             vehicleNo = r.str("plainNo") ?: r.str("vehId") ?: return@mapNotNull null,
             lat = r.double("gpsY", "tmY"),
             lng = r.double("gpsX", "tmX"),
-            lowFloor = r.str("busType")?.let { it == "1" },
+            // 0 일반, 1 저상 (2 굴절은 저상인지 모름)
+            lowFloor = when (r.str("busType")) { "0" -> false; "1" -> true; else -> null },
             dataAtMs = SeoulBus.dataTimeMs(r.str("dataTm")),
             // 위치 API 는 congetion(철자 그대로) 3 여유 4 보통 5 혼잡 6 매우혼잡, isFullFlag 1 만차
             crowd = Crowd.seoul(r.str("congetion") ?: r.str("congestion"), r.str("isFullFlag")),

@@ -102,7 +102,8 @@ object GyeonggiMappers {
             vehicleNo = r.str("plateNo") ?: r.str("vehId") ?: return@mapNotNull null,
             lat = null,
             lng = null,
-            lowFloor = r.int("lowPlate")?.let { it == 1 },
+            // 0 일반, 1 저상 (2 2층·5 전세·6 예약·7 트롤리는 저상인지 모름)
+            lowFloor = when (r.int("lowPlate")) { 0 -> false; 1 -> true; else -> null },
             state = r.int("stateCd"),
         )
     }
