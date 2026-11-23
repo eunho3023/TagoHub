@@ -13,6 +13,8 @@ if (-not $env:CLOUDFLARE_API_TOKEN) {
     $sec = Read-Host 'Cloudflare API 토큰을 붙여 넣고 Enter (화면에는 안 보여요)' -AsSecureString
     $env:CLOUDFLARE_API_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 }
+# 붙여 넣을 때 딸려 온 공백·줄바꿈은 뺌 (한 글자라도 더 붙으면 Cloudflare 가 거절함)
+$env:CLOUDFLARE_API_TOKEN = $env:CLOUDFLARE_API_TOKEN.Trim()
 
 $lines = Get-Content $props -Encoding UTF8
 function Prop([string]$name) {
@@ -53,6 +55,11 @@ if ($db -and $db.uuid) {
     # wrangler 메시지에서 오류 줄만 (키·토큰은 들어 있지 않음)
     ($d1Why -split "`n" | Where-Object { $_ -match 'ERROR|error|Authentication|permission|code:|10000|7403' } | Select-Object -First 6) | ForEach-Object { Write-Host "    $_" }
     Write-Host '  "Authentication error" 나 권한 이야기가 나오면: API 토큰에 Account - D1 - Edit 권한을 더한 뒤 다시 실행'
+    # 토큰 자체가 틀리면(9106) 뒤 단계도 모두 실패하므로 여기서 멈춤
+    if ($d1Why -match '9106|Authentication failed \(status: 400\)') {
+        Write-Host '  API 토큰이 맞지 않아요 (Cloudflare 가 거절). 토큰을 다시 복사해서 처음부터 실행해 주세요. 아무것도 올리지 않았어요.' -ForegroundColor Red
+        exit 1
+    }
 }
 
 Write-Host '준비: 정류장·노선 자료 조각 만드는 중 (웹·PC 버전용, 최신 DB 를 받아서)...'
