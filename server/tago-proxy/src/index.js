@@ -121,7 +121,7 @@ async function web(request, url, env, ctx) {
   // 공공기관 장소·주소·주유소 (src/pubgeo.js, 브이월드·오피넷): 카카오 대신. 저장에 없을 때만 주소마다 분당 제한
   if (url.pathname.startsWith("/w/pub/")) {
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-    return handlePub(request, url, env, ctx, { limit: env.WEB_LIMIT ? async () => (await env.WEB_LIMIT.limit({ key: "pub:" + ip })).success : null });
+    return handlePub(request, url, env, ctx, { fetcher: (u, i) => upstreamFetch(u, i || {}, env), limit: env.WEB_LIMIT ? async () => (await env.WEB_LIMIT.limit({ key: "pub:" + ip })).success : null });
   }
   if (url.pathname.startsWith("/w/ov/")) return ovWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
