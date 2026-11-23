@@ -381,20 +381,25 @@ async function stopRoutesNet(stop) {
   const same = await sameSpot(stop);
   const ids = [...new Set([stop, ...same].flatMap((s) => s.routes))];
   const sums = await routeSums(ids);
+  // 경기 노선 요약(번호·기점·종점만, 2026-11-23부터)은 서버 실시간 목록(종류·방면, 지금 다니는 노선)이 안 될 때만 씀
+  const ggSums = Object.values(sums).filter((s) => ggId(s.id));
   const seen = new Set();
-  const out = Object.values(sums).map((s) => ({ ...s, id: currentId(s.id) })).filter((s) => !seen.has(s.id) && seen.add(s.id));
+  const out = Object.values(sums).filter((s) => !ggId(s.id)).map((s) => ({ ...s, id: currentId(s.id) })).filter((s) => !seen.has(s.id) && seen.add(s.id));
   // 같은 번호라도 본선·지선·분선처럼 기점·종점이 다르면 다른 노선 → 번호가 아니라 노선 ID(없으면 번호+기점+종점)로 구분
   const sig = (s) => [s.no, (s.start || "").replace(/ /g, ""), (s.end || "").replace(/ /g, "")].join("|");
   const seenSig = new Set(out.map(sig));
   // 자료 조각에 요약이 없는 노선이 있거나, 같은 자리 정류장 중 노선 목록이 비어 있는 곳(전주시 정류장 등)이 있으면
   // 정류장을 지나는 노선을 서버로 물어 채움 (운행 안 하는 노선도 보이게).
   // 노선 목록이 빈 정류장을 묻지 않으면 그 지역 노선은 실시간 도착이 와야 뒤늦게 따로 나타남
-  if (!ids.length || ids.some((id) => !sums[id]) || [stop, ...same].some((s) => !(s.routes || []).length)) {
-    for (const s of await liveStopRoutes(stop, same).catch(() => [])) {
+  if (!ids.length || ids.some((id) => !sums[id] || ggId(id)) || [stop, ...same].some((s) => !(s.routes || []).length)) {
+    const live = await liveStopRoutes(stop, same).catch(() => []);
+    for (const s of live) {
       // 자료 파일 노선과 겹치는지만 번호+기점+종점으로 봄 (받아 온 노선끼리는 ID 가 다르면 경유지만 다른 다른 노선)
       if (seen.has(s.id) || seenSig.has(sig(s))) continue;
       seen.add(s.id); out.push(s);
     }
+    // 경기 실시간 목록을 못 받았으면 자료 파일 요약으로라도 (예전엔 경기 노선이 통째로 안 보였음)
+    if (!live.some((s) => ggId(s.id))) for (const s of ggSums) if (!seen.has(s.id)) { seen.add(s.id); out.push({ ...s, city: "31" }); }
   }
   return out;
 }

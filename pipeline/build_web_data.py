@@ -156,10 +156,20 @@ def build(db_path: pathlib.Path, out: pathlib.Path, assets: pathlib.Path = ASSET
         groups[bucket(rid)][rid] = {"no": no, "start": start, "end": end, "city": city, "region": region, "rtype": rtype,
                                     "realtime": rt, "info": info.get(rid), "stops": stops_of.get(rid, [])}
         by_no[city][no].append(rid)
+    sums = defaultdict(dict)
     for b, g in groups.items():
         dump(out / "routes" / f"{b}.json", g)
         # 정류장을 누르자마자 보여 줄 노선 요약 (정류장 목록 없이 작게): [번호, 기점, 종점, 종류, 첫차, 막차, 배차, 토, 일]
-        dump(out / "routesum" / f"{b}.json", {rid: [r["no"], r["start"], r["end"], r["rtype"], *(r["info"] or [None] * 5)] for rid, r in g.items()})
+        sums[b].update({rid: [r["no"], r["start"], r["end"], r["rtype"], *(r["info"] or [None] * 5)] for rid, r in g.items()})
+    # 경기 노선(GBIS)은 routes 표가 아니라 gbis_routes 표에 번호·기점·종점만 있음 → 요약에만 넣음 (정류장 목록은 웹이 서버에 물음).
+    # 예전엔 빠져서 경기 노선 5,549개는 정류장 검색에 번호가 안 나왔음 (2026-11-23)
+    if "gbis_routes" in tables:
+        for rid, no, start, end in db.execute("SELECT id, no, start_name, end_name FROM gbis_routes"):
+            b = bucket(rid)
+            if no and rid not in sums[b]:
+                sums[b][rid] = [no, start, end, None, None, None, None, None, None]
+    for b, g in sums.items():
+        dump(out / "routesum" / f"{b}.json", g)
     # 노선 실제 경로 (앱과 같은 자료): 경기 GBIS 경로이력(gbis_shapes) + 서울 TBIS 경유노드(assets/bus_route_shapes.tsv)
     # shapes/{0~1023}.json : {노선 id: polyline(정밀도 5)}. 웹 노선 지도가 OSRM 추정 대신 이것을 먼저 씀
     shapes = defaultdict(dict)
