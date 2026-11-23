@@ -1,7 +1,7 @@
 // 지도 고치기: 사람이 손으로 고친 버스 노선 모양·정류장 위치 (서버 /w/edits, src/edits.js). 폰 앱(MapEdits.kt)과 같은 자료.
 // 화면을 열 때 받아 두고, 페이지가 보이는 동안 15초마다 판 번호로 바뀌었는지 확인(안 바뀌면 서버가 204 로 짧게).
 // 바뀌면 바로 다시 받아 열린 화면이 다시 그림 (onChange). 노선 모양·정류장 좌표를 그릴 때 고친 것이 있으면 그것을 씀.
-import { BASE } from "./core.js";
+import { BASE, PUB_ON } from "./core.js";
 import * as Account from "./account.js";
 
 let data = null, at = 0, loading = null;
@@ -16,8 +16,12 @@ export const isAdmin = () => adminKey().length >= 16 || Account.isDev();
 const EDITING = "tagohub.editing";
 export function editing() { try { return isAdmin() && sessionStorage.getItem(EDITING) === "1"; } catch (e) { return false; } }
 export function setEditing(on) {
-  try { if (on) sessionStorage.setItem(EDITING, "1"); else sessionStorage.removeItem(EDITING); } catch (e) { /* 못 씀 */ }
+  let was = false;
+  try { was = sessionStorage.getItem(EDITING) === "1"; if (on) sessionStorage.setItem(EDITING, "1"); else sessionStorage.removeItem(EDITING); } catch (e) { /* 못 씀 */ }
   notify();
+  // 지도 고치기 중엔 카카오 지도(정류장 표시가 있음), 평소엔 브이월드 (map.js editingMap): 바뀌면 지도를 새로 만들려고 페이지를 다시 읽음.
+  // 바로 뒤에 화면 이동(go("map"))이 있으면 그 주소로 다시 읽게 한 박자 뒤에
+  if (!!on !== was && PUB_ON()) setTimeout(() => location.reload(), 0);
 }
 /** 관리자 키를 넣은 브라우저인지 (설정의 관리자 키 칸) */
 export const hasAdminKey = () => adminKey().length >= 16;
