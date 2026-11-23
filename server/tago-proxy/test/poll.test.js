@@ -56,7 +56,11 @@ test("실패 까닭 이름: 한도·키·잠시 바쁨(99)·HTTP 상태", () => 
   assert.equal(badWhy(200, "<resultCode>99</resultCode>"), "busy99");
   assert.equal(badWhy(200, '{"response":{"header":{"resultCode":99}}}'), "busy99");
   assert.equal(badWhy(522, "error code: 522"), "http522");
-  assert.equal(badWhy(200, "<resultCode>995</resultCode>"), "other");
+  assert.equal(badWhy(200, "<resultCode>995</resultCode>"), "code995");
+  // 200 안에 적어 보낸 오류 이름을 그대로 (예전엔 모두 other)
+  assert.equal(badWhy(200, '<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>HTTP_ERROR</errMsg><returnAuthMsg>HTTP 에러</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>'), "http_error");
+  assert.equal(badWhy(200, '{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"SERVICETIMEOUT_ERROR"}}}'), "servicetimeout_error");
+  assert.equal(badWhy(200, "<html>bad gateway</html>"), "other");
 });
 
 test("날짜별 숫자는 7일 지난 것만 지움 (cron:last 는 그대로)", async () => {

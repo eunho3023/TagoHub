@@ -50,6 +50,35 @@ def test_new_airline_and_airport():
     assert "7C\t제주항공" in al and ap[-1] == "KIX\t오사카/간사이\t"
 
 
+def test_estimate_new_route():
+    """지난 파일에 없는 새 구간은 좌표·시차로 어림 (부산→샤먼: 비행 2시간 15분쯤, 시차 -1시간), 좌표를 모르면 뺌"""
+    assert 120 <= ba.estimate("PUS", "XMN") <= 150 and 230 <= ba.estimate("XMN", "PUS") <= 270
+    assert ba.estimate("PUS", "ZZZ") is None
+    lines, _, _, stat = ba.build([], [item(flightid="MF872", airline="샤먼항공", airlineCode="MF", st="1000", depcitycode="PUS", arrvcitycode="XMN"),
+                                      item(flightid="ZZ1", st="1000", depcitycode="PUS", arrvcitycode="ZZZ")], OLD, AIRLINES, AIRPORTS, dt.date(2026, 11, 23))
+    assert [l.split("	")[2] for l in lines] == ["MF872"] and stat["I_estimated"] == 1 and stat["I_no_duration"] == 1
+
+
+def test_icn_domestic():
+    """인천 국내선: 하루치 운항 현황을 시즌 끝까지 날마다로, 도착편은 비행시간만큼 앞당겨 출발 시각"""
+    pages = {"getFltDeparturesDeOdp": [{"flightId": "KE1401", "airline": "대한항공", "airportCode": "PUS", "scheduleDatetime": "202611240700", "typeOfFlight": "D", "codeshare": "Master"},
+                                       {"flightId": "DL7855", "airline": "델타항공", "airportCode": "PUS", "scheduleDatetime": "202611240700", "typeOfFlight": "D", "codeshare": "Slave"},
+                                       {"flightId": "KE1", "airline": "대한항공", "airportCode": "NRT", "scheduleDatetime": "202611240900", "typeOfFlight": "I", "codeshare": "Master"}],
+             "getFltArrivalsDeOdp": [{"flightId": "KE1402", "airline": "대한항공", "airportCode": "PUS", "scheduleDatetime": "202611240810", "typeOfFlight": "D", "codeshare": "Master"}]}
+
+    def get(url):
+        op = url.split("?")[0].rsplit("/", 1)[1]
+        return json.dumps({"response": {"body": {"totalCount": len(pages[op]), "items": pages[op]}}})
+    icn = ba.fetch_icn_domestic("k", dt.date(2026, 11, 24), get)
+    assert [(r["flight"], r["dep"], r["arr"], r["time"]) for r in icn] == [("KE1401", "ICN", "PUS", "07:00"), ("KE1402", "PUS", "ICN", "08:10")]
+    lines, _, _, stat = ba.build([item()], [], OLD, AIRLINES, AIRPORTS, dt.date(2026, 11, 23), icn=icn)
+    icn_lines = [l for l in lines if "ICN" in l]
+    assert stat["ICN"] == 2 and all(l.endswith("	월화수목금토일	2026-11-23	2027-03-27") for l in icn_lines)
+    out = next(l for l in icn_lines if "KE1401" in l).split("	")
+    back = next(l for l in icn_lines if "KE1402" in l).split("	")
+    assert out[5] == "07:00" and back[6] == "08:10" and ba.minutes(back[6]) - ba.minutes(back[5]) == ba.estimate("PUS", "ICN")
+
+
 def test_fetch_all_pages():
     calls = []
 
@@ -62,5 +91,5 @@ def test_fetch_all_pages():
 
 
 if __name__ == "__main__":
-    for t in (test_build, test_new_airline_and_airport, test_fetch_all_pages):
+    for t in (test_build, test_new_airline_and_airport, test_estimate_new_route, test_icn_domestic, test_fetch_all_pages):
         t(); print("PASS", t.__name__)
