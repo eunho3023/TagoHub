@@ -4,6 +4,7 @@
  *
  * Cloudflare(타볼까 서버) → 공공데이터포털 연결이 자주 매달려서(2026-11-22 잰 것: 10번 중 8번), 국내 기계가 대신 물어 줌.
  * - 127.0.0.1:8792 에서 GET /f?u=<공공데이터포털 주소> 만 받음 (X-Relay-Key 가 맞아야, 호스트는 apis.data.go.kr 만)
+ * - 공공데이터포털이 1.2초 안에 답이 없거나 HTTP_ERROR 를 내면 같은 요청을 하나 더 보냄 (최대 3개, askUpstream)
  * - cloudflared 빠른 터널(*.trycloudflare.com)을 열고, 그 주소를 타볼까 POST /w/relay/register 로 알림 (켤 때 + 5분마다)
  * - cloudflared 가 죽으면 다시 띄움. 중계가 꺼지면 타볼까는 예전처럼 바로 물음 (느리지만 됨)
  * - 환경 변수 CRON_KEY 가 있으면 타볼까 예약 작업(POST /w/cron)도 1분마다 부름 (cronLoop)
@@ -25,6 +26,10 @@ const PORT = 8792;
 export const ALLOWED = new Set(["apis.data.go.kr", "api.vworld.kr"]);
 const SERVER = "https://tabolkka.pages.dev";
 const UPSTREAM_TIMEOUT_MS = 12000;
+// 공공데이터포털이 요청을 절반쯤 7~20초 붙잡다 HTTP_ERROR 로 끝냄 (2026-11-24 잰 것: 국내에서 바로 물어도 도착·위치·정류소·노선 모두,
+// 되는 요청은 0.1~0.8초). 그래서 1.2초 안에 답이 없으면 같은 요청을 하나 더(최대 3개) 보내고 먼저 온 좋은 답을 씀
+export const HEDGE_MS = 1200, HEDGE_TRIES = 3;
+const FLAKY = /HTTP_ERROR|SERVICETIMEOUT_ERROR|SERVICE_TIMEOUT/;
 const BEAT_MS = 5 * 60 * 1000;
 // 터널 스스로 확인: 1분마다 바깥 주소로 /health 를 물어 2번 잇달아 안 되면 cloudflared 를 다시 띄움 (새 주소로 다시 알림).
 // 2026-11-22 12:3x UTC 에 중계는 살아 있는데 터널만 530(연결 끊김)을 내서, 그동안 타볼까가 느린 바로 묻기로 갔음
@@ -66,8 +71,70 @@ export function allowedTarget(u) {
   }
 }
 
-/** 중계 요청 처리 (시험에서 fetcher 를 바꿔 끼움) */
-export async function handle(req, key, fetcher = fetch) {
+/** 기관이 잠깐 탈 난 답인지 (5xx 또는 공공데이터포털 HTTP_ERROR·SERVICETIMEOUT_ERROR) */
+export function flaky(status, body) {
+  return status >= 500 || FLAKY.test(Buffer.from(body).subarray(0, 3000).toString("latin1"));
+}
+
+/**
+ * 기관에 묻기: 공공데이터포털이면 [hedgeMs] 안에 좋은 답이 없을 때 같은 요청을 하나 더 보냄 (최대 [tries] 개, 다 합쳐 [totalMs]).
+ * 먼저 온 좋은 답을 쓰고 나머지는 끊음. 모두 탈 난 답이면 마지막 답, 답이 하나도 없으면 마지막 오류(시간 넘김은 TimeoutError).
+ * 돌려주는 것: {status, type, body, tries}
+ */
+export function askUpstream(target, headers, fetcher = fetch, { hedgeMs = HEDGE_MS, tries = HEDGE_TRIES, totalMs = UPSTREAM_TIMEOUT_MS } = {}) {
+  if (new URL(target).hostname !== "apis.data.go.kr") tries = 1;
+  return new Promise((resolve, reject) => {
+    const ctrls = [];
+    let done = false, started = 0, pending = 0, last = null, lastErr = null, timer = null, cap = null;
+    const finish = (fn, v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clearTimeout(cap);
+      ctrls.forEach((c) => { try { c.abort(); } catch { /* 이미 끝남 */ } });
+      if (v && typeof v === "object" && "body" in v) v.tries = started;
+      fn(v);
+    };
+    const next = () => {
+      if (started < tries) return launch();
+      if (pending === 0) return last ? finish(resolve, last) : finish(reject, lastErr || new Error("upstream failed"));
+    };
+    const launch = () => {
+      if (done || started >= tries) return;
+      started++;
+      pending++;
+      const c = new AbortController();
+      ctrls.push(c);
+      Promise.resolve()
+        .then(() => fetcher(target, { headers, signal: c.signal }))
+        .then(async (r) => ({ status: r.status, type: r.headers.get("content-type"), body: Buffer.from(await r.arrayBuffer()) }))
+        .then((out) => {
+          pending--;
+          if (done) return;
+          if (!flaky(out.status, out.body)) return finish(resolve, out);
+          last = out;
+          next();
+        }, (e) => {
+          pending--;
+          if (done) return;
+          lastErr = e;
+          next();
+        });
+      clearTimeout(timer);
+      if (started < tries) timer = setTimeout(launch, hedgeMs);
+    };
+    cap = setTimeout(() => {
+      if (last) return finish(resolve, last);
+      const e = new Error("upstream timeout");
+      e.name = "TimeoutError";
+      finish(reject, e);
+    }, totalMs);
+    launch();
+  });
+}
+
+/** 중계 요청 처리 (시험에서 fetcher·겹쳐 묻기 설정을 바꿔 끼움) */
+export async function handle(req, key, fetcher = fetch, hedge = {}) {
   const url = new URL(req.url, "http://relay.local");
   if (url.pathname === "/health") return { status: 200, headers: { "Content-Type": "text/plain" }, body: "ok" };
   if (req.method !== "GET" || url.pathname !== "/f") return { status: 404, headers: {}, body: "not found" };
@@ -76,13 +143,10 @@ export async function handle(req, key, fetcher = fetch) {
   if (!allowedTarget(target)) return { status: 400, headers: {}, body: "bad target" };
   const t0 = Date.now();
   try {
-    const r = await fetcher(target, {
-      headers: { Accept: req.headers.accept || "*/*", "User-Agent": req.headers["user-agent"] || "TagoHub-relay" },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    const body = Buffer.from(await r.arrayBuffer());
-    log(`${new URL(target).pathname.split("/").slice(0, 3).join("/")} ${r.status} ${Date.now() - t0}ms`);
-    return { status: r.status, headers: { "Content-Type": r.headers.get("content-type") || "application/octet-stream", "X-Relay-Upstream": String(r.status) }, body };
+    const headers = { Accept: req.headers.accept || "*/*", "User-Agent": req.headers["user-agent"] || "TagoHub-relay" };
+    const r = await askUpstream(target, headers, fetcher, hedge);
+    log(`${new URL(target).pathname.split("/").slice(0, 3).join("/")} ${r.status}${flaky(r.status, r.body) ? " 탈남" : ""} ${Date.now() - t0}ms ${r.tries}번`);
+    return { status: r.status, headers: { "Content-Type": r.type || "application/octet-stream", "X-Relay-Upstream": String(r.status), "X-Relay-Tries": String(r.tries) }, body: r.body };
   } catch (e) {
     log(`실패 ${e.name} ${Date.now() - t0}ms`);
     // 중계는 살아 있고 기관이 늦거나 끊김: X-Relay-Upstream 0 (타볼까가 중계를 꺼진 것으로 보지 않게)
