@@ -47,13 +47,14 @@ export function render(root, _p, ctx) {
       if (my !== seq || !alive) return;
       body.innerHTML = r.length ? `<div class="list">${r.map((s) => { remember(s); return `<button class="row" ${act(() => { st.q = ""; go("stop", s.id, { lat: s.lat, lng: s.lng }); })}>
         ${icon("bus", 20)}<span class="grow"><b>${esc(s.name)}</b><small>${s.no ? "정류장 번호 " + esc(s.no) : ""}</small></span></button>`; }).join("")}</div>` : note("찾는 정류장이 없어요");
-      // 어느 방면인지 (지나는 노선의 다음 정류장, 위 15개)
+      // 서는 노선 번호 몇 개(위 12개)와 어느 방면인지(지나는 노선의 다음 정류장, 위 15개): 비슷한 이름이 많을 때 고르기 쉽게
       const smalls = body.querySelectorAll(".row small");
+      const info = r.map(() => ({ n: null, t: null }));
+      const fill = (i) => { if (smalls[i] && my === seq) smalls[i].textContent = [r[i].no ? "정류장 번호 " + r[i].no : null, info[i].n, info[i].t ? info[i].t + " 방면" : null].filter(Boolean).join(" · "); };
+      B.routeNoLabels(r.slice(0, 12)).then((ls) => ls.forEach((l, i) => { if (l) { info[i].n = l; fill(i); } })).catch(() => {});
       r.slice(0, 15).forEach((s, i) => {
         if (!s.routes.length) return;
-        B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => {
-          if (t && smalls[i] && my === seq) smalls[i].textContent = [s.no ? "정류장 번호 " + esc(s.no) : null, t + " 방면"].filter(Boolean).join(" · ");
-        }).catch(() => {});
+        B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => { if (t) { info[i].t = t; fill(i); } }).catch(() => {});
       });
       return;
     }
@@ -100,7 +101,9 @@ export function render(root, _p, ctx) {
     if (L.state === "loading" || L.state === "idle") {
       rows = `<div class="live-skel"><i></i><i></i></div>`;
     } else if (L.state === "noperm" || L.state === "error") {
+      // 위치를 못 쓰면(거절·꺼짐) 위 검색칸으로 바로 이어 줌: 처음 온 사람이 "위치를 찾지 못했어요"에서 멈추지 않게 (2026-11-22 점검)
       rows = `<p class="live-note">${esc(L.note || "위치를 확인하지 못했어요.")}</p>
+        ${L.state === "noperm" ? `<button class="live-more" ${act(searchByName)}>정류장 이름으로 찾기</button>` : ""}
         <button class="live-more" ${act(paintLive)}>다시 시도</button>`;
     } else if (!L.rows || !L.rows.length) {
       rows = `<p class="live-note">700m 안에 도착 정보가 있는 정류장이 없어요.</p>
@@ -206,10 +209,18 @@ export function render(root, _p, ctx) {
     });
   }
 
+  /** 위 검색칸으로 올려 글자를 넣게 함 (위치를 못 쓸 때) */
+  function searchByName() {
+    const q = root.querySelector("#q");
+    if (!q) return;
+    q.scrollIntoView({ block: "center", behavior: "smooth" });
+    q.focus({ preventScroll: true });
+  }
+
   async function findNear() {
     st.nearNote = "위치를 받는 중..."; draw();
     let here;
-    try { here = await locate(); } catch (e) { st.nearNote = e.message; draw(); return; }
+    try { here = await locate(); } catch (e) { st.nearNote = e.message + " 위 검색칸에 정류장 이름을 넣어 찾을 수도 있어요."; draw(); return; }
     const [la, lo] = here;
     const got = (await B.stopsIn(la - 0.004, lo - 0.005, la + 0.004, lo + 0.005).catch(() => [])).sort((a, b) => meters(la, lo, a.lat, a.lng) - meters(la, lo, b.lat, b.lng)).slice(0, 6);
     st.near = got; st.nearNote = got.length ? null : "근처 400m 안에 정류장이 없어요";

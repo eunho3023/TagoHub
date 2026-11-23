@@ -31,6 +31,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -154,6 +156,8 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
     val field = Modifier.fillMaxWidth()
     val pwKeyboard = KeyboardOptions(keyboardType = KeyboardType.Password)
 
+    var titleTaps by remember { mutableStateOf(emptyList<Long>()) }
+    val titleTapSource = remember { MutableInteractionSource() }
     val title = when (page) { IdPage.Login -> "로그인"; IdPage.SignUp -> "회원가입"; IdPage.FindId -> "아이디 찾기"; IdPage.Reset -> "비밀번호 찾기"; IdPage.Admin -> "관리자로 로그인" }
     fun back() { if (!busy) { if (page == IdPage.Login) onDismiss() else go(IdPage.Login) } }
 
@@ -170,7 +174,13 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                     Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                    // 관리자 로그인은 숨김 (일반 사용자가 헷갈리지 않게, 2026-11-23): 「로그인」 제목을 3초 안에 5번 누르면 열림
+                    Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold,
+                        modifier = if (page == IdPage.Login) Modifier.clickable(interactionSource = titleTapSource, indication = null) {
+                            val now = System.currentTimeMillis()
+                            titleTaps = titleTaps.filter { now - it < 3000 } + now
+                            if (titleTaps.size >= 5) { titleTaps = emptyList(); go(IdPage.Admin) }
+                        } else Modifier)
                     if (page == IdPage.Login) Text("TagoHub 아이디로 로그인해요", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     when (page) {
@@ -397,8 +407,8 @@ fun IdAuthDialog(onDismiss: () -> Unit, start: String = "login") {
                             TextButton(enabled = !busy, onClick = { go(IdPage.Reset) }) { Text("비밀번호 찾기", fontSize = 13.sp) }
                             TextButton(enabled = !busy, onClick = { go(IdPage.SignUp) }) { Text("회원가입", fontSize = 13.sp) }
                         }
-                        TextButton(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = { go(IdPage.Admin) }) {
-                            Text(if (isAdmin) "관리자 모드 켜짐" else "관리자로 로그인", fontSize = 13.sp)
+                        if (isAdmin) TextButton(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = { go(IdPage.Admin) }) {
+                            Text("관리자 모드 켜짐", fontSize = 13.sp)
                         }
                     }
                 }

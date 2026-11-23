@@ -14,7 +14,7 @@ import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
-import { healthCron, healthDue, handleHealth } from "./health.js";
+import { healthCron, healthDue, handleHealth, noteQuota, isQuotaBody } from "./health.js";
 import { upstreamFetch, handleRelay } from "./krrelay.js";
 
 /** 서버 코드가 받는 길 (나머지는 화면·자료 파일). pages/_routes.json 과 같음 */
@@ -162,6 +162,8 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
   }, env);
   const body = await upstream.text();
+  // 하루 한도 초과면 서비스별로 적어 둠 (/w/health 에 보임, src/health.js)
+  if (env.DB && isQuotaBody(body)) ctx.waitUntil(noteQuota(env, path, body));
   const headers = {
     "Content-Type": upstream.headers.get("Content-Type") || "application/xml; charset=utf-8",
     "X-Cache": "MISS",
@@ -220,6 +222,7 @@ async function relay(request, url, env, ctx) {
   const upstream = await upstreamFetch(target, { headers }, env);
   const body = await upstream.arrayBuffer();
   const text = new TextDecoder().decode(body.slice(0, 4000));
+  if (env.DB && isQuotaBody(text)) ctx.waitUntil(noteQuota(env, target, text));
   const out = { "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "X-Cache": "MISS", "X-Tries": upstream.headers.get("X-Tries") || "1", "X-Via": upstream.headers.get("X-Via") || "direct", ...(upstream.headers.get("X-Relay-Why") ? { "X-Relay-Why": upstream.headers.get("X-Relay-Why") } : {}) };
   if (upstream.status === 200 && cacheable(200, text)) {
     const ttl = hostTtl(t.host, t.path);
@@ -275,8 +278,12 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   // allowXml: XML 로만 답하는 기관(전주시 버스)은 XML 도 그대로 저장·전달
   const json = /^[[{]/.test(body.trimStart()) || (allowXml && body.trimStart().startsWith("<"));
   if (!res.ok || !json || !ok(body)) {
+    const quota = isQuotaBody(body);
+    if (quota && env.DB) ctx.waitUntil(noteQuota(env, upstream, body));
     const stale = sk ? await getStored(env.DB, sk, 30 * DAY_MS) : null;
     if (stale) return storedResponse(stale, "STALE");
+    // 하루 한도 초과는 XML 로 와서 예전엔 "upstream 200" 만 보냈음 → 웹이 "밤 12시 뒤" 안내를 하도록 이름을 그대로 (site/js/core.js tryLater)
+    if (quota) return new Response("{\"code\":\"LIMITED_NUMBER_OF_SERVICE\",\"message\":\"daily quota exceeded\"}", { status: 502, headers });
     return new Response(json ? body : "{\"code\":\"ERROR\",\"message\":\"upstream " + res.status + "\"}", { status: 502, headers });
   }
   const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": "public, max-age=" + ttl } });

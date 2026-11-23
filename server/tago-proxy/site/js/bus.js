@@ -1,5 +1,5 @@
 // 버스 화면: 정류장 찾기, 정류장(실시간 도착), 노선(지도·버스 위치·정류장 목록), 지도 탭.
-import { esc, busColor, naturalCompare, isoDay, meters, seoulNow, livePoll, onReturn } from "./core.js";
+import { esc, busColor, naturalCompare, isoDay, meters, seoulNow, livePoll, onReturn, tryLater } from "./core.js";
 import { act, header, note, sectionHead, bindInput, icon } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -57,9 +57,11 @@ export function busSearch(root, chipsHtml) {
     out.innerHTML = `<div class="list">${r.map((s) => stopLine(s, "")).join("")}</div>`;
     // 시군 이름과 방면(지나는 노선의 다음 정류장)은 나중에 채움
     const rows = out.querySelectorAll(".row small");
-    const info = r.map(() => ({ c: null, t: null }));
-    const fill = (i) => { if (rows[i] && my === seq) rows[i].textContent = [info[i].c, r[i].no ? "정류장 번호 " + r[i].no : null, info[i].t ? info[i].t + " 방면" : null].filter(Boolean).join(" · "); };
+    const info = r.map(() => ({ c: null, t: null, n: null }));
+    const fill = (i) => { if (rows[i] && my === seq) rows[i].textContent = [info[i].c, r[i].no ? "정류장 번호 " + r[i].no : null, info[i].n, info[i].t ? info[i].t + " 방면" : null].filter(Boolean).join(" · "); };
     r.forEach((s, i) => B.cityName(s.city).then((c) => { info[i].c = c; fill(i); }));
+    // 서는 노선 번호 몇 개 (비슷한 이름이 많을 때 고르기 쉽게, busdata.routeNoLabels). 위 12곳
+    B.routeNoLabels(r.slice(0, 12)).then((ls) => ls.forEach((l, i) => { if (l) { info[i].n = l; fill(i); } })).catch(() => {});
     r.slice(0, 15).forEach((s, i) => {
       if (!s.routes.length) return;
       B.towardOf(s, s.routes.slice(0, 4).map((id) => ({ id, city: s.city }))).then((t) => { info[i].t = t; fill(i); }).catch(() => {});
@@ -97,7 +99,7 @@ export function stopScreen(root, p) {
   const ensure = async () => {
     if (!stop && p.lat) {
       try { stop = await B.stopAt(p.id, +p.lat, +p.lng); }
-      catch (e) { root.innerHTML = header("정류장", null, { back: true }) + note("정류장 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return null; }
+      catch (e) { root.innerHTML = header("정류장", null, { back: true }) + note("정류장 정보를 받지 못했어요. " + tryLater()); return null; }
     }
     if (!stop) { root.innerHTML = header("정류장", null, { back: true }) + note("정류장을 찾지 못했어요"); return false; }
     remember(stop);
@@ -172,7 +174,7 @@ export function stopScreen(root, p) {
     else if (!live) status = "실시간 도착을 받는 중...";
     else if (live.state === "unsupported") status = "이 정류장의 실시간 도착은 웹 버전에서 볼 수 없어요. 폰 앱에서 볼 수 있어요.";
     else if (live.state === "retry") status = "실시간 도착을 다시 받는 중...";
-    else if (live.state === "failed") status = downNote ? downNote + ". 받는 대로 저절로 보여 드려요." : "실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.";
+    else if (live.state === "failed") status = downNote ? downNote + ". 받는 대로 저절로 보여 드려요." : "실시간 도착을 받지 못했어요. " + tryLater();
     else if (live.partial && downNote) status = downNote + ". 일부 도착이 빠졌을 수 있어요.";
     else if (!rows.length) status = "이 정류장에 서는 버스 정보가 없어요";
     else if (!arr.length) status = "지금 도착 예정인 버스가 없어요";
@@ -574,7 +576,7 @@ export function routeScreen(root, p, ctx) {
     if (r && r.no === "노선" && p.no) { r.no = p.no; if (!r.type && p.type) r.type = p.type; }
     if (!alive) return;
     if (!r) {
-      root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요.");
+      root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요. " + tryLater());
       // 다른 앱에서 돌아오거나 인터넷이 다시 켜지면 다시
       offRetry = onReturn(() => { offRetry(); offRetry = null; start(); });
       return;

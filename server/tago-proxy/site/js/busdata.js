@@ -1,6 +1,6 @@
 // 버스 자료 (Compose 웹 WebRepo.kt·MetroBus.kt 와 같은 규칙).
 // 정류장 찾기는 서버 이름 조각(/data/names), 도착은 웹 통로(/w/dg/1613000 TAGO, /w/bus/seoul|gg 서울·경기).
-import { cached, getText, getJson, xmlRows, findRows, num, int, str, meters, cacheGet, cachePut } from "./core.js";
+import { cached, getText, getJson, xmlRows, findRows, num, int, str, meters, cacheGet, cachePut, naturalCompare } from "./core.js";
 import * as Edits from "./edits.js";
 import { seoulTime } from "./busahead.js";
 
@@ -211,6 +211,21 @@ export async function routeSums(ids) {
     for (const id of ids) if (bucket(id) === b && file[id]) { const s = sumOf(id, file[id]); if (s) out[id] = s; }
   }));
   return out;
+}
+
+/**
+ * 정류장 검색 결과마다 서는 노선 번호 몇 개 ("버스 140, 402, 3412 외 5" 또는 null).
+ * "강남역"처럼 비슷한 이름이 10곳 넘게 나오면 어느 정류장인지 고르기 어려웠음 (2026-11-22 점검).
+ * 노선 요약 파일(data/routesum, 조각마다 1KB 안팎)에서 번호만 찾음. 정류장마다 노선 12개까지 (경기 노선은 요약 파일에 없어 빠질 수 있음)
+ */
+export async function routeNoLabels(stops, show = 4) {
+  const sums = await routeSums(stops.flatMap((s) => s.routes.slice(0, 12)));
+  return stops.map((s) => {
+    const nos = [...new Set(s.routes.slice(0, 12).map((id) => sums[id]?.no).filter(Boolean))].sort(naturalCompare);
+    if (!nos.length) return null;
+    const shown = nos.slice(0, show), more = Math.max(0, new Set(s.routes).size - shown.length);
+    return "버스 " + shown.join(", ") + (more ? ` 외 ${more}` : "");
+  });
 }
 
 /** 노선 전체 (정류장 순서·좌표·시간표). 파일의 예전 id 로 찾고 지금 id 로 돌려줌.

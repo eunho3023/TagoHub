@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reason, checkOne, healthCron, healthDue, handleHealth, CHECKS, HEALTH_EVERY_MS } from "../src/health.js";
+import { reason, checkOne, healthCron, healthDue, handleHealth, CHECKS, HEALTH_EVERY_MS, quotaService, noteQuota, extraChecks, kstMidnight, _resetQuotaMemo } from "../src/health.js";
 
 test("고장 이유: 키 문제·한도 초과·제공처 오류를 사람이 읽을 말로", () => {
   assert.equal(reason(401, "Unauthorized"), "인증 실패 (키 확인 필요: HTTP 401)");
@@ -58,4 +58,49 @@ test("고장 확인은 정각이 아니어도 마지막 확인이 29분 지났�
   last = now - 5 * 60 * 1000;
   assert.equal(await healthDue(env, now), false);   // 5분 전에 했음
   assert.equal(await healthDue({}, now), false);   // DB 없음
+});
+
+test("한도 초과 서비스 이름: 공공데이터포털 주소·경로만", () => {
+  assert.equal(quotaService("https://apis.data.go.kr/1613000/SubwayInfoService/getSubwaySttnAcctoSchdulList?serviceKey=x"), "1613000/SubwayInfoService");
+  assert.equal(quotaService("6410000/busrouteservice/v2/getBusRouteStationListv2"), "6410000/busrouteservice");
+  assert.equal(quotaService("http://ws.bus.go.kr/api/rest/x"), null);
+  assert.equal(quotaService("https://dapi.kakao.com/v2/local/search"), null);
+  // 한국 자정: 11/23 16:00 UTC(= 11/24 01:00 KST) → 11/23 15:00 UTC
+  assert.equal(kstMidnight(Date.UTC(2026, 10, 23, 16)), Date.UTC(2026, 10, 23, 15));
+});
+
+test("실제 응답이 한도 초과면 적어 두고, 고장 확인에 중계·예약 작업·오늘 한도와 함께 보임", async () => {
+  _resetQuotaMemo();
+  const now = Date.UTC(2026, 10, 23, 3);   // 12:00 KST
+  const quota = new Map(), meta = new Map([["cron:last", now - 30 * 1000]]);
+  let relay = { at: now - 20 * 60 * 1000 };   // 20분째 소식 없음
+  const DB = {
+    prepare: (sql) => ({
+      bind: (...a) => ({
+        run: async () => { if (/INSERT INTO api_quota/.test(sql)) { const [svc, at, mid] = a; const o = quota.get(svc); quota.set(svc, { svc, at, first: o && o.at >= mid ? o.first : at }); } return {}; },
+        all: async () => ({ results: [...quota.values()].filter((r) => r.at >= a[0]) }),
+        first: async () => null,
+      }),
+      run: async () => ({}),
+      first: async () => (/kr_relay/.test(sql) ? relay : /poll_meta/.test(sql) ? { v: meta.get("cron:last") } : null),
+    }),
+  };
+  const env = { DB, RELAY_KEY: "k" };
+  assert.equal(await noteQuota(env, "1613000/SubwayInfoService/getX", "<returnAuthMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</returnAuthMsg>", now), true);
+  assert.equal(await noteQuota(env, "1613000/SubwayInfoService/getX", "LIMITED_NUMBER_OF_SERVICE", now + 1000), false);   // 1분에 한 번만
+  assert.equal(await noteQuota(env, "1613000/BusRouteInfoInqireService/getX", "<resultCode>00</resultCode>", now), false);   // 정상 응답
+  const list = await extraChecks(env, now);
+  const by = Object.fromEntries(list.map((c) => [c.name, c]));
+  assert.equal(by.kr_relay.ok, false);
+  assert.match(by.kr_relay.msg, /20분째 소식 없음/);
+  assert.equal(by.cron.ok, true);
+  assert.equal(by["quota:1613000/SubwayInfoService"].label, "TAGO 지하철 정보 하루 한도");
+  assert.equal(by["quota:1613000/SubwayInfoService"].ok, false);
+  // 다음 날이면 어제 한도 초과는 안 보임, 중계가 다시 안부하면 정상
+  relay = { at: now + 86400000 - 60000 };
+  meta.set("cron:last", now + 86400000 - 20 * 60 * 1000);
+  const next = Object.fromEntries((await extraChecks(env, now + 86400000)).map((c) => [c.name, c]));
+  assert.equal(next.kr_relay.ok, true);
+  assert.equal(next.cron.ok, false);   // 20분째 안 돎
+  assert.equal(Object.keys(next).some((k) => k.startsWith("quota:")), false);
 });

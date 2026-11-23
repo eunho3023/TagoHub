@@ -1,6 +1,6 @@
 // 연안여객선: 항구(ferry_ports.json)·항로(ferry_lines.json, 들르는 항구 순서·소요 시간)는 서버에 올린 앱과 같은 파일,
 // 그날 운항(출항 시각·배 이름·정상/통제·통제 사유)은 한국해양교통안전공단 실시간 자료 (오늘부터 5일 뒤까지 나옴). 앱 data/Ferry.kt 와 같은 규칙
-import { getText, esc, ymd, onReturn, cachedText } from "./core.js";
+import { getText, esc, ymd, onReturn, cachedText, tryLater } from "./core.js";
 import { act, header, note } from "./ui.js";
 import { clock } from "./subway.js";
 import { tripList, duration, RecentRoutes, blank, dayOf, nowMin, searchForm, resultTop, pickTop, bindDate, fullSido, sidoMatch } from "./trips.js";
@@ -101,7 +101,7 @@ export function ferryScreen(root, chipsHtml) {
     const h = header("타볼까", "여객선 운항") + chipsHtml;
     if (ferry.editing) {
       const top = h + pickTop(ferry, ferry.dep?.name, ferry.arr?.name, redraw);
-      if (!data) { root.innerHTML = top + note(failed ? "항구 목록을 받지 못했어요. 잠시 뒤 다시 시도해 주세요." : "항구 목록을 불러오는 중..."); return; }
+      if (!data) { root.innerHTML = top + note(failed ? "항구 목록을 받지 못했어요. " + tryLater() : "항구 목록을 불러오는 중..."); return; }
       const q = ferry.q.replace(/\s/g, ""), other = ferry.editing === "arr" ? ferry.dep : ferry.arr;
       const ok = other ? connected(data.lines, other.code) : null;
       const shown = data.places.filter((x) => (!ok || ok.has(x.code)) && (!q || x.name.includes(q) || sidoMatch(x.sido, q)))
@@ -124,7 +124,7 @@ export function ferryScreen(root, chipsHtml) {
       return;
     }
     const done = (html) => { root.innerHTML = h + resultTop(ferry, ferry.dep.name, ferry.arr.name, MAX, redraw) + html; bindDate(root, ferry, MAX, redraw); };
-    if (failed) return done(note("운항 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."));
+    if (failed) return done(note("운항 정보를 받지 못했어요. " + tryLater()));
     if (!list) return done(note("운항 정보를 불러오는 중..."));
     if (!list.length) return done(note(`${ferry.dep.name} → ${ferry.arr.name} 그날 운항이 없어요`));
     const r = tripList(root, list, nowMin(ferry), (x) => `<span class="grow"><b class="trip">${clock(x.depMin)}${x.arrMin != null ? "  →  " + clock(x.arrMin) : ""}</b>

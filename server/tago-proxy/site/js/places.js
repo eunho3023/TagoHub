@@ -1,6 +1,6 @@
 // 길찾기 (카카오): 장소 찾기 /w/kakao/place, 대중교통 /w/kakao/transit, 자동차 /w/kakao/car(카카오모빌리티), 도보·자전거 /w/kakao/walk·bicycle.
 // 앱처럼 수단마다 걸리는 시간을 함께 보여 주고, 경유지 5곳까지. 집·회사·학교 저장, 최근 목적지.
-import { getText, esc, distText, onReturn } from "./core.js";
+import { getText, esc, distText, onReturn, tryLater } from "./core.js";
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -195,7 +195,7 @@ export function directionsScreen(root, p, ctx) {
     if (!dir.routes) load();
     if (dir.mode !== "transit") { drawRide(html); return; }
     if (!dir.routes) { root.innerHTML = html + note("경로를 찾는 중..."); return; }
-    if (!dir.routes.length) { root.innerHTML = html + note(MESSAGES[dir.status] || "경로를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
+    if (!dir.routes.length) { root.innerHTML = html + note(MESSAGES[dir.status] || "경로를 받지 못했어요. " + tryLater()); return; }
     const r = dir.routes[dir.picked];
     if (r) {
       html += `<button class="link pad" ${act(() => { dir.picked = null; draw(); })}>← 다른 경로</button><div class="map-slot"></div>
@@ -229,7 +229,7 @@ export function directionsScreen(root, p, ctx) {
     const o = dir.other[dir.mode], name = MODES.find(([k]) => k === dir.mode)[1];
     if (!o) { root.innerHTML = html + note("경로를 찾는 중..."); return; }
     if (o.none) {
-      root.innerHTML = html + note(o.err ? "경로를 받지 못했어요. 잠시 뒤 다시 시도해 주세요." : `${name} 경로를 찾지 못했어요${o.msg ? " (" + o.msg + ")" : ""}`);
+      root.innerHTML = html + note(o.err ? "경로를 받지 못했어요. " + tryLater() : `${name} 경로를 찾지 못했어요${o.msg ? " (" + o.msg + ")" : ""}`);
       return;
     }
     const extra = dir.mode === "car" ? [o.toll ? "통행료 " + won(o.toll) : null, o.taxi ? "택시 약 " + won(o.taxi) : null].filter(Boolean).join(" · ") : "";

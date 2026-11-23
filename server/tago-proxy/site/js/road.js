@@ -1,5 +1,5 @@
 // 도로: 한국도로공사 돌발·정체·휴게소 주유 가격(서버 /w/ex/), 실시간 신호등(서울·울산, /w/signal/).
-import { getText, esc, onReturn, cachedText } from "./core.js";
+import { getText, esc, onReturn, cachedText, tryLater } from "./core.js";
 import { act, header, note, bindInput } from "./ui.js";
 import { MapView } from "./map.js";
 
@@ -122,7 +122,7 @@ export function roadScreen(root, chipsHtml, ctx) {
     if (road.tab === 2) {
       MapView.clear();
       const list = road.gas;
-      if (road.failed.has(2)) { root.innerHTML = h + note("주유 가격을 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
+      if (road.failed.has(2)) { root.innerHTML = h + note("주유 가격을 받지 못했어요. " + tryLater()); return; }
       if (!list) { root.innerHTML = h + note("주유 가격을 불러오는 중..."); return; }
       root.innerHTML = h + `<div class="searchbox"><input id="gq" type="search" placeholder="휴게소·노선 이름" value="${esc(road.q)}" autocomplete="off"></div><div id="gl"></div>`;
       const drawGas = () => {
@@ -147,7 +147,7 @@ export function roadScreen(root, chipsHtml, ctx) {
     MapView.onTap(() => { road.picked = null; draw(); });
     if (!road.fitted) { MapView.view(36.4, 127.8, 7); road.fitted = true; }
     const pick = (x) => { road.picked = x.id; if (x.lat != null) MapView.view(x.lat, x.lng, 13); draw(); };
-    if (road.failed.has(road.tab)) { list.innerHTML = note(road.tab === 0 ? "돌발 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요." : "정체 정보를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
+    if (road.failed.has(road.tab)) { list.innerHTML = note(road.tab === 0 ? "돌발 정보를 받지 못했어요. " + tryLater() : "정체 정보를 받지 못했어요. " + tryLater()); return; }
     if (!items) { list.innerHTML = note(road.tab === 0 ? "돌발 정보를 불러오는 중..." : "정체 구간을 불러오는 중..."); return; }
     if (!items.length) { list.innerHTML = note(road.tab === 0 ? "지금 고속도로 돌발 정보가 없어요" : "지금 고속도로 정체 구간이 없어요"); return; }
     const sorted = [...items].sort((a, b) => (a.id === road.picked ? -1 : b.id === road.picked ? 1 : 0));

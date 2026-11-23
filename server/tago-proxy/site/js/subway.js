@@ -1,5 +1,5 @@
 // 지하철: 역 찾기(국토교통부), 역 화면(서울 실시간 도착·시간표·혼잡도·시설), 서울 지하철 노선도 그림.
-import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor, livePoll, onReturn, cachedText } from "./core.js";
+import { BASE, getText, xmlRows, esc, seoulNow, isoDay, pad2, subwayColor, livePoll, onReturn, cachedText, tryLater } from "./core.js";
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { Favorites, Recent } from "./store.js";
@@ -171,7 +171,7 @@ export function stationScreen(root, p) {
   function liveHtml() {
     if (!realtime) return "";
     let h = `<div class="shead live">실시간 도착</div>`;
-    if (liveFailed) return h + note("실시간 도착을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.");
+    if (liveFailed) return h + note("실시간 도착을 받지 못했어요. " + tryLater());
     if (live === undefined) return h + note("실시간 도착을 불러오는 중...");
     if (!live || !live.length) return h + note("지금 실시간 도착 정보가 없어요");
     const by = new Map();
@@ -218,7 +218,7 @@ export function stationScreen(root, p) {
     // 서울 실시간 노선: 지도에 노선·열차 위치 (버스 노선 화면처럼)
     if (realtime) h += `<button class="link pad" ${act(() => go("subwayline", lineIdOf(s), { station: s.name }))}>🚇 ${esc(s.line)} 노선·열차 위치 보기</button>`;
     h += liveHtml();
-    if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); return; }
+    if (failed) { root.innerHTML = h + note("시간표를 받지 못했어요. " + tryLater()); return; }
     if (!up || !down) { root.innerHTML = h + note("시간표를 불러오는 중..."); return; }
     const today = day === dayCode(isoDay());
     const t = seoulNow(), nowSec = (t.h * 3600 + t.mi * 60 + new Date().getSeconds()) + (t.h < 3 ? 86400 : 0);
@@ -379,6 +379,6 @@ export function lineScreen(root, p, ctx) {
     }, 10000);
     const prevStop = poll.stop.bind(poll);
     poll.stop = () => { prevStop(); offIdle(); };
-  }).catch(() => { if (alive) root.innerHTML = header("지하철 노선", null, { back: true }) + note("노선을 받지 못했어요. 잠시 뒤 다시 시도해 주세요."); });
+  }).catch(() => { if (alive) root.innerHTML = header("지하철 노선", null, { back: true }) + note("노선을 받지 못했어요. " + tryLater()); });
   return () => { alive = false; poll?.stop(); };
 }

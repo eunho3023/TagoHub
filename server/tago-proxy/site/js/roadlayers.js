@@ -1,6 +1,6 @@
 // 지도 층: CCTV(국가교통정보센터 고속도로·국도), 휴게소(한국도로공사: 주유 가격·편의시설·브랜드·대표 메뉴), 주유소(카카오 장소).
 // 앱 지도설정의 "CCTV"·"휴게소" 층과 검색의 "주유소"와 같은 자료. 그리기·켜기는 topis.js 교통 층
-import { getText, getJson, esc, cachedText } from "./core.js";
+import { getText, getJson, esc, cachedText, tryLater } from "./core.js";
 import { act } from "./ui.js";
 import { gasPrices } from "./road.js";
 
@@ -69,7 +69,7 @@ export async function playCctv(x) {
   document.addEventListener("keydown", onKey);
   box.addEventListener("click", (e) => { if (e.target === box || e.target.closest(".cctvx")) closeCctv(); });
   const me = player, video = box.querySelector("video"), noteEl = box.querySelector(".cctvnote");
-  const fail = () => { if (player === me) noteEl.textContent = "영상을 열지 못했어요. 잠시 뒤 다시 시도해 주세요."; };
+  const fail = () => { if (player === me) noteEl.textContent = "영상을 열지 못했어요. " + tryLater(); };
   video.addEventListener("playing", () => { if (player === me) noteEl.textContent = ""; });
   const src = x.url.replace(/^http:\/\//, "https://");
   if (video.canPlayType("application/vnd.apple.mpegurl")) {

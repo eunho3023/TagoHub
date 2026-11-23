@@ -25,10 +25,22 @@ export async function getText(path, query) {
       await new Promise((res) => setTimeout(res, NET_RETRY_MS[i]));
     }
   }
+  const text = await r.text();
+  // 공공데이터포털 하루 한도 초과: 오류 문구를 "잠시 뒤 다시"가 아니라 "밤 12시 뒤"로 (tryLater)
+  if (/LIMITED_NUMBER_OF_SERVICE/.test(text.slice(0, 4000))) quotaAt = Date.now();
   if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.text();
+  return text;
 }
 const NET_RETRY_MS = [1000, 2500];
+let quotaAt = 0;
+
+/**
+ * 받지 못했을 때 덧붙일 말. 방금(1분 안) 하루 요청 한도 초과 응답을 받았으면 다시 눌러도 안 되니 그렇게 알림
+ * (예전엔 늘 "잠시 뒤 다시 시도해 주세요"라 계속 눌러 보게 됐음, 2026-11-22 지하철 시간표·경기 노선)
+ */
+export function tryLater() {
+  return Date.now() - quotaAt < 60000 ? "오늘 이용이 많아 자료 한도가 다 찼어요. 밤 12시가 지나면 다시 볼 수 있어요." : "잠시 뒤 다시 시도해 주세요.";
+}
 
 /** 인터넷이 켜져 있고 화면이 보일 때까지 (최대 ms) */
 function whenUsable(ms) {
