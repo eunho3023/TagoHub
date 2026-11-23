@@ -2,7 +2,7 @@ package com.eunho.tagohub.data
 
 import com.eunho.tagohub.core.MiniJson
 
-/** 공지사항: 깃허브 저장소의 notices.json ([{date,title,body}]) — 저장소에서 파일만 고치면 앱에 반영 */
+/** 공지사항 ([{date,title,body}]): 타볼까 서버 /w/notices(관리자가 웹 공지사항 화면에서 씀 + 이 저장소 notices.json), 못 받으면 [URL] */
 object Notices {
     const val URL = "https://raw.githubusercontent.com/eunho3023/TagoHub/main/notices.json"
 
