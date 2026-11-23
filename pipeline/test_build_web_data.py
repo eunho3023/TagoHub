@@ -32,6 +32,8 @@ def test_build_small_db():
         CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER);
         INSERT INTO route_info VALUES('R1','06:00','23:00',15,20,25);
         CREATE TABLE gbis_shapes(id TEXT PRIMARY KEY, poly TEXT); INSERT INTO gbis_shapes VALUES('GGB200000006','_p~iF~ps|U_ulLnnqC');
+        CREATE TABLE gbis_routes(id TEXT PRIMARY KEY, no TEXT NOT NULL, start_name TEXT, end_name TEXT);
+        INSERT INTO gbis_routes VALUES('GGB200000085','3000','수원역','강남역'),('R1','덮어쓰면안됨',NULL,NULL);
         """)
         db.commit(); db.close()
         assets = d / "assets"; assets.mkdir()
@@ -56,6 +58,10 @@ def test_build_small_db():
         assert not (out / f"names/{ord('폐'):x}.json").exists()
         assert not any(r[0] == "SEB3" for r in t) and m["hiddenStops"] == 1
         assert json.loads((out / f"routesum/{bw.bucket('R1')}.json").read_text(encoding="utf-8"))["R1"] == ["104", "송천동", "평화동", "일반", "06:00", "23:00", 15, 20, 25]
+        # 경기 노선(gbis_routes)도 요약에 번호·기점·종점만 (정류장 목록·시간표 없음), routes 표에 있는 노선은 그대로
+        assert json.loads((out / f"routesum/{bw.bucket('GGB200000085')}.json").read_text(encoding="utf-8"))["GGB200000085"] == ["3000", "수원역", "강남역", None, None, None, None, None, None]
+        assert json.loads((out / f"routesum/{bw.bucket('R1')}.json").read_text(encoding="utf-8"))["R1"][0] == "104"
+        assert not (out / f"routes/{bw.bucket('GGB200000085')}.json").exists() or "GGB200000085" not in json.loads((out / f"routes/{bw.bucket('GGB200000085')}.json").read_text(encoding="utf-8"))
         c = json.loads((out / "cities.json").read_text(encoding="utf-8"))
         assert c["names"] == {"35010": "전주"}
         assert json.loads((out / "routes_by_no.json").read_text(encoding="utf-8")) == {"35010": {"104": ["R1"]}}
