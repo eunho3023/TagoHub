@@ -10,6 +10,7 @@ import * as Edits from "./edits.js";
 import { tidyRoad } from "./roadline.js";
 import * as Ahead from "./busahead.js";
 import { MAX_SIDE_M, twoWayMask, offsetRight, shiftRight } from "./sideline.js";
+import { trafficLayer } from "./topis.js";
 export { offsetRight };
 
 const REFRESH_MS = 15000, BUS_POS_MS = 10000;
@@ -439,6 +440,10 @@ export function routeScreen(root, p, ctx) {
   // 화면에 그린 노선 선 (도로 선을 진행 방향 오른쪽으로 비킨 것)과 그때의 m/px·비킨 거리(m)
   let drawn = null, drawnMpp = 0, sideM = 0, roadTwoWay = null, twoWayOf = null;
   const timers = [];
+  // 지도 종류(일반·위성)·레이어 단추 (지도 탭과 같은 topis.js): 노선 화면에서도 소통·자전거·주차장·편의시설·주유소 등을 켬
+  let traffic = null, layerCard = null, cardSeq = 0;
+  // 노선 모양을 못 받았으면(서버가 아직 못 만듦) 정류장을 곧게 이어 그리고, 잠시 뒤 다시 받음
+  let shapeMissing = false;
   /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
   const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]) : []);
   // 버스는 받은 실제 GPS 좌표에서 그림 (노선 선 위로 옮기거나 노선을 따라 움직이지 않음:
@@ -494,11 +499,12 @@ export function routeScreen(root, p, ctx) {
       if (road && twoWayOf !== road) { twoWayOf = road; roadTwoWay = twoWayMask(road); }
       const simp = road ? simplifyLine(road, mpp * 0.7) : null;
       drawn = sideM && simp ? offsetRight(simp, twoWayMask(simp).map((t) => (t ? sideM : 0))) : linesOf;
-      MapView.lines([{ pts: drawn, color, width: LINE_W }]);
     }
+    // 레이어(소통 선)는 노선 선 아래에. 같은 선은 지도가 그대로 둠 (map.js)
+    MapView.lines([...(traffic ? traffic.lines() : []), { pts: drawn, color, width: LINE_W }]);
     const z = MapView.zoom();
     // 노선 선 위에 진행 방향 화살표 (정류장 점이 아니라 선에, 화면에서 약 90px 마다)
-    const dots = lineArrows(drawn);
+    const dots = [...(traffic ? traffic.dots() : []), ...lineArrows(drawn)];
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
     if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; }
     // 지도 고치기로 손으로 옮긴 정류장은 고친 자리 그대로 (앱 RoutePin.fixed; 선 위로 붙이면 고친 것이 안 보였음)
@@ -521,6 +527,14 @@ export function routeScreen(root, p, ctx) {
       list.forEach((b, k) => dots.push({ id: "b:" + b.vehicleNo, lat: xy[0] + k * 0.00008, lng: xy[1], color, ring: "#fff", r: 8, label: busLabel(b) }));
     }
     MapView.dots(dots, (d) => {
+      // 레이어 점(돌발·자전거·주차장·편의시설·주유소·휴게소·CCTV): 지도 아래 카드 (topis.js card)
+      if (/^(acc|bike|park|pl|cctv|rest|gas):/.test(d.id) && traffic && layerCard) {
+        const asked = ++cardSeq;
+        const show = (h) => { if (!h || asked !== cardSeq || !layerCard) return; layerCard.innerHTML = h + `<button class="link">닫기</button>`; layerCard.style.display = "flex"; layerCard.querySelector("button.link:last-child").onclick = () => { layerCard.style.display = "none"; }; };
+        show(traffic.card(d.id, show));
+        return;
+      }
+      if (layerCard) layerCard.style.display = "none";
       const seq = d.id.startsWith("s:") ? +d.id.slice(2) : null;
       const idx = seq != null ? r.stops.findIndex((s) => s.seq === seq) : [...B.busAtStops(r.stops, pos?.buses || []).entries()].find(([, l]) => l.some((b) => "b:" + b.vehicleNo === d.id))?.[0];
       root.querySelector(`[data-i="${idx}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -551,7 +565,8 @@ export function routeScreen(root, p, ctx) {
       const txt = (a) => (a.n === 0 ? (fi === 0 ? "출발 대기" : "도착") : `${a.n}정류장 전 · ${a.m < 1 ? "곧 도착" : Math.ceil(a.m) + "분 후"}`);
       come = `${r.stops[fi].name}까지 · ` + (near.length ? near.map((a, k) => (k ? "다음 " : "") + txt(a)).join(" / ") : "오는 버스 없음");
     }
-    root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${come ? `<small><b>${esc(come)}</b></small>` : ""}${plan ? `<small>${esc(plan)}</small>` : ""}`;
+    root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${come ? `<small><b>${esc(come)}</b></small>` : ""}${plan ? `<small>${esc(plan)}</small>` : ""}` +
+      (shapeMissing ? `<small>노선 길 모양을 아직 받지 못해 지도에는 정류장 사이를 곧게 이었어요. 잠시 뒤 다시 받아요</small>` : "");
     list.innerHTML = r.stops.map((st, i) => {
       const turn = i > 0 && st.upDown && r.stops[i - 1].upDown && st.upDown !== r.stops[i - 1].upDown ? `<div class="turn">회차</div>` : "";
       const here = p.from && st.id && B.legacyId(st.id) === B.legacyId(p.from);
@@ -592,10 +607,28 @@ export function routeScreen(root, p, ctx) {
       Promise.resolve(tickNow()).finally(() => { refreshing = false; if (alive) drawList(); });
     });
     ctx.useMap(root.querySelector(".map-slot"));
+    layerCard = document.createElement("div");
+    layerCard.className = "side-card";
+    root.querySelector(".map-slot")?.appendChild(layerCard);
+    traffic = trafficLayer(() => { if (alive) drawMap(); });
+    timers.push(() => { traffic?.destroy(); traffic = null; layerCard?.remove(); layerCard = null; });
     drawList(); drawMap();
-    // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림
-    B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, { onNewer: (s) => { if (!alive) return; road = tidyRoad(s, stopPts()); snapped = null; linesOf = null; drawList(); drawMap(); } })
-      .then((s) => { if (alive) { road = tidyRoad(s, stopPts()); drawMap(); } });
+    // 저장해 둔 모양이 있으면 바로 그리고, 서버에서 다른 모양이 오면 바꿔 그림.
+    // 못 받으면(서버가 카카오 길찾기로 아직 못 만듦 → 정류장을 곧게 이음) 30초·1분 30초·3분 뒤 다시
+    const gotShape = (s) => {
+      if (!alive) return;
+      shapeMissing = !(s && s.length >= 2);
+      road = shapeMissing ? null : tidyRoad(s, stopPts()); snapped = null; linesOf = null; drawList(); drawMap();
+    };
+    const loadShape = (tries) => B.shape(r.id, r.city, r.stops, r.no !== "노선" ? r.no : p.no, tries ? {} : { onNewer: gotShape })
+      .catch(() => null)
+      .then((s) => {
+        if (!alive) return;
+        if (s && s.length >= 2) return gotShape(s);
+        if (!road) gotShape(null);
+        if (tries < 3) { const t = setTimeout(() => loadShape(tries + 1), [30000, 90000, 180000][tries]); timers.push(() => clearTimeout(t)); }
+      });
+    loadShape(0);
     const offIdle = MapView.onIdle(drawMap);
     timers.push(() => offIdle());
     // 누가 노선 모양·정류장 위치를 고치면 바로 다시 그림
