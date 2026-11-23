@@ -19,6 +19,10 @@
 /legal/*
   Cache-Control: no-cache
 
+# 지도 도구 Leaflet 1.9.4 (site/vendor/leaflet, 외부 배포 사이트 대신 타볼까에서 줌): 판이 바뀌면 폴더 이름도 바꿈
+/vendor/*
+  Cache-Control: public, max-age=604800
+
 # 검색 로봇용 (site/robots.txt, sitemap.xml): 예전엔 이 주소가 첫 화면(HTML)으로 나가서 검색 등록이 안 됐음
 /robots.txt
   Content-Type: text/plain; charset=utf-8

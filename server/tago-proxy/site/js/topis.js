@@ -16,7 +16,7 @@ const SAVE = "tagohub.traffic";   // 예전: 모두 한꺼번에 켜고 끄기 (
 const LAYERS = "tagohub.layers";   // 지금: 레이어마다 {traffic, bike, park, pl:종류…}
 /** 레이어 고르기 목록 [열쇠, 이름, 설명] */
 export const LAYER_LIST = [["traffic", "실시간 교통", "서울 도로 소통·돌발"], ["cctv", "CCTV", "고속도로·국도 실시간 영상"],
-  ["rest", "휴게소", "주유 가격·편의시설·메뉴"], ["gas", "주유소", GAS_ON() ? "" : "11월 29일부터"],
+  ["rest", "휴게소", "주유 가격·편의시설·메뉴"], ["gas", "주유소", GAS_ON() ? "" : "11월 30일부터"],
   ["bike", "공영자전거", "빌릴 수 있는 대수"], ["park", "주차장", ""],
   ...Object.keys(PLACE_KINDS).map((k) => ["pl:" + k, PLACE_NAMES[k] || k, ""])];
 /** 저장해 둔 레이어 켜짐 (예전 "모두 켜기"였으면 모두 켬) */

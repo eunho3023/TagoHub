@@ -15,7 +15,7 @@ data class Place2(val name: String, val address: String?, val lat: Double, val l
     val category: String? = null, val phone: String? = null, val url: String? = null, val distance: Int? = null)
 
 /**
- * 장소 이름 검색 (카카오 로컬 API, 키워드로 장소 검색). 키는 같은 카카오 앱의 REST API 키(KAKAO_REST_KEY).
+ * 장소 이름 검색 (카카오 로컬 API, 키워드로 장소 검색. 11월 30일부터 공공기관 [PublicGeo] 먼저). 키는 같은 카카오 앱의 REST API 키(KAKAO_REST_KEY).
  * 키가 없거나 카카오맵 사용 설정이 꺼져 있으면 빈 결과 → 길찾기는 정류장 이름으로만 목적지를 고른다.
  */
 object PlaceSearch {
@@ -24,7 +24,7 @@ object PlaceSearch {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    val available: Boolean get() = BuildConfig.KAKAO_REST_KEY.isNotBlank()
+    val available: Boolean get() = BuildConfig.KAKAO_REST_KEY.isNotBlank() || PublicGeo.on()
 
     suspend fun search(query: String, near: LatLng?): List<Place2> =
         searchResult(query, near).getOrElse {
@@ -33,9 +33,11 @@ object PlaceSearch {
         }
 
     suspend fun searchResult(query: String, near: LatLng?): Result<List<Place2>> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext Result.success(emptyList())
+        // 11월 30일부터 공공기관(브이월드, 못 찾으면 서버가 카카오로 한 번 더). 서버에 못 물으면 아래 카카오로
+        if (PublicGeo.on()) PublicGeo.places(query, near)?.let { return@withContext Result.success(it) }
         val key = BuildConfig.KAKAO_REST_KEY.trim()
         if (key.isEmpty()) return@withContext Result.failure(IllegalStateException("카카오 REST API 키가 설정되지 않았습니다."))
-        if (query.isBlank()) return@withContext Result.success(emptyList())
         try {
             val url = KakaoLocal.KEYWORD_URL.toHttpUrl().newBuilder()
                 .addQueryParameter("query", query)
@@ -132,16 +134,20 @@ object KakaoExtra {
         }.onFailure { Log.w("TagoMap", "카카오 ${url.encodedPath} 실패: ${it.message}") }.getOrNull()
     }
 
-    /** 좌표의 법정동 코드 10자리 (카카오 좌표로 행정구역) */
-    suspend fun legalCode(lat: Double, lng: Double): String? = get(
-        KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
-    )?.let(KakaoLocal::legalCode)
+    /** 좌표의 법정동 코드 10자리 (11월 30일부터 브이월드, 그 전·실패하면 카카오 좌표로 행정구역) */
+    suspend fun legalCode(lat: Double, lng: Double): String? {
+        if (PublicGeo.on()) PublicGeo.where(lat, lng)?.legal?.let { return it }
+        return get(
+            KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
+        )?.let(KakaoLocal::legalCode)
+    }
 
     /**
      * 법정동 코드와, 못 받았을 때는 그 이유(화면에 그대로 보여줄 문장). 이유를 구분해 두면
      * "키 확인" 같은 짐작 대신 실제 원인(권한 없음·네트워크·바다 위 좌표 …)을 알 수 있음.
      */
     suspend fun legalCodeOrReason(lat: Double, lng: Double): Pair<String?, String?> = withContext(Dispatchers.IO) {
+        if (PublicGeo.on()) PublicGeo.where(lat, lng)?.legal?.let { return@withContext it to null }
         if (key().isEmpty()) return@withContext null to com.eunho.tagohub.core.DevMode.msg("local.properties 에 KAKAO_REST_KEY 가 없습니다.")
         val url = KakaoLocal.REGION_URL.toHttpUrl().newBuilder().addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build()
         try {
@@ -173,17 +179,29 @@ object KakaoExtra {
             .addQueryParameter("end_x", b.lng.toString()).addQueryParameter("end_y", b.lat.toString()).build()
     )?.let(KakaoWalk::parse)?.takeIf { it.first == "OK" && it.second.size >= 2 }?.second
 
-    /** 주소로 좌표 변환 */
-    suspend fun address(q: String): List<Place2> = get(
-        KakaoLocal.ADDRESS_URL.toHttpUrl().newBuilder().addQueryParameter("query", q).addQueryParameter("size", "5").build()
-    )?.let(KakaoLocal::parseAddress).orEmpty()
+    /** 주소로 좌표 변환 (11월 30일부터 브이월드, 그 전·실패하면 카카오) */
+    suspend fun address(q: String): List<Place2> {
+        if (PublicGeo.on()) PublicGeo.addresses(q)?.let { return it }
+        return get(
+            KakaoLocal.ADDRESS_URL.toHttpUrl().newBuilder().addQueryParameter("query", q).addQueryParameter("size", "5").build()
+        )?.let(KakaoLocal::parseAddress).orEmpty()
+    }
 
-    /** 카테고리로 장소 검색 (주변 1.5km, 가까운 순) */
-    suspend fun category(code: String, lat: Double, lng: Double): List<Place2> = get(
-        KakaoLocal.CATEGORY_URL.toHttpUrl().newBuilder().addQueryParameter("category_group_code", code)
-            .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString())
-            .addQueryParameter("radius", "1500").addQueryParameter("sort", "distance").addQueryParameter("size", "15").build()
-    )?.let(KakaoLocal::parse).orEmpty()
+    /**
+     * 카테고리로 장소 검색 (주변 1.5km, 가까운 순). 11월 30일부터 주유소(OL7)는 오피넷, 주차장(PK6)은 앱 주차장 자료(공공데이터).
+     * 나머지 분류(편의점·카페·음식점·약국·병원·은행·지하철역)는 아직 카카오
+     */
+    suspend fun category(code: String, lat: Double, lng: Double): List<Place2> {
+        if (PublicGeo.on()) when (code) {
+            "OL7" -> PublicGeo.gas(lat, lng)?.let { return it }
+            "PK6" -> return PublicGeo.parking(lat, lng)
+        }
+        return get(
+            KakaoLocal.CATEGORY_URL.toHttpUrl().newBuilder().addQueryParameter("category_group_code", code)
+                .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString())
+                .addQueryParameter("radius", "1500").addQueryParameter("sort", "distance").addQueryParameter("size", "15").build()
+        )?.let(KakaoLocal::parse).orEmpty()
+    }
 
     /** 자전거(bicycle=true)·도보 경로: (경로, 거리 m, 시간 초) */
     suspend fun ride(a: LatLng, b: LatLng, bicycle: Boolean): Triple<List<LatLng>, Int, Int>? {
@@ -238,7 +256,8 @@ object KakaoExtra {
     suspend fun placeName(lat: Double, lng: Double): String? {
         val cacheKey = "%.5f,%.5f".format(java.util.Locale.ROOT, lat, lng)
         addressCache.get(cacheKey)?.let { return it }
-        val name = get(
+        // 11월 30일부터 브이월드 (건물 이름 → 도로명 → 지번), 서버에 못 물으면 카카오
+        val name = (if (PublicGeo.on()) PublicGeo.where(lat, lng)?.name else null) ?: get(
             KakaoLocal.COORD2ADDRESS_URL.toHttpUrl().newBuilder()
                 .addQueryParameter("x", lng.toString()).addQueryParameter("y", lat.toString()).build(),
             addressClient,

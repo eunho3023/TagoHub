@@ -8,6 +8,7 @@ import { handleShape, shapeCron } from "./shape.js";
 import { recordGps, gpsInfo } from "./gps.js";
 import { storeKey, getStored, putStored, DAY_MS } from "./tagostore.js";
 import { handleSeoulTraffic } from "./seoultraffic.js";
+import { handlePub } from "./pubgeo.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
 import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
@@ -117,6 +118,11 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/topis/")) return handleSeoulTraffic(url, env, ctx);
   if (url.pathname.startsWith("/w/seoul/")) return seoulWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kakao/")) return kakaoWeb(request, url, env, ctx);
+  // 공공기관 장소·주소·주유소 (src/pubgeo.js, 브이월드·오피넷): 카카오 대신. 저장에 없을 때만 주소마다 분당 제한
+  if (url.pathname.startsWith("/w/pub/")) {
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    return handlePub(request, url, env, ctx, { limit: env.WEB_LIMIT ? async () => (await env.WEB_LIMIT.limit({ key: "pub:" + ip })).success : null });
+  }
   if (url.pathname.startsWith("/w/ov/")) return ovWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);

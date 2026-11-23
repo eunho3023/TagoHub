@@ -57,3 +57,6 @@ server/tago-proxy/public/*
 server/tago-proxy/pages/dist/
 server/tago-proxy/pages/wrangler.toml
 server/tago-proxy/pages-public/
+
+# 웹 지도 키가 들어가는 파일 (deploy.ps1 이 배포할 때 만듦, 로컬 미리보기용으로 만들어도 올리지 않음)
+server/tago-proxy/site/config.js

@@ -1,6 +1,6 @@
-// 길찾기 (카카오): 장소 찾기 /w/kakao/place, 대중교통 /w/kakao/transit, 자동차 /w/kakao/car(카카오모빌리티), 도보·자전거 /w/kakao/walk·bicycle.
+// 길찾기 (카카오): 장소 찾기 /w/kakao/place(11월 30일부터 공공기관 /w/pub/place), 대중교통 /w/kakao/transit, 자동차 /w/kakao/car(카카오모빌리티), 도보·자전거 /w/kakao/walk·bicycle.
 // 앱처럼 수단마다 걸리는 시간을 함께 보여 주고, 경유지 5곳까지. 집·회사·학교 저장, 최근 목적지.
-import { getText, esc, distText, onReturn, tryLater } from "./core.js";
+import { getText, esc, distText, onReturn, tryLater, PUB_ON } from "./core.js";
 import { act, header, note, sectionHead, bindInput, chips } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -28,6 +28,11 @@ const legsOf = () => { const pts = [dir.from, ...dir.vias, dir.to]; return pts.s
 function changed() { dir.routes = null; dir.picked = null; dir.other = {}; }
 
 export async function searchPlaces(q, near) {
+  // 11월 30일부터 공공기관(브이월드, 못 찾으면 서버가 카카오로 한 번 더): 서버가 정리한 모양 그대로
+  if (PUB_ON()) {
+    const body = JSON.parse(await getText("w/pub/place", { q: q.trim(), x: near?.lng, y: near?.lat }));
+    return (body.places || []).filter((p) => p.name && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  }
   const body = JSON.parse(await getText("w/kakao/place", { q: q.trim(), x: near?.lng, y: near?.lat }));
   return (body.documents || []).map((m) => ({
     name: m.place_name, address: m.road_address_name || m.address_name || null,

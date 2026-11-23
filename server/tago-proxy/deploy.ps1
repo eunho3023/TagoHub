@@ -81,8 +81,10 @@ if ($py) {
 $pub = Join-Path $PSScriptRoot 'public'
 Get-ChildItem $pub -File | Where-Object { $_.Name -ne '_headers' } | Remove-Item -Force
 Get-ChildItem $pub -Directory | Where-Object { $_.Name -ne 'data' } | Remove-Item -Recurse -Force
-# 카카오 지도 JavaScript 키 (local.properties 의 KAKAO_JS_KEY). 웹 페이지에 들어가는 키라 공개돼도 되는 종류이고, 카카오에 등록한 도메인에서만 동작
-# 키가 없으면 빈 값 → 웹 버전은 OpenStreetMap 지도
+# 브이월드(국토교통부) 지도 키 (local.properties 의 VWORLD_KEY). 웹 지도 그림을 브라우저가 바로 받으려고 웹 페이지에도 넣음
+# (카카오 지도 JavaScript 키처럼 공개되는 종류, 브이월드에 등록한 서비스 주소용). 키가 없으면 빈 값 → 웹 지도는 OpenStreetMap
+$vwKey = (Prop 'VWORLD_KEY') -replace '[^A-Za-z0-9-]', ''
+# 카카오 지도 JavaScript 키 (KAKAO_JS_KEY): 11월 29일까지 웹 지도 (site/js/core.js PUB_FROM 뒤에는 안 씀)
 $jsKey = (Prop 'KAKAO_JS_KEY') -replace '[^A-Za-z0-9]', ''
 
 # 타볼까 (Cloudflare Pages): 화면·자료·서버 코드 모두 (pages/functions 가 같은 src/index.js 를 돌림)
@@ -108,7 +110,7 @@ PutSecret 'APP_TOKEN' $appToken
 PutSecret 'DATA_GO_KR_KEY' $dataKey
 # 앱이 자리표시(TAGOHUB_<이름>)로 보내는 키들 (src/proxy.js 의 KEY_NAMES). 비어 있는 것은 건너뜀
 $fallback = @{ 'KLID_BUS_KEY' = 'TAGO_SERVICE_KEY'; 'KAC_API_KEY' = 'TAGO_SERVICE_KEY' }
-foreach ($name in @('TAGO_SERVICE_KEY', 'KLID_BUS_KEY', 'KAC_API_KEY', 'KRIC_SUBWAY_KEY', 'SEOUL_SIGNAL_KEY', 'EX_API_KEY', 'SEOUL_SUBWAY_KEY', 'KAKAO_REST_KEY', 'KMA_HUB_KEY', 'KEPCO_API_KEY', 'DEV_IDS')) {
+foreach ($name in @('TAGO_SERVICE_KEY', 'KLID_BUS_KEY', 'KAC_API_KEY', 'KRIC_SUBWAY_KEY', 'SEOUL_SIGNAL_KEY', 'EX_API_KEY', 'SEOUL_SUBWAY_KEY', 'KAKAO_REST_KEY', 'KMA_HUB_KEY', 'KEPCO_API_KEY', 'VWORLD_KEY', 'OPINET_KEY', 'DEV_IDS')) {
     $v = Prop $name
     if (-not $v -and $fallback.ContainsKey($name)) { $v = Prop $fallback[$name] }
     if ($v) {
@@ -176,7 +178,7 @@ $keep = Get-Content $props -Encoding UTF8 | Where-Object { $_ -notmatch '^\s*TAG
 $keep + "TAGO_PROXY_URL=$pagesUrl" + "TAGO_PROXY_TOKEN=$appToken" | Set-Content $props -Encoding UTF8
 
 Write-Host "3/3 타볼까 올리는 중 ($pagesUrl)..."
-# dist = 화면(site) + 자료 조각(public/data) + 카카오 키(config.js) + _headers + _routes.json(서버 길만 서버 코드로)
+# dist = 화면(site) + 자료 조각(public/data) + 브이월드 지도 키(config.js) + _headers + _routes.json(서버 길만 서버 코드로)
 $dist = Join-Path $pagesRoot 'dist'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory $dist | Out-Null
@@ -184,7 +186,7 @@ Get-ChildItem (Join-Path $PSScriptRoot 'site') | Copy-Item -Destination $dist -R
 if (Test-Path (Join-Path $pub 'data')) { Copy-Item (Join-Path $pub 'data') -Destination $dist -Recurse -Force }
 Copy-Item (Join-Path $pub '_headers') -Destination $dist -Force
 Copy-Item (Join-Path $pagesRoot '_routes.json') -Destination $dist -Force
-[IO.File]::WriteAllText((Join-Path $dist 'config.js'), "window.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
+[IO.File]::WriteAllText((Join-Path $dist 'config.js'), "window.TAGOHUB_VWORLD_KEY = `"$vwKey`";`nwindow.TAGOHUB_KAKAO_JS_KEY = `"$jsKey`";`n", (New-Object Text.UTF8Encoding $false))
 # Pages 설정 (데이터베이스 번호가 들어가 저장소에는 안 올림: .gitignore)
 $ptoml = "name = `"$pagesProject`"`npages_build_output_dir = `"./dist`"`ncompatibility_date = `"2025-10-01`"`n"
 if ($db -and $db.uuid) { $ptoml += "`n[[d1_databases]]`nbinding = `"DB`"`ndatabase_name = `"tagohub-log`"`ndatabase_id = `"$($db.uuid)`"`n" }
@@ -194,7 +196,7 @@ $pout = (& npx --yes wrangler@4.45.0 pages deploy dist --project-name $pagesProj
 Pop-Location
 Write-Host $pout
 if ($pout -match 'Authentication error|10000') { Write-Host '  Pages 권한이 없어요: Cloudflare API 토큰에 "Cloudflare Pages: Edit" 권한을 더한 뒤 다시 실행해 주세요' }
-if ($jsKey) { Write-Host "  카카오 지도: 카카오 개발자 사이트 JavaScript SDK 도메인에 $pagesUrl 이 있어야 지도가 보임" }
+if (-not $vwKey) { Write-Host "  브이월드 키(VWORLD_KEY)가 없어 웹 지도는 OpenStreetMap 으로 나와요" }
 
 Start-Sleep -Seconds 3
 try { $h = (Invoke-WebRequest "$pagesUrl/health" -UseBasicParsing).Content } catch { $h = $_.Exception.Message }
