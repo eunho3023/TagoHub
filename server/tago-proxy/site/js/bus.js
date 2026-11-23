@@ -582,7 +582,7 @@ export function routeScreen(root, p, ctx) {
       return;
     }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
-      `<div class="map-slot"></div><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="stops" class="list"></div>`;
+      `<div class="map-slot"></div><div class="under-map"><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="stops" class="list"></div></div>`;
     let tickNow = () => {};
     // 새로고침: 누르자마자 "다시 받는 중"으로 바꾸고(받지 못했어요가 그대로 남아 안 눌린 것 같았음) 받는 대로 그림
     root.querySelector("#rrefresh")?.addEventListener("click", () => {
