@@ -54,6 +54,12 @@ export function badWhy(status, body) {
   return "other";
 }
 
+/** 날짜별 숫자(day·ok·hits·bad·err·why)는 7일만 남김: 하루에 몇 줄씩 끝없이 쌓였음 (2026-11-23) */
+export async function pruneMeta(db, nowMs = Date.now()) {
+  const cut = kst(nowMs - 7 * 86400000).day;
+  return db.prepare("DELETE FROM poll_meta WHERE k <> 'cron:last' AND substr(k, instr(k, ':') + 1, 10) GLOB '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND substr(k, instr(k, ':') + 1, 10) < ?").bind(cut).run();
+}
+
 /** 상태 숫자 (set 이면 바꿈, 아니면 더함) */
 async function bump(db, k, v, set = false) {
   await db.prepare(`INSERT INTO poll_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = ${set ? "excluded.v" : "v + excluded.v"}`).bind(k, v).run();
@@ -80,7 +86,10 @@ export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
   await ensure(db);
   await bump(db, "cron:last", nowMs, true);
   // 관심도는 하루에 한 번(새벽 4시) 반으로 줄여 요즘 보는 노선을 앞으로
-  if (hour === 4 && minute === 0) await db.prepare("UPDATE route_interest SET score = score / 2").run();
+  if (hour === 4 && minute === 0) {
+    await db.prepare("UPDATE route_interest SET score = score / 2").run();
+    await pruneMeta(db, nowMs);
+  }
   if (hour < 5) return { skip: "night" };
   const limit = +env.POLL_PER_DAY > 0 ? +env.POLL_PER_DAY : PER_DAY;
   const used = (await db.prepare("SELECT v FROM poll_meta WHERE k = ?").bind("day:" + day).first())?.v || 0;
