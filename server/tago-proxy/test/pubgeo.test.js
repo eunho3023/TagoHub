@@ -135,12 +135,17 @@ test("상가정보: 가까운 순, 지점명 붙임, 같은 가게(GS25 = 지에
   assert.ok(STORE_CATS.HP8.keep.test("Q10201") && !STORE_CATS.HP8.keep.test("Q10401"));           // 병원·의원만
   assert.deepEqual(sdscStores({ response: { header: { resultCode: "03" } } }, 35.82, 127.148), []);  // 자료 없음
   assert.equal(STORE_CATS.BK9, undefined);   // 은행은 상가정보에 없음 (앱이 카카오로)
+  // 업종이 잘못 적힌 가게: 카페로 적힌 미용실은 빼고, 약국은 이름에 약국이 있는 것만
+  const odd = { body: { items: [store("철수파마", "", 35.8201, 127.148, "I21201", "카페"), store("커피집", "", 35.8202, 127.148, "I21201", "카페")] } };
+  assert.deepEqual(sdscStores(odd, 35.82, 127.148, null, STORE_CATS.CE7.bad).map((p) => p.name), ["커피집"]);
+  const ph = { body: { items: [store("온누리약국", "", 35.8201, 127.148, "G21501", "약국"), store("건강마트", "", 35.8202, 127.148, "G21501", "약국")] } };
+  assert.deepEqual(sdscStores(ph, 35.82, 127.148, null, null, STORE_CATS.PM9.need).map((p) => p.name), ["온누리약국"]);
 });
 
 test("상가정보 요청: 분류·좌표 검사, 50m 칸, 가까운 반경부터 넓혀 15곳 넘으면 멈춤", async () => {
   assert.equal(pubRequest("/w/pub/store", "?cat=BK9&lat=35.82&lng=127.14"), null);
   assert.equal(pubRequest("/w/pub/store", "?cat=CS2&lat=x&lng=127.14"), null);
-  assert.equal(pubRequest("/w/pub/store", "?cat=CS2&lat=35.82012&lng=127.14826").cacheKey, "store?cat=CS2&lat=35.8200&lng=127.1485");
+  assert.equal(pubRequest("/w/pub/store", "?cat=CS2&lat=35.82012&lng=127.14826").cacheKey, "store2?cat=CS2&lat=35.8200&lng=127.1485");
   const seen = [];
   const many = (n) => ({ body: { items: Array.from({ length: n }, (_, i) => store("가게" + i, "", 35.82 + i * 1e-4, 127.148, "G20405", "편의점")) } });
   const fetcher = async (u) => { seen.push(u); const r = new URL(u).searchParams.get("radius"); return new Response(JSON.stringify(many(r === "300" ? 3 : 20))); };

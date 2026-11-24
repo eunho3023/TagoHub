@@ -154,17 +154,26 @@ export async function healthDue(env, now = Date.now()) {
 }
 
 /** 예약 작업: 모두 확인해 기록 (한 번에 13곳 + D1 쓰기 몇 번: 바깥 요청 50번 한도 안) */
-export async function healthCron(env, fetcher = fetch) {
+/**
+ * 고장 표시는 두 번 이어서(30분 간격 확인 두 번) 실패해야: 처음 실패는 fail_since·msg 만 적고 ok 는 그대로.
+ * retryMs: 실패한 곳을 같은 확인 안에서 다시 묻기까지 (시험은 0)
+ */
+export async function healthCron(env, fetcher = fetch, retryMs = 2000) {
   if (!env.DB) return { skip: "no db" };
   await ensure(env.DB);
   const at = Date.now();
-  const results = await Promise.all(CHECKS.map(async (c) => [c, await checkOne(c, env, fetcher)]));
+  // 실패하면 2초 뒤 한 번 더 (공공데이터포털이 요청 절반을 HTTP_ERROR 로 끝내던 때 한 번 실패로 빨갛게 떴음, 2026-11-24)
+  const results = await Promise.all(CHECKS.map(async (c) => {
+    let r = await checkOne(c, env, fetcher);
+    if (r && !r.ok && retryMs >= 0) { await new Promise((ok) => setTimeout(ok, retryMs)); r = await checkOne(c, env, fetcher); }
+    return [c, r];
+  }));
   const stmts = [];
   for (const [c, r] of results) {
     if (!r) continue;
     stmts.push(env.DB.prepare(
       `INSERT INTO api_health (name, ok, msg, ms, at, last_ok, fail_since) VALUES (?1, ?2, ?3, ?4, ?5, CASE WHEN ?2 = 1 THEN ?5 END, CASE WHEN ?2 = 0 THEN ?5 END)
-       ON CONFLICT(name) DO UPDATE SET ok = ?2, msg = ?3, ms = ?4, at = ?5,
+       ON CONFLICT(name) DO UPDATE SET ok = CASE WHEN ?2 = 1 THEN 1 WHEN api_health.fail_since IS NOT NULL THEN 0 ELSE api_health.ok END, msg = ?3, ms = ?4, at = ?5,
          last_ok = CASE WHEN ?2 = 1 THEN ?5 ELSE api_health.last_ok END,
          fail_since = CASE WHEN ?2 = 1 THEN NULL ELSE COALESCE(api_health.fail_since, ?5) END`,
     ).bind(c.name, r.ok ? 1 : 0, r.msg, r.ms, at));
