@@ -1198,6 +1198,8 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
         print(f"정류장 이름 최신화: 노선 자료에 있는 {len(renames)}곳의 이름을 지금 이름으로", flush=True)
     t_counts, t_trusted = unserved_check or ({}, set())
     prune_unserved(db, complete, api_served, api_ok, t_counts, t_trusted)
+    drop_empty_routes(db, complete)
+    drop_tsb_twin_stops(db, complete)
     if tago_cities:
         db.execute("CREATE TABLE IF NOT EXISTS tago_cities(code TEXT PRIMARY KEY, name TEXT NOT NULL) WITHOUT ROWID")
         db.execute("DELETE FROM tago_cities")
@@ -1304,6 +1306,89 @@ def fetch_tago_cities(fx):
         print(f"TAGO 도시 목록 못 받음: {e}", flush=True)
         return []
     return [(str(c.get("citycode")), str(c.get("cityname", "")).strip()) for c in got if c.get("citycode")]
+
+
+def drop_empty_routes(db, complete):
+    """
+    정류장이 하나도 없는 노선 중, 같은 도시에 다른 자료로 같은 번호의 정류장 있는 노선이 있는 것을 지움.
+    (2026-11-24: 빈 노선 228개 중 198개 — 영암·칠곡 등 교통안전공단(TSB) 복사본. TAGO 도 정류장 0개를 줌.
+     검색에 같은 번호가 두 번 나오고 하나는 눌러도 비어 있었음.) 같은 번호가 없는 빈 노선은 남김(빼면 그 번호가 사라짐).
+    빈 노선에만 있던 첫차·막차는 정류장 있는 쪽이 비어 있으면 넘겨줌(가장 이른 첫차·가장 늦은 막차). 지운 수
+    """
+    if not complete:
+        print("빈 노선 지우기: 수집이 다 끝나지 않아 이번엔 건너뜀", flush=True)
+        return 0
+    full = {}
+    for rid, no, city in db.execute("SELECT r.id, r.no, r.city FROM routes r WHERE EXISTS(SELECT 1 FROM route_stops rs WHERE rs.route_id = r.id)"):
+        full.setdefault((city, no), []).append(rid)
+    empty = db.execute("SELECT r.id, r.no, r.city FROM routes r WHERE NOT EXISTS(SELECT 1 FROM route_stops rs WHERE rs.route_id = r.id)").fetchall()
+    late = lambda t: (int(t[:2]) + (24 if int(t[:2]) < 4 else 0)) * 60 + int(t[3:5])
+    gone, give = [], {}
+    for rid, no, city in empty:
+        # 다른 자료(id 앞 영문자가 다른 것)의 같은 번호 노선만: 교통안전공단 자료뿐인 지역에서 공단 노선끼리(같은 번호 반대 방향 등)는 안 건드림
+        twins = [t for t in full.get((city, no), ()) if prefix(t) != prefix(rid)]
+        if not twins:
+            continue
+        gone.append(rid)
+        f, l = db.execute("SELECT first, last FROM route_info WHERE id = ?", (rid,)).fetchone() or (None, None)
+        for t in twins:
+            g = give.setdefault(t, [[], []])
+            if f:
+                g[0].append(f)
+            if l:
+                g[1].append(l)
+    moved = 0
+    for t, (fs, ls) in give.items():
+        if not fs and not ls:
+            continue
+        old = db.execute("SELECT first, last FROM route_info WHERE id = ?", (t,)).fetchone()
+        if old and (old[0] or old[1]):
+            continue
+        db.execute("INSERT INTO route_info (id, first, last, interval, int_sat, int_sun) VALUES (?, ?, ?, NULL, NULL, NULL) "
+                   "ON CONFLICT(id) DO UPDATE SET first = excluded.first, last = excluded.last",
+                   (t, min(fs, key=late) if fs else None, max(ls, key=late) if ls else None))
+        moved += 1
+    for tbl in ("routes", "route_info", "route_schedule"):
+        db.executemany(f"DELETE FROM {tbl} WHERE id = ?", [(r,) for r in gone])
+    print(f"빈 노선 지우기: 같은 번호 노선이 따로 있는 {len(gone)}개 (남긴 빈 노선 {len(empty) - len(gone)}개, 첫차·막차 넘겨줌 {moved}개)", flush=True)
+    return len(gone)
+
+
+# 교통안전공단 정류장(도시 'TS…') 중 노선이 안 서고 바로 옆에 다른 자료의 노선이 서는 정류장이 있는 것 = 같은 정류장이 두 번 들어온 것
+TSB_TWIN_M = 30.0        # 이름이 달라도 이만큼 붙어 있으면 같은 정류장 (길 건너편은 보통 더 멂)
+TSB_TWIN_NAME_M = 60.0   # 이름이 같으면
+
+
+def drop_tsb_twin_stops(db, complete):
+    """
+    노선이 안 서는 교통안전공단 정류장 중, 30m 안(이름이 같으면 60m 안)에 다른 자료(공단 아닌 것)의 노선이 서는 정류장이 있는 것을 지움.
+    교통안전공단 자료뿐인 지역은 공단 정류장끼리 비교하지 않아 그대로.
+    (2026-11-24: 노선 안 서는 공단 정류장 4,712곳 중 약 3,100곳 — 대구·영암·칠곡 등, 지도에 겹쳐 보이거나 검색에 두 번 나옴.)
+    근처에 노선 정류장이 없는 공단 정류장(약 1,500곳)은 공단 노선만 서는 시골 정류장일 수 있어 남김. 지운 수
+    """
+    if not complete:
+        print("공단 겹친 정류장 지우기: 수집이 다 끝나지 않아 이번엔 건너뜀", flush=True)
+        return 0
+    import stop_spots
+    used = {r[0] for r in db.execute("SELECT DISTINCT stop_id FROM route_stops WHERE stop_id IS NOT NULL")}
+    rows = db.execute("SELECT id, name, lat, lng, city FROM stops WHERE lat IS NOT NULL AND lng IS NOT NULL").fetchall()
+    cell = TSB_TWIN_NAME_M / stop_spots.M_LAT
+    grid = {}
+    for r in rows:
+        if r[0] in used and not str(r[4] or "").startswith("TS"):
+            grid.setdefault((int(r[2] // cell), int(r[3] // cell)), []).append(r)
+    gone = []
+    for sid, nm, lat, lng, city in rows:
+        if sid in used or not str(city or "").startswith("TS"):
+            continue
+        key, gx, gy = stop_spots.name_key(nm), int(lat // cell), int(lng // cell)
+        if any(d <= TSB_TWIN_M or (d <= TSB_TWIN_NAME_M and stop_spots.name_key(o[1]) == key)
+               for dx in (-1, 0, 1) for dy in (-1, 0, 1) for o in grid.get((gx + dx, gy + dy), ())
+               for d in (stop_spots.meters(lat, lng, o[2], o[3]),)):
+            gone.append(sid)
+    db.executemany("DELETE FROM stops WHERE id = ?", [(s,) for s in gone])
+    print(f"공단 겹친 정류장 지우기: {len(gone)}곳", flush=True)
+    return len(gone)
 
 
 def prune_unserved(db, complete, api_served=None, api_ok=False, tago_counts=None, tago_trusted=()):
