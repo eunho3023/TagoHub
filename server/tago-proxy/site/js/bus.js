@@ -14,8 +14,8 @@ import { MAX_SIDE_M, twoWayMask, offsetRight, shiftRight } from "./sideline.js";
 import { trafficLayer } from "./topis.js";
 export { offsetRight };
 
-// 버스 위치는 5초마다 (지도에서 최대한 실시간으로, 그 사이는 늦은 만큼 앞으로 움직여 그림)
-const REFRESH_MS = 15000, BUS_POS_MS = 5000;
+// 버스 위치는 15초마다 (사용자 요청 2026-11-25: 5초일 때 TAGO 버스 위치 하루 한도가 아침에 바닥남). 그 사이는 늦은 만큼 앞으로 움직여 그리고, 새로고침 단추로 바로
+const REFRESH_MS = 15000, BUS_POS_MS = 15000;
 /** 못 받아서 다시 묻는 동안(livePoll) 받은 지 이만큼 안 된 자료는 그대로 보여 줌 */
 const KEEP_LIVE_MS = 120000;
 const fresh = (x) => x?.state === "ok" && Date.now() - x.at < KEEP_LIVE_MS;
@@ -623,7 +623,7 @@ export function routeScreen(root, p, ctx) {
     const color = busColor(r.type);
     const at = B.busAtStops(r.stops, pos?.buses || []);
     const status = !pos ? "버스 위치를 받는 중..." : refreshing && pos.state !== "ok" ? "버스 위치를 다시 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
-      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 5초마다 새로` :
+      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 15초마다 새로` :
       // 운행 시간 안인데 버스가 없음: 위치를 보내지 않는 노선일 수 있음 (여수 365-5 초도처럼 버스가 다녀도 위치 자료가 아예 안 옴)
       r.sum && B.inService(r.sum.first, r.sum.last, B.kstMinute()) ? `실시간 위치가 들어오지 않아요 · 시간표상 운행 시간이에요 (${B.planText({ first: r.sum.first, last: r.sum.last }, 0).startsWith("하루") ? B.planText({ first: r.sum.first, last: r.sum.last }, 0) : r.sum.first + "~" + r.sum.last})` :
       "지금 운행 중인 버스가 없어요";

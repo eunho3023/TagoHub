@@ -138,11 +138,13 @@ export async function openStation(g, line) {
   alert("역 정보를 받지 못했어요. 잠시 뒤 다시 해 주세요.");
 }
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
+/** 지도 버스 다시 받는 주기: 15초 (사용자 요청 2026-11-25, 5초였을 때 TAGO 버스 위치 하루 한도가 아침에 바닥남). 사이엔 새로고침 단추 */
+const MAP_BUS_MS = 15000;
 export function stopsMap(host, focus) {
   let stops = [], picked = focus, stations = [];
   let timer = null, alive = true;
   /**
-   * 지도 버스 (입체 버스 모양, 5초마다): 정류장을 골랐으면 그 정류장 노선들의 버스(차량번호·저상까지),
+   * 지도 버스 (입체 버스 모양, 15초마다·새로고침 단추): 정류장을 골랐으면 그 정류장 노선들의 버스(차량번호·저상까지),
    * 아니면 지도 범위 버스(초정밀 버스, 울산). 누르면 그 노선 화면 (정류장에서 노선 번호를 누른 것처럼)
    */
   let busDots = [], busSeq = 0;
@@ -287,7 +289,7 @@ export function stopsMap(host, focus) {
       card.innerHTML = info + infoFix + undo;
     } else if (picked && picked.name) {
       card.style.display = "flex";
-      card.innerHTML = `<div><b>${esc(picked.name)}</b><small>${picked.no ? "정류장 번호 " + esc(picked.no) : ""}</small></div><button class="btn" ${act(() => go("stop", picked.id, { lat: picked.lat, lng: picked.lng }))}>도착 정보</button>` +
+      card.innerHTML = `<div><b>${esc(picked.name)}</b><small>${picked.no ? "정류장 번호 " + esc(picked.no) : ""}</small></div><button class="btn" ${act(() => go("stop", picked.id, { lat: picked.lat, lng: picked.lng }))}>도착 정보</button><button class="link" ${act(busNow)}>↻ 버스 새로고침</button>` +
         fixBtn(() => go("fixstops", picked.id, { lat: picked.lat, lng: picked.lng })) + undo;
       // 시군 이름과 방면(지나는 노선의 다음 정류장)을 받는 대로 채움
       const p0 = picked, info = { c: null, t: null };
@@ -309,11 +311,13 @@ export function stopsMap(host, focus) {
       ]);
       if (focus && !picked?.name) picked = stops.find((s) => s.id === focus.id) || picked;
       if (alive) draw();
-      // 지도를 옮기면 지도 범위 버스도 바로 (정류장 노선 버스는 5초마다 그대로)
+      // 지도를 옮기면 지도 범위 버스도 바로 (정류장 노선 버스는 15초마다 그대로)
       if (alive && !picked?.name) busPoll?.now();
     }, 300);
   };
-  let busPoll = null;
+  let busPoll = null, busAsked = 0;
+  /** 버스 새로고침 단추: 바로 다시 받음 (3초 안에 여러 번 누르면 한 번만) */
+  const busNow = () => { if (Date.now() - busAsked < 3000) return; busAsked = Date.now(); busPoll?.now(); };
   traffic = trafficLayer(() => { if (alive) draw(); });
   const off = MapView.onIdle(load);
   // 누가 정류장 위치를 고치면 바로 다시 (지도는 그대로)
@@ -329,7 +333,7 @@ export function stopsMap(host, focus) {
     }
     picked = null; info = null; moving = null; busDots = []; busPoll?.now(); drawBanner(); draw();
   });
-  MapView.ready.then(() => { load(); if (alive) busPoll = livePoll(busTick, 5000); });
+  MapView.ready.then(() => { load(); if (alive) busPoll = livePoll(busTick, MAP_BUS_MS); });
   return () => { alive = false; busPoll?.stop(); off(); offEdit(); card.remove(); banner.remove(); traffic.destroy(); MapView.lines([]); };
 }
 
