@@ -674,12 +674,17 @@ export function routeScreen(root, p, ctx) {
   };
   let offRetry = null;
   const start = async () => {
-    try { r = await B.route(p.id, p.city); } catch (e) { r = null; }
+    let failed = false;
+    try { r = await B.route(p.id, p.city); } catch (e) { r = null; failed = true; }
     // 자료 조각에 없는 노선은 번호·종류를 정류장 화면에서 넘겨받음
     if (r && r.no === "노선" && p.no) { r.no = p.no; if (!r.type && p.type) r.type = p.type; }
     if (!alive) return;
     if (!r) {
-      root.innerHTML = header("노선", null, { back: true }) + note("노선 정보를 받지 못했어요. " + tryLater());
+      // 받긴 했는데 정류장 목록이 없는 노선 (경기 시외·광역처럼 경기도 노선 인가 목록에만 있고 버스정보시스템엔 없는 노선, 2501 홍천-광주광역 등):
+      // 한도·서버 탓이 아니므로 "받지 못했어요·한도" 대신 (2026-11-25)
+      const none = !failed && /^GGB/.test(p.id);
+      root.innerHTML = header(p.no || "노선", null, { back: true }) + note(none ? "이 노선은 경기도 버스정보에 정류장 목록이 없어요. 시외·광역 노선으로 등록만 되어 있어 노선도와 실시간 위치를 볼 수 없어요." : "노선 정보를 받지 못했어요. " + tryLater());
+      if (none) return;
       // 다른 앱에서 돌아오거나 인터넷이 다시 켜지면 다시
       offRetry = onReturn(() => { offRetry(); offRetry = null; start(); });
       return;

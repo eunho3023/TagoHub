@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bucket, build, buildKakao, chunks, decode, encode, fitsStops, handleShape, kakaoRidePath, removeDetours, signature, tagoStops } from "../src/shape.js";
+import { bucket, build, buildKakao, chunks, decode, encode, fitsStops, handleShape, kakaoRidePath, removeDetours, signature, tagoStops, stopStraights, fillStraights } from "../src/shape.js";
 
 test("노선 묶음 번호는 앱·자료 만들기와 같음", () => {
   assert.equal(bucket("BSB5200111000"), 992);
@@ -173,13 +173,13 @@ test("예약 작업: 노선 묶음을 줄에 넣고, 1분마다 하나씩 만들
   assert.equal(r2.saved, true);
   assert.ok(shapes.get("R1").sig.startsWith("v7:"));
   assert.ok(!queue.has("R1"));
-  assert.equal(meta.get("ver"), "11");
+  assert.equal(meta.get("ver"), "12");
   // 모양 만드는 방식이 바뀌면(판) 노선 묶음을 처음부터 다시 훑고, 지금 방식이 아닌(v8) 모양은 다시 만듦
   meta.set("bucket", "1024"); meta.set("ver", "8");
   shapes.set("R1", { sig: "v8:2:36.0000,127.0000:36.0100,127.0000:k", poly: "x" });
   const r3 = await shapeCron(env, osrm);
   assert.equal(r3.bucket, 0);
-  assert.equal(meta.get("ver"), "11");
+  assert.equal(meta.get("ver"), "12");
   assert.ok(queue.has("R1"));
 });
 
@@ -341,4 +341,24 @@ test("저장된 모양은 정류장 목록을 기다리지 않고 바로 주고,
   assert.equal((await r.json()).poly, store.get("XXB1").poly);
   await Promise.all(waits);
   assert.deepEqual(queued, ["XXB1"]);                // 정류장이 달라 다시 만들 줄에
+});
+
+test("정류장 사이 직선(길찾기 못 한 조각)만 OSRM 길로 바꿈, 돌아가는 길은 안 씀", async () => {
+  // 광주 1003 김대중컨벤션센터역 → 세하동: 저장 모양에 2.6km 직선
+  const s1 = [35.142642, 126.840061], s2 = [35.119652, 126.832479], s0 = [35.1466, 126.8431];
+  const line = [s0, [35.1446, 126.8415], s1, s2];
+  assert.deepEqual(stopStraights(line, [s0, s1, s2]), [2]);
+  assert.deepEqual(stopStraights([s0, [35.13, 126.836], s2], [s0, s2]), []);   // 정류장에서 정류장으로 곧장 이은 것만
+  const road = [s1, [35.1405, 126.8352], [35.128, 126.8301], s2];
+  let asked = 0;
+  const osrm = async () => { asked++; return { ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode(road, 6) }] }) }; };
+  const r = await fillStraights(line, [s0, s1, s2], osrm);
+  assert.equal(r.fixed, 1); assert.equal(r.left, 0); assert.equal(asked, 1);
+  assert.equal(r.line.length, 6);
+  assert.deepEqual(r.line[2], s1); assert.deepEqual(r.line[5], s2);
+  // 길이 직선의 1.8배 + 250m 넘게 돌아가면 그대로
+  const far = [s1, [35.2, 126.9], s2];
+  const osrmFar = async () => ({ ok: true, json: async () => ({ code: "Ok", routes: [{ geometry: encode(far, 6) }] }) });
+  const r2 = await fillStraights(line, [s0, s1, s2], osrmFar);
+  assert.equal(r2.fixed, 0); assert.equal(r2.left, 1); assert.deepEqual(r2.line, line);
 });

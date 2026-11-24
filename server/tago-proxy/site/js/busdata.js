@@ -340,7 +340,11 @@ async function tagoRoute(id, city) {
 
 /** 경기 노선 (경기 GBIS 정류장 목록, 서버 하루 저장): 좌표·순번, 회차점까지 상행 */
 async function ggRoute(id) {
-  const rows = findRows(JSON.parse(await getText("w/bus/gg/stops/" + ggId(id))), "stationId")
+  const body = JSON.parse(await getText("w/bus/gg/stops/" + ggId(id)));
+  // 정류장이 없다는 답(resultCode 4 "결과가 존재하지 않습니다")만 '없음'(null). 한도·오류 답은 실패로
+  const code = body?.response?.msgHeader?.resultCode;
+  if (code != null && +code !== 0 && +code !== 4) throw new Error("gbis " + code);
+  const rows = findRows(body, "stationId")
     .map((r) => ({ seq: int(r.stationSeq) || 0, id: r.stationId != null ? "GGB" + r.stationId : null, name: String(r.stationName ?? ""), lat: num(r.y), lng: num(r.x), turn: String(r.turnYn || "").toUpperCase() === "Y", no: str(r.mobileNo) }))
     .sort((a, b) => a.seq - b.seq);
   if (!rows.length) return null;
@@ -971,16 +975,15 @@ export function headingTracker() {
  * dots 의 bus3d.caption 만 바꾼 새 배열
  */
 export function declutterCaptions(dots, zoom, metersPerPx) {
-  const kept = [];
   const mpp = metersPerPx > 0 ? metersPerPx : 1;
-  return dots.map((d) => {
-    if (!d.bus3d || !d.bus3d.caption) return d;
-    if (zoom < 15) return { ...d, bus3d: { ...d.bus3d, caption: null } };
-    const near = kept.some((k) => Math.abs(meters(k.lat, d.lng, k.lat, k.lng)) / mpp < 70 && Math.abs(meters(d.lat, d.lng, k.lat, d.lng)) / mpp < 26);
-    if (near) return { ...d, bus3d: { ...d.bus3d, caption: null } };
-    kept.push(d);
-    return d;
-  });
+  if (zoom < 15) return dots.map((d) => (d.bus3d && d.bus3d.caption ? { ...d, bus3d: { ...d.bus3d, caption: null } } : d));
+  // 어느 버스가 이름표를 달지는 id 순서로 정함: 받은 순서대로 정하면 5초마다 순서가 바뀌어 이름표가 이 버스 저 버스로 옮겨 다녔음
+  const kept = [], show = new Set();
+  for (const d of dots.filter((x) => x.bus3d && x.bus3d.caption).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    if (kept.some((k) => Math.abs(meters(k.lat, d.lng, k.lat, k.lng)) / mpp < 70 && Math.abs(meters(d.lat, d.lng, k.lat, d.lng)) / mpp < 26)) continue;
+    kept.push(d); show.add(d);
+  }
+  return dots.map((d) => (!d.bus3d || !d.bus3d.caption || show.has(d) ? d : { ...d, bus3d: { ...d.bus3d, caption: null } }));
 }
 /** 저상버스만 보기 (이 브라우저에 기억, 정류장 도착·지도 버스) */
 export const LowFloor = {

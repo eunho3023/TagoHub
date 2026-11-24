@@ -1597,6 +1597,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     prune_unserved(db, complete, api_served, api_ok, t_counts, t_trusted)
     drop_empty_routes(db, complete)
     drop_tsb_twin_stops(db, complete)
+    rename_tsb_to_local(db)
     if tago_cities:
         db.execute("CREATE TABLE IF NOT EXISTS tago_cities(code TEXT PRIMARY KEY, name TEXT NOT NULL) WITHOUT ROWID")
         db.execute("DELETE FROM tago_cities")
@@ -1792,6 +1793,36 @@ def drop_tsb_twin_stops(db, complete):
     db.executemany("DELETE FROM stops WHERE id = ?", [(s,) for s in gone])
     print(f"공단 겹친 정류장 지우기: {len(gone)}곳", flush=True)
     return len(gone)
+
+
+TSB_RENAME_M = 8.0   # 공단 정류장과 지자체(TAGO) 정류장이 이만큼 붙어 있으면 같은 정류장 (길 건너편은 보통 15m 넘음)
+
+
+def rename_tsb_to_local(db):
+    """
+    교통안전공단 정류장 이름을 같은 자리(8m 안) 지자체(TAGO 등) 정류장의 지금 이름으로. 공단 자료는 이름 바뀐 것이 늦게 들어옴
+    (2026-11-25 광주 전남방직 TSB178000127 → 발산뽕뽕다리 KJB3047, 1m. 대구 가창면사무소 → 가창면행정복지센터 등). 바꾼 수
+    """
+    import stop_spots
+    rows = db.execute("SELECT id, name, lat, lng, city FROM stops WHERE lat IS NOT NULL AND lng IS NOT NULL").fetchall()
+    cell = TSB_RENAME_M / stop_spots.M_LAT
+    grid = {}
+    for r in rows:
+        if not str(r[4] or "").startswith("TS"):
+            grid.setdefault((int(r[2] // cell), int(r[3] // cell)), []).append(r)
+    ren = []
+    for sid, nm, lat, lng, city in rows:
+        if not str(city or "").startswith("TS"):
+            continue
+        gx, gy = int(lat // cell), int(lng // cell)
+        best = min(((stop_spots.meters(lat, lng, o[2], o[3]), o[1]) for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                    for o in grid.get((gx + dx, gy + dy), ())), default=None)
+        if best and best[0] <= TSB_RENAME_M and stop_spots.name_key(best[1]) != stop_spots.name_key(nm):
+            ren.append((best[1], sid))
+    db.executemany("UPDATE stops SET name = ? WHERE id = ?", ren)
+    db.executemany("UPDATE route_stops SET name = ? WHERE stop_id = ?", ren)
+    print(f"공단 정류장 이름을 지자체 이름으로: {len(ren)}곳", flush=True)
+    return len(ren)
 
 
 def prune_unserved(db, complete, api_served=None, api_ok=False, tago_counts=None, tago_trusted=()):

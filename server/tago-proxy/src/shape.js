@@ -552,6 +552,7 @@ async function ensureQueue(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS shape_queue (route_id TEXT PRIMARY KEY, city TEXT, no TEXT, prio INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL) WITHOUT ROWID").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS shape_meta (k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS shape_work (route_id TEXT PRIMARY KEY, sig TEXT NOT NULL, next INTEGER NOT NULL, poly TEXT, got INTEGER NOT NULL, straight INTEGER NOT NULL) WITHOUT ROWID").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS shape_fix (route_id TEXT PRIMARY KEY, city TEXT, at INTEGER NOT NULL) WITHOUT ROWID").run();
 }
 
 /** 저장된 모양 (지금 방식으로 만든 것만). interim: 긴 노선을 카카오 대신 OSRM 으로 임시로 만든 것 (sig 끝 ":o") */
@@ -577,6 +578,52 @@ export function longStraight(poly) {
   for (let i = 1; i < line.length; i++) if (meters(line[i - 1], line[i]) > STRAIGHT_M) return true;
   return false;
 }
+/**
+ * 정류장 좌표에서 정류장 좌표로 곧장 이은 [STRAIGHT_M] 넘는 조각 (길찾기를 못 해 정류장끼리 이은 것)의 선 자리 목록.
+ * 긴 노선은 요청 하나의 바깥 요청(45번)을 다 써서 뒤쪽 구간이 직선이 되고, 다섯 번 다시 해도 같아 그대로 저장되곤 했음
+ * (2026-11-25 광주 1003 김대중컨벤션센터역 → 세하동 2.6km 직선, 길은 3.2km 있음)
+ */
+export function stopStraights(line, stops) {
+  const near = (p) => stops.some((q) => meters(p, q) <= 5);
+  const out = [];
+  for (let i = 1; i < line.length; i++) if (meters(line[i - 1], line[i]) > STRAIGHT_M && near(line[i - 1]) && near(line[i])) out.push(i - 1);
+  return out;
+}
+/** 그런 조각을 두 정류장 사이 OSRM 길로 바꿈 (돌아가는 길은 안 씀: 직선의 1.8배 + 250m 안, removeDetours 와 같은 기준). {line, fixed, left} */
+export async function fillStraights(line, stops, fetcher, max = 20) {
+  const out = line.slice();
+  let fixed = 0, tried = 0;
+  for (const i of stopStraights(line, stops).reverse()) {
+    if (tried++ >= max) break;
+    const a = line[i], b = line[i + 1], d = meters(a, b);
+    const o = await osrmPath([a, b], fetcher);
+    if (!o || o.length < 2 || length(o) > d * 1.8 + 250) continue;
+    out.splice(i, 2, a, ...o.slice(1, -1), b);
+    fixed++;
+  }
+  return { line: out, fixed, left: stopStraights(out, stops).length };
+}
+const noteFix = (db, id, city) => db.prepare("INSERT OR IGNORE INTO shape_fix (route_id, city, at) VALUES (?, ?, ?)").bind(id, /^\d{1,6}$/.test(city || "") ? city : null, Math.floor(Date.now() / 1000)).run();
+/** 예약 작업: 저장된 모양 하나의 정류장 사이 직선을 길로 (한 번에 20곳, 바깥 요청은 새로 45번) */
+async function straightFixCron(env, fetcher) {
+  const job = await env.DB.prepare("SELECT route_id, city FROM shape_fix ORDER BY at ASC LIMIT 1").first();
+  if (!job) return null;
+  const id = job.route_id;
+  const done = () => env.DB.prepare("DELETE FROM shape_fix WHERE route_id = ?").bind(id).run();
+  const row = await env.DB.prepare("SELECT sig, poly FROM shapes WHERE route_id = ?").bind(id).first();
+  if (!row || !row.poly || String(row.sig).endsWith(":g")) { await done(); return { id, fix: "none" }; }
+  const stops = (await routeStops(env, id)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, job.city, fetcher));
+  if (!stops || stops.length < 2) { await done(); return { id, fix: "no stops" }; }
+  let used = 0;
+  const limited = async (u, o) => (++used > SUBREQ_BUDGET ? { ok: false } : fetcher(u, o));
+  const r = await fillStraights(decode(row.poly, 5), stops, limited);
+  if (r.fixed) await env.DB.prepare("UPDATE shapes SET poly = ? WHERE route_id = ? AND sig = ?").bind(encode(r.line, 5), id, row.sig).run();
+  // 다 고쳤거나 이번에 하나도 못 고쳤으면(그 구간은 길이 없음) 줄에서 뺌. 남았으면 다음 차례에 이어서
+  if (!r.left || !r.fixed) await done();
+  else await env.DB.prepare("UPDATE shape_fix SET at = ? WHERE route_id = ?").bind(Math.floor(Date.now() / 1000), id).run();
+  return { id, fixed: r.fixed, left: r.left };
+}
+
 /** 저장된 모양이 예전 방식으로 만든, 긴 직선이 든 것 (버스 자리로 만든 모양은 아님) */
 export const staleStraight = (row) => !!row && !String(row.sig || "").endsWith(":g") && (row.made || 0) < STRAIGHT_FIX_AT && longStraight(row.poly);
 
@@ -625,6 +672,7 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
         const st = await getStops().catch(() => null);
         if (!st || st.length < 2) return;
         const want = signature(st) + (useKakao ? ":k" : "");
+        if (!String(row.sig).endsWith(":g") && stopStraights(decode(row.poly, 5), st).length) { await ensureQueue(env.DB); await noteFix(env.DB, id, city); }
         if (row.sig === want || row.sig === want + ":g") return;
         await enqueue(env.DB, id, city, routeNo, row.sig === want + ":o" ? 1 : 2);
       })().catch(() => {}));
@@ -706,7 +754,7 @@ async function gpsCron(env, fetcher) {
 // 사람들이 연 노선(직선이 섞였던 것)이 먼저, 그다음 자료 조각의 모든 노선을 묶음 차례로 줄에 넣음
 const MAX_TRIES = 5;
 /** 모양 만드는 방식의 판 (바뀌면 예약 작업이 모든 노선 묶음을 다시 훑음) */
-const SHAPE_VER = "11"; // "11": 예전 방식으로 만든 긴 직선 모양을 다시 만듦 (STRAIGHT_FIX_AT)
+const SHAPE_VER = "12"; // "11": 예전 방식으로 만든 긴 직선 모양을 다시 만듦 (STRAIGHT_FIX_AT). "12": 정류장 사이 직선이 든 저장 모양을 고칠 줄에 (stopStraights)
 /** 자료 조각 노선 정류장([순번, id, 이름, 위도, 경도, …])에 회차가 있고, 저장 모양에 500m 넘는 직선 조각이 있음 */
 export function turnStraight(stops, poly) {
   const pts = (stops || []).filter((s) => s[3] != null && s[4] != null).map((s) => [s[3], s[4]]);
@@ -724,6 +772,10 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (Math.floor(now / 60000) % 2 === 0) {
     const g = await gpsCron(env, fetcher).catch(() => null);
     if (g) return g;
+  } else {
+    // 나머지 분: 저장된 모양의 정류장 사이 직선을 길로 (고칠 것이 있을 때만)
+    const f = await straightFixCron(env, fetcher).catch(() => null);
+    if (f) return f;
   }
   // 모양 만드는 방식이 바뀌면(SHAPE_VER) 노선 묶음을 처음부터 다시 훑어, 지금 방식(v7)이 아닌 모양을 줄에 넣음
   // (판 "9": 잠깐 배포됐던 v8 — 공식 모양을 OSRM 으로 다시 이은 것, 큰길 대신 옆 골목으로 빠져 되돌림 — 을 원래대로 다시 만듦)
@@ -750,6 +802,13 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
       const has = saved.get(rid) || null;
       // 회차 정류장이 있는데 500m 넘는 직선이 든 모양 (예전엔 회차에서 길찾기가 멀리 돌아 그 뒤가 직선이 됐음) → 지우고 다시 만듦
       // 예전 방식(직진만 물음)으로 만들어 긴 직선이 든 모양도 (섬·항구에서 되돌아 나오는 노선, 여수 365-5)
+      // 정류장 사이 직선이 든 모양: 그 조각만 길로 고침 (straightFixCron)
+      if (has && !String(has.sig).endsWith(":g")) {
+        const pts = (rt.stops || []).filter((q) => q[3] != null && q[4] != null).map((q) => [q[3], q[4]]);
+        let line = null;
+        try { line = decode(String(has.poly || ""), 5); } catch (_) { line = null; }
+        if (line && pts.length && stopStraights(line, pts).length) await noteFix(env.DB, rid, rt.city);
+      }
       if (has && !String(has.sig).endsWith(":g") && (turnStraight(rt.stops, has.poly) || staleStraight(has))) {
         await env.DB.prepare("DELETE FROM shapes WHERE route_id = ?").bind(rid).run();
         await enqueue(env.DB, rid, /^\d+$/.test(rt.city || "") ? rt.city : null, cleanNo(rt.no), 0, false);
@@ -798,6 +857,8 @@ export async function shapeCron(env, fetcher = fetch, now = Date.now()) {
   if (made.shape && (!made.partial || job.tries + 1 >= MAX_TRIES)) {
     await save(encode(made.shape, 5), sig);
     await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
+    // 직선이 남은 채 저장: 그 조각만 다른 차례(바깥 요청을 새로 받음)에 길로
+    if (made.partial) await noteFix(env.DB, id, job.city);
     return { id, saved: true, partial: made.partial };
   }
   if (job.tries + 1 >= MAX_TRIES) await env.DB.prepare("DELETE FROM shape_queue WHERE route_id = ?").bind(id).run();
