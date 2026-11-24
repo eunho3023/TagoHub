@@ -8,7 +8,7 @@ globalThis.document = { hidden: false, ...noop };
 globalThis.window = noop;
 const realInterval = globalThis.setInterval;
 globalThis.setInterval = (...a) => { const t = realInterval(...a); t.unref?.(); return t; };
-const { daejeonArrivalList, daejeonBusList, daejeonRows, busAtStops, klidPick, klidTime, KLID_REGIONS } = await import("../site/js/busdata.js");
+const { daejeonArrivalList, daejeonBusList, daejeonRows, busAtStops, klidPick, klidTime, KLID_REGIONS, headingTracker, declutterCaptions, todayDeps, isLowArrival, toMinutes } = await import("../site/js/busdata.js");
 const { klidWebRequest } = await import("../src/proxy.js");
 
 const head = (cd) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ServiceResult><msgHeader><currentPage>1</currentPage><headerCd>${cd}</headerCd><headerMsg>정상적으로 처리되었습니다.</headerMsg></msgHeader><msgBody>`;
@@ -45,4 +45,24 @@ test("지도 범위 버스(초정밀): 3분 넘은 위치·지도 밖은 빼고,
   assert.deepEqual(klidWebRequest("/w/klid/pos/3100000000/2"), { op: "rtm_loc_info", code: "3100000000", page: 2, ttl: 4 });
   assert.equal(klidWebRequest("/w/klid/routes/3100000000/1").ttl, 86400);
   assert.equal(klidWebRequest("/w/klid/pos/31/1"), null);
+});
+
+test("지도 버스 진행 방향·이름표 솎기·오늘 시간표·저상 도착", () => {
+  const h = headingTracker();
+  assert.equal(h("A", 37.5, 127.0), null);                 // 처음은 모름
+  assert.equal(h("A", 37.50005, 127.0), null);             // 15m 안: 앞서 잰 방향(없음)
+  assert.ok(Math.abs(h("A", 37.501, 127.0) - 0) < 1);      // 북쪽
+  assert.ok(Math.abs(h("A", 37.501, 127.001) - 90) < 1);   // 동쪽
+  const bus = (id, lat, lng, caption) => ({ id, lat, lng, bus3d: { no: "1", caption } });
+  const ds = [bus("a", 37.5, 127.0, "저상 · 1"), bus("b", 37.5, 127.0001, "일반 · 2"), bus("c", 37.51, 127.0, "3"), { id: "s", lat: 37.5, lng: 127 }];
+  assert.deepEqual(declutterCaptions(ds, 16, 1).map((d) => d.bus3d?.caption ?? null), ["저상 · 1", null, "3", null]);
+  assert.deepEqual(declutterCaptions(ds, 14, 1).map((d) => d.bus3d?.caption ?? null), [null, null, null, null]);
+  const deps = { weekday: [360], sat: [400], holi: [] };
+  assert.deepEqual(todayDeps(deps, 3), [360]);
+  assert.deepEqual(todayDeps(deps, 6), [400]);
+  assert.deepEqual(todayDeps(deps, 0), [360]);              // 휴일 칸이 비면 평일
+  assert.equal(isLowArrival({ vehicleType: "저상버스" }), true);
+  assert.equal(isLowArrival({ vehicleType: "일반" }), false);
+  assert.equal(isLowArrival({ vehicleType: null }), null);
+  assert.equal(toMinutes("22:30"), 1350);
 });

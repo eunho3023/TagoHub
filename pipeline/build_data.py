@@ -519,7 +519,13 @@ def andong_info(items):
 
 
 def geoje_times(page):
-    """거제 시간표 검색 결과 HTML → 평일 출발 시각 목록 (평일이 없으면 휴일). 표 줄: [노선번호(첫 줄만)] 기점 평일 휴일 경유지 종점"""
+    """거제 시간표 검색 결과 HTML → 평일 출발 시각 목록 (평일이 없으면 휴일)"""
+    week, hol = geoje_days(page)
+    return week or hol
+
+
+def geoje_days(page):
+    """거제 시간표 검색 결과 HTML → (평일, 휴일) 출발 시각 목록. 표 줄: [노선번호(첫 줄만)] 기점 평일 휴일 경유지 종점"""
     i = page.find("시간표검색결과")
     week, hol = [], []
     for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page[i:] if i >= 0 else page, re.S):
@@ -533,7 +539,7 @@ def geoje_times(page):
             week.append(w)
         if h and re.fullmatch(r"\d{1,2}:\d\d", cells[2]):
             hol.append(h)
-    return week or hol
+    return week, hol
 
 
 def naju_info(lines):
@@ -566,8 +572,9 @@ def fetch_naju(get=_http):
         return []
 
 
-def fetch_geoje(line_ids):
-    """거제: 시간표 화면에서 세션·_csrf 를 받고 노선마다 양식으로 물음 → {GJB+노선: [평일 출발 시각]}"""
+def fetch_geoje(line_ids=None, days=False):
+    """거제: 시간표 화면에서 세션·_csrf 를 받고 노선마다 양식으로 물음 → {GJB+노선: [평일 출발 시각]}.
+    line_ids 가 None 이면 시간표 화면의 노선 전부, days 면 {노선: (평일, 휴일)} (배포 때 웹 시간표 자료 조각용)"""
     import http.cookiejar, ssl, urllib.request
     # 거제 서버는 옛 암호 방식만 받아 기본 설정이면 'handshake failure' → 보안 수준만 1로 (TLS 1.2 이상·인증서 확인은 그대로)
     ctx = ssl.create_default_context()
@@ -581,15 +588,22 @@ def fetch_geoje(line_ids):
         print(f"거제 시간표: 못 받음 ({type(e).__name__})", flush=True)
         return {}
     m = re.search(r'name="_csrf" value="([^"]+)"', first)
+    if line_ids is None:
+        line_ids = list(dict.fromkeys(re.findall(r'<option value="(\d+)">', first)))
     out, miss = {}, 0
     for lid in line_ids:
         body = urllib.parse.urlencode({"_csrf": m.group(1) if m else "", "mode": "search", "stype": "weekday", "selectType": "line",
                                        "selectTypes": "line", "searchLineId": lid, "searchDirStart": "", "searchDirEnd": ""}).encode()
         try:
             page = op.open(urllib.request.Request(GEOJE_TT, data=body, headers={**head, "Content-Type": "application/x-www-form-urlencoded"}), timeout=30).read().decode("utf-8", "replace")
-            times = geoje_times(page)
-            if times:
-                out["GJB" + lid] = times
+            if days:
+                week, hol = geoje_days(page)
+                if week or hol:
+                    out[lid] = (week, hol)
+            else:
+                times = geoje_times(page)
+                if times:
+                    out["GJB" + lid] = times
         except Exception:
             miss += 1
         time.sleep(0.1)

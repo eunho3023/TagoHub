@@ -929,7 +929,66 @@ export function offsetMinutes(stops, ids, from = 0) {
   return m;
 }
 /** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
-const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi" };
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje" };
+/** 배포할 때 받아 둔 자료 조각(data/times/<지역>.json)으로 보는 지역: 천안·구미(서버 접속 막힘), 안동·거제(데이터 PC 에서 받음, 2026-11-24) */
+const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje"]);
+/** 서버에 묻지 않고 자료 조각만 보는 지역 */
+const FILE_ONLY_AREAS = new Set(["andong", "geoje"]);
+/**
+ * 노선의 공식 배차시간표 {weekday, sat, holi:[분], source, tables?} — 지자체 버스정보 사이트(서버 하루 저장) 또는 배포 때 받은 자료 조각. 없으면 null
+ */
+export async function routeDeps(id, no) {
+  const area = TIME_AREAS[String(id).slice(0, 3)];
+  if (!area || !/^[A-Z]{3}\d{1,12}$/.test(id)) return null;
+  const q = area === "daegu" || area === "jeju" ? "?no=" + encodeURIComponent(no || "") : "";
+  let deps = FILE_ONLY_AREAS.has(area) ? null : await remembered("bustime|" + id, 3600000, () => getJson(`w/bus/time/${area}/${id.slice(3)}${q}`)).catch(() => null);
+  if ((!deps || !Array.isArray(deps.weekday)) && FILE_TIME_AREAS.has(area)) deps = (await cached(`data/times/${area}.json`).catch(() => ({})))[id.slice(3)] || null;
+  return deps && Array.isArray(deps.weekday) && (deps.weekday.length || (deps.holi || []).length) ? deps : null;
+}
+/** 오늘(한국 시각 요일) 시간표 칸: 토 → sat, 일 → holi, 나머지 weekday (공휴일은 모름) */
+export function todayDeps(deps, dow = new Date(Date.now() + 9 * 3600 * 1000).getUTCDay()) {
+  if (!deps) return [];
+  const k = dow === 6 ? "sat" : dow === 0 ? "holi" : "weekday";
+  return (deps[k] && deps[k].length ? deps[k] : deps.weekday) || [];
+}
+/** 지도 버스 진행 방향: 같은 차의 앞 위치에서 15m 넘게 움직였으면 그 방향(북쪽 0도, 시계 방향), 아니면 앞서 잰 방향 */
+export function headingTracker() {
+  const last = new Map();
+  return (id, lat, lng) => {
+    if (!id || lat == null || lng == null) return null;
+    const p = last.get(id);
+    if (!p) { last.set(id, { lat, lng, dir: null }); return null; }
+    if (meters(p.lat, p.lng, lat, lng) < 15) return p.dir;
+    const y = Math.sin((lng - p.lng) * Math.PI / 180) * Math.cos(lat * Math.PI / 180);
+    const x = Math.cos(p.lat * Math.PI / 180) * Math.sin(lat * Math.PI / 180) - Math.sin(p.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.cos((lng - p.lng) * Math.PI / 180);
+    const dir = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    last.set(id, { lat, lng, dir });
+    return dir;
+  };
+}
+/**
+ * 지도 버스 이름표 겹침 줄이기: 줌 15 아래는 이름표 없이 번호만, 15부터는 이미 이름표를 단 버스 가까이(가로 70px·세로 26px 안)의 이름표는 숨김.
+ * dots 의 bus3d.caption 만 바꾼 새 배열
+ */
+export function declutterCaptions(dots, zoom, metersPerPx) {
+  const kept = [];
+  const mpp = metersPerPx > 0 ? metersPerPx : 1;
+  return dots.map((d) => {
+    if (!d.bus3d || !d.bus3d.caption) return d;
+    if (zoom < 15) return { ...d, bus3d: { ...d.bus3d, caption: null } };
+    const near = kept.some((k) => Math.abs(meters(k.lat, d.lng, k.lat, k.lng)) / mpp < 70 && Math.abs(meters(d.lat, d.lng, k.lat, d.lng)) / mpp < 26);
+    if (near) return { ...d, bus3d: { ...d.bus3d, caption: null } };
+    kept.push(d);
+    return d;
+  });
+}
+/** 저상버스만 보기 (이 브라우저에 기억, 정류장 도착·지도 버스) */
+export const LowFloor = {
+  on() { try { return localStorage.getItem("tagohub.lowOnly") === "1"; } catch (e) { return false; } },
+  set(v) { try { localStorage.setItem("tagohub.lowOnly", v ? "1" : "0"); } catch (e) { /* 저장 못 하면 이번만 */ } },
+};
+/** 도착 정보가 저상버스인지 (vehicleType "저상버스"). 지역 자료가 차 종류를 아예 안 주면 null */
+export const isLowArrival = (a) => (a && a.vehicleType ? /저상/.test(a.vehicleType) : null);
 /** 시간표 주요 정류장 이름 ↔ 노선 정류장 이름 맞추기용: 괄호 안·띄어쓰기·종점 표시를 빼고 학교 이름은 줄임말로 */
 const normName = (s) => String(s || "").replace(/\[[^\]]*\]|\([^)]*\)/g, "").replace(/[\s.·]/g, "")
   .replace(/초등학교/g, "초교").replace(/중학교/g, "중").replace(/고등학교/g, "고").replace(/(종점|기점|정류장|정류소|가상)$/g, "");
@@ -977,12 +1036,9 @@ export async function plannedFor(stop, rt) {
   if (!r) return null;
   let sum = rt.first ? rt : r.sum;
   // 지자체 버스정보시스템 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미, 서버가 하루 저장)
-  const area = TIME_AREAS[String(rt.id).slice(0, 3)];
-  if (area && /^[A-Z]{3}\d{1,12}$/.test(rt.id)) {
-    const q = area === "daegu" || area === "jeju" ? "?no=" + encodeURIComponent(rt.no || r.no || "") : "";
-    let deps = await remembered("bustime|" + rt.id, 3600000, () => getJson(`w/bus/time/${area}/${rt.id.slice(3)}${q}`)).catch(() => null);
-    // 서버가 못 받는 지역(천안·구미)은 배포할 때 받아 둔 자료 조각 (pipeline/fetch_city_times.py)
-    if ((!deps || !Array.isArray(deps.weekday)) && (area === "cheonan" || area === "gumi")) deps = (await cached(`data/times/${area}.json`).catch(() => ({})))[rt.id.slice(3)] || null;
+  {
+    // 서버가 못 받는 지역(천안·구미·안동·거제)은 배포할 때 받아 둔 자료 조각 (pipeline/fetch_city_times.py)
+    const deps = await routeDeps(rt.id, rt.no || r.no || "");
     if (deps && Array.isArray(deps.weekday) && deps.weekday.length) {
       const fmt = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
       sum = { ...(sum || {}), first: fmt(deps.weekday[0]), last: fmt(deps.weekday[deps.weekday.length - 1]), deps, source: deps.source };
@@ -1154,6 +1210,8 @@ export const passed = (a, elapsed) => !a.waiting && a.arrSeconds != null && a.ar
 // ── 실시간 도착이 없는 노선 줄: "정보없음" 대신 첫차·막차·배차(기점 출발)로 (앱 NoLiveText 와 같은 규칙) ──
 // 운행 시간 밖이면 "운행종료" + 첫차까지 남은 시간, 운행 중이면 다음 출발 어림(배차를 알면)·막차. 첫차·막차를 모르면 null
 const toMin = (t) => { const m = /(\d{1,2}):(\d{2})/.exec(t || ""); return m ? +m[1] * 60 + +m[2] : null; };
+/** "22:30" → 1350 (못 읽으면 null) */
+export const toMinutes = (t) => toMin(t);
 const clockOf = (m) => { const x = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`; };
 /** 분 → "곧" / "25분" / "1시간" / "8시간 20분" */
 export function waitText(m) { return m <= 0 ? "곧" : m < 60 ? `${m}분` : m % 60 === 0 ? `${m / 60}시간` : `${Math.floor(m / 60)}시간 ${m % 60}분`; }
