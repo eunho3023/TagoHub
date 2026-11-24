@@ -781,7 +781,23 @@ def test_local_times():
     assert db.execute("SELECT first, last FROM route_info WHERE id='JEB2'").fetchone() == ("07:00", "20:00")
 
 
+def test_city_times():
+    """안동(목록)·거제(시간표 표)·나주(노선 정보) → 첫차·막차·배차"""
+    an = bd.andong_info([{"routeId": 354300276, "holidayType": "1", "strtTm": "6:05,6:25,6:45"}, {"routeId": 354300276, "holidayType": "2", "strtTm": "7:00"},
+                         {"routeId": 354300277, "holidayType": "2", "strtTm": "8:00,9:00"}, {"routeId": 1, "holidayType": "1", "strtTm": ""}])
+    assert an == {"ADB354300276": ("06:05", "06:45", 20), "ADB354300277": ("08:00", "09:00", None)}   # 평일 표 먼저, 없으면 휴일
+    page = """<b>시간표검색결과</b><table><tr><th>노선번호</th><th>기점</th></tr>
+      <tr><td rowspan="3">10</td><td>고현</td><td>-</td><td>05:40</td><td>수월</td><td>능포</td></tr>
+      <tr><td>고현</td><td>05:50</td><td>-</td><td>수월</td><td>능포</td></tr>
+      <tr><td>고현</td><td> 22:30 </td><td>-</td><td>수월</td><td>능포</td></tr></table>"""
+    assert bd.geoje_times(page) == ["05:50", "22:30"]                     # 평일 칸만
+    assert bd.geoje_times(page.replace("05:50", "-").replace(" 22:30 ", "-")) == ["05:40"]   # 평일이 없으면 휴일
+    nj = bd.naju_info([{"LINE_ID": 1030, "FIRST_TIME": "06:25", "LAST_TIME": "19:35", "RUN_INTERVAL": "65~125"}, {"LINE_ID": 1038, "FIRST_TIME": "07:12", "LAST_TIME": "20:02", "RUN_INTERVAL": "1~1"}])
+    assert nj == {"NJB1030": ("06:25", "19:35", 95), "NJB1038": ("07:12", "20:02", None)}
+    assert bd.span(["08:10", "20:30", "21:20"])[2] is None                # 배차 세 시간 넘으면 비움
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

@@ -311,7 +311,9 @@ def span(times):
     if not ts:
         return None
     gaps = sorted(b - a for a, b in zip(map(_late, ts), map(_late, ts[1:])))
-    return ts[0], ts[-1], (gaps[len(gaps) // 2] or None) if len(ts) >= 3 else None
+    gap = (gaps[len(gaps) // 2] or None) if len(ts) >= 3 else None
+    # 하루 몇 번 다니는 노선(배차 세 시간 넘게)은 배차 대신 첫차·막차만 (거제 63번: 740분)
+    return ts[0], ts[-1], gap if gap is None or gap <= 180 else None
 
 
 def fill_route_info(db, info):
@@ -492,6 +494,122 @@ def fill_local_times(db_path, yangsan_rows, jeju_sets):
     db.commit()
     db.close()
     return ys, jj
+
+
+# 안동·거제·나주: 시청 버스정보 사이트 (2026-11-24 TAGO 노선 정보에 시각이 없어 안동 438·거제 286·나주 63개 노선이 비어 있었음. 노선 id 가 그대로 맞음)
+ANDONG_TT = "https://bus.andong.go.kr/api/hp/busTimetable"          # 노선마다 출발 시각 목록 (holidayType 1 평일, 2 휴일), 키 없음
+GEOJE_TT = "https://bis.geoje.go.kr/main/busServiceInfo.do?action=busSchedule"   # 노선마다 시간표 표 (평일·휴일 칸), 양식(POST) + _csrf
+NAJU_LINES = "http://121.147.206.212/json/lineApi"                  # 나주 BIS 노선 정보 API (첫차·막차·배차), 키 없음
+
+
+def andong_info(items):
+    """안동 시간표 목록 → {ADB+routeId: (첫차, 막차, 배차)} (평일 표, 없으면 휴일 표)"""
+    by = {}
+    for it in items or []:
+        rid = str(it.get("routeId") or "").strip()
+        times = [t for t in (_hm(x) for x in str(it.get("strtTm") or "").split(",")) if t]
+        if rid and times:
+            by.setdefault("ADB" + rid, {}).setdefault(str(it.get("holidayType")), []).extend(times)
+    out = {}
+    for rid, days in by.items():
+        s = span(days.get("1") or days.get("2") or [])
+        if s:
+            out[rid] = s
+    return out
+
+
+def geoje_times(page):
+    """거제 시간표 검색 결과 HTML → 평일 출발 시각 목록 (평일이 없으면 휴일). 표 줄: [노선번호(첫 줄만)] 기점 평일 휴일 경유지 종점"""
+    i = page.find("시간표검색결과")
+    week, hol = [], []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page[i:] if i >= 0 else page, re.S):
+        cells = [re.sub(r"<[^>]+>|\s+", " ", c).strip() for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
+        if len(cells) == 6:
+            cells = cells[1:]
+        if len(cells) != 5:
+            continue
+        w, h = _hm(cells[1]), _hm(cells[2])
+        if w and re.fullmatch(r"\d{1,2}:\d\d", cells[1]):
+            week.append(w)
+        if h and re.fullmatch(r"\d{1,2}:\d\d", cells[2]):
+            hol.append(h)
+    return week or hol
+
+
+def naju_info(lines):
+    """나주 노선 정보 → {NJB+LINE_ID: (첫차, 막차, 배차)}. 배차 'RUN_INTERVAL' 은 '65~125' 처럼 범위 → 가운데 (5분 안 되면 이상한 값이라 비움)"""
+    out = {}
+    for it in lines or []:
+        lid = str(it.get("LINE_ID") or "").strip()
+        f, l = _hm(it.get("FIRST_TIME") or it.get("FIRST_RUN_TIME")), _hm(it.get("LAST_TIME") or it.get("LAST_RUN_TIME"))
+        if not lid or not (f or l):
+            continue
+        nums = [int(x) for x in re.findall(r"\d+", str(it.get("RUN_INTERVAL") or ""))]
+        gap = round(sum(nums[:2]) / len(nums[:2])) if nums else None
+        out["NJB" + lid] = (f, l, gap if gap and gap >= 5 else None)
+    return out
+
+
+def fetch_andong(get=_http):
+    try:
+        return json.loads(get(ANDONG_TT).decode("utf-8"))
+    except Exception as e:
+        print(f"안동 시간표: 못 받음 ({type(e).__name__})", flush=True)
+        return []
+
+
+def fetch_naju(get=_http):
+    try:
+        return json.loads(get(NAJU_LINES).decode("utf-8")).get("LINE_LIST") or []
+    except Exception as e:
+        print(f"나주 노선 정보: 못 받음 ({type(e).__name__})", flush=True)
+        return []
+
+
+def fetch_geoje(line_ids):
+    """거제: 시간표 화면에서 세션·_csrf 를 받고 노선마다 양식으로 물음 → {GJB+노선: [평일 출발 시각]}"""
+    import http.cookiejar, ssl, urllib.request
+    # 거제 서버는 옛 암호 방식만 받아 기본 설정이면 'handshake failure' → 보안 수준만 1로 (TLS 1.2 이상·인증서 확인은 그대로)
+    ctx = ssl.create_default_context()
+    ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), urllib.request.HTTPSHandler(context=ctx))
+    head = {"User-Agent": "Mozilla/5.0 TagoHub-pipeline"}
+    try:
+        first = op.open(urllib.request.Request(GEOJE_TT, headers=head), timeout=30).read().decode("utf-8", "replace")
+    except Exception as e:
+        print(f"거제 시간표: 못 받음 ({type(e).__name__})", flush=True)
+        return {}
+    m = re.search(r'name="_csrf" value="([^"]+)"', first)
+    out, miss = {}, 0
+    for lid in line_ids:
+        body = urllib.parse.urlencode({"_csrf": m.group(1) if m else "", "mode": "search", "stype": "weekday", "selectType": "line",
+                                       "selectTypes": "line", "searchLineId": lid, "searchDirStart": "", "searchDirEnd": ""}).encode()
+        try:
+            page = op.open(urllib.request.Request(GEOJE_TT, data=body, headers={**head, "Content-Type": "application/x-www-form-urlencoded"}), timeout=30).read().decode("utf-8", "replace")
+            times = geoje_times(page)
+            if times:
+                out["GJB" + lid] = times
+        except Exception:
+            miss += 1
+        time.sleep(0.1)
+    print(f"거제 시간표: 노선 {len(line_ids)}개 중 {len(out)}개 (못 받음 {miss})", flush=True)
+    return out
+
+
+def fill_city_times(db_path):
+    """안동·거제·나주 시청 버스정보 자료로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
+    db = sqlite3.connect(db_path)
+    geoje_ids = [rid[3:] for (rid,) in db.execute("SELECT r.id FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id LIKE 'GJB%' AND r.city = '38090' "
+                                                     "AND (i.id IS NULL OR (i.first IS NULL AND i.last IS NULL))")]
+    got = {
+        "안동": fill_route_info(db, andong_info(fetch_andong())),
+        "거제": fill_route_info(db, {rid: s for rid, ts in fetch_geoje(geoje_ids).items() if (s := span(ts))}),
+        "나주": fill_route_info(db, naju_info(fetch_naju())),
+    }
+    db.commit()
+    db.close()
+    return got
 
 
 # ───────────── 받기 ─────────────
@@ -1771,6 +1889,8 @@ def main():
         print(f"다른 자료 노선 첫차·막차: 못 받음 ({type(e).__name__})", flush=True)
     ys, jj = fill_local_times(OUT / "bus_stops.db", fetch_yangsan(), fetch_jeju_schedules())
     print(f"지자체 자료 첫차·막차 채움: 양산 {ys}개, 제주 {jj}개", flush=True)
+    city = fill_city_times(OUT / "bus_stops.db")
+    print("시청 버스정보 첫차·막차 채움: " + ", ".join(f"{k} {v}개" for k, v in city.items()), flush=True)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
