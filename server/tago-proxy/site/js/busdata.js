@@ -1285,3 +1285,58 @@ export function klidPick(rows, routes, reg, b, now = Date.now()) {
   }
   return out;
 }
+
+// ── 다음 저상버스·도착 알림·버스 몰림·막차 뒤 (2026-11-25) ──
+/** 다음 저상버스: 지나가지 않은 도착 중 첫 차가 저상이 아닐 때 그 뒤 첫 저상버스. 저상이 하나도 없으면 false, 해당 없음(첫 차가 저상·차 종류 모름)이면 null */
+export function nextLow(arr, elapsed = 0) {
+  const live = (arr || []).filter((a) => !passed(a, elapsed));
+  if (!live.length || isLowArrival(live[0]) !== false) return null;
+  return live.find((a) => isLowArrival(a)) || false;
+}
+/** 도착 알림 단계: 2 = 곧 도착(90초·1정류장 안), 1 = 다가옴(5분·3정류장 안), 0 = 아직. 기점에서 출발 대기 중인 차는 0 */
+export function arriveStage(a, elapsed = 0) {
+  if (!a || a.waiting) return 0;
+  const sec = a.arrSeconds != null ? a.arrSeconds - elapsed : null, n = a.prevStops;
+  if ((sec != null && sec <= 90) || (n != null && n <= 1)) return 2;
+  if ((sec != null && sec <= 300) || (n != null && n <= 3)) return 1;
+  return 0;
+}
+/** 노선 첫 정류장부터 각 정류장까지 걸리는 분 (offsetMinutes 와 같은 어림) */
+export function cumMinutes(stops) {
+  const out = [0];
+  for (let k = 0; k < stops.length - 1; k++) {
+    const a = stops[k], b = stops[k + 1];
+    out.push(out[k] + (a.lat != null && b.lat != null ? meters(a.lat, a.lng, b.lat, b.lng) / EST_M_PER_MIN : 0) + EST_STOP_MIN);
+  }
+  return out;
+}
+/**
+ * 버스 몰림·빈 구간: 버스들의 노선 정류장 순번(idxs) → 이웃한 두 버스 사이 걸리는 분.
+ * bunched: 2분 안에 붙어 다니는 쌍 [{i, j, min}] (i 가 뒤차), gap: 가장 긴 간격 {i, j, min} (15분 넘고 배차 간격의 2배 넘을 때만, 아니면 null)
+ */
+export function busSpacing(stops, idxs, interval = null) {
+  const xs = (idxs || []).filter((i) => i >= 0 && i < stops.length).sort((a, b) => a - b);
+  if (xs.length < 2) return { bunched: [], gap: null };
+  const cum = cumMinutes(stops), bunched = [];
+  let gap = null;
+  for (let k = 0; k < xs.length - 1; k++) {
+    const i = xs[k], j = xs[k + 1], min = cum[j] - cum[i];
+    if (min <= 2) bunched.push({ i, j, min });
+    if (!gap || min > gap.min) gap = { i, j, min };
+  }
+  if (gap && !(gap.min > 15 && (!(interval > 0) || gap.min > interval * 2))) gap = null;
+  return { bunched, gap };
+}
+/** 첫차~막차 안인지 (막차가 자정을 넘으면 넘긴 만큼도, 03시 넘어 끝나는 심야 노선 포함) */
+function runsAt(s, n) {
+  const f = toMin(s.first), l = toMin(s.last);
+  if (f == null || l == null) return false;
+  return l >= f ? n >= f && n <= l : n >= f || n <= l;
+}
+/** 첫차·막차를 아는 노선 중 지금 다니는 것 */
+export const runningNow = (sums, nowMin) => (sums || []).filter((s) => s && s.first && s.last && runsAt(s, nowMin));
+/** 이 정류장 노선이 다 끊겼는지: 첫차·막차를 아는 노선이 있고, 그중 지금 다니는 것이 하나도 없음 */
+export function allEnded(sums, nowMin) {
+  const k = (sums || []).filter((s) => s && s.first && s.last);
+  return k.length > 0 && !k.some((s) => runsAt(s, nowMin));
+}

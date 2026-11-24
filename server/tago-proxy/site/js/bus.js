@@ -1,11 +1,12 @@
 // 버스 화면: 정류장 찾기, 정류장(실시간 도착), 노선(지도·버스 위치·정류장 목록), 지도 탭.
-import { esc, busColor, naturalCompare, isoDay, meters, seoulNow, livePoll, onReturn, tryLater, subwayColor } from "./core.js";
+import { esc, busColor, naturalCompare, isoDay, meters, distText, seoulNow, livePoll, onReturn, tryLater, subwayColor } from "./core.js";
 import { act, header, note, sectionHead, bindInput, icon } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
-import { Favorites, Recent } from "./store.js";
+import { Favorites, Recent, Usage } from "./store.js";
 import * as B from "./busdata.js";
 import { Alight } from "./alight.js";
+import { Arrive } from "./arrive.js";
 import * as Edits from "./edits.js";
 import { tidyRoad } from "./roadline.js";
 import * as Ahead from "./busahead.js";
@@ -106,6 +107,7 @@ export function stopScreen(root, p) {
     if (!stop) { root.innerHTML = header("정류장", null, { back: true }) + note("정류장을 찾지 못했어요"); return false; }
     remember(stop);
     Recent.addStop(stop);
+    Usage.visit(stop.id);   // 시간대별 홈 (이 시간에 자주 여는 정류장을 위로)
     return true;
   };
   let rows = [];
@@ -125,8 +127,11 @@ export function stopScreen(root, p) {
     const soon = (f.arrSeconds ?? 0) - elapsed <= 180;
     const next = r.arr.filter((a) => !B.passed(a, elapsed))[1];
     const last = lastSoon(r);
+    // 다음 저상버스: 먼저 오는 차가 저상이 아니면 그 뒤 저상버스 (차 종류를 주는 지역만)
+    const nl = B.LowFloor.on() ? null : B.nextLow(r.arr, elapsed);
+    const low = nl ? `♿ 다음 저상 ${B.arrivalParts(nl, elapsed)[0]}` : nl === false ? `♿ 오는 ${r.arr.filter((a) => !B.passed(a, elapsed)).length}대 중 저상 없음` : null;
     return `<b class="eta ${soon ? "soon" : ""}">${esc(parts[0])}</b>${parts.length > 1 ? `<small>${esc(parts.slice(1).join(" · "))}</small>` : ""}` +
-      (next ? `<small>다음 ${esc(B.arrivalParts(next, elapsed).join(" · "))}</small>` : "") + (last ? `<small class="eta soon">${esc(last)}</small>` : "");
+      (next ? `<small>다음 ${esc(B.arrivalParts(next, elapsed).join(" · "))}</small>` : "") + (last ? `<small class="eta soon">${esc(last)}</small>` : "") + (low ? `<small>${esc(low)}</small>` : "");
   };
   const elapsedNow = () => (live ? Math.max(0, Math.floor((Date.now() - live.at) / 1000)) : 0);
   /** 기점 막차가 한 시간 안이면 "막차 22:30 · 40분 남음" (기점 출발 시각 기준) */
@@ -174,6 +179,18 @@ export function stopScreen(root, p) {
     return towards ? towards + " 방면" : "";
   };
   let refresh = null, downNote = null;
+  // 막차가 끊겼을 때: 근처 700m 정류장 중 시간표상 아직 다니는 노선이 있는 곳 [{s, m, routes}] (한 번만 찾음)
+  let late = null;
+  const loadLate = async () => {
+    late = "loading";
+    const now = B.kstMinute();
+    const near = (await B.stopsIn(stop.lat - 0.0065, stop.lng - 0.008, stop.lat + 0.0065, stop.lng + 0.008).catch(() => []))
+      .map((s) => ({ s, m: meters(stop.lat, stop.lng, s.lat, s.lng) }))
+      .filter((x) => x.m <= 700 && x.s.id !== stop.id && !B.sameStop(x.s, stop)).sort((a, b) => a.m - b.m).slice(0, 15);
+    const got = await Promise.all(near.map(async (x) => ({ ...x, routes: B.runningNow(await B.stopRoutes(x.s).catch(() => []), now) })));
+    late = got.filter((x) => x.routes.length).slice(0, 5);
+    draw();
+  };
   const draw = () => {
     if (!alive || !stop) return;
     const elapsed = elapsedNow();
@@ -196,6 +213,12 @@ export function stopScreen(root, p) {
     else if (!rows.length) status = "이 정류장에 서는 버스 정보가 없어요";
     else if (!arr.length) status = "지금 도착 예정인 버스가 없어요";
     const sub = [city, stop.no ? "정류장 번호 " + stop.no : null, toward ? toward + " 방면" : null].filter(Boolean).join(" · ");
+    // 이 정류장 노선이 다 끊겼으면(첫차·막차를 아는 노선 모두 운행 시간 밖) 근처에서 아직 다니는 노선
+    const ended = both && live?.state === "ok" && !arr.length && B.allEnded(rows.map((r) => (r.sum && r.sum.last ? r.sum : infos.get(r.id))).filter(Boolean), B.kstMinute());
+    if (ended && late == null) loadLate();
+    const lateHtml = !ended ? "" : sectionHead("막차가 끊겼어요 · 근처에서 아직 다니는 노선") + (late == null || late === "loading" ? note("근처 700m 안 정류장을 찾는 중...") :
+      late.length ? `<div class="list">${late.map((x) => stopLine(x.s, `${distText(x.m)} · 시간표상 운행 중 ${x.routes.slice(0, 6).map((q) => q.no).join(", ")}${x.routes.length > 6 ? " 외" : ""}`)).join("")}</div>` :
+      note("근처 700m 안 정류장에도 시간표상 지금 다니는 노선이 없어요. 첫차 시각은 위 노선 줄에서 볼 수 있어요."));
     root.innerHTML = header(stop.name, sub || null, {
       back: true,
       star: { on: Favorites.hasStop(stop), toggle: () => { Favorites.toggleStop(stop); draw(); } },
@@ -205,7 +228,7 @@ export function stopScreen(root, p) {
       return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
         <span class="grow">${r.type ? `<span class="badge rtype" style="background:${busColor(r.type)}">${esc(String(r.type).replace(/버스$/, ""))}</span>` : ""}<span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
         <span class="right" data-r="${i}"></span></button>`;
-    }).join("")}</div>`;
+    }).join("")}</div>${lateHtml}`;
     tickTimes();
   };
   let poll = null, offRetry = null;
@@ -532,6 +555,7 @@ export function routeScreen(root, p, ctx) {
   /** 도로 선 위 점을 그 자리 진행 방향 오른쪽으로 (그린 선과 같은 거리) */
   const toRight = (pt, seg) => (road && sideM && seg != null && roadTwoWay?.[seg] ? shiftRight(pt, bearingAt(road, seg), sideM) : pt);
   root.innerHTML = header("노선", null, { back: true }) + note("불러오는 중...");
+  let paintArrive = () => {};
   const drawMap = () => {
     if (!r) return;
     const color = busColor(r.type);
@@ -618,7 +642,15 @@ export function routeScreen(root, p, ctx) {
       const txt = (a) => (a.n === 0 ? (fi === 0 ? "출발 대기" : "도착") : `${a.n}정류장 전 · ${a.m < 1 ? "곧 도착" : Math.ceil(a.m) + "분 후"}`);
       come = `${r.stops[fi].name}까지 · ` + (near.length ? near.map((a, k) => (k ? "다음 " : "") + txt(a)).join(" / ") : "오는 버스 없음");
     }
-    root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${come ? `<small><b>${esc(come)}</b></small>` : ""}${plan ? `<small>${esc(plan)}</small>` : ""}` +
+    // 버스 몰림·빈 구간 (정류장 순번을 아는 버스끼리, 걸리는 시간은 거리 어림)
+    let spacing = "";
+    if ((pos?.buses || []).length >= 2) {
+      const sp = B.busSpacing(r.stops, pos.buses.map((b) => stopIdx(b)), B.intervalOn(r.sum || {}, isoDay()));
+      const parts = sp.bunched.slice(0, 2).map((x) => `${r.stops[x.j].name} 부근 2대 연달아`);
+      if (sp.gap) parts.push(`${r.stops[sp.gap.i].name} → ${r.stops[sp.gap.j].name} 약 ${Math.round(sp.gap.min)}분 버스 없음`);
+      spacing = parts.join(" · ");
+    }
+    root.querySelector("#status").innerHTML = `<b>${esc(status)}</b>${come ? `<small><b>${esc(come)}</b></small>` : ""}${spacing ? `<small>${esc(spacing)}</small>` : ""}${plan ? `<small>${esc(plan)}</small>` : ""}` +
       (shapeMissing ? `<small>노선 길 모양을 아직 받지 못해 지도에는 정류장 사이를 곧게 이었어요. 잠시 뒤 다시 받아요</small>` : "");
     list.innerHTML = r.stops.map((st, i) => {
       const turn = i > 0 && st.upDown && r.stops[i - 1].upDown && st.upDown !== r.stops[i - 1].upDown ? `<div class="turn">회차</div>` : "";
@@ -638,6 +670,7 @@ export function routeScreen(root, p, ctx) {
         ${Alight.supported && st.lat != null ? `<button class="mini ${alightOn ? "on" : ""}" ${act(() => { alightOn ? Alight.stop() : Alight.start(st.name, st.lat, st.lng); drawList(); })}>${alightOn ? "알림 끄기" : "내릴 곳"}</button>` : ""}
       </div>`;
     }).join("");
+    paintArrive();
   };
   let offRetry = null;
   const start = async () => {
@@ -652,7 +685,7 @@ export function routeScreen(root, p, ctx) {
       return;
     }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
-      `<div class="map-slot"></div><div class="under-map"><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="rtimes"></div><div id="stops" class="list"></div></div>`;
+      `<div class="map-slot"></div><div class="under-map"><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button><button class="link pad" id="rarrive" hidden></button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="rtimes"></div><div id="stops" class="list"></div></div>`;
     // 공식 배차시간표가 있는 노선(전주·울산·천안·창원·대구·제주·진주·구미·안동·거제): 오늘 기점 출발 시각 전체
     B.routeDeps(r.id, r.no !== "노선" ? r.no : p.no).then((deps) => {
       const el = alive && root.querySelector("#rtimes");
@@ -662,6 +695,11 @@ export function routeScreen(root, p, ctx) {
       const hm = (m) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
       el.innerHTML = `<details class="rtimes"><summary>오늘 기점 출발 시각 ${list.length}회 · ${esc(deps.source || "공식 배차시간표")}</summary><div class="tt">${list.map((m) => `<span class="${m < now ? "past" : ""}">${hm(m)}</span>`).join("")}</div></details>`;
     }).catch(() => {});
+    // 도착 알림: 정류장에서 들어왔을 때만 (그 정류장에 이 노선 버스가 5분·90초 안으로 오면 알림)
+    const fromStop = p.from ? known.get(p.from) : null, arriveBtn = root.querySelector("#rarrive");
+    const route0 = { id: r.id, no: r.no !== "노선" ? r.no : p.no || r.no };
+    paintArrive = () => { if (!arriveBtn || !fromStop) return; arriveBtn.hidden = false; arriveBtn.textContent = Arrive.isTarget(fromStop.id, route0) ? "🔕 도착 알림 끄기" : "🔔 도착 알림"; };
+    arriveBtn?.addEventListener("click", () => { if (Arrive.isTarget(fromStop.id, route0)) Arrive.stop(); else Arrive.start(fromStop, route0); paintArrive(); });
     let tickNow = () => {};
     // 새로고침: 누르자마자 "다시 받는 중"으로 바꾸고(받지 못했어요가 그대로 남아 안 눌린 것 같았음) 받는 대로 그림
     root.querySelector("#rrefresh")?.addEventListener("click", () => {
