@@ -641,7 +641,37 @@ def test_fill_only_missing_routes():
     assert [c for c, _ in bd.FILL_CITIES] == ["32020", "12"]
 
 
+def test_resolve_times():
+    """포항·원주·세종: 다른 자료 노선의 첫차·막차를 TAGO 목록에서 번호로 (괄호 설명·DRT 무시, 기점·종점이 같은 것 먼저)"""
+    tago = [{"routeno": "206(기본)", "startnodenm": "양덕행", "endnodenm": "위덕대", "startvehicletime": "0600", "endvehicletime": 2230},
+            {"routeno": "206(기본-자명경유)", "startnodenm": "양덕", "endnodenm": "자명", "startvehicletime": "0640", "endvehicletime": "0010"},
+            {"routeno": "31", "startnodenm": "가", "endnodenm": "가", "startvehicletime": "0000", "endvehicletime": "0000"},
+            {"routeno": "DRT62", "startnodenm": "a", "endnodenm": "b", "startvehicletime": 700, "endvehicletime": 1900}]
+    tago.append({"routeno": "구룡포", "startnodenm": "a", "endnodenm": "b", "startvehicletime": "0610", "endvehicletime": "2100"})
+    rows = [("FPH1", "206", "양덕", "위덕대"), ("FPH2", "206", "딴곳", "딴곳"), ("FWJ1", "31번", "가", "가"), ("FSJ1", "62", "x", "y"), ("FX", "999", "", ""), ("FPH4", "구룡포2", "", "")]
+    got = bd.resolve_times(rows, tago)
+    assert got["FPH1"] == ("06:00", "22:30")          # 기점·종점이 같은 것
+    assert got["FPH2"] == ("06:00", "00:10")          # 못 맞추면 가장 이른 첫차·가장 늦은 막차(자정 넘김)
+    assert "FWJ1" not in got and "FX" not in got       # 0000·0000 은 빈 값, 없는 번호
+    assert got["FSJ1"] == ("07:00", "19:00")
+    assert got["FPH4"] == ("06:10", "21:00")         # '구룡포2' → TAGO '구룡포'
+    with tempfile.TemporaryDirectory() as d:
+        dbp = pathlib.Path(d) / "x.db"
+        db = sqlite3.connect(dbp)
+        db.execute("CREATE TABLE routes(id TEXT, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+        db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+        db.execute("INSERT INTO routes VALUES('FPH1','206','양덕','위덕대',NULL,NULL,'37010',NULL,NULL,'resolve')")
+        db.execute("INSERT INTO routes VALUES('FPH3','206','양덕','위덕대',NULL,NULL,'37010',NULL,NULL,'resolve')")
+        db.execute("INSERT INTO route_info VALUES('FPH3','05:00','23:00',10,NULL,NULL)")   # 이미 있으면 그대로
+        db.commit(); db.close()
+        assert bd.fill_resolve_times(dbp, {"37010": tago}) == 1
+        db = sqlite3.connect(dbp)
+        assert db.execute("SELECT first, last FROM route_info WHERE id='FPH1'").fetchone() == ("06:00", "22:30")
+        assert db.execute("SELECT first, last FROM route_info WHERE id='FPH3'").fetchone() == ("05:00", "23:00")
+        db.close()
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

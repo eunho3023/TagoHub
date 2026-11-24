@@ -192,6 +192,66 @@ def already_have(item, have):
     return any(ks & keys for keys, _, _ in have)
 
 
+# 다른 자료(교통안전공단 등, realtime 'resolve')로 들어간 노선은 첫차·막차가 비어 있음 (2026-11-24: 포항 330·원주 244·세종 131개).
+# TAGO 노선 목록에는 이 지역 첫차·막차가 있어서(포항 195/196, 세종 138/139, 원주 93/201) 번호로 맞춰 채움
+TIME_CITIES = ["37010", "32020", "12"]
+
+
+def time_key(no):
+    """첫차·막차 맞대기용 번호: route_key 에 더해 괄호 설명·'DRT' 를 뺌 ('206(기본)' = '206', 'DRT62' = '62')"""
+    k = re.split(r"[(\[)]", route_key(no))[0]
+    return k[3:] if k.startswith("DRT") and len(k) > 3 else k
+
+
+def _ends(a, b):
+    n = lambda x: re.sub(r"[\s.·()]|행$", "", str(x or ""))
+    return {n(a), n(b)} - {""}
+
+
+def resolve_times(rows, tago_items):
+    """[(id, no, 기점, 종점)] 과 TAGO 노선 목록 → {id: (첫차, 막차)}.
+    같은 번호가 여럿이면 기점·종점이 같은 것, 없으면 그 번호 노선들의 가장 이른 첫차·가장 늦은 막차.
+    TAGO 가 '0000'·'0000' 처럼 비운 값은 버림"""
+    by = {}
+    for it in tago_items:
+        f, l = clock(it.get("startvehicletime")), clock(it.get("endvehicletime"))
+        if not f and not l or f == l == "00:00":
+            continue
+        by.setdefault(time_key(it.get("routeno")), []).append((f, l, _ends(it.get("startnodenm"), it.get("endnodenm"))))
+    out = {}
+    for rid, no, a, b in rows:
+        k = time_key(no)
+        # 포항 읍면 노선: 앱은 '구룡포1·구룡포2', TAGO 는 '구룡포' 로 묶어 적음 → 한글 이름 끝 숫자를 빼고 한 번 더
+        cand = by.get(k) or (by.get(re.sub(r"(?<=[가-힣])\d+$", "", k)) if re.search(r"[가-힣]\d+$", k) else None) or []
+        if not cand:
+            continue
+        mine = _ends(a, b)
+        exact = [c for c in cand if mine and c[2] == mine]
+        use = exact or cand
+        firsts = [c[0] for c in use if c[0]]
+        lasts = [c[1] for c in use if c[1]]
+        # 막차 '00:30' 처럼 자정 넘은 것도 있어 그대로 비교하면 틀림: 04시 전은 다음 날로 봄
+        late = lambda t: (int(t[:2]) + (24 if int(t[:2]) < 4 else 0)) * 60 + int(t[3:])
+        out[rid] = (min(firsts) if firsts else None, max(lasts, key=late) if lasts else None)
+    return out
+
+
+def fill_resolve_times(db_path, lists):
+    """[lists] {도시: TAGO 노선 목록} 로 resolve 노선의 비어 있는 첫차·막차를 route_info 에 넣음. 넣은 수"""
+    db = sqlite3.connect(db_path)
+    n = 0
+    for code, tago_items in lists.items():
+        rows = db.execute("""SELECT r.id, r.no, r.start_name, r.end_name FROM routes r LEFT JOIN route_info i ON i.id = r.id
+                             WHERE r.city = ? AND r.realtime = 'resolve' AND (i.id IS NULL OR (i.first IS NULL AND i.last IS NULL))""", (code,)).fetchall()
+        for rid, (f, l) in resolve_times(rows, tago_items).items():
+            db.execute("INSERT INTO route_info (id, first, last, interval, int_sat, int_sun) VALUES (?, ?, ?, NULL, NULL, NULL) "
+                       "ON CONFLICT(id) DO UPDATE SET first = excluded.first, last = excluded.last", (rid, f, l))
+            n += 1
+    db.commit()
+    db.close()
+    return n
+
+
 # ───────────── 받기 ─────────────
 
 class Fetcher:
@@ -1369,6 +1429,12 @@ def main():
     added, stops = write_db(BASE_DB, OUT / "bus_stops.db", tago, gbis, version, kotsa, tsb, complete=complete, served_api=jeonju, tago_cities=cities,
                             gbis_stops=gbis_stops, jeju=jeju, tsb_info=tsb_info, incheon_info=incheon_info,
                             unserved_check=unserved_check, prev_db=prev)
+    # 포항·원주·세종 (다른 자료로 들어간 노선) 첫차·막차를 TAGO 노선 목록으로 (도시마다 1~2번 호출, 하루 저장)
+    try:
+        lists = {c: list_all(fx, f"{TAGO}/getRouteNoList", {"_type": "json", "cityCode": c}, f"tago/{c}/routes_all", DAY, 1000) for c in TIME_CITIES}
+        print(f"다른 자료 노선 첫차·막차 채움: {fill_resolve_times(OUT / 'bus_stops.db', lists)}개", flush=True)
+    except (Limit, KeyError_) as e:
+        print(f"다른 자료 노선 첫차·막차: 못 받음 ({type(e).__name__})", flush=True)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))
