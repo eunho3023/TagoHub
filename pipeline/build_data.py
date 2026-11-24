@@ -611,8 +611,22 @@ def fetch_geoje(line_ids=None, days=False):
     return out
 
 
+STATIC_TIMES = HERE / "static_times"   # 자동으로 못 받는 지자체 첫차·막차를 공개 화면에서 옮겨 둔 것 (README 참고)
+
+
+def static_city_info(db, prefix, path):
+    """옮겨 둔 노선 번호별 첫차·막차 CSV → {노선 id: (첫차, 막차, None)} (같은 번호의 갈래 모두)"""
+    import csv
+    try:
+        with open(path, encoding="utf-8") as f:
+            by_no = {r["노선번호"].strip(): (r["평일첫차"].strip(), r["평일막차"].strip()) for r in csv.DictReader(f) if r.get("평일첫차")}
+    except OSError:
+        return {}
+    return {rid: (*by_no[no], None) for rid, no in db.execute("SELECT id, no FROM routes WHERE id LIKE ?", (prefix + "%",)) if no in by_no}
+
+
 def fill_city_times(db_path):
-    """안동·거제·나주 시청 버스정보 자료로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
+    """안동·거제·나주 시청 버스정보 자료와 옮겨 둔 경산 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
     db = sqlite3.connect(db_path)
     geoje_ids = [rid[3:] for (rid,) in db.execute("SELECT r.id FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id LIKE 'GJB%' AND r.city = '38090' "
                                                      "AND (i.id IS NULL OR (i.first IS NULL AND i.last IS NULL))")]
@@ -620,6 +634,7 @@ def fill_city_times(db_path):
         "안동": fill_route_info(db, andong_info(fetch_andong())),
         "거제": fill_route_info(db, {rid: s for rid, ts in fetch_geoje(geoje_ids).items() if (s := span(ts))}),
         "나주": fill_route_info(db, naju_info(fetch_naju())),
+        "경산": fill_route_info(db, static_city_info(db, "GYB", STATIC_TIMES / "gyeongsan.csv")),
     }
     db.commit()
     db.close()

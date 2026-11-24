@@ -817,7 +817,27 @@ def test_city_times():
     assert bd.span(["08:10", "20:30", "21:20"])[2] is None                # 배차 세 시간 넘으면 비움
 
 
+def test_static_city_times():
+    """옮겨 둔 경산 첫차·막차: 같은 번호 갈래 모두, 이미 있는 첫차·막차는 그대로, 실제 파일도 읽힘"""
+    import sqlite3, tempfile, os
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT)")
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    db.executemany("INSERT INTO routes VALUES (?, ?)", [("GYB1", "남천1"), ("GYB2", "남천1"), ("GYB3", "100"), ("GYB4", "하양1"), ("ADB1", "100")])
+    db.execute("INSERT INTO route_info VALUES ('GYB3', '06:00', '22:00', NULL, NULL, NULL)")
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8") as f:
+        f.write("노선번호,평일첫차,평일막차\n남천1,07:02,19:50\n100,06:55,22:35\n")
+    info = bd.static_city_info(db, "GYB", f.name)
+    os.unlink(f.name)
+    assert info == {"GYB1": ("07:02", "19:50", None), "GYB2": ("07:02", "19:50", None), "GYB3": ("06:55", "22:35", None)}
+    assert bd.fill_route_info(db, info) == 2
+    assert db.execute("SELECT first, last FROM route_info WHERE id = 'GYB3'").fetchone() == ("06:00", "22:00")
+    assert bd.static_city_info(db, "GYB", "없는 파일.csv") == {}
+    real = bd.static_city_info(db, "GYB", bd.STATIC_TIMES / "gyeongsan.csv")
+    assert real["GYB1"] == ("07:02", "19:50", None) and real["GYB3"] == ("06:55", "22:35", None)
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend, test_static_city_times):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
