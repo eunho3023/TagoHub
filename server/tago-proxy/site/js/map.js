@@ -50,7 +50,9 @@ function dotEl(d) {
     const b = document.createElement("div");
     b.className = "mbus3d";
     b.style.setProperty("--c", d.color);
-    b.innerHTML = `<div class="body"><i class="win"></i><b>${esc3d(d.bus3d.no)}</b></div><i class="wh l"></i><i class="wh r"></i>` +
+    // 진행 방향 (d.bus3d.dir: 북쪽 0도, 시계 방향): 몸통 오른쪽 위 작은 동그라미 화살표
+    const dir = d.bus3d.dir != null && Number.isFinite(d.bus3d.dir) ? `<i class="dir" style="transform:rotate(${Math.round(d.bus3d.dir)}deg)"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1.5 L8.5 8 L5 6.3 L1.5 8 Z" fill="${esc3d(d.color)}"/></svg></i>` : "";
+    b.innerHTML = `<div class="body"><i class="win"></i><b>${esc3d(d.bus3d.no)}</b>${dir}</div><i class="wh l"></i><i class="wh r"></i>` +
       (d.bus3d.caption ? `<div class="cap">${esc3d(d.bus3d.caption)}</div>` : "");
     wrap.appendChild(b);
   } else {

@@ -1,6 +1,7 @@
 """배포할 때 받는 지자체 공식 배차시간표 (서버(클라우드)에서는 접속이 막힌 지역용).
 
 천안(its.cheonan.go.kr)·구미(bis.gumi.go.kr) 버스정보시스템은 클라우드 서버에서 오는 요청을 받지 않아,
+(안동 bus.andong.go.kr·거제 bis.geoje.go.kr 도 여기서: 거제는 옛 암호 방식·양식 요청이라 서버에서 받기 어려움, 2026-11-24)
 deploy.ps1 을 실행하는 컴퓨터에서 받아 웹 자료 조각(public/data/times/<지역>.json)으로 같이 올림.
 형식: {노선 9자리: {"weekday": [분...], "sat": [...], "holi": [...], "source": "..."}}
 실패해도 배포는 계속 (그 지역은 첫차·막차 예상 시각으로 보임).
@@ -93,6 +94,34 @@ def gumi_all():
     return out, len(rows)
 
 
+def andong_all():
+    """안동: 시간표 목록 한 번 (holidayType 1 평일, 2 휴일) → {노선 9자리: 출발 시각}"""
+    import build_data as bd
+    items = bd.fetch_andong()
+    by = {}
+    for it in items:
+        rid = str(it.get("routeId") or "")
+        mins = clock_list(str(it.get("strtTm") or "").split(","))
+        if rid and mins:
+            by.setdefault(rid, {}).setdefault(str(it.get("holidayType")), set()).update(mins)
+    out = {}
+    for rid, d in by.items():
+        w, h = sorted(d.get("1", ())), sorted(d.get("2", ()))
+        out[rid] = {"weekday": w or h, "sat": h or w, "holi": h or w, "source": "안동시 버스정보시스템"}
+    return out, len(by)
+
+
+def geoje_all():
+    """거제: 노선마다 시간표 표 (평일·휴일 칸) → {노선 번호: 출발 시각}"""
+    import build_data as bd
+    got = bd.fetch_geoje(None, days=True)
+    out = {}
+    for lid, (w, h) in got.items():
+        w, h = clock_list(w), clock_list(h)
+        out[lid] = {"weekday": w or h, "sat": h or w, "holi": h or w, "source": "거제시 버스정보시스템"}
+    return out, len(got)
+
+
 CACHE = pathlib.Path(__file__).resolve().parent / "cache" / "times"
 
 
@@ -119,7 +148,7 @@ def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     dest = pathlib.Path(a.out) / "times"
     dest.mkdir(parents=True, exist_ok=True)
-    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all)):
+    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all)):
         kept = CACHE / f"{area}.json"
         age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() else None
         if age is not None and age < a.max_age_days:

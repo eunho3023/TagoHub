@@ -144,6 +144,12 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .mbus3d .wh { position: absolute; z-index: -1; top: 17px; width: 6px; height: 6px; border-radius: 50%; background: #282828; }
 .mbus3d .wh.l { left: calc(50% - 9px); } .mbus3d .wh.r { left: calc(50% + 5px); }
 .mbus3d .cap { margin-top: 6px; background: #fff; color: #222; font: 500 9px/13px var(--font); padding: 0 4px; border-radius: 7px; border: .8px solid rgba(0,0,0,.35); white-space: nowrap; }
+.mbus3d .dir { position: absolute; top: -8px; right: -8px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center; }
+.lowbtn.on { background: var(--accent, #2F7CF6); color: #fff; border-radius: 12px; }
+.rtimes { padding: 4px 16px 8px; font-size: 13px; }
+.rtimes summary { cursor: pointer; color: var(--muted, #666); }
+.rtimes .tt { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.rtimes .tt .past { opacity: .4; }
 .badge.rtype { font-size: 11px; padding: 1px 5px; margin-right: 4px; }
 /* 노선 선 위 진행 방향 화살표 (bus.js lineArrows) */
 .mline-arrow { position: absolute; width: 12px; height: 12px; line-height: 0; transform: translate(-50%, -50%); pointer-events: none; }
