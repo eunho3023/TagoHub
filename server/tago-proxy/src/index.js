@@ -139,7 +139,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
   // 지자체 공식 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미 버스정보 사이트, src/timetable.js)
   if (url.pathname.startsWith("/w/bus/jeonju/time/")) return handleJeonjuTime(url.pathname.slice("/w/bus/jeonju/time/".length), ctx);
-  if (url.pathname.startsWith("/w/bus/time/")) { const [area, id] = url.pathname.slice("/w/bus/time/".length).split("/"); return handleBusTime(area, id, ctx, fetch, url.searchParams.get("no")); }
+  if (url.pathname.startsWith("/w/bus/time/")) { const [area, id] = url.pathname.slice("/w/bus/time/".length).split("/"); return handleBusTime(area, id, ctx, area === "jeju" ? (u, i) => upstreamFetch(u, i || {}, env) : fetch, url.searchParams.get("no")); }   // 제주만 국내 중계로 (Cloudflare 에서 바로 물으면 504)
   if (url.pathname.startsWith("/w/bus/")) return busWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/icn/")) return icnWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);

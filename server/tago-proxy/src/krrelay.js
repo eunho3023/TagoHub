@@ -11,7 +11,8 @@
 import { hedgedFetch } from "./hedge.js";
 
 // 브이월드(api.vworld.kr)는 Cloudflare 에서 물으면 HTTP 520·빈 답 (2026-11-23 배포 뒤 잰 것, 국내 PC 에서는 잘 됨)
-export const RELAY_HOSTS = new Set(["apis.data.go.kr", "api.vworld.kr"]);
+// 제주 버스정보(bus.jeju.go.kr)는 Cloudflare 에서 바로 물으면 504 (2026-11-24 시간표·노선 정보 모두) → 중계로
+export const RELAY_HOSTS = new Set(["apis.data.go.kr", "api.vworld.kr", "bus.jeju.go.kr"]);
 const TUNNEL = /^https:\/\/[a-z0-9-]{1,80}\.trycloudflare\.com$/;
 const STALE_MS = 15 * 60 * 1000;
 // 중계가 기관에 스스로 겹쳐 물으므로(1.2초마다 최대 3개, relay.mjs askUpstream) 중계에 다시 묻는 건 4초 뒤 (터널이 잠깐 끊겼을 때용)
