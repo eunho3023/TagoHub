@@ -603,6 +603,8 @@ internal fun mergeStopRows(
     nowMin: Int = LocalTime.now().let { it.hour * 60 + it.minute },
     /** 이 정류장 이름: 노선 기점이면 서 있는 버스를 "출발 대기"로 ([com.eunho.tagohub.data.OriginWait]) */
     stopName: String? = null,
+    /** 노선 id → 앱 안 노선 자료의 종류 (도착 자료에 종류가 없을 때) */
+    typeOf: (String) -> String? = { id -> StopDb.peek()?.routeType(id) },
 ): List<StopRouteRow> {
     val byRoute = arrivals.groupBy { it.routeId }
     val known = routes.map { r ->
@@ -619,7 +621,8 @@ internal fun mergeStopRows(
     val extra = byRoute.filterKeys { it !in ids }.map { (id, list) ->
         StopRouteRow(id, list.first().routeNo, list.first().routeType, null, null, list.take(2))
     }
-    return (known + extra).sortedWith(
+    // 도착·경유노선 자료에 노선 종류가 비어 있으면 앱 안 노선 자료의 종류로 (간선·지선·순환·마을 …)
+    return (known + extra).map { r -> if (r.routeType.isNullOrBlank()) typeOf(r.routeId)?.let { r.copy(routeType = it) } ?: r else r }.sortedWith(
         compareBy<StopRouteRow>(
             { it.arrivals.isEmpty() },
             { it.arrivals.firstOrNull()?.arrSeconds ?: Int.MAX_VALUE },
@@ -843,6 +846,13 @@ private suspend fun fetchBusData(repo: TagoRepository, d: BusDest.Route) {
  * 버스 이름표 (노선 띠 알약·지도): 차량번호 전체 + 저상/일반 (위치 자료가 알려 주는 서울·경기·전주·제주만, 모르면 번호만).
  * 번호가 없는 버스(#로 시작하는 임시 이름)는 null
  */
+/** 지도 입체 버스 아래 이름표: "저상 · 12가3456" / "일반 · 12가3456" / 모르면 차량번호만, 번호가 없으면 저상 여부만 */
+internal fun busCaption(b: BusLocation): String? {
+    val no = b.vehicleNo?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("#") }
+    val kind = when (b.lowFloor) { true -> "저상"; false -> "일반"; null -> null }
+    return listOfNotNull(kind, no).joinToString(" · ").ifEmpty { null }
+}
+
 internal fun busTag(b: BusLocation): String? {
     val no = b.vehicleNo?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("#") } ?: return null
     return when (b.lowFloor) { true -> "$no · 저상"; false -> "$no · 일반"; null -> no }

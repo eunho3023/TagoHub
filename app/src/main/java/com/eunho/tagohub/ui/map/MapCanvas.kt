@@ -34,6 +34,10 @@ data class VehiclePin(
     val color: Int,
     val label: String,
     val glyph: String,
+    /** 있으면 입체 버스 모양(MarkerBitmaps.bus3d) 안에 이 노선 번호 */
+    val routeNo: String? = null,
+    /** 입체 버스 아래 이름표 ("저상 · 12가3456") */
+    val caption: String? = null,
 )
 
 /** 길찾기 경로 한 구간 (걷기는 점선) */

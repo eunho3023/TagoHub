@@ -32,6 +32,8 @@ function loadScript(src) {
   return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
 
+const esc3d = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
 function dotEl(d) {
   // 노선 선 위 진행 방향 화살표 (d.chevron: 북쪽 0도, 시계 방향). 눌러지지 않음
   if (d.chevron != null) {
@@ -43,6 +45,15 @@ function dotEl(d) {
   const size = d.r * 2;
   const wrap = document.createElement("div");
   wrap.className = "mdot-wrap";
+  // 입체 버스 (d.bus3d = {no, caption}): 노선색 몸통 + 어두운 옆면 두께 + 창 줄 + 바퀴, 안에 노선 번호, 아래에 "저상 · 차량번호" (앱 MarkerBitmaps.bus3d 와 같은 모양)
+  if (d.bus3d) {
+    const b = document.createElement("div");
+    b.className = "mbus3d";
+    b.style.setProperty("--c", d.color);
+    b.innerHTML = `<div class="body"><i class="win"></i><b>${esc3d(d.bus3d.no)}</b></div><i class="wh l"></i><i class="wh r"></i>` +
+      (d.bus3d.caption ? `<div class="cap">${esc3d(d.bus3d.caption)}</div>` : "");
+    wrap.appendChild(b);
+  } else {
   const dot = document.createElement("div");
   dot.className = "mdot";
   dot.style.cssText = `width:${size}px;height:${size}px;background:${d.color};border-color:${d.ring || "#fff"}`;
@@ -56,6 +67,7 @@ function dotEl(d) {
     dot.innerHTML = `<svg width="${size - 4}" height="${size - 4}" viewBox="0 0 10 10" style="transform:rotate(${Math.round(d.dir)}deg)"><path d="M2 7 L5 2.5 L8 7" fill="none" stroke="${d.arrow || "#fff"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
   wrap.appendChild(dot);
+  }
   if (d.label) {
     const t = document.createElement("div");
     t.className = d.labelUp ? "mdot-label up" : "mdot-label";

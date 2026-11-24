@@ -93,6 +93,84 @@ class MarkerBitmaps(private val density: Float) {
     }
 
     /**
+     * 지도 버스: 비스듬히 본 입체 버스 (노선색 몸통 + 어두운 옆면 두께 + 지붕 빛 + 창 줄 + 바퀴 두 개) 안에 노선 번호,
+     * 아래에 흰 이름표 [caption] (예: "저상 · 12가3456"). 버스 몸통 가운데가 그림 가운데라 anchor (0.5, 0.5)
+     */
+    fun bus3d(color: Int, routeNo: String, caption: String?, selected: Boolean): Bitmap {
+        val k = if (selected) 1.2f else 1f
+        val num = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = px(11f * k); isFakeBoldText = true }
+        val cap = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = Color.rgb(34, 34, 34); textAlign = Paint.Align.CENTER; textSize = px(9f) }
+        val no = routeNo.take(9)
+        val bodyW = maxOf(px(30f * k), num.measureText(no) + px(10f * k))
+        val bodyH = px(19f * k)
+        val depth = px(3.5f * k)          // 옆면 두께 (오른쪽 아래로)
+        val wheelR = px(2.8f * k)
+        val busH = bodyH + depth + wheelR
+        val capText = caption?.takeIf { it.isNotBlank() }
+        val capW = capText?.let { cap.measureText(it) + px(8f) } ?: 0f
+        val capH = if (capText != null) px(13f) else 0f
+        val gap = if (capText != null) px(2f) else 0f
+        val extra = capH + gap
+        val w = (maxOf(bodyW + depth, capW) + px(4f)).toInt()
+        val h = (extra + busH + extra + px(2f)).toInt()
+        val b = Bitmap.createBitmap(maxOf(1, w), maxOf(1, h), Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        val left = (w - bodyW - depth) / 2f
+        val top = extra + px(1f)
+        val r = px(4f * k)
+        val dark = Color.rgb((Color.red(color) * 0.62f).toInt(), (Color.green(color) * 0.62f).toInt(), (Color.blue(color) * 0.62f).toInt())
+        // 그림자 (바닥)
+        fill.color = Color.argb(60, 0, 0, 0)
+        c.drawRoundRect(RectF(left + depth * 0.6f, top + depth + px(1.5f), left + bodyW + depth * 1.2f, top + bodyH + depth + px(1.5f)), r, r, fill)
+        // 옆면 두께: 오른쪽 아래로 한 칸씩 어두운 몸통을 겹쳐 그림
+        fill.color = dark
+        var d = depth
+        while (d > 0f) {
+            c.drawRoundRect(RectF(left + d, top + d, left + bodyW + d, top + bodyH + d), r, r, fill)
+            d -= px(0.5f)
+        }
+        // 바퀴
+        fill.color = Color.rgb(40, 40, 40)
+        for (fx in floatArrayOf(0.26f, 0.74f)) c.drawCircle(left + depth + bodyW * fx, top + bodyH + depth, wheelR, fill)
+        // 앞면 몸통 + 흰 테두리
+        val body = RectF(left, top, left + bodyW, top + bodyH)
+        fill.color = color
+        c.drawRoundRect(body, r, r, fill)
+        // 지붕 빛 (위쪽 밝게)
+        fill.color = Color.argb(70, 255, 255, 255)
+        c.drawRoundRect(RectF(left + px(1f), top + px(1f), left + bodyW - px(1f), top + bodyH * 0.38f), r * 0.7f, r * 0.7f, fill)
+        // 창 줄 (위쪽 얇은 띠 여러 칸)
+        fill.color = Color.argb(110, 255, 255, 255)
+        val winTop = top + px(2.2f * k)
+        val winH = px(3.2f * k)
+        val n = maxOf(3, (bodyW / px(7f)).toInt())
+        val slot = (bodyW - px(6f)) / n
+        for (i in 0 until n) {
+            val x = left + px(3f) + i * slot
+            c.drawRoundRect(RectF(x + px(0.6f), winTop, x + slot - px(0.6f), winTop + winH), px(1f), px(1f), fill)
+        }
+        stroke.color = Color.WHITE
+        stroke.strokeWidth = px(if (selected) 2f else 1.4f)
+        c.drawRoundRect(body, r, r, stroke)
+        // 노선 번호 (창 줄 아래)
+        val numMid = top + winH + px(2.2f * k) + (bodyH - winH - px(2.2f * k)) / 2f
+        c.drawText(no, left + bodyW / 2f, numMid - (num.ascent() + num.descent()) / 2f, num)
+        // 아래 이름표
+        if (capText != null) {
+            val cy = top + busH + gap
+            val cx = w / 2f
+            fill.color = Color.WHITE
+            val pill = RectF(cx - capW / 2f, cy, cx + capW / 2f, cy + capH)
+            c.drawRoundRect(pill, capH / 2f, capH / 2f, fill)
+            stroke.color = Color.argb(90, 0, 0, 0)
+            stroke.strokeWidth = px(0.8f)
+            c.drawRoundRect(pill, capH / 2f, capH / 2f, stroke)
+            c.drawText(capText, cx, cy + capH / 2f - (cap.ascent() + cap.descent()) / 2f, cap)
+        }
+        return forKakao(b)
+    }
+
+    /**
      * 지하철 열차: 동그라미 대신 작은 전동차 모양 (노선색 몸통 + 흰 테두리, 앞유리, 아래 두 개의 바퀴).
      * [glyph] 가 있으면(급행·막차) 앞유리 자리에 글자. 선택하면 조금 크게. anchor (0.5, 0.5)
      */

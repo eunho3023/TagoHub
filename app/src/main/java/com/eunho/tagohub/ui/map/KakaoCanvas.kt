@@ -229,6 +229,7 @@ class KakaoCanvas(
                     STOP_LAYER, ROUTE_PIN_LAYER -> vm.onStopClick(id)
                     STATION_LAYER -> vm.onStationClick(id)
                     TRAIN_LAYER -> vm.onTrainClick(id)
+                    BUS_LAYER, KLID_BUS_LAYER -> vm.onBusPinClick(id)
                     LIVE_SIGNAL_LAYER -> vm.onLiveSignalClick(id)
                     UTIC_INCIDENT_LAYER, UTIC_ROAD_RISK_LAYER, UTIC_SAFETY_LAYER, ITS_CCTV_LAYER, ITS_ROAD_LAYER -> showCallout(layer.layerId, id)
                     CALLOUT_LAYER -> openMarker(id)
@@ -763,16 +764,23 @@ class KakaoCanvas(
             if (v.path.isEmpty()) continue
             val sel = v.id == selected
             val isTrain = layerId == TRAIN_LAYER
-            val key = "${if (isTrain) "t" else "v"}${v.color}${v.glyph}$sel"
+            val bus3d = !isTrain && v.routeNo != null
+            val key = if (bus3d) "b3${v.color}|${v.routeNo}|${v.caption}|$sel" else "${if (isTrain) "t" else "v"}${v.color}${v.glyph}$sel"
             val st = styles(key) {
-                val b = if (isTrain) icons.train(v.color, v.glyph, sel) else icons.vehicle(v.color, v.glyph, sel)
-                LabelStyles.from(icon(b, 0.5f, 0.5f), withText(icon(b, 0.5f, 0.5f, 14), 10f))
+                if (bus3d) {
+                    // 입체 버스: 번호·저상·차량번호를 그림 안에 넣어 글자 라벨 없이
+                    LabelStyles.from(icon(icons.bus3d(v.color, v.routeNo!!, v.caption, sel), 0.5f, 0.5f))
+                } else {
+                    val b = if (isTrain) icons.train(v.color, v.glyph, sel) else icons.vehicle(v.color, v.glyph, sel)
+                    LabelStyles.from(icon(b, 0.5f, 0.5f), withText(icon(b, 0.5f, 0.5f, 14), 10f))
+                }
             }
             val start = Shapes.along(v.path, v.startFrac)
             val m = movers[v.id]
             if (m == null) {
-                val label = l.addLabel(LabelOptions.from(KLatLng.from(start.lat, start.lng)).setStyles(st).setTexts(text(v.label))
-                    .setClickable(layerId == TRAIN_LAYER).setTag(v.id)) ?: continue
+                // 열차·버스 모두 누를 수 있음 (버스를 누르면 그 노선 선형)
+                val label = l.addLabel(LabelOptions.from(KLatLng.from(start.lat, start.lng)).setStyles(st).setTexts(text(if (bus3d) "" else v.label))
+                    .setClickable(true).setTag(v.id)) ?: continue
                 movers[v.id] = Mover(label, v.path, v.startFrac, v.endFrac, v.durationMs, null, 0, now, key)
                 continue
             }

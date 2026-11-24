@@ -19,7 +19,17 @@ data class KlidBusPosition(
     val vehicleNo: String,
     val latitude: Double,
     val longitude: Double,
+    /** 위치를 보낸 시각 (gthrDt, epoch ms). 모르면 null — 지금 안 다니는 차의 며칠 전 마지막 위치도 함께 와서 이걸로 거름 */
+    val atMs: Long? = null,
+    /** 노선 종류 (노선 기준정보 rteType: 간선버스·지선버스 …) */
+    val routeType: String? = null,
+    /** 기점·종점 (노선 기준정보) — 눌러서 노선을 열 때 같은 번호 중 고르는 데 씀 */
+    val startName: String? = null,
+    val endName: String? = null,
 )
+
+/** 노선 기준정보 한 줄 (위치 자료의 rteNo 가 비어 있어 rteId 로 번호·종류를 채움, 2026-11-24 울산 2,675대 모두 비어 있었음) */
+data class KlidRoute(val routeNo: String, val routeType: String?, val startName: String?, val endName: String?)
 
 internal data class KlidBusPage(val rows: List<Row>, val totalCount: Int)
 
@@ -57,16 +67,34 @@ class KlidBusRepository(
         return null
     }
 
-    fun positions(stdgCode: String): List<KlidBusPosition> =
-        fetchAll("rtm_loc_info", stdgCode).mapNotNull { row ->
+    @Volatile
+    private var routeCache: Pair<String, Map<String, KlidRoute>>? = null
+
+    /** 이 지역 노선 기준정보 {rteId: 번호·종류·기점·종점} (지역마다 한 번 받아 둠) */
+    fun routes(stdgCode: String): Map<String, KlidRoute> {
+        routeCache?.takeIf { it.first == stdgCode }?.let { return it.second }
+        val map = fetchAll("mst_info", stdgCode).mapNotNull { row ->
+            val id = row.text("rteId").ifBlank { return@mapNotNull null }
+            id to KlidRoute(row.text("rteNo"), row.text("rteType").ifBlank { null }, row.text("stpnt").ifBlank { null }, row.text("edpnt").ifBlank { null })
+        }.toMap()
+        routeCache = stdgCode to map
+        return map
+    }
+
+    fun positions(stdgCode: String): List<KlidBusPosition> {
+        val routes = runCatching { routes(stdgCode) }.getOrDefault(emptyMap())
+        return fetchAll("rtm_loc_info", stdgCode).mapNotNull { row ->
             val lat = row.double("lat") ?: return@mapNotNull null
             val lng = row.double("lot") ?: return@mapNotNull null
             if (lat !in -90.0..90.0 || lng !in -180.0..180.0) return@mapNotNull null
             val routeId = row.text("rteId")
             val vehicleNo = row.text("vhclNo")
             val id = if (vehicleNo.isNotBlank()) "$stdgCode:$routeId:$vehicleNo" else "$stdgCode:$routeId:$lat:$lng"
-            KlidBusPosition(id, row.text("rteNo"), vehicleNo, lat, lng)
+            val r = routes[routeId]
+            KlidBusPosition(id, row.text("rteNo").ifBlank { r?.routeNo.orEmpty() }, vehicleNo, lat, lng,
+                atMs = gatheredAt(row.text("gthrDt")), routeType = r?.routeType, startName = r?.startName, endName = r?.endName)
         }.distinctBy { it.id }
+    }
 
     private fun fetchAll(endpoint: String, stdgCode: String? = null): List<Row> {
         val first = request(endpoint, stdgCode, 1)
@@ -105,8 +133,12 @@ class KlidBusRepository(
 
     private companion object {
         const val BASE_URL = "https://apis.data.go.kr/B551982/rte/"
-        // 한 번에 받는 개수: 1000 은 허용 범위를 넘을 수 있어 100 씩 (여러 쪽으로 나눠 받음)
-        const val PAGE_SIZE = 100
+        /** "2026-11-24 21:00:34.099502" (한국 시각) → epoch ms. 못 읽으면 null */
+        fun gatheredAt(s: String): Long? = runCatching {
+            java.time.LocalDateTime.parse(s.trim().take(19).replace(' ', 'T')).atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant().toEpochMilli()
+        }.getOrNull()
+        // 한 번에 받는 개수: 1000 (2026-11-24 울산 위치·노선 기준정보 모두 1000 줄씩 받아짐. 100 씩이면 위치만 27번 물어 5초 갱신이 안 됨)
+        const val PAGE_SIZE = 1000
         val httpClient: OkHttpClient = Http.builder()
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(10, TimeUnit.SECONDS)
