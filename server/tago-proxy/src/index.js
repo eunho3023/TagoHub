@@ -2,7 +2,7 @@
 // - 공공데이터포털 키를 앱 대신 서버(비밀 값 DATA_GO_KR_KEY)에 둠 → 앱을 뜯어봐도 키가 없음
 // - 같은 요청은 잠시 저장해 두고 나눠 줌 → 모든 사용자가 키 하나를 같이 써도 호출이 덜 나감
 // - 앱은 X-TagoHub-Token 헤더(비밀 값 APP_TOKEN)를 보내야 함 → 아무나 이 서버를 키 대신 쓰지 못하게
-import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, seoulPositionRequest, seoulPositionUrl, kakaoWebRequest, kacWebRequest, ovWebRequest, cctvRows, encodeKey, signalWebRequest, busWebRequest, icnWebRequest } from "./proxy.js";
+import { cacheKey, cacheable, fillKeys, hostTarget, hostTtl, ttlFor, upstreamPath, upstreamUrl, webRequest, exWebRequest, exUrl, seoulWebRequest, seoulArrivalUrl, seoulPositionRequest, seoulPositionUrl, kakaoWebRequest, kacWebRequest, ovWebRequest, cctvRows, encodeKey, signalWebRequest, busWebRequest, icnWebRequest, klidWebRequest } from "./proxy.js";
 import { handleLog, handleWebLog, hitsFromBusLc, prevStore } from "./log.js";
 import { handleShape, shapeCron } from "./shape.js";
 import { recordGps, gpsInfo } from "./gps.js";
@@ -137,6 +137,7 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/ov/")) return ovWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
+  if (url.pathname.startsWith("/w/klid/")) return klidWeb(request, url, env, ctx);
   // 지자체 공식 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미 버스정보 사이트, src/timetable.js)
   if (url.pathname.startsWith("/w/bus/jeonju/time/")) return handleJeonjuTime(url.pathname.slice("/w/bus/jeonju/time/".length), ctx);
   if (url.pathname.startsWith("/w/bus/time/")) { const [area, id] = url.pathname.slice("/w/bus/time/".length).split("/"); return handleBusTime(area, id, ctx, area === "jeju" ? (u, i) => upstreamFetch(u, i || {}, env) : fetch, url.searchParams.get("no")); }   // 제주만 국내 중계로 (Cloudflare 에서 바로 물으면 504)
@@ -409,6 +410,15 @@ async function icnWeb(request, url, env, ctx) {
   const raw = env.DATA_GO_KR_KEY;
   return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, raw ? r.url.replace("KEY", encodeKey(raw)) : null, r.ttl,
     (b) => /"resultCode"\s*:\s*"00"/.test(b));
+}
+
+/** 웹 지도 범위 버스 (proxy.js klidWebRequest). 키는 KLID_BUS_KEY(없으면 공공데이터포털 키). 정상(K0)만 저장 */
+async function klidWeb(request, url, env, ctx) {
+  const r = klidWebRequest(url.pathname);
+  if (!r) return new Response("not allowed", { status: 404, headers: WEB_HEADERS });
+  const raw = env.KLID_BUS_KEY || env.DATA_GO_KR_KEY;
+  const upstream = raw ? `https://apis.data.go.kr/B551982/rte/${r.op}?serviceKey=${encodeKey(raw)}&type=json&pageNo=${r.page}&numOfRows=1000&stdgCd=${r.code}` : null;
+  return cachedJson(request, env, ctx, `https://cache.tagohub/klid/${r.op}/${r.code}/${r.page}`, upstream, r.ttl, (b) => /"resultCode"\s*:\s*"K0"/.test(b));
 }
 
 /** 웹 버전 실시간 신호등 (proxy.js signalWebRequest). 서울은 SEOUL_SIGNAL_KEY, 울산은 KLID_BUS_KEY(없으면 공공데이터포털 키) */

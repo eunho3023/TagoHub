@@ -4,11 +4,11 @@ import { MapView } from "./map.js";
 import { thinDots } from "./mapdiff.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
-import { cachedText, subwayColor, getText } from "./core.js";
+import { cachedText, subwayColor, getText, busColor, livePoll } from "./core.js";
 import { pickPlace, KAKAO_ROUTING } from "./places.js";
 import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations.js";
 import { applyTheme } from "./store.js";
-import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
+import { stopsIn, cityName, stopRoutes, towardOf, positions, klidBuses } from "./busdata.js";
 /** 버스 정류장 아이콘 바탕색 (파란 둥근 네모, 폰 앱 정류장 아이콘과 같게) */
 export const BUS_STOP_COLOR = "#2F7CF6";
 import { trafficLayer } from "./topis.js";
@@ -141,6 +141,38 @@ export async function openStation(g, line) {
 export function stopsMap(host, focus) {
   let stops = [], picked = focus, stations = [];
   let timer = null, alive = true;
+  /**
+   * 지도 버스 (입체 버스 모양, 5초마다): 정류장을 골랐으면 그 정류장 노선들의 버스(차량번호·저상까지),
+   * 아니면 지도 범위 버스(초정밀 버스, 울산). 누르면 그 노선 화면 (정류장에서 노선 번호를 누른 것처럼)
+   */
+  let busDots = [], busSeq = 0;
+  const busTick = async () => {
+    if (!alive) return true;
+    const my = ++busSeq, p0 = picked, b = MapView.bounds(), z = MapView.zoom();
+    let out = [];
+    try {
+      if (p0 && p0.name && p0.id) {
+        const sums = await stopRoutes(p0).catch(() => []);
+        const got = await Promise.all(sums.filter((s) => s.id).map((s) => positions({ id: s.id, city: s.city || p0.city }).then((r) => ({ s, r })).catch(() => null)));
+        for (const g of got) {
+          if (!g || g.r.state !== "ok") continue;
+          for (const x of g.r.buses) {
+            if (x.lat == null || x.lng == null) continue;
+            out.push({ id: "sb:" + g.s.id + "|" + (x.vehicleNo || out.length), lat: x.lat, lng: x.lng, color: busColor(g.s.type), ring: "#fff", r: 8,
+              bus3d: { no: g.s.no, caption: [x.kind, x.vehicleNo].filter(Boolean).join(" · ") || null },
+              go: { id: g.s.id, city: g.s.city || p0.city, no: g.s.no, type: g.s.type, from: p0.id } });
+          }
+        }
+      } else if (b && z >= 13) {
+        out = (await klidBuses(b)).map((k) => ({ id: "kb:" + k.key, lat: k.lat, lng: k.lng, color: busColor(k.type), ring: "#fff", r: 8,
+          bus3d: { no: k.no || "버스", caption: null }, go: { id: k.routeId, city: k.city, no: k.no, type: k.type } }));
+      }
+    } catch (e) { return false; }
+    if (my !== busSeq || !alive || picked !== p0) return true;
+    busDots = out;
+    draw();
+    return true;
+  };
   /** 서울 실시간 교통 점(돌발·교통량 지점)을 눌렀을 때 카드 내용 */
   let info = null, cardSeq = 0;
   /** 관리자: 정류장 카드에 붙는 "묶기·노선 고치기" (지도 고치기 중, fixstops.js) */
@@ -205,12 +237,14 @@ export function stopsMap(host, focus) {
     // 정류장을 먼저 (교통 점보다 앞에), 고른 정류장(이름표)은 늘 남김
     MapView.dots(thinDots(
       // 지하철역이 맨 앞 (솎을 때 남게): 노선 색 점(정류장보다 크게), 줌 14부터 노선 색 이름표 (흰 점·흰 이름표는 지도에 묻혀 안 보였음)
-      [...stations.map((g, i) => { const k = "station:" + g.keys.join("|"), at0 = stationPos(g, Edits.stationFix), at = movedAt(k, at0[0], at0[1]); return { id: "sub:" + i, lat: at[0], lng: at[1], color: subwayColor(g.lines[0]), ring: moves.has(k) ? "#E08A00" : "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null }; }),
+      [...busDots, ...stations.map((g, i) => { const k = "station:" + g.keys.join("|"), at0 = stationPos(g, Edits.stationFix), at = movedAt(k, at0[0], at0[1]); return { id: "sub:" + i, lat: at[0], lng: at[1], color: subwayColor(g.lines[0]), ring: moves.has(k) ? "#E08A00" : "#fff", r: 8, label: MapView.zoom() >= 14 ? g.name + "역" : null }; }),
       ...[...stops.filter((s) => !picked || s.id !== picked.id), ...(picked && picked.name ? [picked] : [])]
         // 고른 정류장은 앱처럼 아이콘 위에 이름
         .map((s) => { const on = picked && s.id === picked.id, at = movedAt("stop:" + s.id, s.lat, s.lng); return { id: s.id, lat: at[0], lng: at[1], color: on ? "#D7262E" : moves.has("stop:" + s.id) ? "#E08A00" : BUS_STOP_COLOR, ring: "#fff", r: on ? 11 : 8, bus: true, label: on ? s.name : null, labelUp: on }; }),
       ...(traffic ? traffic.dots() : []).map((d) => { const m = moves.get("place:" + d.id); return m ? { ...d, lat: m.to[0], lng: m.to[1], ring: "#E08A00" } : d; })], MapView.metersPerPx()),
       (d) => {
+        // 지도 버스: 그 노선 화면 (정류장에서 노선 번호를 누른 것처럼)
+        if (d.go) { go("route", d.go.id, { from: d.go.from, city: d.go.city, no: d.go.no, type: d.go.type }); return; }
         cardSeq++;
         // 돌발·공영자전거·주차장·편의시설·주유소·휴게소·CCTV 점은 카드 (topis.js card)
         if (d.id.startsWith("sub:")) {
@@ -238,6 +272,7 @@ export function stopsMap(host, focus) {
         info = null;
         picked = stops.find((s) => s.id === d.id) || picked;
         if (picked) pickMove("stop:" + picked.id, "stop", [picked.id], picked.lat, picked.lng, picked.name);
+        busDots = []; busPoll?.now();
         drawBanner(); draw();
       },
     );
@@ -270,8 +305,11 @@ export function stopsMap(host, focus) {
       ]);
       if (focus && !picked?.name) picked = stops.find((s) => s.id === focus.id) || picked;
       if (alive) draw();
+      // 지도를 옮기면 지도 범위 버스도 바로 (정류장 노선 버스는 5초마다 그대로)
+      if (alive && !picked?.name) busPoll?.now();
     }, 300);
   };
+  let busPoll = null;
   traffic = trafficLayer(() => { if (alive) draw(); });
   const off = MapView.onIdle(load);
   // 누가 정류장 위치를 고치면 바로 다시 (지도는 그대로)
@@ -285,10 +323,10 @@ export function stopsMap(host, focus) {
       drawBanner(); draw();
       return;
     }
-    picked = null; info = null; moving = null; drawBanner(); draw();
+    picked = null; info = null; moving = null; busDots = []; busPoll?.now(); drawBanner(); draw();
   });
-  MapView.ready.then(load);
-  return () => { alive = false; off(); offEdit(); card.remove(); banner.remove(); traffic.destroy(); MapView.lines([]); };
+  MapView.ready.then(() => { load(); if (alive) busPoll = livePoll(busTick, 5000); });
+  return () => { alive = false; busPoll?.stop(); off(); offEdit(); card.remove(); banner.remove(); traffic.destroy(); MapView.lines([]); };
 }
 
 // ── 지도 오른쪽 클릭(PC)·꾹 누르기(폰·태블릿): 그 자리를 출발·경유·도착으로 (모든 지도 화면) ──

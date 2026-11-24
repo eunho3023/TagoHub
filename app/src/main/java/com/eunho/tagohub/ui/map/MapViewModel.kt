@@ -1785,6 +1785,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val code = autoCity.value?.code ?: return
         if (no.isBlank()) return
         viewModelScope.launch {
+            // 울산: 초정밀 버스 노선 id 가 TAGO 울산 노선 id 와 같음 (rteId 192000001 = USB192000001) → 번호로 찾지 않고 바로
+            val parts = p.id.split(':')
+            if (parts.size >= 2 && parts[0] == "3100000000") {
+                val local = stopDb?.let { db -> withContext(Dispatchers.IO) { runCatching { db.routeById("USB" + parts[1]) }.getOrNull() } }
+                if (local != null) {
+                    route.value = BusDest.Route("26", local.routeId, local.routeNo, local.routeType ?: p.routeType, null)
+                    panel.value = MapPanel.Route
+                    return@launch
+                }
+            }
             val cands = (repo.routesByNo(code, no) as? TagoResult.Success)?.data.orEmpty().filter { plainRouteNo(it.routeNo) == no }
             fun same(a: String?, b: String?) = !a.isNullOrBlank() && !b.isNullOrBlank() && (a.contains(b) || b.contains(a))
             val r = cands.firstOrNull { same(it.startName, p.startName) && same(it.endName, p.endName) } ?: cands.firstOrNull()

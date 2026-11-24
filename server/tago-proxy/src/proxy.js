@@ -344,6 +344,16 @@ export function kacWebRequest(pathname, search) {
 
 // ── 웹 버전 실시간 신호등 (/w/signal/seoul/<교차로 ID>, /w/signal/ulsan/map|now) ────────
 /** → { kind, id?, ttl }. 서울은 교차로 하나(3초 저장), 울산은 교차로 목록(하루)·지금 신호 전체(3초) */
+/**
+ * 웹 지도 범위 버스 (초정밀 버스, 공공데이터포털 B551982/rte): 노선 기준정보(routes, 하루 저장)·실시간 위치(pos, 4초 저장).
+ * 2026-11-24 자료를 주는 곳은 울산(3100000000)뿐. 한 쪽 1000줄
+ */
+export function klidWebRequest(pathname) {
+  const m = /^\/w\/klid\/(routes|pos)\/(\d{10})\/([1-9])$/.exec(pathname);
+  if (!m) return null;
+  return { op: m[1] === "routes" ? "mst_info" : "rtm_loc_info", code: m[2], page: +m[3], ttl: m[1] === "routes" ? 86400 : 4 };
+}
+
 export function signalWebRequest(pathname) {
   let m = /^\/w\/signal\/seoul\/(\d{1,10})$/.exec(pathname);
   if (m) return { kind: "seoul", id: m[1], ttl: 3 };
