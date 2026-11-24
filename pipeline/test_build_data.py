@@ -714,7 +714,30 @@ def test_drop_empty_dups():
     assert sorted(r[0] for r in db.execute("SELECT id FROM stops")) == ["GGB_1", "MPB_A", "TSB_3", "TSB_4", "TSB_5", "TSB_U"]
 
 
+def test_resolve_types():
+    """다른 자료 노선의 빈 노선 종류를 TAGO 목록에서 번호로 (기점·종점 같은 것 먼저, 없으면 가장 많은 종류), 있던 종류는 그대로"""
+    tago = [{"routeno": "206(기본)", "startnodenm": "양덕", "endnodenm": "위덕대", "routetp": "간선버스"},
+            {"routeno": "206", "startnodenm": "가", "endnodenm": "나", "routetp": "지선버스"},
+            {"routeno": "206", "startnodenm": "다", "endnodenm": "라", "routetp": "지선버스"},
+            {"routeno": "31", "startnodenm": "a", "endnodenm": "b", "routetp": None},
+            {"routeno": "구룡포", "startnodenm": "a", "endnodenm": "b", "routetp": "마을버스"}]
+    rows = [("A", "206", "양덕", "위덕대"), ("B", "206", "x", "y"), ("C", "31", "a", "b"), ("G", "구룡포2", "", "")]
+    assert bd.resolve_types(rows, tago) == {"A": "간선버스", "B": "지선버스", "G": "마을버스"}
+    with tempfile.TemporaryDirectory() as d:
+        dbp = pathlib.Path(d) / "x.db"
+        db = sqlite3.connect(dbp)
+        db.execute("CREATE TABLE routes(id TEXT, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+        db.execute("INSERT INTO routes VALUES('A','206','양덕','위덕대',NULL,NULL,'37010',NULL,NULL,'resolve')")
+        db.execute("INSERT INTO routes VALUES('D','206','양덕','위덕대',NULL,NULL,'37010',NULL,'마을버스','resolve')")
+        db.execute("INSERT INTO routes VALUES('E','206','양덕','위덕대',NULL,NULL,'37010',NULL,NULL,'tago')")
+        db.commit(); db.close()
+        assert bd.fill_resolve_types(dbp, {"37010": tago}) == 1
+        db = sqlite3.connect(dbp)
+        assert dict(db.execute("SELECT id, rtype FROM routes")) == {"A": "간선버스", "D": "마을버스", "E": None}
+        db.close()
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
