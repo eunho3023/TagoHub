@@ -2,10 +2,14 @@
 // - 장소 이름 검색: 브이월드(국토교통부) 검색, 못 찾으면 카카오로 한 번 더
 // - 주소 → 좌표, 좌표 → 주소·법정동: 브이월드 검색·지오코더
 // - 주유소: 오피넷(한국석유공사) 반경 검색 (좌표가 KATEC 이라 바꿔서 주고받음)
+// - 주변 편의점·카페·음식점·약국·병원: 소상공인시장진흥공단 상가(상권)정보 반경 검색 (2026-11-24부터, 은행은 상가정보에 없어 카카오)
 // 결과는 웹·앱이 같이 쓰는 모양으로 정리해 돌려주고 Cloudflare 임시 저장에 둠. 요청한 사람은 함께 저장하지 않음
+
+import { encodeKey } from "./proxy.js";
 
 const VWORLD = "https://api.vworld.kr/req/";
 const OPINET = "https://www.opinet.co.kr/api/aroundAll.do";
+const SDSC = "https://apis.data.go.kr/B553077/api/open/sdsc2/storeListInRadius";
 const KAKAO_KEYWORD = "https://dapi.kakao.com/v2/local/search/keyword.json";
 const COORD = /^-?\d{1,3}(\.\d{1,17})?$/;
 const HEADERS = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" };
@@ -229,11 +233,64 @@ export function pubRequest(pathname, search) {
       },
     };
   }
+  if (pathname === "/w/pub/store") {
+    const lat = p.get("lat"), lng = p.get("lng"), cat = STORE_CATS[p.get("cat") || ""];
+    if (!cat || !lat || !lng || !COORD.test(lat) || !COORD.test(lng)) return null;
+    // 약 50m 칸으로 맞춤. 상가정보는 석 달마다 새로 나와서 하루 저장
+    const la = (Math.round(+lat * 2000) / 2000).toFixed(4), lo = (Math.round(+lng * 2000) / 2000).toFixed(4);
+    return {
+      cacheKey: `store?cat=${p.get("cat")}&lat=${la}&lng=${lo}`, ttl: 86400,
+      async run(env, get) {
+        // 가까운 반경부터 넓혀 가며 15곳 넘게 나오면 멈춤 (도심 음식점은 300m 에도 수백 곳이라 한 번에 넓게 물으면 1,000개 안에 가까운 곳이 빠짐)
+        let stores = [];
+        for (const r of STORE_RADII) {
+          const qs = new URLSearchParams({ radius: String(r), cx: lo, cy: la, type: "json", numOfRows: "1000", pageNo: "1", ...cat.q });
+          stores = sdscStores(await get(`${SDSC}?serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}&${qs}`), +la, +lo, cat.keep);
+          if (stores.length >= STORE_MAX) break;
+        }
+        return { places: stores.slice(0, STORE_MAX) };
+      },
+    };
+  }
   return null;
 }
 
+/**
+ * 앱 분류 단추(카카오 분류 코드) → 상가정보 업종 (2023 상권업종분류). 은행(BK9)·지하철역(SW8)은 상가정보에 없음
+ * keep: 받은 것 중 남길 소분류 코드 (병원: 병원·의원만, 산후조리원 같은 기타 보건 빼고)
+ */
+export const STORE_CATS = {
+  CS2: { q: { indsSclsCd: "G20405" } },          // 편의점
+  CE7: { q: { indsSclsCd: "I21201" } },          // 카페
+  FD6: { q: { indsLclsCd: "I2" }, keep: /^I2(?!12)/ },  // 음식 (한식·중식·일식·서양식·간이·주점 등, 카페는 카페 단추로)
+  PM9: { q: { indsSclsCd: "G21501" } },          // 약국
+  HP8: { q: { indsLclsCd: "Q1" }, keep: /^Q10[12]/ },  // 병원·의원
+};
+const STORE_RADII = [300, 800, 1500], STORE_MAX = 15;
+
+/** 같은 가게인지 볼 이름 (상가정보에 'GS25서귀 광장점'·'지에스25서귀 광장점' 처럼 같은 가게가 두 번 있음) */
+const storeKey = (s) => String(s).toLowerCase().replace(/[\s.·()\-_]/g, "")
+  .replace(/^gs25/, "지에스25").replace(/^cu/, "씨유").replace(/^emart24/, "이마트24").replace(/^(7eleven|세븐일레븐)/, "세븐일레븐");
+
+/** 상가정보 응답 → 가까운 순 장소 (이름에 지점명을 붙임, 30m 안 같은 이름은 하나). 자료가 없으면(NODATA) 빈 목록 */
+export function sdscStores(body, lat, lng, keep = null) {
+  const items = (body && body.body && Array.isArray(body.body.items)) ? body.body.items : [];
+  const out = [];
+  for (const it of items) {
+    const la = num(it.lat), lo = num(it.lon), nm = String(it.bizesNm || "").trim();
+    if (la == null || lo == null || !nm) continue;
+    if (keep && !keep.test(String(it.indsSclsCd || ""))) continue;
+    const br = String(it.brchNm || "").trim();
+    const name = br ? `${nm} ${br}` : nm, k = storeKey(name);
+    if (out.some((p) => p.k === k && meters(p.lat, p.lng, la, lo) < 30)) continue;
+    out.push({ k, name, address: it.rdnmAdr || it.lnoAdr || null, lat: la, lng: lo,
+      category: String(it.indsSclsNm || "").trim() || null, dist: Math.round(meters(lat, lng, la, lo)) });
+  }
+  return out.sort((a, b) => a.dist - b.dist).map(({ k, ...p }) => p);
+}
+
 /** 키 이름 (없으면 그 요청은 500) */
-const NEEDS = { "/w/pub/place": "VWORLD_KEY", "/w/pub/address": "VWORLD_KEY", "/w/pub/where": "VWORLD_KEY", "/w/pub/gas": "OPINET_KEY" };
+const NEEDS = { "/w/pub/place": "VWORLD_KEY", "/w/pub/address": "VWORLD_KEY", "/w/pub/where": "VWORLD_KEY", "/w/pub/gas": "OPINET_KEY", "/w/pub/store": "DATA_GO_KR_KEY" };
 
 /** GET /w/pub/... (src/index.js). limit: 저장에 없을 때만 주소마다 분당 제한 */
 export async function handlePub(request, url, env, ctx, { fetcher = fetch, limit = null } = {}) {

@@ -188,13 +188,14 @@ object KakaoExtra {
     }
 
     /**
-     * 카테고리로 장소 검색 (주변 1.5km, 가까운 순). 11월 30일부터 주유소(OL7)는 오피넷, 주차장(PK6)은 앱 주차장 자료(공공데이터).
-     * 나머지 분류(편의점·카페·음식점·약국·병원·은행·지하철역)는 아직 카카오
+     * 카테고리로 장소 검색 (주변 1.5km, 가까운 순). 주유소(OL7)는 오피넷, 주차장(PK6)은 앱 주차장 자료(공공데이터),
+     * 편의점·카페·음식점·약국·병원은 소상공인시장진흥공단 상가정보 (2026-11-24부터). 은행·지하철역과 서버에 못 물었을 때는 카카오
      */
     suspend fun category(code: String, lat: Double, lng: Double): List<Place2> {
         if (PublicGeo.on()) when (code) {
             "OL7" -> PublicGeo.gas(lat, lng)?.let { return it }
             "PK6" -> return PublicGeo.parking(lat, lng)
+            in PublicGeo.STORE_CODES -> PublicGeo.stores(code, lat, lng)?.let { return it }
         }
         return get(
             KakaoLocal.CATEGORY_URL.toHttpUrl().newBuilder().addQueryParameter("category_group_code", code)

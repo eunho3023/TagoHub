@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toKatec, fromKatec, vworldPlaces, vworldAddresses, vworldWhere, opinetStations, kakaoPlaces, pubRequest, handlePub } from "../src/pubgeo.js";
+import { toKatec, fromKatec, vworldPlaces, vworldAddresses, vworldWhere, opinetStations, kakaoPlaces, pubRequest, handlePub, sdscStores, STORE_CATS } from "../src/pubgeo.js";
 
 const near = (a, b, m) => Math.hypot((a[0] - b[0]) * 111000, (a[1] - b[1]) * 88000) < m;
 
@@ -115,4 +115,41 @@ test("장소: 브이월드가 오류면 카카오 결과는 5분만 저장 (브�
   assert.equal(j.src, "kakao");
   assert.equal(j.short, undefined);
   assert.equal(res.headers.get("Cache-Control"), "public, max-age=300");
+});
+
+const store = (nm, br, lat, lon, scls, sname) => ({ bizesNm: nm, brchNm: br, lat, lon, indsSclsCd: scls, indsSclsNm: sname, rdnmAdr: "도로 " + nm });
+
+test("상가정보: 가까운 순, 지점명 붙임, 같은 가게(GS25 = 지에스25)는 하나, 분류 거르기", () => {
+  const body = { body: { items: [
+    store("씨유", "먼점", 35.83, 127.15, "G20405", "편의점"),
+    store("GS25", "광장점", 35.8201, 127.148, "G20405", "편의점"),
+    store("지에스25", "광장점", 35.8201, 127.1481, "G20405", "편의점"),
+    store("카페", "", 35.8202, 127.148, "I21201", "카페"),
+    store("", "", 35.82, 127.148, "G20405", "편의점"),
+  ] } };
+  const out = sdscStores(body, 35.82, 127.148);
+  assert.deepEqual(out.map((p) => p.name), ["GS25 광장점", "카페", "씨유 먼점"]);
+  assert.equal(out[0].dist, 11);
+  assert.equal("k" in out[0], false);
+  assert.deepEqual(sdscStores(body, 35.82, 127.148, STORE_CATS.FD6.keep).map((p) => p.name), []);   // 음식점 단추에 카페는 빠짐
+  assert.ok(STORE_CATS.HP8.keep.test("Q10201") && !STORE_CATS.HP8.keep.test("Q10401"));           // 병원·의원만
+  assert.deepEqual(sdscStores({ response: { header: { resultCode: "03" } } }, 35.82, 127.148), []);  // 자료 없음
+  assert.equal(STORE_CATS.BK9, undefined);   // 은행은 상가정보에 없음 (앱이 카카오로)
+});
+
+test("상가정보 요청: 분류·좌표 검사, 50m 칸, 가까운 반경부터 넓혀 15곳 넘으면 멈춤", async () => {
+  assert.equal(pubRequest("/w/pub/store", "?cat=BK9&lat=35.82&lng=127.14"), null);
+  assert.equal(pubRequest("/w/pub/store", "?cat=CS2&lat=x&lng=127.14"), null);
+  assert.equal(pubRequest("/w/pub/store", "?cat=CS2&lat=35.82012&lng=127.14826").cacheKey, "store?cat=CS2&lat=35.8200&lng=127.1485");
+  const seen = [];
+  const many = (n) => ({ body: { items: Array.from({ length: n }, (_, i) => store("가게" + i, "", 35.82 + i * 1e-4, 127.148, "G20405", "편의점")) } });
+  const fetcher = async (u) => { seen.push(u); const r = new URL(u).searchParams.get("radius"); return new Response(JSON.stringify(many(r === "300" ? 3 : 20))); };
+  const env = { DATA_GO_KR_KEY: "a/b+c" };
+  const url = new URL("https://x/w/pub/store?cat=CS2&lat=35.82&lng=127.148");
+  const r = await handlePub(new Request(url), url, env, { waitUntil() {} }, { fetcher });
+  const j = await r.json();
+  assert.equal(j.places.length, 15);
+  assert.deepEqual(seen.map((u) => new URL(u).searchParams.get("radius")), ["300", "800"]);
+  assert.ok(seen[0].includes("serviceKey=a%2Fb%2Bc") && seen[0].includes("indsSclsCd=G20405") && seen[0].startsWith("https://apis.data.go.kr/B553077/"));
+  assert.equal((await handlePub(new Request(url), url, {}, { waitUntil() {} }, { fetcher })).status, 500);   // 키 없음
 });

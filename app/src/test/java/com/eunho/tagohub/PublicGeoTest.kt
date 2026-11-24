@@ -36,4 +36,14 @@ class PublicGeoTest {
         assertFalse(PublicGeo.on(PublicGeo.FROM_MS - 1))
         assertEquals(java.time.OffsetDateTime.parse("2026-11-23T00:00:00+09:00").toInstant().toEpochMilli(), PublicGeo.FROM_MS)
     }
+
+    @Test
+    fun stores() {
+        // 서버 /w/pub/store: 상가정보, dist 는 거리(m)
+        val r = PublicGeo.parsePlaces(root("""{"places":[{"name":"GS25 광장점","address":"도로 1","lat":35.8201,"lng":127.148,"category":"편의점","dist":11}]}"""))
+        assertEquals(1, r.size)
+        assertEquals(11, r[0].distance)
+        assertEquals("편의점", r[0].category)
+        assertTrue("BK9" !in PublicGeo.STORE_CODES && "CS2" in PublicGeo.STORE_CODES)   // 은행은 카카오
+    }
 }
