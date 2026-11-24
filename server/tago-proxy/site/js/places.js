@@ -124,6 +124,24 @@ const won = (n) => n.toLocaleString("ko-KR") + "원";
 const stepColor = (t) => (t === "BUS" ? "#2E9E5B" : t === "SUBWAY" ? "#3B7DDD" : t === "VIA" ? "#E08A00" : "#9E9E9E");
 const label = (s) => (s.type === "BUS" ? "버스 " + (s.vehicles[0] || s.guidance || "") : s.type === "SUBWAY" ? s.vehicles[0] || s.guidance || "지하철" : s.type === "VIA" ? "경유 " + s.name : `걷기 ${Math.ceil(s.time / 60)}분`);
 
+/**
+ * 지도에서 고른 곳(오른쪽 클릭·꾹 누르기, app.js)을 출발(from)·경유(via)·도착(to)으로 넣고 길찾기 화면으로.
+ * 도착만 정했고 출발이 없으면 내 위치를 출발로 (startDirections 와 같게)
+ */
+export function pickPlace(kind, pl) {
+  if (!KAKAO_ROUTING) { go("navi"); return; }
+  if (kind === "via") { if (dir.vias.length < MAX_VIAS) dir.vias.push(pl); } else dir[kind] = pl;
+  dir.q = ""; changed();
+  dir.editing = !dir.from ? "from" : !dir.to ? "to" : null;
+  const redraw = () => { if (location.hash.startsWith("#/navi")) window.dispatchEvent(new Event("hashchange")); else go("navi"); };
+  redraw();
+  if (!dir.from && kind === "to") {
+    currentLocation().then((here) => {
+      if (here && !dir.from) { dir.from = { name: MY_PLACE, lat: here[0], lng: here[1], address: null }; dir.editing = null; changed(); redraw(); }
+    });
+  }
+}
+
 /** 홈·집/회사에서: 도착은 고른 곳, 출발은 내 위치 (못 받으면 출발을 고르게) */
 export function startDirections(to) {
   if (!KAKAO_ROUTING) { go("navi"); return; }
@@ -141,6 +159,8 @@ export function directionsScreen(root, p, ctx) {
     return null;
   }
   let alive = true, seq = 0;
+  // 지도에서 고르기: 지도를 누른 자리 [위도, 경도]와 그 이름·주소
+  let picking = false, pickAt = null, pickName = null, pickSeq = 0;
   const box = (k, title, place) => `<button class="pbox ${dir.editing === k ? "on" : ""}" ${act(() => { dir.editing = k; dir.q = ""; draw(); })}><small>${title}</small><b>${esc(place?.name || "장소 찾기")}</b></button>`;
   const use = (pl) => {
     if (dir.editing === "via") { if (dir.vias.length < MAX_VIAS) dir.vias.push(pl); }
@@ -185,8 +205,10 @@ export function directionsScreen(root, p, ctx) {
       // 경유지 (5곳까지): 이름 옆 ✕ 로 빼기
       `<div class="vias">${dir.vias.map((v, i) => `<span class="via"><small>경유${dir.vias.length > 1 ? i + 1 : ""}</small>${esc(v.name)}<button class="mini" aria-label="경유지 빼기" ${act(() => { dir.vias.splice(i, 1); changed(); draw(); })}>✕</button></span>`).join("")}` +
       `${dir.vias.length < MAX_VIAS ? `<button class="mini ${dir.editing === "via" ? "on" : ""}" ${act(() => { dir.editing = "via"; dir.q = ""; draw(); })}>+ 경유지 추가</button>` : ""}</div>`;
+    if (dir.editing && picking) { drawPick(html); return; }
     if (dir.editing) {
-      html += `<div class="searchbox"><input id="pq" type="search" placeholder="${dir.editing === "from" ? "출발" : dir.editing === "via" ? "경유지" : "도착"} 장소·주소·역 이름" value="${esc(dir.q)}" autocomplete="off"></div><div id="pl"></div>`;
+      html += `<div class="searchbox"><input id="pq" type="search" placeholder="${dir.editing === "from" ? "출발" : dir.editing === "via" ? "경유지" : "도착"} 장소·주소·역 이름" value="${esc(dir.q)}" autocomplete="off"></div>` +
+        `<button class="link pad" ${act(() => { picking = true; pickAt = null; pickName = null; draw(); })}>🗺️ 지도에서 고르기</button><div id="pl"></div>`;
       root.innerHTML = html;
       const inp = bindInput(root, "#pq", (v) => { dir.q = v; places(); }, 400);
       inp?.focus({ preventScroll: true });
@@ -224,6 +246,36 @@ export function directionsScreen(root, p, ctx) {
         <span class="bar8">${x.steps.map((s) => `<i style="flex:${Math.max(1, s.time) / total};background:${stepColor(s.type)}"></i>`).join("")}</span>
         <small>${esc(x.steps.filter((s) => s.type !== "WALKING").map((s) => label(s) + (s.stops[0] ? ` (${s.stops[0]})` : "")).join("  →  "))}</small></button>`;
     }).join("")}</div>`;
+  }
+  /** 지도에서 고르기: 지도를 누르면 그 자리에 점, 이름·주소를 받아 "이 위치로" */
+  function drawPick(html) {
+    const what = dir.editing === "from" ? "출발" : dir.editing === "via" ? "경유지" : "도착";
+    root.innerHTML = html + `<div class="list"><div class="row"><span class="grow">지도를 눌러 ${what} 위치를 고르세요</span><button class="link" ${act(() => { picking = false; MapView.onTap(null); draw(); })}>검색으로</button></div></div>` +
+      `<div class="map-slot"></div><div id="pickinfo" class="list"></div>`;
+    ctx.useMap(root.querySelector(".map-slot"));
+    const other = dir.editing === "to" ? dir.from : dir.to;
+    if (!pickAt && other) MapView.view(other.lat, other.lng, 15);
+    const paint = () => {
+      MapView.lines([]);
+      MapView.dots(pickAt ? [{ id: "pick", lat: pickAt[0], lng: pickAt[1], color: dir.editing === "from" ? "#2E9E5B" : dir.editing === "via" ? "#E08A00" : "#D7262E", ring: "#fff", r: 8, label: what, labelUp: true }] : []);
+      const info = root.querySelector("#pickinfo");
+      if (!info) return;
+      info.innerHTML = pickAt ? `<div class="row"><span class="grow"><b>${esc(pickName?.name || "이름 찾는 중...")}</b><small>${esc(pickName?.address && pickName.address !== pickName.name ? pickName.address : "")}</small></span>` +
+        `<button class="btn" ${act(() => { const pl = { name: pickName?.name || "지도에서 고른 곳", lat: pickAt[0], lng: pickAt[1], address: pickName?.address || null }; picking = false; MapView.onTap(null); use(pl); })}>이 위치로</button></div>` : "";
+    };
+    MapView.onTap((ll) => {
+      if (!ll || !picking) return;
+      pickAt = [+ll[0].toFixed(6), +ll[1].toFixed(6)]; pickName = null;
+      const my = ++pickSeq;
+      paint();
+      getText("w/pub/where", { lat: pickAt[0].toFixed(6), lng: pickAt[1].toFixed(6) }).then((t) => {
+        const w = JSON.parse(t) || {};
+        if (my !== pickSeq) return;
+        pickName = { name: w.name || w.road || w.parcel || "지도에서 고른 곳", address: w.road || w.parcel || null };
+        paint();
+      }).catch(() => { if (my === pickSeq) { pickName = { name: "지도에서 고른 곳", address: null }; paint(); } });
+    });
+    paint();
   }
   /** 출발·경유·도착 점 */
   const endDots = () => [{ id: "from", lat: dir.from.lat, lng: dir.from.lng, color: "#2E9E5B", ring: "#fff", r: 7, label: "출발" },
@@ -267,5 +319,5 @@ export function directionsScreen(root, p, ctx) {
   draw();
   // 못 받은 채로 다른 앱에 갔다 돌아오거나 인터넷이 다시 켜지면 다시 받음 (onReturn)
   const offReturn = onReturn(() => { if (alive && dir.status === "ERROR" && dir.routes && !dir.routes.length) { dir.routes = null; draw(); } });
-  return () => { alive = false; offReturn(); };
+  return () => { alive = false; offReturn(); MapView.onTap(null); };
 }

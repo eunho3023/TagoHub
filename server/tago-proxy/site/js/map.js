@@ -11,6 +11,9 @@ const el = document.createElement("div");
 el.className = "map";
 let impl = null;           // { view, fit, lines, dots, bounds, zoom, relayout }
 let idleCbs = [], tapCb = null, dotCb = null;
+// 지도 오른쪽 클릭(PC)·꾹 누르기(폰·태블릿): 출발·도착·경유 고르기 (app.js 가 한 번 정함, 화면이 바뀌어도 그대로)
+let ctxCb = null, ctxAt = 0;
+const fireCtx = (ll) => { if (!ll || !ctxCb || Date.now() - ctxAt < 700) return; ctxAt = Date.now(); ctxCb(ll); };
 let pendingView = null;
 // 지난번 내 위치 (이 기기 브라우저에만 저장): 지도를 처음부터 그 자리로 열어 바로 보이게
 const LAST_KEY = "tagohub.lastPos";
@@ -101,6 +104,7 @@ async function kakaoImpl() {
   map.addControl(new K.ZoomControl(), K.ControlPosition.RIGHT);
   K.event.addListener(map, "idle", () => idleCbs.forEach((f) => f()));
   K.event.addListener(map, "click", (e) => tapCb && tapCb(e && e.latLng ? [e.latLng.getLat(), e.latLng.getLng()] : null));
+  K.event.addListener(map, "rightclick", (e) => fireCtx(e && e.latLng ? [e.latLng.getLat(), e.latLng.getLng()] : null));
   let lineObjs = new Map(), dotObjs = new Map(), meObj = null, meRing = null;
   const lv = (z) => Math.min(14, Math.max(1, 20 - z));
   return {
@@ -169,7 +173,10 @@ async function leafletImpl() {
   document.head.appendChild(css);
   await loadScript(LEAFLET + "leaflet.js");
   const L = window.L;
-  const map = L.map(el, { zoomControl: true }).setView([START[0], START[1]], 16);
+  // renderer padding 1: 선(노선·길찾기)을 화면 둘레 한 화면씩 더 그려 둠. 기본(0.1)은 지도를 끄는 동안 화면 밖에 있던 부분이 비어 있다가
+  // 손을 떼야 다시 그려져서, 노선 화면에서 지도를 누르고 움직이면 선이 사라졌다 나오는 것처럼 보였음 (2026-11-24)
+  // tapHold: 폰·태블릿에서 꾹 누르면 contextmenu (출발·도착·경유 고르기). 안드로이드 크롬은 브라우저도 contextmenu 를 내서 fireCtx 가 한 번만 받음
+  const map = L.map(el, { zoomControl: true, renderer: L.svg({ padding: 1 }), tapHold: true }).setView([START[0], START[1]], 16);
   const tiles = tileSet(L);
   let base = null, type = "normal";
   /** 지금 지도 종류·밝기에 맞는 그림 층 (브이월드 그림이 안 오면 OpenStreetMap 으로 바꿈) */
@@ -195,6 +202,7 @@ async function leafletImpl() {
   new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   map.on("moveend", () => idleCbs.forEach((f) => f()));
   map.on("click", (e) => tapCb && tapCb(e && e.latlng ? [e.latlng.lat, e.latlng.lng] : null));
+  map.on("contextmenu", (e) => fireCtx(e && e.latlng ? [e.latlng.lat, e.latlng.lng] : null));
   const lineLayer = L.layerGroup().addTo(map), dotLayer = L.layerGroup().addTo(map), meLayer = L.layerGroup().addTo(map);
   paint();
   let meMark = null, meCircle = null, lineObjs = new Map(), dotObjs = new Map();
@@ -331,6 +339,8 @@ export const MapView = {
   dots(ds, onDot) { dotCb = onDot || null; pendDots = ds; paintSoon(); },
   clear() { dotCb = null; tapCb = null; pendLines = []; pendDots = []; paintSoon(); },
   onTap(f) { tapCb = f; },
+  /** 오른쪽 클릭·꾹 누르기 [위도, 경도] (앱 전체에서 하나, clear 로 지워지지 않음) */
+  onContext(f) { ctxCb = f; },
   /** 지도를 옮기거나 확대할 때마다 (돌려준 함수로 그만 받기) */
   onIdle(f) { idleCbs.push(f); return () => { idleCbs = idleCbs.filter((x) => x !== f); }; },
   /** 지도를 옮기지 않고 그림을 다시 (고친 정류장 위치를 바로 보이게) */
