@@ -78,6 +78,14 @@ test("정류장 사이 길 고치기: 이어지는 두 정류장(id) 사이를 �
   // 차례가 다르거나(B → A) 선에서 멀면 그대로
   assert.deepEqual(applySegFixes(line, [stops[2], stops[1]], [fix]), line);
   assert.deepEqual(applySegFixes(line, [[36.0, 127.0, "", "A"], [36.0, 127.001, "", "B"]], [fix]), line);
+  // cut: 정류장에 가장 가까운 점(골목으로 빠지는 첫 점)까지 버리고 이음
+  assert.deepEqual(applySegFixes(line, stops, [{ ...fix, cut: true }]), [[35.80, 127.10], ...fix.path, [35.80, 127.103], [35.80, 127.104]]);
+});
+
+test("대전 211: 이마트 뒤·대전산업정보고 앞 블록 돌기를 큰길로", async () => {
+  const { SEG_FIXES } = await import("../site/js/roadline.js");
+  assert.ok(SEG_FIXES.some((f) => f.from === "DJB8002468" && f.to === "DJB8001078" && f.cut));
+  assert.ok(SEG_FIXES.some((f) => f.from === "DJB8001951" && f.to === "DJB8001240" && f.cut));
 });
 
 // 곧은 길 펴기: 동쪽으로 가는 큰길 (x m 동쪽, y m 북쪽)

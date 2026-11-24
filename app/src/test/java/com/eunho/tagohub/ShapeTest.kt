@@ -21,6 +21,9 @@ class ShapeTest {
         val out = com.eunho.tagohub.data.SegFixes.apply(line, stops, listOf(fix))
         assertEquals(listOf(line[0], line[1]) + fix.path + listOf(line[2], line[3], line[4]), out)
         assertEquals(line, com.eunho.tagohub.data.SegFixes.apply(line, listOf(stops[2], stops[1]), listOf(fix)))
+        // cut: 정류장에 가장 가까운 점까지 버리고 이음 (웹과 같음)
+        assertEquals(listOf(line[0]) + fix.path + listOf(line[3], line[4]), com.eunho.tagohub.data.SegFixes.apply(line, stops, listOf(fix.copy(cut = true))))
+        assertTrue(com.eunho.tagohub.data.SegFixes.all.any { it.from == "DJB8002468" && it.to == "DJB8001078" && it.cut })
         // 병무청 회차 길이 표에 있음
         assertTrue(com.eunho.tagohub.data.SegFixes.all.any { it.from == "TSB305000104" && it.to == "TSB305000070" && it.path.size > 20 })
     }
