@@ -56,17 +56,31 @@ def dump(path: pathlib.Path, obj):
     path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
-def fetch_release_db(tmp: pathlib.Path):
-    try:
-        req = urllib.request.Request(RELEASE_DB, headers={"User-Agent": "TagoHub-build"})
-        with urllib.request.urlopen(req, timeout=120) as r:
-            gz = r.read()
-        db = tmp / "bus_stops.db"
-        db.write_bytes(gzip.decompress(gz))
-        return db
-    except Exception as e:  # 못 받으면 앱 안 DB
-        print(f"최신 DB 를 받지 못해 앱 안 DB 를 씀: {e}", flush=True)
-        return None
+RELEASE_TRIES = (0, 10, 30, 60)   # 받기 시도 사이 쉬는 초
+
+
+def fetch_release_db(tmp: pathlib.Path, opener=None, sleep=time.sleep, tries=RELEASE_TRIES):
+    """
+    최신 DB(Release data-latest, 약 30MB) 받기. 못 받으면 쉬었다가 다시 (모두 네 번), 그래도 못 받으면 None.
+    예전엔 한 번(120초) 실패하면 앱 안 옛 DB(2026-10-24)로 웹 자료를 만들어 배포해서, 웹 정류장·노선·첫차막차가 10월로 돌아갔음 (2026-11-25)
+    """
+    opener = opener or (lambda req: urllib.request.urlopen(req, timeout=300))
+    last = None
+    for k, wait in enumerate(tries):
+        if wait:
+            sleep(wait)
+        try:
+            req = urllib.request.Request(RELEASE_DB, headers={"User-Agent": "TagoHub-build"})
+            with opener(req) as r:
+                gz = r.read()
+            db = tmp / "bus_stops.db"
+            db.write_bytes(gzip.decompress(gz))
+            return db
+        except Exception as e:
+            last = e
+            print(f"최신 DB 받기 {k + 1}/{len(tries)}번째 실패: {e}", flush=True)
+    print(f"최신 DB 를 받지 못했어요: {last}", flush=True)
+    return None
 
 
 def encode_polyline(pts, precision: int = 5) -> str:
@@ -211,9 +225,15 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--db")
     ap.add_argument("--out", default=str(ROOT / "server/tago-proxy/public/data"))
+    ap.add_argument("--allow-app-db", action="store_true", help="최신 DB 를 못 받으면 앱 안 옛 DB 로라도 만듦 (배포에는 쓰지 말 것)")
     a = ap.parse_args(argv)
     with tempfile.TemporaryDirectory() as tmp:
-        db = pathlib.Path(a.db) if a.db else (fetch_release_db(pathlib.Path(tmp)) or ASSETS / "bus_stops.db")
+        db = pathlib.Path(a.db) if a.db else fetch_release_db(pathlib.Path(tmp))
+        if db is None:
+            if not a.allow_app_db:
+                print("웹 자료를 만들지 않았어요: 옛 DB 로 만들면 웹 정류장·노선이 예전으로 돌아가요. 잠시 뒤 다시 실행해 주세요.", flush=True)
+                return 2
+            db = ASSETS / "bus_stops.db"
         m = build(db, pathlib.Path(a.out))
     print(f"웹 자료 만듦: 칸 {m['tiles']}개, 이름 {m['names']}개, 노선 묶음 {m['routeBuckets']}개, 자료 파일 {m['files']}개 → {a.out}", flush=True)
     return 0

@@ -76,6 +76,11 @@ if (-not $py) {
 if ($py) {
     $env:PYTHONIOENCODING = 'utf-8'
     & $py (Join-Path $PSScriptRoot '..\..\pipeline\build_web_data.py') --out (Join-Path $PSScriptRoot 'public\data')
+    # 최신 정류장 DB 를 못 받으면 멈춤 (예전엔 앱 안 10월 DB 로 만들어 올려서 웹 자료가 예전으로 돌아갔음, 2026-11-25)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '  최신 정류장 DB 를 받지 못해 배포를 멈췄어요. 아무것도 올리지 않았어요. 잠시 뒤 다시 실행해 주세요.' -ForegroundColor Red
+        exit 1
+    }
     # 클라우드 서버 접속을 막는 지역(천안·구미)의 공식 배차시간표는 이 컴퓨터에서 받아 같이 올림 (실패해도 계속)
     # 7일에 한 번만 새로 받고 그 사이에는 pipeline/cache/times 에 보관한 것을 씀
     Write-Host '준비: 천안·구미 버스 배차시간표 (7일마다 새로 받음, 받을 때는 2~3분)...'
