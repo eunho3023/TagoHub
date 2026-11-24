@@ -13,6 +13,7 @@
   4) 정류장 번호가 앞의 0만 다르고(02001 = 2001) 100m 안, 반대 방면 아님 — 같은 정류장이 서울(SEB)·경기 버스(GGB)
      자료에 이름만 달리 따로 있는 것 (예: 명동성당.남대문세무서 02001 = 남대문세무서(중) 2001)
   5) 이름이 같고 8m 안인데 한쪽이라도 방면을 모름(노선 자료가 덜 찬 경기·교통안전공단)       — 같은 정류장이 두 번 등록된 것
+  6) 이름이 같고 8m 안, 방면이 조금 어긋남(반대 아님)                                         — 같은 정류장이 두 자료에 따로
 대표: 노선이 가장 많은 것 (같으면 교통안전공단 TS… 아닌 것, 번호 있는 것). 점은 대표 정류장 자리에 찍힘.
 
 실행: python pipeline/stop_spots.py <bus_stops.db>   (build_data.py 가 DB 를 만들 때 부름)
@@ -145,6 +146,10 @@ def spots(stops, served, head, routes=None):
                     if not ok and nos[i] and nos[i] == nos[j] and d <= SAME_NO_M and (ang is None or ang <= OPPOSITE):
                         ok = True
                     if not ok and same_name and ang is None and d <= DUP_M:
+                        ok = True
+                    # 6) 이름이 같고 8m 안인데 방향이 조금 어긋남(45~100도, 반대 아님): 같은 정류장이 두 자료(아산 ASB·충남 CNB 등)에
+                    #    따로 있고 노선 자료마다 방향을 조금 다르게 잼 (2026-11-24 잰 것: 34쌍, 예: 봉농리 봉암 건너 4m 92도)
+                    if not ok and same_name and ang is not None and ang <= OPPOSITE and d <= DUP_M:
                         ok = True
                     if ok and not (routes.get(a[0], set()) & routes.get(b[0], set())):
                         edges.append((d, i, j))
