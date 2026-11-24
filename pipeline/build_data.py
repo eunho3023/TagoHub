@@ -287,6 +287,213 @@ def fill_resolve_times(db_path, lists):
     return n
 
 
+# ───────────── 지자체 자료로 첫차·막차 (양산·제주) ─────────────
+# TAGO 노선 정보에 첫차·막차가 비어 있는 곳 (2026-11-24: 양산 119개·제주 986개 모두 비어 있었음)
+
+YANGSAN_FILE = ("15160355", "uddi:25a684fb-7a3d-498d-924b-db9c95496fd4")  # 경상남도 양산시_시내버스 기종점 출발시간 정보 (CSV, 회차마다 기점 출발 시각)
+
+
+def _hm(v):
+    """'6:29\\n(용문사거리 출발)'·'06:14' → '06:29'. 시각이 아니거나 30시 넘으면 None"""
+    m = re.search(r"(\d{1,2}):(\d\d)", str(v or ""))
+    return f"{int(m.group(1)):02d}:{m.group(2)}" if m and int(m.group(1)) < 30 else None
+
+
+def _late(t):
+    """자정 넘은 막차('00:30')를 늦게 보도록: 04시 전은 다음 날"""
+    h = int(t[:2])
+    return (h + (24 if h < 4 else 0)) * 60 + int(t[3:5])
+
+
+def span(times):
+    """출발 시각들 → (첫차, 막차, 배차 분). 배차는 이어진 출발 사이 간격의 가운데값 (세 번 넘게 다닐 때만)"""
+    ts = sorted({t for t in times if t}, key=_late)
+    if not ts:
+        return None
+    gaps = sorted(b - a for a, b in zip(map(_late, ts), map(_late, ts[1:])))
+    return ts[0], ts[-1], (gaps[len(gaps) // 2] or None) if len(ts) >= 3 else None
+
+
+def fill_route_info(db, info):
+    """{노선 id: (첫차, 막차, 배차)} 를 route_info 에 (이미 첫차·막차가 있는 노선, DB 에 없는 노선은 그대로). 넣은 수"""
+    n = 0
+    for rid, (f, l, gap) in info.items():
+        if not db.execute("SELECT 1 FROM routes WHERE id = ?", (rid,)).fetchone():
+            continue
+        old = db.execute("SELECT first, last FROM route_info WHERE id = ?", (rid,)).fetchone()
+        if old and (old[0] or old[1]):
+            continue
+        db.execute("INSERT INTO route_info (id, first, last, interval, int_sat, int_sun) VALUES (?, ?, ?, ?, NULL, NULL) "
+                   "ON CONFLICT(id) DO UPDATE SET first = excluded.first, last = excluded.last, interval = coalesce(route_info.interval, excluded.interval)",
+                   (rid, f, l, gap))
+        n += 1
+    return n
+
+
+def yangsan_info(rows):
+    """양산 기종점 출발시간 CSV 줄들 → {YSB+노선아이디: (첫차, 막차, 배차)} (기점 출발 시각으로).
+    한 노선의 같은 순번이 여러 줄(평일·토·일로 보이는데 요일 칸이 없음) → 첫차·막차는 모든 줄에서,
+    배차는 순번마다 첫 줄만 이은 것이 순번대로 늘어날 때만 그 간격으로 (아니면 비움)"""
+    by = {}
+    for r in rows:
+        lid = str(r.get("노선아이디") or "").strip().lstrip("'")
+        t = _hm(r.get("기점출발시간"))
+        if lid and t:
+            by.setdefault("YSB" + lid, []).append((to_int(r.get("순번")), t))
+    out = {}
+    for rid, rs in by.items():
+        s = span([t for _, t in rs])
+        if not s:
+            continue
+        firsts = {}
+        for no, t in rs:
+            firsts.setdefault(no, t)
+        seq = [_late(firsts[k]) for k in sorted(firsts)]
+        gap = None
+        if len(seq) >= 3 and all(a < b for a, b in zip(seq, seq[1:])):
+            gaps = sorted(b - a for a, b in zip(seq, seq[1:]))
+            gap = gaps[len(gaps) // 2]
+        out[rid] = (s[0], s[1], gap)
+    return out
+
+
+def _http(url, data=None, timeout=60):
+    import urllib.request
+    req = urllib.request.Request(url, data=data, headers={"User-Agent": "Mozilla/5.0 TagoHub-pipeline",
+                                                          **({"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"} if data else {})})
+    with urllib.request.urlopen(req, timeout=timeout, context=jeju_ssl_context() if "jeju.go.kr" in url else None) as r:
+        return r.read()
+
+
+def fetch_datago_file(pk, uddi, get=_http):
+    """공공데이터포털 파일데이터를 키 없이 (누리집 '다운로드' 단추와 같은 두 단계: 파일 번호 → 파일)"""
+    meta = json.loads(get(f"https://www.data.go.kr/tcs/dss/selectFileDataDownload.do?publicDataPk={pk}&publicDataDetailPk={uddi}&fileDetailSn=1").decode("utf-8"))
+    fid = meta.get("atchFileId")
+    if not fid:
+        raise RuntimeError("파일 번호 없음")
+    return get(f"https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId={fid}&fileDetailSn=1")
+
+
+def fetch_yangsan(get=_http):
+    """양산 기종점 출발시간 CSV 줄들 (못 받으면 [])"""
+    import csv, io
+    try:
+        raw = fetch_datago_file(*YANGSAN_FILE, get=get)
+    except Exception as e:
+        print(f"양산 출발시간 파일: 못 받음 ({type(e).__name__}: {str(e)[:100]})", flush=True)
+        return []
+    for enc in ("utf-8-sig", "cp949"):
+        try:
+            return list(csv.DictReader(io.StringIO(raw.decode(enc))))
+        except UnicodeDecodeError:
+            continue
+    return []
+
+
+def read_xlsx(data):
+    """엑셀(xlsx) → [(시트 이름, [[칸 글자]])] (서버 src/xlsx.js 와 같은 방식, 표준 라이브러리만)"""
+    import html, io, zipfile
+    z = zipfile.ZipFile(io.BytesIO(data))
+    names = set(z.namelist())
+    text = lambda n: z.read(n).decode("utf-8") if n in names else ""
+    unxml = lambda s: html.unescape(re.sub(r"<[^>]+>", "", s))
+    shared = [unxml(m) for m in re.findall(r"<si>([\s\S]*?)</si>", text("xl/sharedStrings.xml"))]
+    titles = [html.unescape(m) for m in re.findall(r'<sheet [^>]*name="([^"]*)"', text("xl/workbook.xml"))]
+    col_no = lambda s: sum((ord(ch) - 64) * 26 ** i for i, ch in enumerate(reversed(s))) - 1
+    out, i = [], 1
+    while f"xl/worksheets/sheet{i}.xml" in names:
+        rows = []
+        for body in re.findall(r"<row [^>]*>([\s\S]*?)</row>", text(f"xl/worksheets/sheet{i}.xml")):
+            row = {}
+            for ref, attrs, inner in re.findall(r'<c r="([A-Z]+)\d+"([^>]*?)(?:/>|>([\s\S]*?)</c>)', body):
+                v, s = re.search(r"<v>([\s\S]*?)</v>", inner or ""), re.search(r"<is>([\s\S]*?)</is>", inner or "")
+                val = unxml(v.group(1)) if v else unxml(s.group(1)) if s else ""
+                if 't="s"' in attrs and v:
+                    val = shared[int(v.group(1))] if int(v.group(1)) < len(shared) else ""
+                row[col_no(ref)] = val
+            rows.append([row.get(k, "") for k in range(max(row) + 1)] if row else [])
+        out.append((titles[i - 1] if i - 1 < len(titles) else f"sheet{i}", rows))
+        i += 1
+    return out
+
+
+def jeju_sheet_departures(sheets):
+    """제주 시간표 엑셀 시트들 → {노선 번호: {'weekday': [회차 첫 시각], 'all': [...]}}.
+    머리 줄은 '노선번호' 또는 '구분'(회차 번호) 칸이 있는 줄. 노선번호 칸이 있으면 줄마다 그 번호, 없으면 시트 이름 앞 번호('302 (평일)…')
+    (서버 src/timetable.js parseJejuSheets 와 같은 모양을 읽음)"""
+    flat = lambda c: re.sub(r"\s", "", str(c or ""))
+    out = {}
+    for name, rows in sheets:
+        h = next((k for k, r in enumerate(rows) if any(flat(c) in ("노선번호", "구분") for c in r)), -1)
+        if h < 0:
+            continue
+        head = [flat(c) for c in rows[h]]
+        no_col = head.index("노선번호") if "노선번호" in head else -1
+        col = no_col if no_col >= 0 else head.index("구분")
+        m = re.match(r"\s*([0-9A-Za-z가-힣]+(?:-\d+)?)", str(name))
+        sheet_no = m.group(1) if m else None
+        weekday = not (re.search(r"주말|토|휴일|공휴", name) and "평일" not in name)
+        for r in rows[h + 1:]:
+            if no_col >= 0:
+                no = flat(r[col] if col < len(r) else "").replace("번", "")
+            else:
+                no = sheet_no if re.fullmatch(r"\d+(\.0)?", flat(r[col] if col < len(r) else "")) else None
+            t = next((x for x in (_hm(c) for c in r[col + 1:]) if x), None)
+            if not no or not t:
+                continue
+            d = out.setdefault(no, {"weekday": [], "all": []})
+            d["all"].append(t)
+            if weekday:
+                d["weekday"].append(t)
+    return out
+
+
+def jeju_times(sheet_sets):
+    """여러 엑셀의 시트들 → {노선 번호: (첫차, 막차, None)} (평일 표가 있으면 평일로). 배차는 두 방향이 섞여 있어 안 냄"""
+    deps = {}
+    for sheets in sheet_sets:
+        for no, d in jeju_sheet_departures(sheets).items():
+            acc = deps.setdefault(no, {"weekday": [], "all": []})
+            acc["weekday"] += d["weekday"]
+            acc["all"] += d["all"]
+    out = {}
+    for no, d in deps.items():
+        s = span(d["weekday"] or d["all"])
+        if s:
+            out[no] = (s[0], s[1], None)
+    return out
+
+
+def fetch_jeju_schedules(get=_http):
+    """제주 버스정보 시간표 엑셀 전부 (노선 종류 1~8 묶음 목록 → 묶음마다 엑셀, 묶음 약 200개). 못 받은 것은 건너뜀"""
+    ids, sets, miss = [], [], 0
+    for t in range(1, 9):
+        try:
+            for g in json.loads(get(JEJU_WEB + "/publicTrafficInformation/getBusRouteNum", f"GROUTE_TYPE={t}".encode()).decode("utf-8")):
+                if g.get("GSCHEDULE_ID") and g["GSCHEDULE_ID"] not in ids:
+                    ids.append(g["GSCHEDULE_ID"])
+        except Exception as e:
+            print(f"제주 시간표 묶음 {t}: 못 받음 ({type(e).__name__})", flush=True)
+    for gid in ids:
+        try:
+            sets.append(read_xlsx(get(f"{JEJU_WEB}/data/schedule/downScheduleExcel?gscheduleId={gid}")))
+        except Exception:
+            miss += 1
+    print(f"제주 시간표 엑셀 {len(sets)}개 (못 받음 {miss})", flush=True)
+    return sets
+
+
+def fill_local_times(db_path, yangsan_rows, jeju_sets):
+    """양산(노선 id)·제주(노선 번호) 첫차·막차를 route_info 에. (양산 수, 제주 수)"""
+    db = sqlite3.connect(db_path)
+    ys = fill_route_info(db, yangsan_info(yangsan_rows))
+    by_no = jeju_times(jeju_sets)
+    jj = fill_route_info(db, {rid: by_no[no] for rid, no in db.execute("SELECT id, no FROM routes WHERE city = '39'") if no in by_no})
+    db.commit()
+    db.close()
+    return ys, jj
+
+
 # ───────────── 받기 ─────────────
 
 class Fetcher:
@@ -1353,15 +1560,21 @@ def drop_empty_routes(db, complete):
     if not complete:
         print("빈 노선 지우기: 수집이 다 끝나지 않아 이번엔 건너뜀", flush=True)
         return 0
-    full = {}
-    for rid, no, city in db.execute("SELECT r.id, r.no, r.city FROM routes r WHERE EXISTS(SELECT 1 FROM route_stops rs WHERE rs.route_id = r.id)"):
+    full, near = {}, {}
+    for rid, no, city, a, b in db.execute("SELECT r.id, r.no, r.city, r.start_name, r.end_name FROM routes r WHERE EXISTS(SELECT 1 FROM route_stops rs WHERE rs.route_id = r.id)"):
         full.setdefault((city, no), []).append(rid)
-    empty = db.execute("SELECT r.id, r.no, r.city FROM routes r WHERE NOT EXISTS(SELECT 1 FROM route_stops rs WHERE rs.route_id = r.id)").fetchall()
+        # 이웃 도시 노선: 대구는 '칠곡3[동명-칠곡시장-동명]' 처럼 갈래를 [ ] 로 붙여 적음 → [ ] 앞 번호로
+        near.setdefault(str(no or "").split("[")[0].strip(), []).append((rid, city, _ends(a, b)))
+    empty = db.execute("SELECT r.id, r.no, r.city, r.start_name, r.end_name FROM routes r WHERE NOT EXISTS(SELECT 1 FROM route_stops rs WHERE rs.route_id = r.id)").fetchall()
     late = lambda t: (int(t[:2]) + (24 if int(t[:2]) < 4 else 0)) * 60 + int(t[3:5])
     gone, give = [], {}
-    for rid, no, city in empty:
+    for rid, no, city, a, b in empty:
         # 다른 자료(id 앞 영문자가 다른 것)의 같은 번호 노선만: 교통안전공단 자료뿐인 지역에서 공단 노선끼리(같은 번호 반대 방향 등)는 안 건드림
         twins = [t for t in full.get((city, no), ()) if prefix(t) != prefix(rid)]
+        if not twins:
+            # 같은 도시에 없으면 다른 도시의 같은 번호 중 기점·종점 이름이 하나라도 같은 것 (2026-11-24: 칠곡 공단 노선 '칠곡3'·'팔공3'·'급행3' 11개 = 대구 노선)
+            mine = _ends(a, b)
+            twins = [t for t, c, ends in near.get(no, ()) if c != city and prefix(t) != prefix(rid) and mine & ends]
         if not twins:
             continue
         gone.append(rid)
@@ -1556,6 +1769,8 @@ def main():
         print(f"다른 자료 노선 종류 채움: {fill_resolve_types(OUT / 'bus_stops.db', lists)}개", flush=True)
     except (Limit, KeyError_) as e:
         print(f"다른 자료 노선 첫차·막차: 못 받음 ({type(e).__name__})", flush=True)
+    ys, jj = fill_local_times(OUT / "bus_stops.db", fetch_yangsan(), fetch_jeju_schedules())
+    print(f"지자체 자료 첫차·막차 채움: 양산 {ys}개, 제주 {jj}개", flush=True)
     m = package(OUT / "bus_stops.db", version, complete, added, report)
     print(f"완료: 버전 {version}, TAGO 노선 {added}개(정류장 {stops}), 경기 번호부 {len(gbis)}개, 호출 {fx.calls}, 서버 바쁨 {fx.busy_hits}번, 완료 여부 {complete}")
     print(json.dumps(m, ensure_ascii=False))

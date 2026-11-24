@@ -163,20 +163,32 @@ async function daegu(id, fetcher, no) {
 
 /**
  * 제주 시간표 엑셀 시트들 → 이 노선 번호(no)의 표 [{name, days, points, trips}].
- * "노선번호" 칸이 있는 줄이 머리(그 뒤가 주요 정류장), 그 아래 줄 중 노선번호가 no 인 줄이 회차. "X" 는 안 지남
+ * "노선번호" 칸이 있는 줄이 머리(그 뒤가 주요 정류장), 그 아래 줄 중 노선번호가 no 인 줄이 회차. "X" 는 안 지남.
+ * 2026-11 부터 한 노선뿐인 표는 "노선번호" 칸 없이 "구분"(회차 번호) 칸만 있음 → 시트 이름이나 첫 줄("302번")이 이 번호인 시트의 줄을 모두 회차로.
+ * 끝의 "비고" 칸은 정류장이 아님
  */
 export function parseJejuSheets(sheets, no) {
   const base = String(no || "").replace(/번$/, "");
   const same = (cell) => { const c = String(cell || "").replace(/\s|번/g, ""); return c === base || c.split(/[,/]/).includes(base); };
+  const flat = (c) => String(c ?? "").replace(/\s/g, "");
   const out = [];
   for (const sh of sheets) {
-    const h = sh.rows.findIndex((r) => r.some((c) => String(c).replace(/\s/g, "") === "노선번호"));
+    const h = sh.rows.findIndex((r) => r.some((c) => flat(c) === "노선번호" || flat(c) === "구분"));
     if (h < 0) continue;
-    const col = sh.rows[h].findIndex((c) => String(c).replace(/\s/g, "") === "노선번호");
-    const points = sh.rows[h].slice(col + 1).map((c) => String(c).replace(/\s+/g, ""));
+    const head = sh.rows[h].map(flat);
+    const noCol = head.indexOf("노선번호");
+    const col = noCol >= 0 ? noCol : head.indexOf("구분");
+    // "구분" 만 있는 표: 이 번호의 시트인지 (이름이 번호로 시작하거나 첫 줄에 "302번" 처럼)
+    const nm0 = flat(sh.name);
+    const mine = noCol >= 0 || (nm0.startsWith(base) && !/[0-9-]/.test(nm0[base.length] || ""))
+      || sh.rows.slice(0, h).some((r) => r.some((c) => same(c)));
+    if (!mine) continue;
+    let end = head.length;
+    while (end > col + 1 && (head[end - 1] === "" || /^비고/.test(head[end - 1]))) end--;
+    const points = sh.rows[h].slice(col + 1, end).map((c) => String(c).replace(/\s+/g, ""));
     const trips = [];
     for (const r of sh.rows.slice(h + 1)) {
-      if (!same(r[col])) continue;
+      if (noCol >= 0 ? !same(r[col]) : !/^\d+(\.0)?$/.test(flat(r[col]))) continue;
       const mins = points.map((_, k) => { const m = /(\d{1,2}):(\d\d)/.exec(String(r[col + 1 + k] || "")); return m && +m[1] < 30 ? +m[1] * 60 + +m[2] : null; });
       if (mins.some((x) => x != null)) trips.push(mins);
     }
