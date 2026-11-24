@@ -79,7 +79,20 @@ def test_unknown_direction_same_name_close_merged():
     assert "TSB3" not in sp and "TSB4" not in sp
 
 
+def test_slightly_skewed_same_name_close_merged():
+    # 같은 이름 4m, 노선 방향이 90도쯤 어긋남(두 자료): 하나. 반대 방향(180도)·12m 는 따로
+    stops = [("ASB1", "봉암", 37.0, 127.0, "1", "34040"), ("CNB1", "봉암", 37.0 + 4 * D, 127.0, "2", "34040"),
+             ("P1", "앞", 36.999, 127.0, "", "34040"), ("P2", "뒤", 37.001, 127.0, "", "34040"),
+             ("Q1", "옆", 37.0, 126.999, "", "34040"), ("Q2", "옆2", 37.0, 127.001, "", "34040"),
+             ("X1", "건너", 37.05, 127.0, "", "34040"), ("X2", "건너", 37.05 + 6 * D, 127.0, "", "34040"),
+             ("Y1", "y", 37.049, 127.0, "", "34040"), ("Y2", "y2", 37.051, 127.0, "", "34040")]
+    # ASB1 은 남→북, CNB1 은 서→동 (90도), X1 은 남→북, X2 는 북→남 (반대)
+    h, sp = run(stops, {"R1": ["P1", "ASB1", "P2"], "R2": ["Q1", "CNB1", "Q2"], "R3": ["Y1", "X1", "Y2"], "R4": ["Y2", "X2", "Y1"]})
+    assert sp.get("ASB1") == sp.get("CNB1") and sp.get("ASB1")
+    assert "X1" not in sp and "X2" not in sp
+
+
 if __name__ == "__main__":
-    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged, test_unknown_direction_same_name_close_merged):
+    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged, test_unknown_direction_same_name_close_merged, test_slightly_skewed_same_name_close_merged):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
