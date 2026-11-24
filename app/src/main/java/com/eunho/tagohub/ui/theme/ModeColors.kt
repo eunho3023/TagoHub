@@ -23,10 +23,11 @@ fun busRouteColor(type: String?): Color {
         "광역" in t || "급행" in t || "직행" in t || "좌석" in t -> Color(0xFFD7262E)
         "마을" in t -> Color(0xFF7FA92A)
         "순환" in t -> Color(0xFFC9940A)
-        t == "일반" -> Color(0xFF14A0A8)
+        // 같은 종류는 이름이 달라도 같은 색: TAGO "일반버스"·"농어촌(일반)버스" = "일반"·"농어촌"
+        t == "일반" || t == "일반버스" -> Color(0xFF14A0A8)
         "일반형시내" in t -> Color(0xFF1E9E5A) // 경기 일반형시내버스 (초록)
         "심야" in t || "올빼미" in t -> Color(0xFF2B2B5E)
-        t == "농어촌" -> Color(0xFFE5622C) // 교통안전공단 농어촌 노선
+        t == "농어촌" || t.startsWith("농어촌(") || t == "농어촌버스" -> Color(0xFFE5622C) // 교통안전공단 농어촌 노선
         "외곽" in t || "농어촌" in t || "시외" in t -> Color(0xFF8E6E3B)
         "공항" in t -> Color(0xFF0090D2)
         else -> Color(0xFF607080)

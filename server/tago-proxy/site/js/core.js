@@ -291,10 +291,11 @@ export function busColor(t) {
   if (["광역", "급행", "직행", "좌석"].some((k) => t.includes(k))) return "#D7262E";
   if (t.includes("마을")) return "#7FA92A";
   if (t.includes("순환")) return "#C9940A";
-  if (t === "일반") return "#14A0A8";
+  // 같은 종류는 이름이 달라도 같은 색: TAGO "일반버스"·"농어촌(일반)버스" = "일반"·"농어촌"
+  if (t === "일반" || t === "일반버스") return "#14A0A8";
   if (t.includes("일반형시내")) return "#1E9E5A";
   if (t.includes("심야") || t.includes("올빼미")) return "#2B2B5E";
-  if (t === "농어촌") return "#E5622C";
+  if (t === "농어촌" || t.startsWith("농어촌(") || t === "농어촌버스") return "#E5622C";
   if (["외곽", "농어촌", "시외"].some((k) => t.includes(k))) return "#8E6E3B";
   if (t.includes("공항")) return "#0090D2";
   return "#607080";
