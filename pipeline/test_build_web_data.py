@@ -69,7 +69,39 @@ def test_build_small_db():
         assert not (out / "files/bus_stops.db").exists()
 
 
+def test_release_db_retries_and_never_falls_back():
+    """최신 DB 를 못 받으면 다시 시도하고, 끝내 못 받으면 옛 앱 DB 로 만들지 않고 멈춤 (2026-11-25 배포가 10월 DB 로 돌아갔음)"""
+    import gzip, io
+    calls, waits = [], []
+    body = gzip.compress(b"SQLite")
+
+    class Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def flaky(req):
+        calls.append(1)
+        if len(calls) < 3:
+            raise TimeoutError("The read operation timed out")
+        return Resp(body)
+
+    with tempfile.TemporaryDirectory() as d:
+        got = bw.fetch_release_db(pathlib.Path(d), opener=flaky, sleep=waits.append)
+        assert got and got.read_bytes() == b"SQLite" and len(calls) == 3 and waits == [10, 30]
+
+        def dead(req):
+            raise TimeoutError("timed out")
+        assert bw.fetch_release_db(pathlib.Path(d), opener=dead, sleep=lambda s: None) is None
+        orig = bw.fetch_release_db
+        bw.fetch_release_db = lambda tmp: None
+        try:
+            assert bw.main(["--out", str(pathlib.Path(d) / "out")]) == 2
+            assert not (pathlib.Path(d) / "out").exists()
+        finally:
+            bw.fetch_release_db = orig
+
+
 if __name__ == "__main__":
-    for t in (test_bucket_and_tile_match_app, test_encode_polyline, test_build_small_db):
+    for t in (test_bucket_and_tile_match_app, test_encode_polyline, test_build_small_db, test_release_db_retries_and_never_falls_back):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
