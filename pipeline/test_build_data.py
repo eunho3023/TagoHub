@@ -682,6 +682,11 @@ def test_drop_empty_dups():
     for r in [("MPB1", "101", "36410"), ("TSB1", "101", "36410"), ("TSB2", "101", "36410"), ("TSB3", "999", "36410"), ("MPB2", "102", "36410"), ("TSB4", "102", "36410"),
               ("TSB7", "200", "37390"), ("TSB8", "200", "37390")]:   # 공단 노선끼리 같은 번호 → 둘 다 남김
         db.execute("INSERT INTO routes(id, no, city, realtime) VALUES(?,?,?,'tago')", r)
+    # 이웃 도시(대구)의 '칠곡3[갈래]': 기점·종점 이름이 같으면 지움, 다르면 남김
+    db.executemany("INSERT INTO routes(id, no, start_name, end_name, city, realtime) VALUES(?,?,?,?,?,'tago')", [
+        ("DGB1", "칠곡3[동명-칠곡시장-동명]", "동명교통", "동명교통", "22"), ("TSB10", "칠곡3", "동명교통", "동명교통", "37390"),
+        ("TSB11", "칠곡3", "왜관", "석적", "37390")])
+    db.execute("INSERT INTO route_stops VALUES('DGB1',1,'DGB_A','',NULL,NULL,NULL)")
     db.execute("INSERT INTO route_stops VALUES('MPB1',1,'MPB_A','',NULL,NULL,NULL)")
     db.execute("INSERT INTO route_stops VALUES('MPB2',1,'MPB_A','',NULL,NULL,NULL)")
     db.execute("INSERT INTO route_stops VALUES('TSB7',1,'TSB_X','',NULL,NULL,NULL)")
@@ -691,8 +696,8 @@ def test_drop_empty_dups():
     db.execute("INSERT INTO route_info VALUES('TSB4','04:00','23:00',NULL,NULL,NULL)")
     db.execute("INSERT INTO route_schedule(id, day) VALUES('TSB1','weekday')")
     assert bd.drop_empty_routes(db, False) == 0
-    assert bd.drop_empty_routes(db, True) == 3
-    assert sorted(r[0] for r in db.execute("SELECT id FROM routes")) == ["MPB1", "MPB2", "TSB3", "TSB7", "TSB8"]   # 999 는 같은 번호가 없어 남김
+    assert bd.drop_empty_routes(db, True) == 4
+    assert sorted(r[0] for r in db.execute("SELECT id FROM routes")) == ["DGB1", "MPB1", "MPB2", "TSB11", "TSB3", "TSB7", "TSB8"]   # 999 는 같은 번호가 없어 남김
     assert db.execute("SELECT first, last FROM route_info WHERE id='MPB1'").fetchone() == ("06:30", "00:20")   # 자정 넘은 막차
     assert db.execute("SELECT first, last FROM route_info WHERE id='MPB2'").fetchone() == ("05:00", "22:00")   # 있던 건 그대로
     assert db.execute("SELECT COUNT(*) FROM route_info WHERE id LIKE 'TSB%'").fetchone()[0] == 0
@@ -737,7 +742,46 @@ def test_resolve_types():
         db.close()
 
 
+def test_local_times():
+    """양산 출발시간 파일·제주 시간표 엑셀 → 첫차·막차(·배차), 이미 있는 시간은 그대로"""
+    import io, zipfile
+    rows = [{"노선아이디": "'0008009001", "순번": str(k), "기점출발시간": t} for k, ts in
+            [(1, ["05:00", "05:00", "05:20"]), (2, ["05:15", "05:16", "05:40"]), (3, ["05:30", "05:32", "06:00"]), (4, ["22:30", "00:10"])] for t in ts]
+    rows.append({"노선아이디": "'0002009001", "순번": "1", "기점출발시간": "07:10"})
+    info = bd.yangsan_info(rows)
+    assert info["YSB0008009001"] == ("05:00", "00:10", 15)      # 자정 넘은 막차, 배차는 순번마다 첫 줄 (05:00·05:15·05:30·22:30 → 가운데 15)
+    assert info["YSB0002009001"] == ("07:10", "07:10", None)
+
+    def xlsx(sheets):
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            z.writestr("xl/workbook.xml", "<workbook><sheets>" + "".join(f'<sheet name="{n}" sheetId="{i}"/>' for i, (n, _) in enumerate(sheets, 1)) + "</sheets></workbook>")
+            for i, (_, rs) in enumerate(sheets, 1):
+                cells = "".join(f'<row r="{y}">' + "".join(f'<c r="{chr(65 + x)}{y}" t="inlineStr"><is><t>{v}</t></is></c>' for x, v in enumerate(r) if v != "") + "</row>" for y, r in enumerate(rs, 1))
+                z.writestr(f"xl/worksheets/sheet{i}.xml", f"<worksheet><sheetData>{cells}</sheetData></worksheet>")
+        return b.getvalue()
+    one = xlsx([("302 (평일)A-B", [["", "302번"], ["", "구분", "A", "B", "비  고"], ["", "1.0", "X", "06:14"], ["", "2.0", "6:29 (출발)", "06:35"], ["", "3.0", "22:00", "22:20"]]),
+                ("302 (휴일)A-B", [["", "302번"], ["", "구분", "A", "B"], ["", "1.0", "05:10", "05:20"], ["", "2.0", "23:00", "23:20"]])])
+    two = xlsx([("43-1 A-B", [["", "43-1번, 43-2번"], ["", "구분", "노선번호", "A", "B"], ["", "1.0", "43-1번", "05:50", "06:00"], ["", "2.0", "43-2번", "X", "05:57"], ["", "3.0", "43-1번", "21:12", ""]])])
+    sets = [bd.read_xlsx(one), bd.read_xlsx(two)]
+    assert sets[0][0][1][2] == ["", "1.0", "X", "06:14"]
+    times = bd.jeju_times(sets)
+    assert times["302"] == ("06:14", "22:00", None)            # 평일 표만 (휴일 05:10·23:00 은 안 봄)
+    assert times["43-1"] == ("05:50", "21:12", None) and times["43-2"] == ("05:57", "05:57", None)
+
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE routes(id TEXT, no TEXT, city TEXT)")
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    db.executemany("INSERT INTO routes VALUES(?,?,?)", [("YSB0008009001", "8", "38100"), ("JEB1", "302", "39"), ("JEB2", "302", "39"), ("JEB3", "43-1", "39")])
+    db.execute("INSERT INTO route_info VALUES('JEB2','07:00','20:00',NULL,NULL,NULL)")
+    db.commit()
+    assert bd.fill_route_info(db, info) == 1                     # YSB0002009001 은 DB 에 없음
+    assert bd.fill_route_info(db, {"JEB1": times["302"], "JEB2": times["302"]}) == 1
+    assert db.execute("SELECT first, last, interval FROM route_info WHERE id='YSB0008009001'").fetchone() == ("05:00", "00:10", 15)
+    assert db.execute("SELECT first, last FROM route_info WHERE id='JEB2'").fetchone() == ("07:00", "20:00")
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

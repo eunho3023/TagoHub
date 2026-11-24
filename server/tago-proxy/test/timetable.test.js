@@ -68,6 +68,14 @@ test("제주 시트: 노선번호 칸 아래 이 번호 회차만, X 는 안 지
   assert.deepEqual(t[0].trips, [[360, 370], [null, 390]]);
   assert.deepEqual(t[0].days, ["weekday", "sat", "holi"]);
 });
+test("제주 시트(2026-11 모양): 노선번호 칸 없이 구분만, 이 번호 시트의 회차 모두, 비고 칸은 뺌", () => {
+  const rows = [["", "302번", ""], ["", "구분", "A", "B", "비  고"], ["", "1.0", "X", "06:14", ""], ["", "2.0", "6:29\n(용문사거리 출발)", "06:35", "운휴"]];
+  const t = parseJejuSheets([{ name: "302 (평일)A-B", rows }, { name: "303 (평일)A-B", rows: [["", "303번"], ...rows.slice(1)] }], "302");
+  assert.equal(t.length, 1);
+  assert.deepEqual(t[0].points, ["A", "B"]);
+  assert.deepEqual(t[0].trips, [[null, 374], [389, 395]]);
+  assert.deepEqual(t[0].days, ["weekday"]);
+});
 test("진주 갈래: 첫차~막차 안, 다른 갈래 한 번뿐인 회차는 뺌", () => {
   const me = { brt_id: 1, firsttime: "0620", lasttime: "2055" };
   const group = [me, { brt_id: 2, firsttime: "0755", lasttime: "0755" }];
