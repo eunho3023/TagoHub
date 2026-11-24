@@ -1187,3 +1187,43 @@ export function noLive(first, last, interval, nowMin) {
   }
   return { main: `막차 ${clockOf(l)}`, sub: `${afterText(l - n)} · 기점`, ended: false };
 }
+
+
+// ── 지도 범위 버스 (초정밀 버스, 서버 /w/klid) ──
+/** 자료를 주는 지역 (2026-11-24 울산뿐). 노선 id 는 TAGO 울산 노선 id 와 같음: rteId 192000001 = USB192000001 */
+export const KLID_REGIONS = [{ code: "3100000000", city: "26", prefix: "USB", s: 35.30, w: 128.95, n: 35.75, e: 129.48 }];
+/** 이보다 오래전에 보낸 위치는 지금 안 다니는 차의 마지막 위치 (울산 2,675대 중 하루 넘은 것 1,554대) */
+export const KLID_FRESH_MS = 3 * 60 * 1000;
+const klidItems = (j) => { const it = j?.body?.items?.item; return Array.isArray(it) ? it : it ? [it] : []; };
+/** "2026-11-24 21:00:34.099502"(한국 시각) → ms */
+export const klidTime = (s) => { const t = Date.parse(String(s || "").slice(0, 19).replace(" ", "T") + "+09:00"); return Number.isFinite(t) ? t : null; };
+const klidRouteMemo = new Map();
+/**
+ * 지도 범위 안 버스 [{key, routeId, city, no, type, lat, lng}] — 최근 위치만, 노선 번호·종류는 노선 기준정보로 (위치 자료의 rteNo 는 비어 옴)
+ * b: {s, w, n, e}. 자료를 주는 지역이 아니면 []
+ */
+export async function klidBuses(b, now = Date.now()) {
+  const reg = KLID_REGIONS.find((r) => b.n > r.s && b.s < r.n && b.e > r.w && b.w < r.e);
+  if (!reg) return [];
+  if (!klidRouteMemo.has(reg.code)) {
+    klidRouteMemo.set(reg.code, getText(`w/klid/routes/${reg.code}/1`).then((t) => new Map(klidItems(JSON.parse(t)).map((x) => [String(x.rteId), x])))
+      .catch(() => { klidRouteMemo.delete(reg.code); return new Map(); }));
+  }
+  const [routes, first] = await Promise.all([klidRouteMemo.get(reg.code), getText(`w/klid/pos/${reg.code}/1`).then(JSON.parse)]);
+  const rows = klidItems(first);
+  const pages = Math.min(9, Math.ceil((+first?.body?.totalCount || 0) / 1000));
+  for (const more of await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => getText(`w/klid/pos/${reg.code}/${i + 2}`).then((t) => klidItems(JSON.parse(t))).catch(() => [])))) rows.push(...more);
+  return klidPick(rows, routes, reg, b, now);
+}
+/** 위치 줄 → 지도에 그릴 버스 (최근 위치·지도 범위 안만) */
+export function klidPick(rows, routes, reg, b, now = Date.now()) {
+  const out = [];
+  for (const x of rows) {
+    const lat = num(x.lat), lng = num(x.lot), at = klidTime(x.gthrDt);
+    if (lat == null || lng == null || (at != null && now - at > KLID_FRESH_MS)) continue;
+    if (lat < b.s || lat > b.n || lng < b.w || lng > b.e) continue;
+    const r = routes.get(String(x.rteId));
+    out.push({ key: `${x.rteId}:${x.vhclNo}`, routeId: reg.prefix + x.rteId, city: reg.city, no: str(x.rteNo) || (r && str(r.rteNo)) || "", type: (r && str(r.rteType)) || null, lat, lng });
+  }
+  return out;
+}
