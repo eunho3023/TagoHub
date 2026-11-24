@@ -38,7 +38,7 @@ test("예약 작업이 기록하고 /w/health 가 이름표와 함께 돌려줌"
   };
   const env = { DB: db, DATA_GO_KR_KEY: "k" };   // 서울·카카오 키 없음 → 그 확인은 건너뜀
   const fetcher = async (u) => new Response(u.includes("ws.bus.go.kr") ? "Unauthorized" : '{"resultCode":"00","resultCode2":0}', { status: u.includes("ws.bus.go.kr") ? 401 : 200 });
-  const r = await healthCron(env, fetcher);
+  const r = await healthCron(env, fetcher, 0);
   assert.ok(r.failed.includes("seoul_bus"));
   const j = await (await handleHealth(env)).json();
   const seoul = j.checks.find((x) => x.name === "seoul_bus");
@@ -103,4 +103,43 @@ test("실제 응답이 한도 초과면 적어 두고, 고장 확인에 중계·
   assert.equal(next.kr_relay.ok, true);
   assert.equal(next.cron.ok, false);   // 20분째 안 돎
   assert.equal(Object.keys(next).some((k) => k.startsWith("quota:")), false);
+});
+
+/** node:sqlite 로 만든 D1 흉내 (실제 SQL 을 돌림) */
+async function sqliteD1() {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(":memory:");
+  const wrap = (sql, a = []) => ({
+    bind: (...b) => wrap(sql, b),
+    run: async () => { db.prepare(sql).run(...a); return {}; },
+    all: async () => ({ results: db.prepare(sql).all(...a) }),
+    first: async () => db.prepare(sql).get(...a) || null,
+  });
+  return { prepare: (sql) => wrap(sql), batch: async (st) => { for (const x of st) await x.run(); } };
+}
+
+test("고장 표시는 두 번 이어서 실패해야 (한 번 실패는 다시 물어 보고, 그래도 실패면 기록만)", async () => {
+  const env = { DB: await sqliteD1(), DATA_GO_KR_KEY: "k" };
+  const tago = (j) => j.checks.find((x) => x.name === "tago_route");
+  let mode = "ok", calls = 0;
+  const fetcher = async (u) => {
+    if (u.includes("getRouteInfoIem")) { calls++; if (mode === "bad" || (mode === "flaky" && calls % 2 === 1)) return new Response('{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"HTTP_ERROR"}}}'); }
+    return new Response('{"resultCode":"00"}');
+  };
+  await healthCron(env, fetcher, 0);
+  assert.equal(tago(await (await handleHealth(env)).json()).ok, true);
+  mode = "flaky"; calls = 0;                 // 한 번 실패 → 바로 다시 물어 됨
+  await healthCron(env, fetcher, 0);
+  let t = tago(await (await handleHealth(env)).json());
+  assert.equal(t.ok, true); assert.equal(t.failSince, null);
+  mode = "bad";                               // 처음 실패: 아직 정상 표시, 실패 시각만
+  await healthCron(env, fetcher, 0);
+  t = tago(await (await handleHealth(env)).json());
+  assert.equal(t.ok, true); assert.ok(t.failSince > 0); assert.ok(t.msg.length > 0);
+  await healthCron(env, fetcher, 0);          // 두 번째 실패: 고장
+  assert.equal(tago(await (await handleHealth(env)).json()).ok, false);
+  mode = "ok";
+  await healthCron(env, fetcher, 0);
+  t = tago(await (await handleHealth(env)).json());
+  assert.equal(t.ok, true); assert.equal(t.failSince, null);
 });

@@ -314,3 +314,31 @@ test("예전 방식으로 직선이 든 저장 모양은 열 때 다시 만들�
   assert.equal(store.get("R1").poly, poly);
   assert.ok(store.get("R1").made > 1);
 });
+
+test("저장된 모양은 정류장 목록을 기다리지 않고 바로 주고, 정류장이 달라졌으면 뒤에서 다시 만들 줄에 넣음", async () => {
+  globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+  const store = new Map(), queued = [];
+  const db = {
+    prepare: (sql) => ({
+      bind: (...a) => ({
+        first: async () => (sql.includes("FROM shapes") ? store.get(a[0]) || null : null),
+        run: async () => { if (sql.startsWith("INSERT INTO shape_queue")) queued.push(a[0]); },
+      }),
+      run: async () => {},
+    }),
+  };
+  const xml = "<response><body><items><item><nodeord>1</nodeord><gpslati>36.0</gpslati><gpslong>127.0</gpslong></item>" +
+    "<item><nodeord>2</nodeord><gpslati>36.01</gpslati><gpslong>127.0</gpslong></item></items></body></response>";
+  let answered = 0;
+  // 정류장 목록은 0.3초 뒤에 옴 (중계를 거쳐 느린 것처럼)
+  const fetcher = (u) => (u.includes("apis.data.go.kr") ? new Promise((res) => setTimeout(() => { answered = Date.now(); res({ ok: true, status: 200, text: async () => xml }); }, 300)) : Promise.reject(new Error("no")));
+  const env = { DB: db, DATA_GO_KR_KEY: "k", ASSETS: { fetch: async () => ({ ok: true, json: async () => ({}) }) } };
+  store.set("XXB1", { sig: "v7:옛정류장", poly: encode([[36.0, 127.0], [36.005, 127.0001], [36.01, 127.0]], 5), made: 1795400000 });
+  const waits = [];
+  const r = await handleShape(null, new URL("https://x/w/shape/XXB1?city=99"), env, { waitUntil: (p) => waits.push(p) }, fetcher);
+  assert.equal(r.status, 200);
+  assert.equal(answered, 0);                         // 정류장 목록(아직 답 없음)을 기다리지 않음
+  assert.equal((await r.json()).poly, store.get("XXB1").poly);
+  await Promise.all(waits);
+  assert.deepEqual(queued, ["XXB1"]);                // 정류장이 달라 다시 만들 줄에
+});

@@ -613,7 +613,28 @@ export async function handleShape(request, url, env, ctx, fetcher = fetch) {
   const hit = await cache.match(key);
   if (hit) return hit;
 
-  const stops = (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
+  const getStops = async () => (await routeStops(env, id)) || (await ggRouteStops(env, id, fetcher)) || (await jeonjuRouteStops(env, id, fetcher)) || (await tagoRouteStops(env, id, city, fetcher));
+  // 저장해 둔 모양이 있으면 바로 줌: 정류장 목록(전주 버스·TAGO)을 받아 지금 노선과 맞는지 보는 건 뒤에서 하고,
+  // 달라졌으면 예약 작업 줄 맨 앞에 넣어 다시 만듦. 예전엔 맞는지 보느라 처음 여는 노선마다 정류장 목록을 기다려
+  // 1~4초(중계 전엔 45~60초) 동안 웹에 정류장 사이 직선이 보였음 (2026-11-24)
+  if (env.DB) {
+    await ensureTable(env.DB);
+    const row = await env.DB.prepare("SELECT sig, poly, made FROM shapes WHERE route_id = ?").bind(id).first().catch(() => null);
+    if (row && row.poly && !staleStraight(row)) {
+      ctx.waitUntil((async () => {
+        const st = await getStops().catch(() => null);
+        if (!st || st.length < 2) return;
+        const want = signature(st) + (useKakao ? ":k" : "");
+        if (row.sig === want || row.sig === want + ":g") return;
+        await enqueue(env.DB, id, city, routeNo, row.sig === want + ":o" ? 1 : 2);
+      })().catch(() => {}));
+      const res = new Response(JSON.stringify({ poly: row.poly }), { headers: { ...HEAD, "Cache-Control": "public, max-age=600" } });
+      ctx.waitUntil(cache.put(key, res.clone()));
+      return res;
+    }
+  }
+
+  const stops = await getStops();
   if (!stops || stops.length < 2 || stops.length > MAX_STOPS) return new Response("no shape", { status: 404, headers: HEAD });
   const sig = signature(stops) + (useKakao ? ":k" : "");
   let poly = null, partial = false, old = null;

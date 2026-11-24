@@ -239,13 +239,14 @@ export function pubRequest(pathname, search) {
     // 약 50m 칸으로 맞춤. 상가정보는 석 달마다 새로 나와서 하루 저장
     const la = (Math.round(+lat * 2000) / 2000).toFixed(4), lo = (Math.round(+lng * 2000) / 2000).toFixed(4);
     return {
-      cacheKey: `store?cat=${p.get("cat")}&lat=${la}&lng=${lo}`, ttl: 86400,
+      // store2: 업종이 잘못 적힌 가게를 거르기 전에 저장한 답을 쓰지 않게
+      cacheKey: `store2?cat=${p.get("cat")}&lat=${la}&lng=${lo}`, ttl: 86400,
       async run(env, get) {
         // 가까운 반경부터 넓혀 가며 15곳 넘게 나오면 멈춤 (도심 음식점은 300m 에도 수백 곳이라 한 번에 넓게 물으면 1,000개 안에 가까운 곳이 빠짐)
         let stores = [];
         for (const r of STORE_RADII) {
           const qs = new URLSearchParams({ radius: String(r), cx: lo, cy: la, type: "json", numOfRows: "1000", pageNo: "1", ...cat.q });
-          stores = sdscStores(await get(`${SDSC}?serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}&${qs}`), +la, +lo, cat.keep);
+          stores = sdscStores(await get(`${SDSC}?serviceKey=${encodeKey(env.DATA_GO_KR_KEY)}&${qs}`), +la, +lo, cat.keep, cat.bad, cat.need);
           if (stores.length >= STORE_MAX) break;
         }
         return { places: stores.slice(0, STORE_MAX) };
@@ -259,11 +260,13 @@ export function pubRequest(pathname, search) {
  * 앱 분류 단추(카카오 분류 코드) → 상가정보 업종 (2023 상권업종분류). 은행(BK9)·지하철역(SW8)은 상가정보에 없음
  * keep: 받은 것 중 남길 소분류 코드 (병원: 병원·의원만, 산후조리원 같은 기타 보건 빼고)
  */
+// 상가정보에 업종이 잘못 적힌 가게 (2026-11-24: 미용실 "철수파마"가 카페로 나옴): 이름이 다른 업종이면 뺌
+const NOT_SHOP = /(파마|헤어|미용|뷰티|네일|피부|왁싱|부동산|공인중개|세탁|수선|학원|교습|교회|성당|의원|병원|약국|안경|휴대폰|모텔|여관|노래|피씨방|PC방|당구|사무소|사무실|협회|조합|공업사|카센터)/i;
 export const STORE_CATS = {
-  CS2: { q: { indsSclsCd: "G20405" } },          // 편의점
-  CE7: { q: { indsSclsCd: "I21201" } },          // 카페
-  FD6: { q: { indsLclsCd: "I2" }, keep: /^I2(?!12)/ },  // 음식 (한식·중식·일식·서양식·간이·주점 등, 카페는 카페 단추로)
-  PM9: { q: { indsSclsCd: "G21501" } },          // 약국
+  CS2: { q: { indsSclsCd: "G20405" }, bad: NOT_SHOP },          // 편의점
+  CE7: { q: { indsSclsCd: "I21201" }, bad: NOT_SHOP },          // 카페
+  FD6: { q: { indsLclsCd: "I2" }, keep: /^I2(?!12)/, bad: NOT_SHOP },  // 음식 (한식·중식·일식·서양식·간이·주점 등, 카페는 카페 단추로)
+  PM9: { q: { indsSclsCd: "G21501" }, need: /약국|약방/ },       // 약국 (이름에 약국·약방이 있는 것만)
   HP8: { q: { indsLclsCd: "Q1" }, keep: /^Q10[12]/ },  // 병원·의원
 };
 const STORE_RADII = [300, 800, 1500], STORE_MAX = 15;
@@ -273,13 +276,14 @@ const storeKey = (s) => String(s).toLowerCase().replace(/[\s.·()\-_]/g, "")
   .replace(/^gs25/, "지에스25").replace(/^cu/, "씨유").replace(/^emart24/, "이마트24").replace(/^(7eleven|세븐일레븐)/, "세븐일레븐");
 
 /** 상가정보 응답 → 가까운 순 장소 (이름에 지점명을 붙임, 30m 안 같은 이름은 하나). 자료가 없으면(NODATA) 빈 목록 */
-export function sdscStores(body, lat, lng, keep = null) {
+export function sdscStores(body, lat, lng, keep = null, bad = null, need = null) {
   const items = (body && body.body && Array.isArray(body.body.items)) ? body.body.items : [];
   const out = [];
   for (const it of items) {
     const la = num(it.lat), lo = num(it.lon), nm = String(it.bizesNm || "").trim();
     if (la == null || lo == null || !nm) continue;
     if (keep && !keep.test(String(it.indsSclsCd || ""))) continue;
+    if ((bad && bad.test(nm)) || (need && !need.test(nm))) continue;
     const br = String(it.brchNm || "").trim();
     const name = br ? `${nm} ${br}` : nm, k = storeKey(name);
     if (out.some((p) => p.k === k && meters(p.lat, p.lng, la, lo) < 30)) continue;
