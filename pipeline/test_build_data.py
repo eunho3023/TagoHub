@@ -671,7 +671,50 @@ def test_resolve_times():
         db.close()
 
 
+def test_drop_empty_dups():
+    """정류장 없는 노선은 같은 번호 노선이 따로 있을 때만 지우고 첫차·막차는 넘겨줌, 공단 정류장은 노선 정류장 바로 옆일 때만 지움"""
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE routes(id TEXT, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+    db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT, name TEXT, lat REAL, lng REAL, updown TEXT)")
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    db.execute("CREATE TABLE route_schedule(id TEXT, day TEXT, trips INTEGER, first TEXT, last TEXT, end_first TEXT, end_last TEXT, min_int INTEGER, max_int INTEGER)")
+    db.execute("CREATE TABLE stops(id TEXT, name TEXT, lat REAL, lng REAL, no TEXT, city TEXT)")
+    for r in [("MPB1", "101", "36410"), ("TSB1", "101", "36410"), ("TSB2", "101", "36410"), ("TSB3", "999", "36410"), ("MPB2", "102", "36410"), ("TSB4", "102", "36410"),
+              ("TSB7", "200", "37390"), ("TSB8", "200", "37390")]:   # 공단 노선끼리 같은 번호 → 둘 다 남김
+        db.execute("INSERT INTO routes(id, no, city, realtime) VALUES(?,?,?,'tago')", r)
+    db.execute("INSERT INTO route_stops VALUES('MPB1',1,'MPB_A','',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_stops VALUES('MPB2',1,'MPB_A','',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_stops VALUES('TSB7',1,'TSB_X','',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_info VALUES('TSB1','07:00','18:00',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_info VALUES('TSB2','06:30','00:20',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_info VALUES('MPB2','05:00','22:00',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_info VALUES('TSB4','04:00','23:00',NULL,NULL,NULL)")
+    db.execute("INSERT INTO route_schedule(id, day) VALUES('TSB1','weekday')")
+    assert bd.drop_empty_routes(db, False) == 0
+    assert bd.drop_empty_routes(db, True) == 3
+    assert sorted(r[0] for r in db.execute("SELECT id FROM routes")) == ["MPB1", "MPB2", "TSB3", "TSB7", "TSB8"]   # 999 는 같은 번호가 없어 남김
+    assert db.execute("SELECT first, last FROM route_info WHERE id='MPB1'").fetchone() == ("06:30", "00:20")   # 자정 넘은 막차
+    assert db.execute("SELECT first, last FROM route_info WHERE id='MPB2'").fetchone() == ("05:00", "22:00")   # 있던 건 그대로
+    assert db.execute("SELECT COUNT(*) FROM route_info WHERE id LIKE 'TSB%'").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM route_schedule").fetchone()[0] == 0
+    m = 1 / 111_000
+    db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
+        ("MPB_A", "영암터미널", 34.8, 126.7, "36410"),
+        ("TSB_1", "영암 터미널", 34.8 + 40 * m, 126.7, "TS338"),   # 이름 같고 40m → 지움
+        ("TSB_2", "다른이름", 34.8 + 20 * m, 126.7, "TS338"),       # 이름 달라도 20m → 지움
+        ("TSB_3", "다른이름", 34.8 + 45 * m, 126.7, "TS338"),       # 이름 다르고 45m → 남김
+        ("TSB_4", "외딴곳", 34.9, 126.7, "TS338"),                   # 근처에 없음 → 남김
+        ("GGB_1", "영암터미널", 34.8 + 10 * m, 126.7, "31010"),      # 공단 아님 → 남김
+        ("TSB_U", "공단만", 35.5, 127.0, "TS999"),                   # 공단 자료뿐인 지역: 노선 서는 공단 정류장
+        ("TSB_5", "공단만", 35.5 + 10 * m, 127.0, "TS999"),          # 그 옆 공단 정류장 → 남김 (공단끼리는 비교 안 함)
+    ])
+    db.execute("INSERT INTO route_stops VALUES('TSB9',1,'TSB_U','',NULL,NULL,NULL)")
+    assert bd.drop_tsb_twin_stops(db, False) == 0
+    assert bd.drop_tsb_twin_stops(db, True) == 2
+    assert sorted(r[0] for r in db.execute("SELECT id FROM stops")) == ["GGB_1", "MPB_A", "TSB_3", "TSB_4", "TSB_5", "TSB_U"]
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
