@@ -15,6 +15,7 @@ import kotlin.math.hypot
  * - 장소 이름 검색: 브이월드(국토교통부), 못 찾으면 서버가 카카오로 한 번 더
  * - 주소 → 좌표, 좌표 → 주소·법정동: 브이월드
  * - 주변 주유소: 오피넷(한국석유공사), 주변 주차장: 앱 주차장 자료(공공데이터)
+ * - 주변 편의점·카페·음식점·약국·병원: 소상공인시장진흥공단 상가(상권)정보 (2026-11-24부터, [STORE_CODES]. 은행은 상가정보에 없어 카카오)
  * 검색어·좌표를 받는 곳이 바뀌어 개인정보 처리방침을 고쳐 [FROM_MS](2026-11-23 0시, 한국 시간)부터 씀 (처음 11-30 에서 앞당김).
  * 서버 주소가 없거나 실패하면 null → 부르는 쪽이 예전처럼 카카오로.
  */
@@ -49,8 +50,16 @@ object PublicGeo {
             val name = m["name"].str() ?: return@mapNotNull null
             val lat = m["lat"].dbl() ?: return@mapNotNull null
             val lng = m["lng"].dbl() ?: return@mapNotNull null
-            Place2(name, m["address"].str(), lat, lng, category = m["category"].str())
+            Place2(name, m["address"].str(), lat, lng, category = m["category"].str(), distance = m["dist"].dbl()?.toInt())
         }
+
+    /** 상가정보로 찾는 분류 단추 (카카오 분류 코드): 편의점·카페·음식점·약국·병원 */
+    val STORE_CODES = setOf("CS2", "CE7", "FD6", "PM9", "HP8")
+
+    /** 주변 상가 1.5km 안 가까운 15곳 (null: 서버에 못 물음) */
+    suspend fun stores(code: String, lat: Double, lng: Double): List<Place2>? =
+        get("store", "cat" to code, "lat" to "%.5f".format(java.util.Locale.ROOT, lat), "lng" to "%.5f".format(java.util.Locale.ROOT, lng))
+            ?.let { parsePlaces(it) }
 
     /** 주유소 목록 → [Place2] (분류 칸에 상표·휘발유 값) */
     fun parseGas(root: Map<*, *>?): List<Place2> =
