@@ -600,8 +600,48 @@ def test_carry_jeonju_from_previous_db():
     cur.close()
 
 
+def test_fill_only_missing_routes():
+    """원주·세종: 앱 DB 에 다른 자료로 있는 번호는 건너뛰고 TAGO 에만 있는 노선만 받음 (고장·공차는 노선 아님)"""
+    with tempfile.TemporaryDirectory() as d:
+        base = pathlib.Path(d) / "base.db"
+        db = sqlite3.connect(base)
+        db.execute("CREATE TABLE routes(id TEXT, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+        for rid, no in (("FWJ0001", "51번"), ("FWJ0002", "2"), ("FSJ0001", "B5(아름동방면)"), ("FSJ0002", "35"), ("OLD1", "99")):
+            db.execute("INSERT INTO routes VALUES(?,?,?,?,NULL,NULL,?,NULL,NULL,?)", (rid, no, "가", "나", "12" if rid.startswith("FSJ") else "32020",
+                                                                                   "tago" if rid == "OLD1" else "resolve"))
+        db.commit(); db.close()
+        have = bd.existing_routes(base, ["32020", "12"])
+    item = lambda no: {"routeno": no, "startnodenm": "x", "endnodenm": "y"}
+    assert bd.already_have(item("51"), have["32020"])           # '51번' = '51'
+    assert not bd.already_have(item("2(공영)"), have["32020"])  # 공영버스 2번은 시내 2번과 다른 노선
+    assert not bd.already_have(item("99"), have["32020"])       # 지난번 TAGO 로 넣은 건 '있음'으로 안 봄
+    assert bd.already_have(item("B5"), have["12"])              # 괄호 설명 뺀 번호
+    assert bd.already_have(item("DRT35"), have["12"])           # DRT35 = 35
+    assert not bd.already_have(item("DRT31"), have["12"])
+    assert bd.NOT_ROUTE.match("고장") and bd.NOT_ROUTE.match("공차") and not bd.NOT_ROUTE.match("공영")
+
+    class Fill(FakeFetcher):
+        def get(self, url, params, cache_file, max_age):
+            if url.endswith("getRouteNoList") and "routeNo" not in params:
+                self.calls += 1
+                self.urls.append(("getRouteNoList", dict(params)))
+                return resp([{"routeid": "WJB1", "routeno": "51", "startnodenm": "a", "endnodenm": "b"},
+                             {"routeid": "WJB2", "routeno": "5(공영)", "startnodenm": "a", "endnodenm": "b"},
+                             {"routeid": "WJB3", "routeno": "고장", "startnodenm": "a", "endnodenm": "a"}], total=3)
+            if url.endswith("getRouteAcctoThrghSttnList"):
+                self.calls += 1
+                self.urls.append(("getRouteAcctoThrghSttnList", dict(params)))
+                return resp({"nodeid": "WJB_S", "nodenm": "정류장", "nodeord": 1, "updowncd": 0, "gpslati": 37.3, "gpslong": 127.9})
+            return super().get(url, params, cache_file, max_age)
+
+    fx = Fill()
+    tago, complete = bd.fetch_tago(fx, [["32020", "강원특별자치도 원주시"]], have)
+    assert complete and set(tago["32020"]["routes"]) == {"WJB2"}
+    assert [p["routeId"] for op, p in fx.urls if op == "getRouteAcctoThrghSttnList"] == ["WJB2"]   # 건너뛴 노선은 정류장도 안 받음
+    assert [c for c, _ in bd.FILL_CITIES] == ["32020", "12"]
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
-

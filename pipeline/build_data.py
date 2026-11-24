@@ -156,6 +156,42 @@ def region_name(name):
     return last
 
 
+# 다른 자료(교통안전공단 등, realtime 'resolve')로 노선이 이미 들어 있지만 TAGO 에만 있는 노선이 있는 지역:
+# 전부 넣으면 같은 노선이 두 번 보이므로, 번호가 없는 노선만 TAGO 에서 채움 (2026-11-24 잰 것: 원주 공영·통학 등 44개 번호,
+# 세종 집현1·조치원 DRT). 포항은 번호 표기만 다르고(구룡포 = 구룡포1·2, 206(기본) = 206) 빠진 노선이 없어 넣지 않음
+FILL_CITIES = [["32020", "강원특별자치도 원주시"], ["12", "세종특별자치시"]]
+# TAGO 가 노선처럼 내주지만 실제 노선이 아닌 것 (원주: 고장 난 차·빈 차)
+NOT_ROUTE = re.compile(r"^(고장|공차)")
+
+
+def route_key(no):
+    """노선 번호 맞대기용: 빈칸·끝의 '번' 을 뺌 ('51번' = '51')"""
+    return re.sub(r"\s+", "", str(no or "")).removesuffix("번").upper()
+
+
+def existing_routes(base_db, codes):
+    """{도시: [(번호 열쇠들, 기점, 종점)]} — 앱 DB 에 TAGO 가 아닌 자료로 이미 있는 노선"""
+    db = sqlite3.connect(base_db)
+    out = {}
+    for code in codes:
+        rows = db.execute("SELECT no, start_name, end_name FROM routes WHERE city = ? AND realtime != 'tago'", (code,)).fetchall()
+        lst = []
+        for no, a, b in rows:
+            k = route_key(no)
+            # 'B5(아름동방면)' = 'B5', '51-1번미래고출발)' = '51-1' (괄호 뒤 설명은 뺀 것도 같은 번호로)
+            lst.append(({k, re.split(r"[(\[)]", k)[0]}, str(a or ""), str(b or "")))
+        out[code] = lst
+    db.close()
+    return out
+
+
+def already_have(item, have):
+    """TAGO 노선이 앱 DB 에 이미 있는지: 번호가 같으면 있음. 세종처럼 TAGO 만 'DRT62' 로 쓰는 건 뒤 번호로도 봄 (DRT35 = 35 부강면 순환)"""
+    k = route_key(item.get("routeno"))
+    ks = {k, k[3:]} if k.startswith("DRT") and len(k) > 3 else {k}
+    return any(ks & keys for keys, _, _ in have)
+
+
 # ───────────── 받기 ─────────────
 
 class Fetcher:
@@ -292,8 +328,9 @@ def run_parallel(fx, jobs, fn, label):
         raise Limit()
 
 
-def fetch_tago(fx, targets):
-    """{city: {"name": .., "routes": {routeid: {"route": item, "stops": [...], "info": item|None}}}} 와 완료 여부"""
+def fetch_tago(fx, targets, have=None):
+    """{city: {"name": .., "routes": {routeid: {"route": item, "stops": [...], "info": item|None}}}} 와 완료 여부
+    have: {도시: existing_routes 결과} — 이 도시는 앱 DB 에 없는 번호의 노선만 받음 (FILL_CITIES)"""
     data, complete = {}, True
     try:
         for code, name in targets:
@@ -311,6 +348,11 @@ def fetch_tago(fx, targets):
                         # 같은 노선이 여러 검색어에 나오면 비어 있지 않은 값만 합침 (먼저 받은 기점·종점이 지워지지 않게)
                         prev["route"] = {**prev["route"], **{k: v for k, v in it.items() if v not in (None, "")}}
                         routes[rid] = prev
+            if have and code in have:
+                listed = len(routes)
+                routes = {rid: r for rid, r in routes.items()
+                          if not NOT_ROUTE.match(str(r["route"].get("routeno", ""))) and not already_have(r["route"], have[code])}
+                print(f"{name} ({code}): TAGO 노선 {listed}개 중 앱에 없는 번호 {len(routes)}개만 채움", flush=True)
             data[code] = {"name": name, "routes": routes}
             print(f"{name} ({code}): 노선 {len(routes)}개 (호출 {fx.calls})", flush=True)
             if not routes:
@@ -1294,8 +1336,10 @@ def main():
     targets = json.loads((HERE / "tago_targets.json").read_text(encoding="utf-8"))
     fx = Fetcher(key)
     check_key(fx)
+    have_codes = {c for c, _ in targets}
+    fill = [t for t in FILL_CITIES if t[0] not in have_codes]
     try:
-        tago, complete = fetch_tago(fx, targets)
+        tago, complete = fetch_tago(fx, targets + fill, existing_routes(BASE_DB, [c for c, _ in fill]))
     except KeyError_ as e:
         sys.exit(KEY_HELP.format(code=e))
     gbis = fetch_gbis(fx)
