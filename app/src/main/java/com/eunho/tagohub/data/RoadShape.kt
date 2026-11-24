@@ -117,9 +117,18 @@ object Osrm {
  * 그 두 정류장을 차례로 지나는 모든 노선에 씀 (웹 site/js/roadline.js SEG_FIXES 와 같은 표)
  */
 object SegFixes {
-    data class Fix(val from: String, val to: String, val path: List<LatLng>)
+    /** cut: 정류장에 가장 가까운 점(골목으로 빠지는 첫 점 등)도 버리고 고친 길로 바로 이음 (노선 자료가 정류장 뒤 블록을 돌아 나오는 곳) */
+    data class Fix(val from: String, val to: String, val path: List<LatLng>, val cut: Boolean = false)
 
     val all: List<Fix> = listOf(
+        // 대전 211 이마트 → 갤러리아타임월드 (대덕대로 남쪽): 노선 자료가 이마트 뒤 블록을 돌아 나와 선이 인도 쪽으로 비껴 내려갔음 → 대덕대로 그대로
+        Fix(
+            "DJB8002468", "DJB8001078",
+            listOf(LatLng(36.35495, 127.37942), LatLng(36.35359, 127.37941), LatLng(36.3532, 127.37939), LatLng(36.35292, 127.37933)),
+            cut = true,
+        ),
+        // 대전 211 대전산업정보고 → 래미안아파트2단지 (도산로 남서쪽): 학교 앞 블록을 돌아 나와 길 가운데 작은 혹이 남았음 → 도산로 그대로
+        Fix("DJB8001951", "DJB8001240", listOf(LatLng(36.33456, 127.38839)), cut = true),
         // 전주 기린대로 병무청(3050104 → 길 건너 3050070): 임실·진안 버스는 기린대로로 올라가 이름 없는 큰 블록(전주고 서쪽)을 돌아 회차
         Fix(
             "TSB305000104", "TSB305000070",
@@ -203,8 +212,9 @@ object SegFixes {
             if (ha.second > 150) continue
             val hb = nearest(out, b.second, ha.first, 3000.0) ?: continue
             if (hb.second > 150) continue
-            out = out.subList(0, ha.first + 1) + fix.path + out.subList(hb.first, out.size)
-            cursor = ha.first + fix.path.size
+            val c = if (fix.cut) 1 else 0
+            out = out.subList(0, ha.first + 1 - c) + fix.path + out.subList(minOf(hb.first + c, out.size), out.size)
+            cursor = ha.first - c + fix.path.size
         }
         return out
     }

@@ -117,7 +117,9 @@ async function web(request, url, env, ctx) {
     const { success } = await env.WEB_LIMIT.limit({ key: url.pathname.startsWith("/w/topis/") ? "topis:" + ip : ip });
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
-  if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx);
+  // 노선 모양: 정류장 목록(전주 버스·TAGO = 공공데이터포털)은 국내 중계로 (바로 물으면 자주 20초 매달려 처음 여는 노선이 45~60초 걸렸음, 2026-11-24).
+  // 카카오 길찾기 등 다른 곳은 그대로 한 번만
+  if (url.pathname.startsWith("/w/shape/")) return handleShape(request, url, env, ctx, (u, i) => (/^https:\/\/apis\.data\.go\.kr\//.test(String(u)) ? upstreamFetch(u, i || {}, env) : fetch(u, i)));
   // 정류장 지난 운행 기록 (정류장 시간표, src/log.js)
   if (url.pathname === "/w/log/stop") return handleWebLog(url, env);
   if (url.pathname.startsWith("/w/gps/")) return new Response(JSON.stringify(await gpsInfo(env.DB, decodeURIComponent(url.pathname.slice("/w/gps/".length))).catch(() => null)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });

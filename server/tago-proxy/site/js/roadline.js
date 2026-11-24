@@ -263,8 +263,20 @@ export function roundCorners(line, maxR = 15) {
 /**
  * 정류장 사이 길 고치기: 이어지는 두 정류장(id) 사이의 실제 길. 노선 자료·길찾기가 모르는 회차 길 등.
  * 그 두 정류장을 차례로 지나는 모든 노선에 씀 (앱 data/RoadShape.kt SegFixes 와 같은 표)
+ * cut: 정류장에 가장 가까운 점(골목으로 빠지는 첫 점 등)도 버리고 고친 길로 바로 이음 (노선 자료가 정류장 뒤 블록을 돌아 나오는 곳)
  */
 export const SEG_FIXES = [
+  {
+    // 대전 211 이마트 → 갤러리아타임월드 (대덕대로 남쪽): 노선 자료가 이마트 뒤 블록(서쪽 80m)을 돌아 나와서, 다듬은 뒤에도
+    // 선이 인도 쪽으로 200m 비껴 내려갔음 → 대덕대로 그대로
+    from: "DJB8002468", to: "DJB8001078", cut: true,
+    path: [[36.35495, 127.37942], [36.35359, 127.37941], [36.3532, 127.37939], [36.35292, 127.37933]],
+  },
+  {
+    // 대전 211 대전산업정보고 → 래미안아파트2단지 (도산로 남서쪽): 노선 자료가 학교 앞 블록을 돌아 나와서 길 가운데 작은 혹이 남았음 → 도산로 그대로
+    from: "DJB8001951", to: "DJB8001240", cut: true,
+    path: [[36.33456, 127.38839]],
+  },
   {
     // 전주 기린대로 병무청(3050104 → 길 건너 3050070): 임실·진안 버스는 기린대로로 올라가 이름 없는 큰 블록(전주고 서쪽)을 돌아 회차 (네이버 지도 노선과 같음)
     from: "TSB305000104", to: "TSB305000070",
@@ -343,8 +355,9 @@ export function applySegFixes(line, stops = [], fixes = SEG_FIXES) {
     if (!ha || ha.d > 150) continue;
     const hb = nearestIdx(out, b, ha.i, 3000);
     if (!hb || hb.d > 150) continue;
-    out = [...out.slice(0, ha.i + 1), ...fix.path, ...out.slice(hb.i)];
-    cursor = ha.i + fix.path.length;
+    const c = fix.cut ? 1 : 0;
+    out = [...out.slice(0, ha.i + 1 - c), ...fix.path, ...out.slice(hb.i + c)];
+    cursor = ha.i - c + fix.path.length;
   }
   return out;
 }
