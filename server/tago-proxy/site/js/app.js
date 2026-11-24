@@ -4,12 +4,13 @@ import { MapView } from "./map.js";
 import { thinDots } from "./mapdiff.js";
 import { go, isWide, wideQ } from "./nav.js";
 import { resetActs, icon, act, esc } from "./ui.js";
-import { cachedText, subwayColor } from "./core.js";
+import { cachedText, subwayColor, getText } from "./core.js";
+import { pickPlace, KAKAO_ROUTING } from "./places.js";
 import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations.js";
 import { applyTheme } from "./store.js";
 import { stopsIn, cityName, stopRoutes, towardOf } from "./busdata.js";
 /** 버스 정류장 아이콘 바탕색 (파란 둥근 네모, 폰 앱 정류장 아이콘과 같게) */
-const BUS_STOP_COLOR = "#2F7CF6";
+export const BUS_STOP_COLOR = "#2F7CF6";
 import { trafficLayer } from "./topis.js";
 import * as home from "./home.js";
 import * as bus from "./bus.js";
@@ -115,8 +116,21 @@ const towardMemo = new Map();
 const STATION_ZOOM = 12;
 let stationsP = null;
 const stationGroups = () => (stationsP ||= cachedText("data/files/subway_stations.tsv").then(parseStations).catch(() => { stationsP = null; return []; }));
+/** 지금 지도 화면 안 정류장·지하철역 (지도 탭과 같은 기준: 정류장 줌 15, 역 줌 12부터). 노선 화면이 함께 보여 줌 */
+export async function nearbyMarks() {
+  const b = MapView.bounds();
+  if (!b) return { stops: [], stations: [] };
+  const z = MapView.zoom();
+  const [stops, stations] = await Promise.all([
+    z < 15 ? [] : stopsIn(b.s, b.w, b.n, b.e).catch(() => []),
+    z < STATION_ZOOM ? [] : stationGroups().then((gs) => stationsIn(gs, b.s, b.w, b.n, b.e)).catch(() => []),
+  ]);
+  return { stops, stations };
+}
+/** 지하철역 점 자리 (지도 고치기로 옮긴 자리) */
+export const stationAt = (g) => stationPos(g, Edits.stationFix);
 /** 역 카드에서 노선을 누르면: 역 찾기로 그 노선 역 번호를 찾아 역 화면 */
-async function openStation(g, line) {
+export async function openStation(g, line) {
   try {
     const row = pickSearchRow(await subway.searchStations(g.name), g.name, line);
     if (row) return go("subway", row.id, { name: row.name, line: row.line });
@@ -276,6 +290,42 @@ export function stopsMap(host, focus) {
   MapView.ready.then(load);
   return () => { alive = false; off(); offEdit(); card.remove(); banner.remove(); traffic.destroy(); MapView.lines([]); };
 }
+
+// ── 지도 오른쪽 클릭(PC)·꾹 누르기(폰·태블릿): 그 자리를 출발·경유·도착으로 (모든 지도 화면) ──
+const pickCard = document.createElement("div");
+pickCard.className = "side-card pick-card";
+pickCard.style.zIndex = "650";
+for (const ev of ["pointerdown", "mousedown", "touchstart", "dblclick", "contextmenu", "click"]) pickCard.addEventListener(ev, (e) => e.stopPropagation());
+let pickSeq = 0;
+MapView.onContext((ll) => {
+  if (!KAKAO_ROUTING) return;
+  const my = ++pickSeq;
+  const place = { name: "지도에서 고른 곳", lat: +ll[0].toFixed(6), lng: +ll[1].toFixed(6), address: null };
+  // 이름·주소 (브이월드, 서버 /w/pub/where): 받는 대로 카드에 채움. 고르기 전에 못 받으면 "지도에서 고른 곳"
+  const named = getText("w/pub/where", { lat: place.lat.toFixed(6), lng: place.lng.toFixed(6) }).then((t) => {
+    const w = JSON.parse(t) || {};
+    if (w.name) place.name = w.name; else if (w.road || w.parcel) place.name = w.road || w.parcel;
+    place.address = w.road || w.parcel || null;
+  }).catch(() => {});
+  const fill = () => {
+    if (my !== pickSeq) return;
+    pickCard.innerHTML = `<div><b>${esc(place.name)}</b><small>${esc(place.address && place.address !== place.name ? place.address : "")}</small></div>` +
+      `<button class="btn" data-k="from">출발</button><button class="btn" data-k="via">경유</button><button class="btn" data-k="to">도착</button><button class="link" data-k="x">닫기</button>`;
+    pickCard.querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
+      const k = b.dataset.k;
+      pickCard.style.display = "none";
+      if (k === "x") return;
+      await Promise.race([named, new Promise((r) => setTimeout(r, 1500))]);
+      pickPlace(k, { ...place });
+    }));
+  };
+  MapView.el.appendChild(pickCard);
+  pickCard.style.display = "flex";
+  fill();
+  named.then(fill);
+});
+// 다른 화면으로 가면 고르기 카드는 닫음
+window.addEventListener("hashchange", () => { pickSeq++; pickCard.style.display = "none"; });
 
 window.addEventListener("hashchange", show);
 wideQ.addEventListener("change", show);

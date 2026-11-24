@@ -1,5 +1,5 @@
 // 버스 화면: 정류장 찾기, 정류장(실시간 도착), 노선(지도·버스 위치·정류장 목록), 지도 탭.
-import { esc, busColor, naturalCompare, isoDay, meters, seoulNow, livePoll, onReturn, tryLater } from "./core.js";
+import { esc, busColor, naturalCompare, isoDay, meters, seoulNow, livePoll, onReturn, tryLater, subwayColor } from "./core.js";
 import { act, header, note, sectionHead, bindInput, icon } from "./ui.js";
 import { go, isWide } from "./nav.js";
 import { MapView } from "./map.js";
@@ -444,6 +444,33 @@ export function routeScreen(root, p, ctx) {
   let traffic = null, layerCard = null, cardSeq = 0;
   // 노선 모양을 못 받았으면(서버가 아직 못 만듦) 정류장을 곧게 이어 그리고, 잠시 뒤 다시 받음
   let shapeMissing = false;
+  // 노선을 보는 중에도 지도 탭처럼 다른 정류장(줌 15부터)·지하철역(줌 12부터)을 함께 (app.js nearbyMarks). 노선 정류장은 빼고 노선 점이 위에
+  let near = { stops: [], stations: [] }, nearTimer = null;
+  const loadNear = () => {
+    clearTimeout(nearTimer);
+    nearTimer = setTimeout(async () => { const got = await nearbyMarks().catch(() => null); if (got && alive) { near = got; drawMap(); } }, 300);
+  };
+  timers.push(() => clearTimeout(nearTimer));
+  /** 다른 정류장·역 점을 누르면 지도 아래 카드 (지도 탭 카드와 같은 단추) */
+  const nearCard = (d) => {
+    if (!layerCard) return false;
+    let h = "", onBtn = null;
+    if (d.id.startsWith("os:")) {
+      const st = near.stops.find((x) => "os:" + x.id === d.id);
+      if (!st) return false;
+      h = `<div><b>${esc(st.name)}</b><small>${st.no ? "정류장 번호 " + esc(st.no) : ""}</small></div><button class="btn" data-go="1">도착 정보</button>`;
+      onBtn = () => go("stop", st.id, { lat: st.lat, lng: st.lng });
+    } else if (d.id.startsWith("ost:")) {
+      const g = near.stations[+d.id.slice(4)];
+      if (!g) return false;
+      h = `<div><b>${esc(g.name)}역</b><small>${esc(g.lines.join(" · "))}</small></div>` + g.lines.map((l, i) => `<button class="btn" data-line="${i}">${esc(l)}</button>`).join("");
+      onBtn = (b) => openStation(g, g.lines[+b.dataset.line]);
+    } else return false;
+    layerCard.innerHTML = h + `<button class="link" data-x="1">닫기</button>`;
+    layerCard.style.display = "flex";
+    layerCard.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { if (b.dataset.x) layerCard.style.display = "none"; else onBtn(b); }));
+    return true;
+  };
   /** 노선 정류장 좌표 (선 다듬기에서 실제로 들르는 곳을 남기려고) */
   const stopPts = () => (r ? r.stops.filter((s) => s.lat != null).map((s) => [s.lat, s.lng, s.name, s.id]) : []);
   // 버스는 받은 실제 GPS 좌표에서 그림 (노선 선 위로 옮기거나 노선을 따라 움직이지 않음:
@@ -502,9 +529,14 @@ export function routeScreen(root, p, ctx) {
     }
     // 레이어(소통 선)는 노선 선 아래에. 같은 선은 지도가 그대로 둠 (map.js)
     MapView.lines([...(traffic ? traffic.lines() : []), { pts: drawn, color, width: LINE_W }]);
-    const z = MapView.zoom();
-    // 노선 선 위에 진행 방향 화살표 (정류장 점이 아니라 선에, 화면에서 약 90px 마다)
-    const dots = [...(traffic ? traffic.dots() : []), ...lineArrows(drawn)];
+    const z = MapView.zoom(), z0 = z;
+    // 다른 정류장·지하철역 (맨 아래), 레이어 점, 노선 선 위 진행 방향 화살표 (정류장 점이 아니라 선에, 화면에서 약 90px 마다)
+    const mine = new Set(r.stops.map((s) => s.id && B.legacyId(s.id)).filter(Boolean));
+    const others = thinDots([
+      ...near.stations.map((g, i) => { const at = stationAt(g); return { id: "ost:" + i, lat: at[0], lng: at[1], color: subwayColor(g.lines[0]), ring: "#fff", r: 7, label: z0 >= 14 ? g.name + "역" : null }; }),
+      ...near.stops.filter((s) => !mine.has(B.legacyId(s.id))).map((s) => ({ id: "os:" + s.id, lat: s.lat, lng: s.lng, color: BUS_STOP_COLOR, ring: "#fff", r: 7, bus: true })),
+    ], MapView.metersPerPx());
+    const dots = [...others, ...(traffic ? traffic.dots() : []), ...lineArrows(drawn)];
     // 정류장·버스 점은 도로 선 위에 (선을 받은 뒤)
     if (road && snapped?.road !== road) { snapped = { road, full: snapStopsFull(r.stops, road), cum: roadCum(road) }; }
     // 지도 고치기로 손으로 옮긴 정류장은 고친 자리 그대로 (앱 RoutePin.fixed; 선 위로 붙이면 고친 것이 안 보였음)
@@ -534,6 +566,7 @@ export function routeScreen(root, p, ctx) {
         show(traffic.card(d.id, show));
         return;
       }
+      if (nearCard(d)) return;
       if (layerCard) layerCard.style.display = "none";
       const seq = d.id.startsWith("s:") ? +d.id.slice(2) : null;
       const idx = seq != null ? r.stops.findIndex((s) => s.seq === seq) : [...B.busAtStops(r.stops, pos?.buses || []).entries()].find(([, l]) => l.some((b) => "b:" + b.vehicleNo === d.id))?.[0];
@@ -629,8 +662,12 @@ export function routeScreen(root, p, ctx) {
         if (tries < 3) { const t = setTimeout(() => loadShape(tries + 1), [30000, 90000, 180000][tries]); timers.push(() => clearTimeout(t)); }
       });
     loadShape(0);
-    const offIdle = MapView.onIdle(drawMap);
+    const offIdle = MapView.onIdle(() => { drawMap(); loadNear(); });
     timers.push(() => offIdle());
+    MapView.ready.then(loadNear);
+    // 지도 빈 곳을 누르면 카드 닫기
+    MapView.onTap(() => { if (layerCard) layerCard.style.display = "none"; });
+    timers.push(() => MapView.onTap(null));
     // 누가 노선 모양·정류장 위치를 고치면 바로 다시 그림
     const offEdit = Edits.onChange(async () => {
       if (!alive) return;
@@ -661,7 +698,8 @@ export function routeScreen(root, p, ctx) {
 }
 
 // ── 지도 탭 (좁은 화면: 지도 + 아래 카드 / 넓은 화면: 오른쪽 지도) ──
-import { stopsMap } from "./app.js";
+import { stopsMap, nearbyMarks, openStation, stationAt, BUS_STOP_COLOR } from "./app.js";
+import { thinDots } from "./mapdiff.js";
 export function mapTab(root, p, ctx) {
   const focus = p.lat ? { id: p.id, lat: +p.lat, lng: +p.lng } : null;
   if (ctx.wide) {
