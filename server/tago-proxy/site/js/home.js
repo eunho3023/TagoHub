@@ -2,7 +2,7 @@
 import { esc, busColor, subwayColor, meters, distText, livePoll } from "./core.js";
 import { act, icon, note, bindInput } from "./ui.js";
 import { go, isWide } from "./nav.js";
-import { Favorites, Recent, HomeWork } from "./store.js";
+import { Favorites, Recent, HomeWork, Usage, byTime, timeScore } from "./store.js";
 import * as B from "./busdata.js";
 import { remember } from "./bus.js";
 import { startDirections } from "./places.js";
@@ -23,6 +23,14 @@ const st = {
   // 실시간 도착 카드: idle | loading | ok | noperm | error
   live: { state: "idle", rows: null, at: 0, note: null },
 };
+
+/** 홈 정류장: 즐겨찾기 + 최근 본 정류장 중 이 시간대에 자주 연 것(3번 넘게, 2곳까지)을 지금 시간대에 자주 연 순서로 */
+function homeStops(now = Date.now()) {
+  const u = Usage.load(), fav = Favorites.stops.items, ids = new Set(fav.map((s) => s.id));
+  const extra = Recent.stops.items.filter((s) => !ids.has(s.id) && timeScore(u[s.id], now) >= 3)
+    .sort((a, b) => timeScore(u[b.id], now) - timeScore(u[a.id], now)).slice(0, 2).map((s) => ({ ...s, often: true }));
+  return byTime([...fav, ...extra], u, now);
+}
 
 export function render(root, _p, ctx) {
   let alive = true;
@@ -58,7 +66,7 @@ export function render(root, _p, ctx) {
       });
       return;
     }
-    const favStops = Favorites.stops.items, favSt = Favorites.stations.items, rec = Recent.places.items;
+    const favStops = homeStops(), favSt = Favorites.stations.items, rec = Recent.places.items;
     const home = HomeWork.home, work = HomeWork.work, school = HomeWork.school;
     const tile = (label, ic, run) => `<button class="tile" ${act(run)}><span class="tile-ic">${icon(ic, 26)}</span><span>${label}</span></button>`;
     body.innerHTML = `${liveSection()}
@@ -77,7 +85,7 @@ export function render(root, _p, ctx) {
           const right = !got ? "..." : !a ? "도착 정보 없음" : B.arrivalParts(a, Math.floor((Date.now() - got.at) / 1000))[0];
           return `<button class="crow" ${act(() => go("stop", s.id, { lat: s.lat, lng: s.lng }))}>
             <span class="badge" style="background:${a ? busColor(a.routeType) : "#2563EB"}">${a ? esc(a.routeNo) : icon("bus", 16)}</span>
-            <b class="grow">${esc(s.name)}</b><span class="eta-s ${a && (a.arrSeconds ?? 999) <= 180 ? "soon" : ""}">${esc(right)}</span></button>`;
+            <b class="grow">${esc(s.name)}${s.often ? ` <small class="muted">이 시간 자주</small>` : ""}</b><span class="eta-s ${a && (a.arrSeconds ?? 999) <= 180 ? "soon" : ""}">${esc(right)}</span></button>`;
         }),
         ...favSt.map((s) => `<button class="crow" ${act(() => go("subway", s.id, { name: s.name, line: s.line }))}>
             <span class="badge" style="background:${subwayColor(s.line)}">${icon("bus", 16)}</span><b class="grow">${esc(s.name)}</b><span class="muted">${esc(s.line)}</span></button>`),
@@ -230,7 +238,7 @@ export function render(root, _p, ctx) {
   // 즐겨찾기 정류장(모두)의 가장 먼저 오는 버스 (정류장 화면과 같은 15초마다, 다른 앱에서 돌아오면 바로). 못 받은 정류장은 전에 받은 것을 그대로 두고 몇 초 뒤 다시.
   // 예전엔 한도를 아끼려고 4곳·30초마다
   const refresh = async () => {
-    const got = await Promise.all(Favorites.stops.items.map(async (s) => {
+    const got = await Promise.all(homeStops().map(async (s) => {
       const a = await B.arrivals(s, { quickMs: QUICK_LOCAL_MS });
       if (received(a)) st.first.set(s.id, { a: a.list[0] || null, at: a.at });
       else if (a.state === "unsupported") st.first.set(s.id, { a: null, at: a.at });

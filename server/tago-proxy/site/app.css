@@ -55,10 +55,10 @@ small { display: block; color: var(--muted); font-size: 13px; }
 .nav-b.on { color: var(--primary); }
 .nav-b.on .pill { background: var(--pcont); }
 
-#alight { display: flex; align-items: center; gap: 12px; background: #1b7f4b; color: #fff; padding: 8px 16px; flex: none; }
-#alight[hidden] { display: none; }
-#alight small { color: rgba(255,255,255,.85); }
-#alight button { font-weight: 700; }
+#alight, #arrive { display: flex; align-items: center; gap: 12px; background: #1b7f4b; color: #fff; padding: 8px 16px; flex: none; }
+#alight[hidden], #arrive[hidden] { display: none; }
+#alight small, #arrive small { color: rgba(255,255,255,.85); }
+#alight button, #arrive button { font-weight: 700; }
 
 /* 머리띠 */
 .bar { display: flex; align-items: center; gap: 10px; background: var(--header); color: #fff; padding: 12px 16px; flex: none; position: sticky; top: 0; z-index: 5; }

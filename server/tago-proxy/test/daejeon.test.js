@@ -8,7 +8,8 @@ globalThis.document = { hidden: false, ...noop };
 globalThis.window = noop;
 const realInterval = globalThis.setInterval;
 globalThis.setInterval = (...a) => { const t = realInterval(...a); t.unref?.(); return t; };
-const { daejeonArrivalList, daejeonBusList, daejeonRows, busAtStops, klidPick, klidTime, KLID_REGIONS, headingTracker, declutterCaptions, todayDeps, isLowArrival, toMinutes } = await import("../site/js/busdata.js");
+const { daejeonArrivalList, daejeonBusList, daejeonRows, busAtStops, klidPick, klidTime, KLID_REGIONS, headingTracker, declutterCaptions, todayDeps, isLowArrival, toMinutes, nextLow, arriveStage, busSpacing, runningNow, allEnded } = await import("../site/js/busdata.js");
+const { slotOf, timeScore, byTime } = await import("../site/js/store.js");
 const { klidWebRequest } = await import("../src/proxy.js");
 
 const head = (cd) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ServiceResult><msgHeader><currentPage>1</currentPage><headerCd>${cd}</headerCd><headerMsg>정상적으로 처리되었습니다.</headerMsg></msgHeader><msgBody>`;
@@ -65,4 +66,38 @@ test("지도 버스 진행 방향·이름표 솎기·오늘 시간표·저상 �
   assert.equal(isLowArrival({ vehicleType: "일반" }), false);
   assert.equal(isLowArrival({ vehicleType: null }), null);
   assert.equal(toMinutes("22:30"), 1350);
+});
+
+test("다음 저상버스·도착 알림 단계·버스 몰림·막차 뒤·시간대별 홈", () => {
+  const low = { vehicleType: "저상버스", arrSeconds: 600, prevStops: 6 }, gen = { vehicleType: "일반", arrSeconds: 120, prevStops: 2 };
+  assert.equal(nextLow([gen, low]), low);
+  assert.equal(nextLow([low, gen]), null);                  // 먼저 오는 차가 저상
+  assert.equal(nextLow([gen]), false);                      // 오는 차 중 저상 없음
+  assert.equal(nextLow([{ arrSeconds: 60 }]), null);         // 차 종류 모름
+  assert.equal(arriveStage({ arrSeconds: 600, prevStops: 8 }), 0);
+  assert.equal(arriveStage({ arrSeconds: 280, prevStops: 5 }), 1);
+  assert.equal(arriveStage({ arrSeconds: 900, prevStops: 3 }), 1);
+  assert.equal(arriveStage({ arrSeconds: 80, prevStops: 2 }), 2);
+  assert.equal(arriveStage({ arrSeconds: 30, prevStops: 0, waiting: true }), 0);
+  assert.equal(arriveStage({ arrSeconds: 200, prevStops: null }, 120), 2);   // 받은 뒤 2분 지남
+  // 정류장 300m 간격 → 한 칸 1.3분
+  const stops = Array.from({ length: 40 }, (_, i) => ({ lat: 37.5 + i * 0.0027, lng: 127 }));
+  const sp = busSpacing(stops, [3, 4, 30, -1]);
+  assert.deepEqual(sp.bunched.map((x) => [x.i, x.j]), [[3, 4]]);
+  assert.deepEqual([sp.gap.i, sp.gap.j], [4, 30]);
+  assert.equal(busSpacing(stops, [3, 30], 30).gap, null);    // 배차 30분이면 35분 간격은 보통
+  assert.deepEqual(busSpacing(stops, [5]), { bunched: [], gap: null });
+  const sums = [{ no: "1", first: "05:30", last: "23:00" }, { no: "N1", first: "23:30", last: "04:00" }, { no: "2" }];
+  assert.deepEqual(runningNow(sums, 60).map((s) => s.no), ["N1"]);
+  assert.equal(allEnded(sums.slice(0, 1), 60), true);
+  assert.equal(allEnded(sums, 60), false);
+  assert.equal(allEnded([{ no: "2" }], 60), false);          // 첫차·막차를 모르면 끊겼다고 하지 않음
+  // 2026-11-25(수) 08:10 한국 시각 = 평일 8시 칸
+  const wed8 = Date.UTC(2026, 10, 24, 23, 10);
+  assert.equal(slotOf(wed8), 8);
+  assert.equal(slotOf(Date.UTC(2026, 10, 28, 23, 10)), 24 + 8);   // 일요일
+  const c = new Array(48).fill(0); c[8] = 3; c[7] = 1; c[18] = 9;
+  assert.equal(timeScore(c, wed8), 7);
+  const u = { work: (() => { const a = new Array(48).fill(0); a[18] = 5; return a; })(), home: c };
+  assert.deepEqual(byTime([{ id: "work" }, { id: "home" }, { id: "x" }], u, wed8).map((x) => x.id), ["home", "work", "x"]);
 });

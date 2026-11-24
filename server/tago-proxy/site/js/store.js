@@ -83,3 +83,33 @@ export function applyTheme() {
   const dark = m === "dark" || (m === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
 }
+
+// ── 시간대별 홈: 정류장을 언제 여는지 (평일·주말 × 시각 24칸, 한국 시각). 이 기기에만 ──
+const USAGE_MAX = 80;
+/** 칸 번호: 평일 0~23, 주말 24~47 */
+export function slotOf(ms) { const d = new Date(ms + 9 * 3600e3), we = d.getUTCDay() === 0 || d.getUTCDay() === 6; return (we ? 24 : 0) + d.getUTCHours(); }
+/** 지금 시간대에 얼마나 자주 열었는지 (같은 시각 2배, 앞뒤 한 시간 1배) */
+export function timeScore(counts, ms) {
+  if (!counts) return 0;
+  const s = slotOf(ms), base = s - (s % 24), h = s % 24;
+  return 2 * (counts[base + h] || 0) + (counts[base + ((h + 23) % 24)] || 0) + (counts[base + ((h + 1) % 24)] || 0);
+}
+/** 지금 시간대에 자주 연 것을 앞으로 (점수가 같으면 원래 순서) */
+export function byTime(items, usage, ms) {
+  return items.map((x, i) => ({ x, i, v: timeScore(usage[x.id], ms) })).sort((a, b) => b.v - a.v || a.i - b.i).map((o) => o.x);
+}
+export const Usage = {
+  load() { try { const u = JSON.parse(storeGet("usage") || "{}"); return u && typeof u === "object" ? u : {}; } catch (e) { return {}; } },
+  visit(id, ms = Date.now()) {
+    if (!id) return;
+    const u = this.load(), c = Array.isArray(u[id]) ? u[id] : new Array(48).fill(0);
+    c[slotOf(ms)] = Math.min(999, (c[slotOf(ms)] || 0) + 1);
+    u[id] = c;
+    const ids = Object.keys(u);
+    if (ids.length > USAGE_MAX) {
+      const sum = (k) => u[k].reduce((a, b) => a + (b || 0), 0);
+      ids.sort((a, b) => sum(a) - sum(b)).slice(0, ids.length - USAGE_MAX).forEach((k) => { if (k !== id) delete u[k]; });
+    }
+    storeSet("usage", JSON.stringify(u));
+  },
+};
