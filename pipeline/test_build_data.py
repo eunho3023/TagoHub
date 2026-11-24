@@ -1,4 +1,5 @@
 """수집 프로그램 시험 (가짜 TAGO·경기 응답, 인터넷 없이): python -m pytest pipeline 또는 python pipeline/test_build_data.py"""
+import re
 import gzip, hashlib, json, pathlib, sqlite3, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import build_data as bd
@@ -241,6 +242,25 @@ def test_kotsa_timetable_real():
             "TSB999": {"routeid": "TSB999"}}
     r = bd.compare(rows, tago)
     assert r["sameRoutes"] == 2 and r["firstMatch"] == 100.0 and r["lastMatch"] == 50.0 and r["tagoOnly"] == 1 and r["kotsaOnly"] == 2
+
+
+def test_kotsa_twin_and_weekend():
+    """공단 시간표를 같은 번호의 다른 앞글자 노선(영암 MPB338…)에도, 평일 운행 없는 노선은 토·일 첫차·막차라도"""
+    db0 = sqlite3.connect(BASE)
+    twin = next(r for (r,) in db0.execute("SELECT r.id FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id NOT LIKE 'TSB%' AND i.first IS NULL AND i.last IS NULL")
+                if re.fullmatch(r"[A-Z]+\d{9}", r))
+    db0.close()
+    num = re.sub(r"^[A-Z]+", "", twin)
+    rows = [{"노선 아이디": int(num), "요일": "평일", "일일운행횟수": 12, "기점첫차출발시각": "06:10", "기점막차출발시각": "20:40", "최소배차간격": 60, "최대배차간격": 90},
+            {"노선 아이디": 777000001, "요일": "토요일", "일일운행횟수": 2, "기점첫차출발시각": "09:00", "기점막차출발시각": "15:00", "최소배차간격": 0, "최대배차간격": 0}]
+    with tempfile.TemporaryDirectory() as d:
+        out = pathlib.Path(d) / "bus_stops.db"
+        bd.write_db(BASE, out, {}, [], "202611240300", rows)
+        db = sqlite3.connect(out)
+        assert db.execute("SELECT first, last FROM route_info WHERE id = ?", (twin,)).fetchone() == ("06:10", "20:40")
+        assert db.execute("SELECT trips FROM route_schedule WHERE id = ? AND day = 'weekday'", (twin,)).fetchone() == (12,)
+        assert db.execute("SELECT first, last FROM route_info WHERE id = 'TSB777000001'").fetchone() == ("09:00", "15:00")
+        db.close()
 
 
 def test_tsb_stops_written():
@@ -798,6 +818,6 @@ def test_city_times():
 
 
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

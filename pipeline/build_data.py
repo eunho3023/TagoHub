@@ -1519,17 +1519,25 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     db.execute("""CREATE TABLE IF NOT EXISTS route_schedule(id TEXT, day TEXT, trips INTEGER, first TEXT, last TEXT,
                   end_first TEXT, end_last TEXT, min_int INTEGER, max_int INTEGER, PRIMARY KEY(id, day)) WITHOUT ROWID""")
     by_route = {}
+    # 같은 공단 노선이 TAGO 에서 다른 앞글자로 오는 지역 (영암: TAGO 는 MPB338000004, 공단 시간표는 338000004 → 70개, 그중 시각 없던 것 40개, 2026-11-24)
+    twins = {}
+    for (tid,) in db.execute("SELECT id FROM routes WHERE id NOT LIKE 'TSB%'"):
+        m = re.fullmatch(r"[A-Z]+(\d{9})", tid)
+        if m:
+            twins.setdefault(m.group(1), []).append(tid)
     for r in kotsa:
         day = KOTSA_DAYS.get(str(r.get("요일", "")).strip())
         if not day or r.get("노선 아이디") is None:
             continue
-        rid = "TSB" + str(r["노선 아이디"]).split(".")[0]
-        row = (rid, day, to_int(r.get("일일운행횟수")), r.get("기점첫차출발시각") or None, r.get("기점막차출발시각") or None,
-               r.get("종점첫차출발시각") or None, r.get("종점막차출발시각") or None, to_int(r.get("최소배차간격")), to_int(r.get("최대배차간격")))
-        db.execute("INSERT OR REPLACE INTO route_schedule VALUES(?,?,?,?,?,?,?,?,?)", row)
-        by_route.setdefault(rid, {})[day] = row
+        num = str(r["노선 아이디"]).split(".")[0]
+        for rid in ["TSB" + num] + twins.get(num, []):
+            row = (rid, day, to_int(r.get("일일운행횟수")), r.get("기점첫차출발시각") or None, r.get("기점막차출발시각") or None,
+                   r.get("종점첫차출발시각") or None, r.get("종점막차출발시각") or None, to_int(r.get("최소배차간격")), to_int(r.get("최대배차간격")))
+            db.execute("INSERT OR REPLACE INTO route_schedule VALUES(?,?,?,?,?,?,?,?,?)", row)
+            by_route.setdefault(rid, {})[day] = row
     for rid, days in by_route.items():
-        wk = days.get("weekday")
+        # 평일 운행이 없는 노선(주말만, 당진 등)은 토·일 첫차·막차라도
+        wk = days.get("weekday") or days.get("sat") or days.get("sun")
         def gap(d):
             v = days.get(d, (None,) * 9)[7]
             return v if v and v > 0 else None
