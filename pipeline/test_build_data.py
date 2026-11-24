@@ -737,6 +737,18 @@ def test_drop_empty_dups():
     assert bd.drop_tsb_twin_stops(db, False) == 0
     assert bd.drop_tsb_twin_stops(db, True) == 2
     assert sorted(r[0] for r in db.execute("SELECT id FROM stops")) == ["GGB_1", "MPB_A", "TSB_3", "TSB_4", "TSB_5", "TSB_U"]
+    # 공단 정류장 이름을 같은 자리(8m 안) 지자체 정류장 지금 이름으로 (광주 전남방직 → 발산뽕뽕다리)
+    db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
+        ("KJB3047", "발산뽕뽕다리", 35.160944, 126.893999, "24"),
+        ("TSB178000127", "전남방직", 35.160953, 126.894007, "TS178"),   # 1m → 바꿈
+        ("TSB_F", "멀리", 35.160944 + 12 * m, 126.893999, "TS178"),      # 12m (길 건너) → 그대로
+    ])
+    db.execute("INSERT INTO route_stops VALUES('TSB8',1,'TSB178000127','전남방직',NULL,NULL,NULL)")
+    assert bd.rename_tsb_to_local(db) == 1
+    assert db.execute("SELECT name FROM stops WHERE id='TSB178000127'").fetchone()[0] == "발산뽕뽕다리"
+    assert db.execute("SELECT name FROM route_stops WHERE stop_id='TSB178000127'").fetchone()[0] == "발산뽕뽕다리"
+    assert db.execute("SELECT name FROM stops WHERE id='TSB_F'").fetchone()[0] == "멀리"
+    assert db.execute("SELECT name FROM stops WHERE id='TSB_3'").fetchone()[0] == "다른이름"           # 45m 떨어진 것도 그대로
 
 
 def test_resolve_types():

@@ -10,6 +10,7 @@ const realInterval = globalThis.setInterval;
 globalThis.setInterval = (...a) => { const t = realInterval(...a); t.unref?.(); return t; };
 const { daejeonArrivalList, daejeonBusList, daejeonRows, busAtStops, klidPick, klidTime, KLID_REGIONS, headingTracker, declutterCaptions, todayDeps, isLowArrival, toMinutes, nextLow, arriveStage, busSpacing, runningNow, allEnded } = await import("../site/js/busdata.js");
 const { slotOf, timeScore, byTime } = await import("../site/js/store.js");
+const { dotKey } = await import("../site/js/mapdiff.js");
 const { klidWebRequest } = await import("../src/proxy.js");
 
 const head = (cd) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ServiceResult><msgHeader><currentPage>1</currentPage><headerCd>${cd}</headerCd><headerMsg>정상적으로 처리되었습니다.</headerMsg></msgHeader><msgBody>`;
@@ -100,4 +101,15 @@ test("다음 저상버스·도착 알림 단계·버스 몰림·막차 뒤·시�
   assert.equal(timeScore(c, wed8), 7);
   const u = { work: (() => { const a = new Array(48).fill(0); a[18] = 5; return a; })(), home: c };
   assert.deepEqual(byTime([{ id: "work" }, { id: "home" }, { id: "x" }], u, wed8).map((x) => x.id), ["home", "work", "x"]);
+});
+
+test("지도 버스: 이름표·방향이 바뀌면 다시 그림, 이름표는 id 순서로 정해 순서가 바뀌어도 같은 버스", () => {
+  const d = { id: "sb:1", lat: 37.5, lng: 127, color: "#000", bus3d: { no: "165", caption: null, dir: 10 } };
+  assert.notEqual(dotKey(d), dotKey({ ...d, bus3d: { ...d.bus3d, caption: "1580" } }));
+  assert.notEqual(dotKey(d), dotKey({ ...d, bus3d: { ...d.bus3d, dir: 100 } }));
+  assert.equal(dotKey(d), dotKey({ ...d, bus3d: { ...d.bus3d, dir: 12 } }));          // 15도 안은 같은 그림
+  const a = { id: "sb:a", lat: 37.5, lng: 127.0, bus3d: { no: "1", caption: "A" } }, b = { id: "sb:b", lat: 37.5, lng: 127.0001, bus3d: { no: "2", caption: "B" } };
+  const cap = (l) => Object.fromEntries(declutterCaptions(l, 16, 1).map((x) => [x.id, x.bus3d.caption]));
+  assert.deepEqual(cap([a, b]), { "sb:a": "A", "sb:b": null });
+  assert.deepEqual(cap([b, a]), { "sb:a": "A", "sb:b": null });
 });
