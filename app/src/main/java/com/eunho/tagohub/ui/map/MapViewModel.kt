@@ -61,6 +61,8 @@ import com.eunho.tagohub.ui.bus.BusDest
 import com.eunho.tagohub.ui.bus.RouteBusCache
 import com.eunho.tagohub.ui.bus.StopRouteRow
 import com.eunho.tagohub.ui.bus.busTag
+import com.eunho.tagohub.ui.bus.busCaption
+import com.eunho.tagohub.ui.bus.plainRouteNo
 import com.eunho.tagohub.ui.bus.loadRouteData
 import com.eunho.tagohub.ui.bus.loadStopBoard
 import com.eunho.tagohub.ui.bus.loadDirection
@@ -1673,30 +1675,126 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val lngMargin = (box[3] - box[1]) * 0.12
         val centerLat = (box[0] + box[2]) / 2
         val centerLng = (box[1] + box[3]) / 2
+        fun inView(lat: Double, lng: Double) = lat in (box[0] - latMargin)..(box[2] + latMargin) && lng in (box[1] - lngMargin)..(box[3] + lngMargin)
+        // 정류장을 골랐으면(노선은 안 엶) 그 정류장 노선들의 버스 (차량번호·저상까지 아는 노선 버스 위치)
+        val sb = stopBuses
+        if (sb != null && route.value == null && sb.first === selected.value) {
+            canvas?.setKlidBuses(sb.second.asSequence()
+                .filter { inView(it.lat, it.lng) }
+                .sortedBy { Geo.meters(centerLat, centerLng, it.lat, it.lng) }
+                .take(MAX_KLID_BUS_PINS)
+                .mapIndexed { n, it ->
+                    val p = roadLinks?.snap(it.lat, it.lng) ?: LatLng(it.lat, it.lng)
+                    VehiclePin("sb:${it.row.routeId}|${it.bus.vehicleNo ?: n}", listOf(p), 1.0, 1.0, 0L,
+                        busRouteColor(it.row.routeType).toArgb(), "", "", it.row.routeNo, busCaption(it.bus))
+                }.toList())
+            return
+        }
+        val now = System.currentTimeMillis()
         val routeVehicles = route.value?.buses?.value.orEmpty().mapNotNull { it.vehicleNo }.toSet()
         val pins = klidBusPositions.asSequence()
             .filter { it.vehicleNo !in routeVehicles }
-            .filter {
-                it.latitude in (box[0] - latMargin)..(box[2] + latMargin) &&
-                    it.longitude in (box[1] - lngMargin)..(box[3] + lngMargin)
-            }
+            // 며칠 전 마지막 위치(지금 안 다니는 차)는 빼고 최근에 보낸 위치만
+            .filter { it.atMs == null || now - it.atMs <= KLID_FRESH_MS }
+            .filter { inView(it.latitude, it.longitude) }
             .sortedBy { Geo.meters(centerLat, centerLng, it.latitude, it.longitude) }
             .take(MAX_KLID_BUS_PINS)
             .map {
-                val point = LatLng(it.latitude, it.longitude)
                 VehiclePin(
                     id = "klid:${it.id}",
-                    path = listOf(point),
+                    path = listOf(LatLng(it.latitude, it.longitude)),
                     startFrac = 1.0,
                     endFrac = 1.0,
                     durationMs = 0L,
-                    color = KLID_BUS_COLOR,
+                    color = it.routeType?.let { t -> busRouteColor(t).toArgb() } ?: KLID_BUS_COLOR,
                     label = it.routeNo,
                     glyph = "실",
+                    // 이 자료의 차량번호는 번호판이 아닌 내부 번호, 저상 여부도 없어 이름표 없이 번호만
+                    routeNo = it.routeNo.ifBlank { "버스" },
                 )
             }
             .toList()
         canvas?.setKlidBuses(pins)
+    }
+
+    /** 정류장 노선 버스 한 대 (그 노선 줄과 위치) */
+    private class StopBus(val row: StopRouteRow, val bus: com.eunho.tagohub.data.BusLocation) {
+        val lat get() = bus.lat!!
+        val lng get() = bus.lng!!
+    }
+
+    /** (정류장, 그 정류장 노선들의 버스) — 정류장 패널이 열려 있는 동안 [stopBusLoop] 가 채움 */
+    private var stopBuses: Pair<BusDest.Stop, List<StopBus>>? = null
+
+    /**
+     * 정류장 패널이 열려 있는 동안 그 정류장을 지나는 노선들(운행 시간 안)의 버스 위치를 5초마다 받아 지도에 (노선 화면과 같은 지역별 위치 자료).
+     * 노선마다 정류장 목록은 처음 한 번만 받음
+     */
+    private suspend fun stopBusLoop(d: BusDest.Stop) {
+        val dests = HashMap<String, BusDest.Route>()
+        try {
+            while (true) {
+                com.eunho.tagohub.core.AppState.awaitMapVisible()
+                val rows = (d.rows.value as? Load.Ok)?.value.orEmpty().filter { !it.ended }
+                if (rows.isEmpty()) {
+                    delay(1_000)
+                    continue
+                }
+                if (route.value == null && selected.value === d) {
+                    val got = coroutineScope {
+                        rows.map { r -> async { runCatching { stopRouteBuses(d, r, dests) }.getOrDefault(emptyList()) } }.awaitAll()
+                    }.flatten()
+                    if (selected.value === d) {
+                        stopBuses = d to got
+                        pushKlidBuses()
+                    }
+                }
+                com.eunho.tagohub.core.AppState.pause(MAP_BUS_REFRESH_MS, map = true)
+            }
+        } finally {
+            if (stopBuses?.first === d) stopBuses = null
+            pushKlidBuses()
+        }
+    }
+
+    private suspend fun stopRouteBuses(d: BusDest.Stop, r: StopRouteRow, dests: HashMap<String, BusDest.Route>): List<StopBus> {
+        val rd = dests.getOrPut(r.routeId) { BusDest.Route(r.cityCode ?: d.stop.cityCode, r.routeId, r.routeNo, r.routeType, d.stop.nodeId) }
+        if (rd.stops.value is Load.Loading) {
+            try { loadRouteData(repo, rd) } finally { rd.stopsReady.complete(Unit) }
+        }
+        refreshBusData(repo, rd)
+        return rd.buses.value.filter { it.lat != null && it.lng != null }.map { StopBus(r, it) }
+    }
+
+    /** 지도 버스를 누름: 정류장에서 노선 번호를 누른 것처럼 그 노선 선형을 띄움 */
+    fun onBusPinClick(id: String) {
+        when {
+            id.startsWith("sb:") -> {
+                val rid = id.removePrefix("sb:").substringBefore('|')
+                val s = selected.value as? BusDest.Stop ?: return
+                val row = (s.rows.value as? Load.Ok)?.value?.firstOrNull { it.routeId == rid } ?: return
+                showRoute(row)
+            }
+            id.startsWith("klid:") -> klidBusPositions.firstOrNull { "klid:${it.id}" == id }?.let(::openKlidRoute)
+        }
+    }
+
+    /** 지도 범위 버스는 노선 번호만 알아서 번호로 노선을 찾아 엶 (같은 번호가 여럿이면 기점·종점 이름이 맞는 것) */
+    private fun openKlidRoute(p: KlidBusPosition) {
+        val no = plainRouteNo(p.routeNo.substringBefore('('))
+        val code = autoCity.value?.code ?: return
+        if (no.isBlank()) return
+        viewModelScope.launch {
+            val cands = (repo.routesByNo(code, no) as? TagoResult.Success)?.data.orEmpty().filter { plainRouteNo(it.routeNo) == no }
+            fun same(a: String?, b: String?) = !a.isNullOrBlank() && !b.isNullOrBlank() && (a.contains(b) || b.contains(a))
+            val r = cands.firstOrNull { same(it.startName, p.startName) && same(it.endName, p.endName) } ?: cands.firstOrNull()
+            if (r == null) {
+                banner.value = "$no 번 노선을 찾지 못했어요."
+                return@launch
+            }
+            route.value = BusDest.Route(r.cityCode.ifBlank { code }, r.routeId, r.routeNo, r.routeType ?: p.routeType, null)
+            panel.value = MapPanel.Route
+        }
     }
 
     private fun clearKlidBusError() {
@@ -2414,6 +2512,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             d.rows.value = Load.Fail("$name 은(는) 국토교통부 TAGO 실시간 버스 서비스 지역이 아니라 도착정보를 받을 수 없어요. 정류장 위치만 표시해요.")
             return
         }
+        val busJob = viewModelScope.launch { stopBusLoop(d) }
+        try { runStopBoard(d, supported) } finally { busJob.cancel() }
+    }
+
+    private suspend fun runStopBoard(d: BusDest.Stop, supported: Set<String>?) {
         var first = true
         var fails = 0
         var loads = 0
@@ -2562,7 +2665,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             com.eunho.tagohub.core.AppState.awaitMapVisible()
             tracked { refreshBusData(repo, d) }
             pushBuses()
-            com.eunho.tagohub.core.AppState.pause(10_000, map = true)
+            com.eunho.tagohub.core.AppState.pause(MAP_BUS_REFRESH_MS, map = true)
         }
     }
 
@@ -3371,16 +3474,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     return onRoad(g.raw)
                 }
-                val a = aheadOnRoad(ahead.first)
-                val b = aheadOnRoad(ahead.second)
+                val p1 = aheadOnRoad(ahead.first)
+                val p2 = aheadOnRoad(ahead.second)
                 // 지도는 지금 보이는 자리에서 이어서 움직임 (뒤에 있으면 짧게 미끄러져 옴)
-                return@mapIndexedNotNull VehiclePin(id, listOf(a, b), 0.0, 1.0, if (a == b) 0L else AHEAD_STEP_MS, color, label, "")
+                return@mapIndexedNotNull VehiclePin(id, listOf(p1, p2), 0.0, 1.0, if (p1 == p2) 0L else AHEAD_STEP_MS, color, label, "", d.routeNo, busCaption(b))
             }
             val to = onRoad(g.raw)
             val path = if (prevRaw != null) listOf(onRoad(prevRaw), to) else listOf(to)
             val dur = g.durMs.toDouble()
             val k = if (prevRaw == null || state?.still == true) 1.0 else ((now - g.at).toDouble() / dur).coerceIn(0.0, 1.0)
-            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, label, "")
+            VehiclePin(id, path, k, 1.0, ((1 - k) * dur).toLong(), color, label, "", d.routeNo, busCaption(b))
         })
         pushKlidBuses()
     }
@@ -3453,7 +3556,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         const val EDIT_TOL_M = 2.0
         /** 지하철 열차 모형을 선로에서 비켜 놓는 거리(m) */
         const val TRAIN_SIDE_M = 7.0
-        const val KLID_BUS_REFRESH_MS = 15_000L
+        /** 지도 버스 위치를 다시 받는 간격 (노선 버스·정류장 노선 버스·지도 범위 버스 모두). 그 사이는 늦은 만큼 앞으로 움직여 그림 */
+        const val MAP_BUS_REFRESH_MS = 5_000L
+        const val KLID_BUS_REFRESH_MS = MAP_BUS_REFRESH_MS
+        /** 지도 범위 버스(초정밀 버스): 이보다 오래전에 보낸 위치는 지금 안 다니는 차의 마지막 위치라 안 그림 (2026-11-24 울산 2,675대 중 1분 안 321대, 하루 넘은 1,554대) */
+        const val KLID_FRESH_MS = 3 * 60_000L
         const val MAX_KLID_BUS_PINS = 300
         const val KLID_BUS_COLOR = 0xFF008577.toInt()
         const val MAX_STOPS = 400

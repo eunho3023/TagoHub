@@ -13,7 +13,8 @@ import { MAX_SIDE_M, twoWayMask, offsetRight, shiftRight } from "./sideline.js";
 import { trafficLayer } from "./topis.js";
 export { offsetRight };
 
-const REFRESH_MS = 15000, BUS_POS_MS = 10000;
+// 버스 위치는 5초마다 (지도에서 최대한 실시간으로, 그 사이는 늦은 만큼 앞으로 움직여 그림)
+const REFRESH_MS = 15000, BUS_POS_MS = 5000;
 /** 못 받아서 다시 묻는 동안(livePoll) 받은 지 이만큼 안 된 자료는 그대로 보여 줌 */
 const KEEP_LIVE_MS = 120000;
 const fresh = (x) => x?.state === "ok" && Date.now() - x.at < KEEP_LIVE_MS;
@@ -187,7 +188,7 @@ export function stopScreen(root, p) {
     }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><button class="link pad" ${act(() => go("stoptable", stop.id, stopParams(stop)))}>🕘 정류장 시간표</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fixstops", stop.id, { lat: stop.lat, lng: stop.lng }))}>📍 위치 고치기</button>` : ""}<div class="list">${rows.map((r, i) => {
       const ends = endsOf(r);
       return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
-        <span class="grow"><span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
+        <span class="grow">${r.type ? `<span class="badge rtype" style="background:${busColor(r.type)}">${esc(String(r.type).replace(/버스$/, ""))}</span>` : ""}<span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
         <span class="right" data-r="${i}"></span></button>`;
     }).join("")}</div>`;
     tickTimes();
@@ -433,6 +434,8 @@ function snapStopsFull(stops, road) {
 }
 /** 버스 이름표: 차량번호 전체 + 차 종류(아는 지역만: 저상·일반·굴절·2층) */
 export const busLabel = (b) => [str0(b.vehicleNo), b.kind].filter(Boolean).join(" · ") || null;
+/** 지도 입체 버스 아래 이름표: "저상 · 12가3456" (앱 busCaption 과 같게: 차 종류 먼저, 모르면 차량번호만) */
+export const busCaption = (b) => [b.kind, str0(b.vehicleNo)].filter(Boolean).join(" · ") || null;
 const str0 = (v) => (v == null ? "" : String(v).trim());
 
 export function routeScreen(root, p, ctx) {
@@ -550,13 +553,13 @@ export function routeScreen(root, p, ctx) {
     for (const b of pos?.buses || []) {
       if (b.lat == null) continue;
       const xy = busXY(b);
-      dots.push({ id: "b:" + b.vehicleNo, lat: xy[0], lng: xy[1], color, ring: "#fff", r: 8, label: busLabel(b) });
+      dots.push({ id: "b:" + b.vehicleNo, lat: xy[0], lng: xy[1], color, ring: "#fff", r: 8, bus3d: { no: r.no !== "노선" ? r.no : p.no || "", caption: busCaption(b) } });
     }
     // 좌표가 없는 지역(경기 등): 버스가 있는 정류장 자리에 (폰 앱과 같음)
     for (const [i, list] of B.busAtStops(r.stops, (pos?.buses || []).filter((b) => b.lat == null))) {
       const xy = at(i);
       if (!xy) continue;
-      list.forEach((b, k) => dots.push({ id: "b:" + b.vehicleNo, lat: xy[0] + k * 0.00008, lng: xy[1], color, ring: "#fff", r: 8, label: busLabel(b) }));
+      list.forEach((b, k) => dots.push({ id: "b:" + b.vehicleNo, lat: xy[0] + k * 0.00008, lng: xy[1], color, ring: "#fff", r: 8, bus3d: { no: r.no !== "노선" ? r.no : p.no || "", caption: busCaption(b) } }));
     }
     MapView.dots(dots, (d) => {
       // 레이어 점(돌발·자전거·주차장·편의시설·주유소·휴게소·CCTV): 지도 아래 카드 (topis.js card)
@@ -579,7 +582,7 @@ export function routeScreen(root, p, ctx) {
     const color = busColor(r.type);
     const at = B.busAtStops(r.stops, pos?.buses || []);
     const status = !pos ? "버스 위치를 받는 중..." : refreshing && pos.state !== "ok" ? "버스 위치를 다시 받는 중..." : pos.state === "unsupported" ? "이 노선의 실시간 버스 위치는 웹 버전에서 볼 수 없어요" :
-      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 10초마다 새로` :
+      pos.state === "failed" ? "버스 위치를 받지 못했어요" : pos.buses.length ? `운행 중 ${pos.buses.length}대 · 5초마다 새로` :
       // 운행 시간 안인데 버스가 없음: 위치를 보내지 않는 노선일 수 있음 (여수 365-5 초도처럼 버스가 다녀도 위치 자료가 아예 안 옴)
       r.sum && B.inService(r.sum.first, r.sum.last, B.kstMinute()) ? `실시간 위치가 들어오지 않아요 · 시간표상 운행 시간이에요 (${B.planText({ first: r.sum.first, last: r.sum.last }, 0).startsWith("하루") ? B.planText({ first: r.sum.first, last: r.sum.last }, 0) : r.sum.first + "~" + r.sum.last})` :
       "지금 운행 중인 버스가 없어요";

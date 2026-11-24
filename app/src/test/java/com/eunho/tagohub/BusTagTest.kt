@@ -1,6 +1,7 @@
 package com.eunho.tagohub
 
 import com.eunho.tagohub.data.BusLocation
+import com.eunho.tagohub.ui.bus.busCaption
 import com.eunho.tagohub.ui.bus.busTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -17,5 +18,15 @@ class BusTagTest {
         assertEquals("대전75자2373", busTag(bus(" 대전75자2373 ", null)))
         assertNull(busTag(bus("#3", true)))
         assertNull(busTag(bus(null, true)))
+    }
+
+    /** 지도 입체 버스 아래 이름표: 저상/일반 먼저, 그다음 차량번호 */
+    @Test
+    fun caption() {
+        assertEquals("저상 · 서울75사2644", busCaption(bus("서울75사2644", true)))
+        assertEquals("일반 · 경기70바6024", busCaption(bus("경기70바6024", false)))
+        assertEquals("대전75자2373", busCaption(bus(" 대전75자2373 ", null)))
+        assertEquals("저상", busCaption(bus("#3", true)))
+        assertNull(busCaption(bus(null, null)))
     }
 }

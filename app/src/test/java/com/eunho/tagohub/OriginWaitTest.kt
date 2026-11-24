@@ -30,4 +30,13 @@ class OriginWaitTest {
         val other = mergeStopRows(list, listOf(route), nowMin = 600, stopName = "한성여객").single().arrivals
         assertEquals("정류장 도착", ArrivalText.line(other[0]))
     }
+
+    /** 정류장 노선 줄: 도착·경유노선 자료에 종류가 없으면 앱 안 노선 자료 종류로 (있으면 그대로) */
+    @Test fun stopRowsFillRouteType() {
+        val routes = listOf(BusRoute("R1", "100", null, "A", "B", null, null, null, null, null),
+            BusRoute("R2", "200", "마을버스", "A", "B", null, null, null, null, null))
+        val rows = mergeStopRows(emptyList(), routes, nowMin = 600, typeOf = { if (it == "R1") "간선버스" else "지선버스" })
+        assertEquals("간선버스", rows.first { it.routeId == "R1" }.routeType)
+        assertEquals("마을버스", rows.first { it.routeId == "R2" }.routeType)
+    }
 }

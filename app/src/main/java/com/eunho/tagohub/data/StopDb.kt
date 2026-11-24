@@ -158,6 +158,18 @@ class StopDb private constructor(private val db: SQLiteDatabase) {
         ) { it.toRoute() }
     }
 
+    private val typeCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** 노선 종류 (routes.rtype: 간선·지선·순환·마을·일반버스 …). 없으면 null. 정류장 노선 목록이 자주 물어 기억해 둠 */
+    fun routeType(id: String): String? {
+        typeCache[id]?.let { return it.ifEmpty { null } }
+        val t = runCatching {
+            query("SELECT rtype FROM routes WHERE id = ?", arrayOf(TagoIds.legacy(id))) { if (it.isNull(0)) "" else it.getString(0) }.firstOrNull()
+        }.getOrNull().orEmpty().trim()
+        typeCache[id] = t
+        return t.ifEmpty { null }
+    }
+
     /** 노선 + 노선 정보(첫차·막차·배차 — 데이터 저장소가 채운 route_info) */
     fun routeById(id: String): BusRoute? = runCatching {
         query("""SELECT r.id, r.no, r.start_name, r.end_name, r.city, r.rtype, i.first, i.last, i.interval, i.int_sat, i.int_sun
