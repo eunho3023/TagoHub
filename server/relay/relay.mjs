@@ -22,8 +22,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PORT = 8792;
-// 타볼까 krrelay.js RELAY_HOSTS 와 같게 (브이월드는 Cloudflare 에서 막힘)
-export const ALLOWED = new Set(["apis.data.go.kr", "api.vworld.kr"]);
+// 타볼까 krrelay.js RELAY_HOSTS 와 같게 (브이월드는 Cloudflare 에서 막힘, 제주 버스정보는 Cloudflare 에서 504 — 2026-11-24)
+export const ALLOWED = new Set(["apis.data.go.kr", "api.vworld.kr", "bus.jeju.go.kr"]);
 const SERVER = "https://tabolkka.pages.dev";
 const UPSTREAM_TIMEOUT_MS = 12000;
 // 공공데이터포털이 요청을 절반쯤 7~20초 붙잡다 HTTP_ERROR 로 끝냄 (2026-11-24 잰 것: 국내에서 바로 물어도 도착·위치·정류소·노선 모두,

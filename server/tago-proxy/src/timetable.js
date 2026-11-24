@@ -205,7 +205,8 @@ export function parseJejuSheets(sheets, no) {
 async function jeju(id, fetcher, no) {
   if (!no) return null;
   const base = String(no).replace(/번$/, "");
-  const lists = await Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map((t) => post(fetcher, "https://bus.jeju.go.kr/publicTrafficInformation/getBusRouteNum", `GROUTE_TYPE=${t}`)
+  // 묶음 목록은 GET 으로도 같은 답 → 국내 중계(GET 만)를 탈 수 있게 GET (Cloudflare 에서 제주로 바로 물으면 504, 2026-11-24)
+  const lists = await Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map((t) => fetcher(`https://bus.jeju.go.kr/publicTrafficInformation/getBusRouteNum?GROUTE_TYPE=${t}`, { headers: { ...UA, Accept: "application/json" } })
     .then((r) => (r.ok ? r.json() : [])).catch(() => [])));
   const groups = lists.flat().filter((g) => String(g.GSCHEDULE_NM || "").split(/[,/]/).map((x) => x.replace(/\(.*\)|\s/g, "")).includes(base));
   for (const g of groups.slice(0, 3)) {
