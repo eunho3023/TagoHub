@@ -1813,10 +1813,15 @@ def gangneung_deps(path=None):
     return {rid: {k: sorted(v) for k, v in d.items()} for rid, d in out.items()}
 
 
+# 노선 파일 정류장 이름 뒤에 붙어도 같은 곳으로 보는 말 (운주 → 운주터미널, 화산 → 화산정류소)
+FUZZY_TAILS = {"터미널", "정류소", "정류장", "버스정류장", "면사무소", "행정복지센터", "종점", "회차지"}
+
+
 def write_static_routes(db, folder, prefix, city, region, label, where, args=(), fuzzy=False):
     """
     노선 API 가 없는 지역의 노선 파일(routes·stops·deps.csv, 강릉 공공데이터포털 칸)을 DB 에: 노선 id prefix+노선ID, 실시간 없음('none').
-    정류장은 파일에 좌표가 없어 이름(띄어쓰기 무시)이 같은 정류장(where 조건) 중 앞 정류장에 가장 가까운 것으로 잇고, 못 찾으면 이름만.
+    정류장은 파일에 좌표가 없어 이름(띄어쓰기 무시)이 같은 정류장(where 조건) 중 앞 정류장에 가장 가까운 것으로 잇고,
+    없으면 stops.csv 위도·경도 칸(브이월드 지명 검색으로 찾아 둔 것)으로 새 정류장(prefix+S+…), 그것도 없으면 이름만.
     fuzzy 면 이름이 같은 게 없을 때 그 이름으로 시작하는 정류장도 (운주 → 운주터미널, 화산터미널 → 화산정류소).
     첫차·막차는 평일 기점 출발 시각. 넣은 노선 수
     """
@@ -1837,7 +1842,8 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
         if cand.get(k) or not fuzzy or len(k) < 2:
             return cand.get(k, [])
         base = k[:-3] if k.endswith("터미널") and len(k) > 4 else k
-        return [c for n, cs in cand.items() if n.startswith(base) for c in cs]
+        # 뒤에 붙는 말이 정해진 것만 (신덕 → 신덕○○아파트 같은 엉뚱한 곳에 이어 붙던 것 막음)
+        return [c for n, cs in cand.items() if n.startswith(base) and n[len(base):] in FUZZY_TAILS for c in cs]
     by_route = {}
     for r in stops:
         by_route.setdefault(r["노선ID"].strip(), []).append(r)
@@ -1855,7 +1861,15 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
         for i, s in enumerate(seq):
             cs = look(s["정류소명"])
             if not cs:
-                picks.append(None)
+                # 우리 정류장에 없는 이름: 브이월드로 찾아 둔 좌표(위도·경도 칸)가 있으면 새 정류장으로 (add_route_only_stops 가 정류장 표에 넣음)
+                la, lo = to_float(s.get("위도")), to_float(s.get("경도"))
+                if la and lo:
+                    nm = s["정류소명"].strip()
+                    pick = (prefix + "S" + hashlib.md5(f"{nm}|{la:.5f}|{lo:.5f}".encode()).hexdigest()[:10], la, lo, nm)
+                    picks.append(pick)
+                    prev = pick
+                else:
+                    picks.append(None)
                 continue
             if prev is None:
                 # 첫 정류장: 다음에 이름이 맞는 정류장 후보에 가장 가까운 것
@@ -1866,7 +1880,9 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
             picks.append(pick)
             prev = pick
         gid = prefix + rid
-        rows = [(gid, int(s["정류소순번"] or 0) + 1, pk[0] if pk else None, "" if pk else s["정류소명"].strip(), None, None,
+        rows = [(gid, int(s["정류소순번"] or 0) + 1, pk[0] if pk else None,
+                 (pk[3] if pk and len(pk) > 3 else "") if pk else s["정류소명"].strip(),
+                 pk[1] if pk and len(pk) > 3 else None, pk[2] if pk and len(pk) > 3 else None,
                  "1" if s["상하행구분"].strip() == "하행" else "0") for s, pk in zip(seq, picks)]
         db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
         db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",

@@ -913,6 +913,12 @@ def test_gangneung_routes():
     assert db.execute("SELECT no, city, realtime, start_node FROM routes WHERE id = 'GNB42001001'").fetchone() == ("200", "32030", "none", "TSB_A")
     assert [r for r in db.execute("SELECT seq, stop_id, name, updown FROM route_stops ORDER BY seq")] == [(1, "TSB_A", "", "0"), (2, "TSB_NEAR", "", "0"), (3, None, "없는곳", "1")]
     assert db.execute("SELECT first, last FROM route_info WHERE id = 'GNB42001001'").fetchone() == ("06:10", "21:40")
+    # 우리 정류장에 없는 이름이라도 위도·경도 칸(브이월드로 찾아 둔 것)이 있으면 새 정류장 id(GNBS…)와 좌표로
+    (d / "stops.csv").write_text("운수사명,노선ID,노선번호,상하행구분,기종점,정류소순번,정류소ID,정류소명,위도,경도\n"
+                                 "동진버스,42001001,200,상행,기점,0,1,안목,,\n동진버스,42001001,200,하행,종점,1,3,없는곳,37.78,128.96\n", encoding="utf-8")
+    assert bd.write_gangneung(db, d) == 1
+    row = db.execute("SELECT stop_id, name, lat, lng FROM route_stops WHERE route_id = 'GNB42001001' AND seq = 2").fetchone()
+    assert row[0].startswith("GNBS") and row[1:] == ("없는곳", 37.78, 128.96)
     # 완주 고산북부권: 이름으로 시작하는 정류장도 (운주 → 운주터미널), 범위 밖 같은 이름은 안 씀
     db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
         ("JUB312101937", "고산터미널", 36.0, 127.2, "35010"), ("TSB312000039", "운주터미널", 36.09, 127.28, "TS312"), ("FAR1", "운주", 37.0, 127.0, "11")])
