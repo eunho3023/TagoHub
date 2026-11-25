@@ -630,7 +630,7 @@ def static_city_info(db, prefix, path, city=None):
 
 
 def fill_city_times(db_path):
-    """안동·거제·나주 시청 버스정보 자료와 옮겨 둔 경산·창녕·영양·군산 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
+    """안동·거제·나주 시청 버스정보 자료와 옮겨 둔 경산·창녕·영양·군산·사천 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
     db = sqlite3.connect(db_path)
     geoje_ids = [rid[3:] for (rid,) in db.execute("SELECT r.id FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id LIKE 'GJB%' AND r.city = '38090' "
                                                      "AND (i.id IS NULL OR (i.first IS NULL AND i.last IS NULL))")]
@@ -644,6 +644,8 @@ def fill_city_times(db_path):
         "영양": fill_route_info(db, static_city_info(db, "YDB", STATIC_TIMES / "yeongyang.csv", "37340")),
         # 군산시 누리집 시내버스 확정 시간표 (static_times/README.md)
         "군산": fill_route_info(db, static_city_info(db, "GUB", STATIC_TIMES / "gunsan.csv", "35020")),
+        # 사천시 누리집 시내버스 시간표 (2026-06-01, 그림에서 옮김)
+        "사천": fill_route_info(db, static_city_info(db, "SAB", STATIC_TIMES / "sacheon.csv", "38060")),
     }
     db.commit()
     db.close()
