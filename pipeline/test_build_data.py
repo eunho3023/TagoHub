@@ -854,6 +854,13 @@ def test_static_city_times():
     assert bd.fill_route_info(db, info) == 2
     assert db.execute("SELECT first, last FROM route_info WHERE id = 'GYB3'").fetchone() == ("06:00", "22:00")
     assert bd.static_city_info(db, "GYB", "없는 파일.csv") == {}
+    # 도시를 주면 그 도시 노선만 (영양 YDB 는 청송·영덕과 앞글자가 같음)
+    d2 = sqlite3.connect(":memory:")
+    d2.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT, city TEXT)")
+    d2.executemany("INSERT INTO routes VALUES (?, ?, ?)", [("YDB1", "110", "37340"), ("YDB2", "110", "37330")])
+    yy = bd.static_city_info(d2, "YDB", bd.STATIC_TIMES / "yeongyang.csv", "37340")
+    assert list(yy) == ["YDB1"] and yy["YDB1"] == ("06:30", "18:30", None)
+    assert len(list(open(bd.STATIC_TIMES / "changnyeong.csv", encoding="utf-8"))) > 100
     real = bd.static_city_info(db, "GYB", bd.STATIC_TIMES / "gyeongsan.csv")
     assert real["GYB1"] == ("07:02", "19:50", None) and real["GYB3"] == ("06:55", "22:35", None)
 
@@ -879,7 +886,36 @@ def test_add_route_only_stops():
     assert bd.add_route_only_stops(db) == 0
 
 
+def test_gangneung_routes():
+    """강릉 노선 파일: 노선·정류장 순서(이름으로 가까운 강릉 정류장에)·첫차막차, 출발 시각은 평일·토·일과 종점 출발 따로"""
+    import sqlite3, tempfile, pathlib
+    d = pathlib.Path(tempfile.mkdtemp())
+    (d / "routes.csv").write_text("운수사명,노선ID,노선번호,기점정류소ID,기점,종점정류소ID,종점\n동진버스,42001001,200,1,안목,3,강원대학교\n", encoding="utf-8")
+    (d / "stops.csv").write_text("운수사명,노선ID,노선번호,상하행구분,기종점,정류소순번,정류소ID,정류소명\n"
+                                 "동진버스,42001001,200,상행,기점,0,1,안목\n동진버스,42001001,200,상행,,1,2,송정 해변\n동진버스,42001001,200,하행,종점,2,3,없는곳\n", encoding="utf-8")
+    (d / "deps.csv").write_text("운수사명,노선번호,노선ID,기점정류소ID,기점,종점정류소ID,종점,방향코드,운행방향,운행순번,출발시간,적용운행일\n"
+                                "동진버스,200,42001001,1,안목,3,강원대학교,1,기점 출발,1,06:10,\"평일, 토요일, 일요일, 방학\"\n"
+                                "동진버스,200,42001001,1,안목,3,강원대학교,1,기점 출발,2,21:40,평일\n"
+                                "동진버스,200,42001001,1,안목,3,강원대학교,2,종점 출발,1,07:00,\"토요일, 일요일\"\n"
+                                "동진버스,200,42001001,1,안목,3,강원대학교,1,기점 출발,3,12:00,방학\n", encoding="utf-8")
+    dep = bd.gangneung_deps(d / "deps.csv")
+    assert dep == {"42001001": {"weekday": [370, 1300], "sat": [370], "holi": [370], "satDown": [420], "holiDown": [420]}}
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE stops(id TEXT PRIMARY KEY, name TEXT NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL, no TEXT, city TEXT NOT NULL)")
+    db.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+    db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT, name TEXT, lat REAL, lng REAL, updown TEXT, PRIMARY KEY(route_id, seq))")
+    db.execute("CREATE TABLE route_info(id TEXT PRIMARY KEY, first TEXT, last TEXT, interval INTEGER, int_sat INTEGER, int_sun INTEGER)")
+    db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
+        ("TSB_A", "안목", 37.77, 128.95, "32030"), ("TSB_FAR", "송정해변", 37.50, 128.50, "32030"), ("TSB_NEAR", "송정해변", 37.772, 128.948, "32030")])
+    assert bd.write_gangneung(db, d) == 1
+    assert db.execute("SELECT no, city, realtime, start_node FROM routes WHERE id = 'GNB42001001'").fetchone() == ("200", "32030", "none", "TSB_A")
+    assert [r for r in db.execute("SELECT seq, stop_id, name, updown FROM route_stops ORDER BY seq")] == [(1, "TSB_A", "", "0"), (2, "TSB_NEAR", "", "0"), (3, None, "없는곳", "1")]
+    assert db.execute("SELECT first, last FROM route_info WHERE id = 'GNB42001001'").fetchone() == ("06:10", "21:40")
+    real = bd.gangneung_deps()
+    assert len(real) > 100 and all(d.get("weekday") or d.get("sat") or d.get("holi") or d.get("weekdayDown") or d.get("satDown") or d.get("holiDown") for d in real.values())
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend, test_static_city_times, test_add_route_only_stops):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend, test_static_city_times, test_add_route_only_stops, test_gangneung_routes):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")

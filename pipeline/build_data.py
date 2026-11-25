@@ -614,19 +614,23 @@ def fetch_geoje(line_ids=None, days=False):
 STATIC_TIMES = HERE / "static_times"   # 자동으로 못 받는 지자체 첫차·막차를 공개 화면에서 옮겨 둔 것 (README 참고)
 
 
-def static_city_info(db, prefix, path):
-    """옮겨 둔 노선 번호별 첫차·막차 CSV → {노선 id: (첫차, 막차, None)} (같은 번호의 갈래 모두)"""
+def static_city_info(db, prefix, path, city=None):
+    """옮겨 둔 노선 번호별 첫차·막차 CSV → {노선 id: (첫차, 막차, None)} (같은 번호의 갈래 모두).
+    city 를 주면 그 도시 노선만 (영양·청송·영덕처럼 노선 id 앞글자를 같이 쓰는 곳)"""
     import csv
     try:
         with open(path, encoding="utf-8") as f:
             by_no = {r["노선번호"].strip(): (r["평일첫차"].strip(), r["평일막차"].strip()) for r in csv.DictReader(f) if r.get("평일첫차")}
     except OSError:
         return {}
-    return {rid: (*by_no[no], None) for rid, no in db.execute("SELECT id, no FROM routes WHERE id LIKE ?", (prefix + "%",)) if no in by_no}
+    q, args = "SELECT id, no FROM routes WHERE id LIKE ?", [prefix + "%"]
+    if city:
+        q, args = q + " AND city = ?", args + [city]
+    return {rid: (*by_no[no], None) for rid, no in db.execute(q, args) if no in by_no}
 
 
 def fill_city_times(db_path):
-    """안동·거제·나주 시청 버스정보 자료와 옮겨 둔 경산 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
+    """안동·거제·나주 시청 버스정보 자료와 옮겨 둔 경산·창녕·영양 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
     db = sqlite3.connect(db_path)
     geoje_ids = [rid[3:] for (rid,) in db.execute("SELECT r.id FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id LIKE 'GJB%' AND r.city = '38090' "
                                                      "AND (i.id IS NULL OR (i.first IS NULL AND i.last IS NULL))")]
@@ -635,6 +639,9 @@ def fill_city_times(db_path):
         "거제": fill_route_info(db, {rid: s for rid, ts in fetch_geoje(geoje_ids).items() if (s := span(ts))}),
         "나주": fill_route_info(db, naju_info(fetch_naju())),
         "경산": fill_route_info(db, static_city_info(db, "GYB", STATIC_TIMES / "gyeongsan.csv")),
+        # 공공데이터포털 파일데이터에서 옮김 (static_times/README.md)
+        "창녕": fill_route_info(db, static_city_info(db, "FCN", STATIC_TIMES / "changnyeong.csv", "38330")),
+        "영양": fill_route_info(db, static_city_info(db, "YDB", STATIC_TIMES / "yeongyang.csv", "37340")),
     }
     db.commit()
     db.close()
@@ -1587,6 +1594,8 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     if jeju_ok and jeju_routes:
         added_routes += write_jeju(db, jeju_routes, known)
     write_gbis_stops(db, gbis_stops or {}, known)
+    # 노선 API 가 없는 강릉: 공공데이터포털 노선 파일 (정류장 정리보다 먼저)
+    write_gangneung(db)
     # 노선에만 있던 정류장을 정류장 표에 (교통안전공단 겹친 정류장 지우기·정류장 정리보다 먼저)
     add_route_only_stops(db)
     for sid, nm in api_served.items():
@@ -1763,6 +1772,96 @@ def drop_empty_routes(db, complete):
 # 교통안전공단 정류장(도시 'TS…') 중 노선이 안 서고 바로 옆에 다른 자료의 노선이 서는 정류장이 있는 것 = 같은 정류장이 두 번 들어온 것
 TSB_TWIN_M = 30.0        # 이름이 달라도 이만큼 붙어 있으면 같은 정류장 (길 건너편은 보통 더 멂)
 TSB_TWIN_NAME_M = 60.0   # 이름이 같으면
+
+
+STATIC_ROUTES = HERE / "static_routes"   # 노선 자료 API 가 없는 지역의 공공데이터포털 노선 파일 (README 참고)
+
+
+def gangneung_deps(path=None):
+    """
+    강릉 배차정보 CSV → {노선ID: {"weekday"|"sat"|"holi"|"weekdayDown"|"satDown"|"holiDown": [하루 중 분...]}}.
+    방향코드 1 = 기점 출발, 2 = 종점 출발(…Down). 적용운행일 "평일, 토요일, 일요일, 방학" 중 평일·토요일·일요일만 (방학만 다니는 운행은 뺌)
+    """
+    import csv
+    out = {}
+    try:
+        f = open(path or STATIC_ROUTES / "gangneung" / "deps.csv", encoding="utf-8")
+    except OSError:
+        return out
+    with f:
+        for r in csv.DictReader(f):
+            m = re.match(r"^\s*(\d{1,2}):(\d\d)", r.get("출발시간") or "")
+            rid = (r.get("노선ID") or "").strip()
+            if not m or not rid:
+                continue
+            t = int(m.group(1)) * 60 + int(m.group(2))
+            down = "Down" if (r.get("방향코드") or "").strip() == "2" else ""
+            days = r.get("적용운행일") or ""
+            for word, key in (("평일", "weekday"), ("토요일", "sat"), ("일요일", "holi")):
+                if word in days:
+                    out.setdefault(rid, {}).setdefault(key + down, set()).add(t)
+    return {rid: {k: sorted(v) for k, v in d.items()} for rid, d in out.items()}
+
+
+def write_gangneung(db, folder=None):
+    """
+    강릉 시내버스 노선(공공데이터포털 15178618·15178624·15178626, 2026-11-13)을 DB 에: 노선 id GNB+노선ID, 실시간 없음('none').
+    TAGO 에 강릉 노선이 0개라 강릉 정류장 1,100여 곳에 노선이 하나도 안 붙고 정류장 시간표가 비었음 (2026-11-25).
+    정류장은 파일에 좌표가 없어 이름(띄어쓰기 무시)이 같은 강릉 정류장 중 앞 정류장에 가장 가까운 것으로 잇고, 못 찾으면 이름만.
+    첫차·막차는 평일 기점 출발 시각. 넣은 노선 수
+    """
+    import csv
+    folder = pathlib.Path(folder or STATIC_ROUTES / "gangneung")
+    try:
+        routes = list(csv.DictReader(open(folder / "routes.csv", encoding="utf-8")))
+        stops = list(csv.DictReader(open(folder / "stops.csv", encoding="utf-8")))
+    except OSError:
+        return 0
+    key = lambda n: re.sub(r"\s+", "", str(n or ""))
+    cand = {}
+    for sid, nm, lat, lng in db.execute("SELECT id, name, lat, lng FROM stops WHERE city IN ('32030', 'TS252')"):
+        cand.setdefault(key(nm), []).append((sid, lat, lng))
+    by_route = {}
+    for r in stops:
+        by_route.setdefault(r["노선ID"].strip(), []).append(r)
+    deps = gangneung_deps(folder / "deps.csv")
+    near = lambda a, b: (a[1] - b[1]) ** 2 + ((a[2] - b[2]) * 0.8) ** 2
+    db.execute("DELETE FROM route_stops WHERE route_id LIKE 'GNB%'")
+    db.execute("DELETE FROM route_info WHERE id LIKE 'GNB%'")
+    db.execute("DELETE FROM routes WHERE id LIKE 'GNB%'")
+    n = 0
+    for rt in routes:
+        rid = rt["노선ID"].strip()
+        seq = sorted(by_route.get(rid, []), key=lambda x: int(x["정류소순번"] or 0))
+        if not seq:
+            continue
+        picks, prev = [], None
+        for i, s in enumerate(seq):
+            cs = cand.get(key(s["정류소명"]), [])
+            if not cs:
+                picks.append(None)
+                continue
+            if prev is None:
+                # 첫 정류장: 다음에 이름이 맞는 정류장 후보에 가장 가까운 것
+                nxt = next((cand[key(x["정류소명"])] for x in seq[i + 1:] if cand.get(key(x["정류소명"]))), None)
+                pick = min(cs, key=lambda c: min(near(c, o) for o in nxt)) if nxt else cs[0]
+            else:
+                pick = min(cs, key=lambda c: near(c, prev))
+            picks.append(pick)
+            prev = pick
+        gid = "GNB" + rid
+        rows = [(gid, int(s["정류소순번"] or 0) + 1, pk[0] if pk else None, "" if pk else s["정류소명"].strip(), None, None,
+                 "1" if s["상하행구분"].strip() == "하행" else "0") for s, pk in zip(seq, picks)]
+        db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
+        db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                   (gid, rt["노선번호"].strip(), rt["기점"].strip(), rt["종점"].strip(), rows[0][2], rows[-1][2], "32030", "강릉", "일반버스", "none"))
+        wk = (deps.get(rid) or {}).get("weekday") or (deps.get(rid) or {}).get("sat") or (deps.get(rid) or {}).get("holi")
+        if wk:
+            hm = lambda m: f"{m // 60:02d}:{m % 60:02d}"
+            db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,NULL,NULL,NULL)", (gid, hm(wk[0]), hm(wk[-1])))
+        n += 1
+    print(f"강릉 노선 {n}개를 DB 에 넣음 (공공데이터포털 파일)", flush=True)
+    return n
 
 
 def add_route_only_stops(db):

@@ -139,6 +139,14 @@ def cheonan_all():
     return out, len(ids)
 
 
+def gangneung_all():
+    """강릉: 공공데이터포털 배차정보 파일(pipeline/static_routes/gangneung/deps.csv)에서. 받을 것 없음"""
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
+    import build_data
+    got = {rid: {**d, "source": "강릉시 배차정보 (공공데이터포털)"} for rid, d in build_data.gangneung_deps().items()}
+    return got, len(got)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="public/data 폴더")
@@ -148,9 +156,10 @@ def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     dest = pathlib.Path(a.out) / "times"
     dest.mkdir(parents=True, exist_ok=True)
-    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all)):
+    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all), ("gangneung", "강릉", gangneung_all)):
         kept = CACHE / f"{area}.json"
-        age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() else None
+        # 강릉은 저장소 파일이라 늘 새로 만듦
+        age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() and area != "gangneung" else None
         if age is not None and age < a.max_age_days:
             print(f"  {name} 배차시간표: {age:.1f}일 전에 받은 것 사용 ({a.max_age_days:g}일마다 새로 받음)")
         else:
