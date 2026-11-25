@@ -1600,6 +1600,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     write_gbis_stops(db, gbis_stops or {}, known)
     # 노선 API 가 없는 강릉: 공공데이터포털 노선 파일 (정류장 정리보다 먼저)
     write_gangneung(db)
+    write_wanju(db)
     # 노선에만 있던 정류장을 정류장 표에 (교통안전공단 겹친 정류장 지우기·정류장 정리보다 먼저)
     add_route_only_stops(db)
     for sid, nm in api_served.items():
@@ -1781,6 +1782,11 @@ TSB_TWIN_NAME_M = 60.0   # 이름이 같으면
 STATIC_ROUTES = HERE / "static_routes"   # 노선 자료 API 가 없는 지역의 공공데이터포털 노선 파일 (README 참고)
 
 
+def static_deps(path):
+    """노선 파일 deps.csv(강릉 배차정보 칸) → {노선ID: {"weekday"|…: [분...]}} (gangneung_deps 와 같음)"""
+    return gangneung_deps(path)
+
+
 def gangneung_deps(path=None):
     """
     강릉 배차정보 CSV → {노선ID: {"weekday"|"sat"|"holi"|"weekdayDown"|"satDown"|"holiDown": [하루 중 분...]}}.
@@ -1807,15 +1813,15 @@ def gangneung_deps(path=None):
     return {rid: {k: sorted(v) for k, v in d.items()} for rid, d in out.items()}
 
 
-def write_gangneung(db, folder=None):
+def write_static_routes(db, folder, prefix, city, region, label, where, args=(), fuzzy=False):
     """
-    강릉 시내버스 노선(공공데이터포털 15178618·15178624·15178626, 2026-11-13)을 DB 에: 노선 id GNB+노선ID, 실시간 없음('none').
-    TAGO 에 강릉 노선이 0개라 강릉 정류장 1,100여 곳에 노선이 하나도 안 붙고 정류장 시간표가 비었음 (2026-11-25).
-    정류장은 파일에 좌표가 없어 이름(띄어쓰기 무시)이 같은 강릉 정류장 중 앞 정류장에 가장 가까운 것으로 잇고, 못 찾으면 이름만.
+    노선 API 가 없는 지역의 노선 파일(routes·stops·deps.csv, 강릉 공공데이터포털 칸)을 DB 에: 노선 id prefix+노선ID, 실시간 없음('none').
+    정류장은 파일에 좌표가 없어 이름(띄어쓰기 무시)이 같은 정류장(where 조건) 중 앞 정류장에 가장 가까운 것으로 잇고, 못 찾으면 이름만.
+    fuzzy 면 이름이 같은 게 없을 때 그 이름으로 시작하는 정류장도 (운주 → 운주터미널, 화산터미널 → 화산정류소).
     첫차·막차는 평일 기점 출발 시각. 넣은 노선 수
     """
     import csv
-    folder = pathlib.Path(folder or STATIC_ROUTES / "gangneung")
+    folder = pathlib.Path(folder)
     try:
         routes = list(csv.DictReader(open(folder / "routes.csv", encoding="utf-8")))
         stops = list(csv.DictReader(open(folder / "stops.csv", encoding="utf-8")))
@@ -1823,16 +1829,22 @@ def write_gangneung(db, folder=None):
         return 0
     key = lambda n: re.sub(r"\s+", "", str(n or ""))
     cand = {}
-    for sid, nm, lat, lng in db.execute("SELECT id, name, lat, lng FROM stops WHERE city IN ('32030', 'TS252')"):
+    for sid, nm, lat, lng in db.execute("SELECT id, name, lat, lng FROM stops WHERE " + where, args):
         cand.setdefault(key(nm), []).append((sid, lat, lng))
+
+    def look(name):
+        k = key(name)
+        if cand.get(k) or not fuzzy or len(k) < 2:
+            return cand.get(k, [])
+        base = k[:-3] if k.endswith("터미널") and len(k) > 4 else k
+        return [c for n, cs in cand.items() if n.startswith(base) for c in cs]
     by_route = {}
     for r in stops:
         by_route.setdefault(r["노선ID"].strip(), []).append(r)
-    deps = gangneung_deps(folder / "deps.csv")
+    deps = static_deps(folder / "deps.csv")
     near = lambda a, b: (a[1] - b[1]) ** 2 + ((a[2] - b[2]) * 0.8) ** 2
-    db.execute("DELETE FROM route_stops WHERE route_id LIKE 'GNB%'")
-    db.execute("DELETE FROM route_info WHERE id LIKE 'GNB%'")
-    db.execute("DELETE FROM routes WHERE id LIKE 'GNB%'")
+    for t in ("route_stops", "route_info", "routes"):
+        db.execute(f"DELETE FROM {t} WHERE {'route_id' if t == 'route_stops' else 'id'} LIKE ?", (prefix + "%",))
     n = 0
     for rt in routes:
         rid = rt["노선ID"].strip()
@@ -1841,31 +1853,50 @@ def write_gangneung(db, folder=None):
             continue
         picks, prev = [], None
         for i, s in enumerate(seq):
-            cs = cand.get(key(s["정류소명"]), [])
+            cs = look(s["정류소명"])
             if not cs:
                 picks.append(None)
                 continue
             if prev is None:
                 # 첫 정류장: 다음에 이름이 맞는 정류장 후보에 가장 가까운 것
-                nxt = next((cand[key(x["정류소명"])] for x in seq[i + 1:] if cand.get(key(x["정류소명"]))), None)
+                nxt = next((look(x["정류소명"]) for x in seq[i + 1:] if look(x["정류소명"])), None)
                 pick = min(cs, key=lambda c: min(near(c, o) for o in nxt)) if nxt else cs[0]
             else:
                 pick = min(cs, key=lambda c: near(c, prev))
             picks.append(pick)
             prev = pick
-        gid = "GNB" + rid
+        gid = prefix + rid
         rows = [(gid, int(s["정류소순번"] or 0) + 1, pk[0] if pk else None, "" if pk else s["정류소명"].strip(), None, None,
                  "1" if s["상하행구분"].strip() == "하행" else "0") for s, pk in zip(seq, picks)]
         db.executemany("INSERT OR REPLACE INTO route_stops VALUES(?,?,?,?,?,?,?)", rows)
         db.execute("INSERT OR REPLACE INTO routes(id,no,start_name,end_name,start_node,end_node,city,region,rtype,realtime) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                   (gid, rt["노선번호"].strip(), rt["기점"].strip(), rt["종점"].strip(), rows[0][2], rows[-1][2], "32030", "강릉", "일반버스", "none"))
+                   (gid, rt["노선번호"].strip(), rt["기점"].strip(), rt["종점"].strip(), rows[0][2], rows[-1][2], city, region, "일반버스", "none"))
         wk = (deps.get(rid) or {}).get("weekday") or (deps.get(rid) or {}).get("sat") or (deps.get(rid) or {}).get("holi")
         if wk:
             hm = lambda m: f"{m // 60:02d}:{m % 60:02d}"
             db.execute("INSERT OR REPLACE INTO route_info VALUES(?,?,?,NULL,NULL,NULL)", (gid, hm(wk[0]), hm(wk[-1])))
         n += 1
-    print(f"강릉 노선 {n}개를 DB 에 넣음 (공공데이터포털 파일)", flush=True)
+    print(f"{label} 노선 {n}개를 DB 에 넣음", flush=True)
     return n
+
+
+def write_gangneung(db, folder=None):
+    """강릉 시내버스 노선(공공데이터포털 15178618·15178624·15178626, 2026-11-13). TAGO 에 강릉 노선이 0개라 정류장 시간표가 비었음 (2026-11-25)"""
+    return write_static_routes(db, folder or STATIC_ROUTES / "gangneung", "GNB", "32030", "강릉", "강릉 (공공데이터포털 파일)", "city IN ('32030', 'TS252')")
+
+
+# 완주 고산북부권(고산·비봉·화산·동상·경천·운주) 정류장을 찾는 범위
+WANJU_BOX = (35.95, 36.20, 127.10, 127.45)
+
+
+def write_wanju(db, folder=None):
+    """
+    완주군 공영마을버스 고산북부권(완주군시설관리공단 wjss.or.kr 시간표·노선도, 공공누리 4유형 출처표시) → 노선 id WNB…, 구간(고산-운주 등)마다 노선.
+    TAGO·전주시 버스 자료에 완주 고산 북쪽 노선이 없어 운주 가는 버스가 안 보였음 (2026-11-25). 정류장은 고산북부권 범위 안에서 이름으로
+    """
+    s, n, w, e = WANJU_BOX
+    return write_static_routes(db, folder or STATIC_ROUTES / "wanju", "WNB", "35310", "완주", "완주 고산북부권 마을버스",
+                               "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?", (s, n, w, e), fuzzy=True)
 
 
 def add_route_only_stops(db):
