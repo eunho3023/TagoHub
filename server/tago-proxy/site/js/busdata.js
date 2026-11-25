@@ -1251,8 +1251,41 @@ export function noLive(first, last, interval, nowMin) {
 
 
 // ── 지도 범위 버스 (초정밀 버스, 서버 /w/klid) ──
-/** 자료를 주는 지역 (2026-11-24 울산뿐). 노선 id 는 TAGO 울산 노선 id 와 같음: rteId 192000001 = USB192000001 */
-export const KLID_REGIONS = [{ code: "3100000000", city: "26", prefix: "USB", s: 35.30, w: 128.95, n: 35.75, e: 129.48 }];
+/**
+ * 자료를 주는 지역 (2026-11-25 전국 시·군 코드를 모두 물어 찾음. 서울·광역시·경기 대부분·전북·제주 등은 없음).
+ * prefix: 우리 노선 id = prefix + rteId (울산 USB192000001, 창원 CWB379000010, 고양·오산은 경기 GGB, 함양은 교통안전공단 TSB).
+ * prefix 가 null 인 곳(구미·양산)은 rteId 가 우리 id 와 달라 노선 번호로 찾음 (data/routes_by_no.json). 지도 범위는 그 지역 정류장 좌표
+ */
+export const KLID_REGIONS = [
+  { code: "3100000000", name: "울산", city: "26", prefix: "USB", s: 35.30, w: 128.95, n: 35.75, e: 129.48 },
+  { code: "4128000000", name: "고양", city: "31100", prefix: "GGB", s: 37.56, w: 126.68, n: 37.75, e: 126.94 },
+  { code: "4137000000", name: "오산", city: "31140", prefix: "GGB", s: 37.11, w: 126.99, n: 37.22, e: 127.11 },
+  { code: "4313000000", name: "충주", city: "33020", prefix: "CHB", s: 36.86, w: 127.73, n: 37.04, e: 128.04 },
+  { code: "4315000000", name: "제천", city: "33030", prefix: "JCB", s: 36.94, w: 128.16, n: 37.20, e: 128.40 },
+  { code: "4611000000", name: "목포", city: "36010", prefix: "MPB", s: 34.74, w: 126.32, n: 35.04, e: 126.54 },
+  { code: "4613000000", name: "여수", city: "36020", prefix: "YEB", s: 34.64, w: 127.52, n: 34.83, e: 127.79 },
+  { code: "4623000000", name: "광양", city: "36060", prefix: "KYB", s: 34.87, w: 127.52, n: 35.03, e: 127.76 },
+  { code: "4684000000", name: "무안", city: "36420", prefix: "MPB", s: 34.77, w: 126.25, n: 35.16, e: 126.55 },
+  { code: "4686000000", name: "함평", city: "36430", prefix: "HPB", s: 34.98, w: 126.34, n: 35.31, e: 126.92 },
+  { code: "4719000000", name: "구미", city: "37050", prefix: null, s: 35.95, w: 128.13, n: 36.35, e: 128.56 },
+  { code: "4812000000", name: "창원", city: "38010", prefix: "CWB", s: 35.02, w: 128.39, n: 35.40, e: 128.76 },
+  { code: "4833000000", name: "양산", city: "38100", prefix: null, s: 35.21, w: 128.90, n: 35.58, e: 129.33 },
+  { code: "4887000000", name: "함양", city: "38380", prefix: "TSB", s: 35.38, w: 127.60, n: 35.74, e: 127.88 },
+  { code: "5111000000", name: "춘천", city: "32010", prefix: "CCB", s: 37.67, w: 127.52, n: 38.06, e: 127.90 },
+];
+const overlaps = (r, b) => b.n > r.s && b.s < r.n && b.e > r.w && b.w < r.e;
+/** 지도 가운데가 초정밀 버스 지역 안인지 (그 지역은 화면 안 노선마다 따로 묻지 않음) */
+export const klidCovers = (b) => { const la = (b.s + b.n) / 2, lo = (b.w + b.e) / 2; return KLID_REGIONS.some((r) => la >= r.s && la <= r.n && lo >= r.w && lo <= r.e); };
+/** 서울 (서울 버스는 하루 한도 때문에 화면 안 노선마다 묻지 않음 — 사용자 결정 2026-11-25) */
+const SEOUL_BOX = { s: 37.41, n: 37.72, w: 126.76, e: 127.19 };
+export const inSeoulView = (b) => { const la = (b.s + b.n) / 2, lo = (b.w + b.e) / 2; return la >= SEOUL_BOX.s && la <= SEOUL_BOX.n && lo >= SEOUL_BOX.w && lo <= SEOUL_BOX.e; };
+let byNoP = null;
+/** 노선 번호 → 우리 노선 id (rteId 가 다른 지역: 구미·양산). 같은 번호가 여럿이면 첫 것. 못 찾으면 null */
+export async function routeIdByNo(city, no) {
+  if (!byNoP) byNoP = cached("data/routes_by_no.json").catch(() => { byNoP = null; return {}; });
+  const ids = ((await byNoP)[city] || {})[String(no || "")];
+  return ids && ids.length ? ids[0] : null;
+}
 /** 이보다 오래전에 보낸 위치는 지금 안 다니는 차의 마지막 위치 (울산 2,675대 중 하루 넘은 것 1,554대) */
 export const KLID_FRESH_MS = 3 * 60 * 1000;
 const klidItems = (j) => { const it = j?.body?.items?.item; return Array.isArray(it) ? it : it ? [it] : []; };
@@ -1264,8 +1297,12 @@ const klidRouteMemo = new Map();
  * b: {s, w, n, e}. 자료를 주는 지역이 아니면 []
  */
 export async function klidBuses(b, now = Date.now()) {
-  const reg = KLID_REGIONS.find((r) => b.n > r.s && b.s < r.n && b.e > r.w && b.w < r.e);
-  if (!reg) return [];
+  // 지도가 걸친 지역 모두 (목포·무안처럼 붙어 있는 곳). 같은 차는 한 번만
+  const lists = await Promise.all(KLID_REGIONS.filter((r) => overlaps(r, b)).map((r) => klidRegionBuses(r, b, now).catch(() => [])));
+  const seen = new Set();
+  return lists.flat().filter((x) => !seen.has(x.key) && seen.add(x.key));
+}
+async function klidRegionBuses(reg, b, now) {
   if (!klidRouteMemo.has(reg.code)) {
     klidRouteMemo.set(reg.code, getText(`w/klid/routes/${reg.code}/1`).then((t) => new Map(klidItems(JSON.parse(t)).map((x) => [String(x.rteId), x])))
       .catch(() => { klidRouteMemo.delete(reg.code); return new Map(); }));
@@ -1284,7 +1321,7 @@ export function klidPick(rows, routes, reg, b, now = Date.now()) {
     if (lat == null || lng == null || (at != null && now - at > KLID_FRESH_MS)) continue;
     if (lat < b.s || lat > b.n || lng < b.w || lng > b.e) continue;
     const r = routes.get(String(x.rteId));
-    out.push({ key: `${x.rteId}:${x.vhclNo}`, routeId: reg.prefix + x.rteId, city: reg.city, no: str(x.rteNo) || (r && str(r.rteNo)) || "", type: (r && str(r.rteType)) || null, lat, lng });
+    out.push({ key: `${x.rteId}:${x.vhclNo}`, routeId: reg.prefix ? reg.prefix + x.rteId : null, city: reg.city, no: str(x.rteNo) || (r && str(r.rteNo)) || "", type: (r && str(r.rteType)) || null, lat, lng });
   }
   return out;
 }
