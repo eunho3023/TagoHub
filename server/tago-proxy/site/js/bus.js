@@ -646,7 +646,10 @@ export function routeScreen(root, p, ctx) {
     let spacing = "";
     if ((pos?.buses || []).length >= 2) {
       const sp = B.busSpacing(r.stops, pos.buses.map((b) => stopIdx(b)), B.intervalOn(r.sum || {}, isoDay()));
-      const parts = sp.bunched.slice(0, 2).map((x) => `${r.stops[x.j].name} 부근 2대 연달아`);
+      // 셋 넘게 붙어 다니면 이웃한 쌍이 여럿이라 같은 정류장 이름이 겹침 → 정류장마다 한 번, 대수는 붙은 만큼
+      const near = new Map();
+      for (const x of sp.bunched) { const k = r.stops[x.j].name; near.set(k, (near.get(k) || 1) + 1); }
+      const parts = [...near].slice(0, 2).map(([name, n]) => `${name} 부근 ${n}대 연달아`);
       if (sp.gap) parts.push(`${r.stops[sp.gap.i].name} → ${r.stops[sp.gap.j].name} 약 ${Math.round(sp.gap.min)}분 버스 없음`);
       spacing = parts.join(" · ");
     }
