@@ -1179,7 +1179,10 @@ export async function positions(r) {
       if (dj.length) return { state: "ok", buses: dj };
     }
     if (!r.city || !/^\d+$/.test(r.city) || metroId(r.id, r.city) || r.id.startsWith("TSB")) return { state: "unsupported", buses: [] };
-    const rows = xmlRows(await getText("w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", { cityCode: r.city, routeId: r.id }));
+    const text = await getText("w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", { cityCode: r.city, routeId: r.id });
+    // 한도 오류(OpenAPI_ServiceResponse·errMsg)는 줄이 없어 예전엔 "다니는 버스 없음"처럼 보였음 → 받지 못함으로 (다음 갱신 때 다시 물음)
+    if (/<errMsg>|<returnReasonCode>/.test(text.slice(0, 2000))) return { state: "failed", buses: [] };
+    const rows = xmlRows(text);
     return { state: "ok", buses: rows.map((x) => ({ nodeId: str(x.nodeid), ord: int(x.nodeord), vehicleNo: str(x.vehicleno), lat: num(x.gpslati), lng: num(x.gpslong) })) };
   } catch (e) {
     return { state: "failed", buses: [] };

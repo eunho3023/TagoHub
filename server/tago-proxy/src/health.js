@@ -16,6 +16,7 @@ const BAD = /SERVICE_KEY_IS_NOT|LIMITED_NUMBER_OF_SERVICE|SERVICE_ACCESS_DENIED|
 export function reason(status, body) {
   const b = String(body || "");
   const err = (/<errMsg>([^<]+)<\/errMsg>/.exec(b) || /"errMsg"\s*:\s*"([^"]+)"/.exec(b) || [])[1] || "";
+  if (isPerSecondBody(b)) return "초당 요청 한도 초과 (잠깐 몰림)";
   if (/LIMITED_NUMBER_OF_SERVICE/.test(b)) return "하루 요청 한도 초과";
   if (/SERVICE_?TIME_?OUT|연결실패/i.test(b)) return `제공처 기관 서버에 닿지 못함 (${err || "시간 초과"})`;
   if (/SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED|INFO-100/i.test(b)) return `인증 실패 (키 확인 필요: ${(/SERVICE_KEY_IS_NOT\w*|SERVICE_ACCESS_DENIED\w*|INFO-100/i.exec(b) || [""])[0]})`;
@@ -210,8 +211,19 @@ export function quotaService(target) {
   return m[1] + "/" + m[2];
 }
 
-/** 하루 한도 초과 응답인지 */
-export function isQuotaBody(body) { return /LIMITED_NUMBER_OF_SERVICE/.test(String(body || "").slice(0, 4000)); }
+/**
+ * 초당 요청 한도 초과 응답인지 (LIMITED_NUMBER_OF_SERVICE_REQUESTS_PER_SECOND_EXCEEDS_ERROR, 까닭 번호 23).
+ * 하루 한도와 이름이 비슷해 예전엔 하루 한도로 적었음: 2026-11-25·26 아침 7시 "TAGO 버스 위치 하루 한도 초과"는 사실 이것이었고,
+ * 바로 다시 물으면 받아졌음. 잠깐 쉬고 다시 물으면 됨
+ */
+export function isPerSecondBody(body) { return /LIMITED_NUMBER_OF_SERVICE_REQUESTS_PER_SECOND|<returnReasonCode>\s*23\s*</.test(String(body || "").slice(0, 4000)); }
+
+/** 초당 한도 오류 뒤 다시 묻는 횟수와 기다림 (0.3~0.6초, 1~1.5초: 다른 요청과 겹치지 않게 조금씩 다르게) */
+export const PER_SECOND_RETRIES = 2;
+export const perSecondWait = (i, rnd = Math.random()) => (i === 0 ? 300 : 1000) + Math.floor(rnd * (i === 0 ? 300 : 500));
+
+/** 하루 한도 초과 응답인지 (초당 한도는 뺌) */
+export function isQuotaBody(body) { return /LIMITED_NUMBER_OF_SERVICE/.test(String(body || "").slice(0, 4000)) && !isPerSecondBody(body); }
 
 const quotaMemo = new Map();
 /** 실제 응답이 한도 초과면 서비스별로 적어 둠 (같은 서비스는 1분에 한 번만 씀). 실패해도 조용히 */
