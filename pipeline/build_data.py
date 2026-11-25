@@ -1460,9 +1460,10 @@ def fetch_jeonju_served(get=None):
                 seq.append((to_int(val(s, "brsSeqno") or val(s, "brnSeqno")) or len(seq) + 1, std, nm))
         data[rid] = {"route": {k: (val(routes[rid], k) or "").strip() for k in fields}, "stops": sorted(seq)}
 
+    # 정류장마다 모두 물음: 예전엔 이미 다른 노선에서 본 정류장을 건너뛰어, 그런 정류장만 지나는 노선(고산터미널 51·35·530 등)을
+    # 아예 못 찾았음 (전주 번호 119개·노선 317개, 2026-11-25). 노선 정류장 목록은 새 노선만 물음
     for sid in stops:
-        if sid not in served:
-            walk_stop(sid)
+        walk_stop(sid)
     # 실패한 요청은 끝에 다시 (전주시 서버가 잠깐 늦을 때가 있어 한두 번 실패로 '다 받음'이 안 되면 정류장 지우기·노선 넣기를 통째로 건너뛰었음)
     for wait in (20, 60):
         if not failed_stops and not failed_routes:
@@ -1474,8 +1475,7 @@ def fetch_jeonju_served(get=None):
         for rid in again_routes:
             walk_route(rid)
         for sid in again_stops:
-            if sid not in served:
-                walk_stop(sid)
+            walk_stop(sid)
     ok = not failed_stops and not failed_routes
     print(f"전주 노선이 서는 정류장: {len(served)}곳 (노선 {len(routes)}개, 다 받음 {ok}, 한도 초과 응답 {limited[0]}번)", flush=True)
     return served, ok, data

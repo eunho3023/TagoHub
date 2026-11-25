@@ -499,6 +499,14 @@ def test_jeonju_retry_failed():
     assert ok and "JUB306101023" in served and tries["stops/R1"] == 2
     served, ok, _ = bd.fetch_jeonju_served(get=lambda p: None if p.startswith("stops/") else route)
     assert not ok                                                    # 끝까지 못 받으면 '다 받음' 아님
+    # 다른 노선에서 이미 본 정류장도 지나는 노선을 물음: 그 정류장만 지나는 노선을 놓쳤음 (고산터미널 51·35, 2026-11-25)
+    ids = [r[0] for r in sqlite3.connect(bd.BASE_DB).execute("SELECT id FROM stops WHERE id LIKE 'JUB%' LIMIT 2")]
+    a, b = ids[0][3:], ids[1][3:]
+    one = lambda rid: f'<list class="object"><brtStdId type="string">{rid}</brtStdId><brtId type="string">1</brtId></list>'
+    st = lambda sid: f'<list class="object"><stopStandardid type="string">{sid}</stopStandardid><stopKname type="string">x</stopKname></list>'
+    pages = {f"routes/{a}": one("RA"), f"routes/{b}": one("RA") + one("RB"), "stops/RA": st(a) + st(b), "stops/RB": st(b)}
+    served, ok, routes = bd.fetch_jeonju_served(get=lambda p: pages.get(p, ""))
+    assert ok and set(routes) == {"RA", "RB"}
 
 
 
