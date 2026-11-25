@@ -48,6 +48,7 @@ async function ordMap(env, routeId) {
 /** 실패 까닭 이름 (/w/poll/status 의 why): 무엇 때문에 실패가 많은지 보려고 (2026-11-23 실패가 성공보다 많았음) */
 export function badWhy(status, body) {
   const b = String(body || "").slice(0, 4000);
+  if (/LIMITED_NUMBER_OF_SERVICE_REQUESTS_PER_SECOND/.test(b)) return "persec";
   if (/LIMITED_NUMBER_OF_SERVICE/.test(b)) return "quota";
   if (/SERVICE_KEY_IS_NOT|SERVICE_ACCESS_DENIED/.test(b)) return "key";
   if (/<resultCode>99<\/resultCode>|"resultCode"\s*:\s*"?99\b/.test(b)) return "busy99";

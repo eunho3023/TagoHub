@@ -16,7 +16,7 @@ import { handleEdits } from "./edits.js";
 import { handleNotices } from "./notices.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
-import { healthCron, healthDue, handleHealth, noteQuota, isQuotaBody } from "./health.js";
+import { healthCron, healthDue, handleHealth, noteQuota, isQuotaBody, isPerSecondBody, PER_SECOND_RETRIES, perSecondWait } from "./health.js";
 import { noteUse, useReport } from "./usage.js";
 import { upstreamFetch, handleRelay } from "./krrelay.js";
 
@@ -185,12 +185,19 @@ async function dataGo(path, search, accept, env, ctx, extra, src = "web") {
   }
 
   // 국내 중계(집 노트북) 먼저, 안 되면 바로 묻되 3초마다 새 연결로 (Cloudflare → 공공데이터포털 연결이 자주 매달림, src/krrelay.js)
-  const upstream = await upstreamFetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
-    headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
-  }, env);
-  const body = await upstream.text();
-  // 기관에 실제로 물은 수 (/w/use, src/usage.js): 하루 한도를 무엇이 쓰는지 보려고
-  if (env.DB) ctx.waitUntil(noteUse(env.DB, path, src).catch(() => false));
+  // 초당 요청 한도(TAGO 버스 위치 등)에 걸리면 잠깐 쉬고 두 번까지 다시 물음: 예전엔 그 오류를 그대로 보내
+  // 웹 노선 화면에 버스 위치가 "가끔" 안 떴음 (2026-11-26 전주 풍남중, 바로 다시 물으면 받아졌음)
+  let upstream, body;
+  for (let i = 0; ; i++) {
+    upstream = await upstreamFetch(upstreamUrl(path, search, env.DATA_GO_KR_KEY), {
+      headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
+    }, env);
+    body = await upstream.text();
+    // 기관에 실제로 물은 수 (/w/use, src/usage.js): 하루 한도를 무엇이 쓰는지 보려고
+    if (env.DB) ctx.waitUntil(noteUse(env.DB, path, src).catch(() => false));
+    if (i >= PER_SECOND_RETRIES || !isPerSecondBody(body)) break;
+    await new Promise((ok) => setTimeout(ok, perSecondWait(i)));
+  }
   // 하루 한도 초과면 서비스별로 적어 둠 (/w/health 에 보임, src/health.js)
   if (env.DB && isQuotaBody(body)) ctx.waitUntil(noteQuota(env, path, body));
   const headers = {
