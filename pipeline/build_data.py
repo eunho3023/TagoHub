@@ -1587,6 +1587,8 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     if jeju_ok and jeju_routes:
         added_routes += write_jeju(db, jeju_routes, known)
     write_gbis_stops(db, gbis_stops or {}, known)
+    # 노선에만 있던 정류장을 정류장 표에 (교통안전공단 겹친 정류장 지우기·정류장 정리보다 먼저)
+    add_route_only_stops(db)
     for sid, nm in api_served.items():
         if sid in known and nm:
             renames[sid] = nm
@@ -1763,6 +1765,30 @@ TSB_TWIN_M = 30.0        # 이름이 달라도 이만큼 붙어 있으면 같은
 TSB_TWIN_NAME_M = 60.0   # 이름이 같으면
 
 
+def add_route_only_stops(db):
+    """
+    노선 정류장 순서(route_stops)에만 있고 정류장 표(stops)에 없는 정류장을 정류장 표에 넣음 (이름·좌표는 노선 정류장 순서 것,
+    도시는 그 정류장을 지나는 노선의 도시, 경기 노선만 지나면 "31"). 정류장 번호는 모름.
+    정류장 표는 앱 기본 DB 것을 그대로 써서, 그 뒤 새로 생긴 지역 정류장(익산 ISB 2,137곳 전부 등 6,799곳)은 지도·검색에 없고
+    같은 자리 교통안전공단 정류장에는 노선이 안 붙어 정류장 시간표가 비었음 (2026-11-25). 넣은 수
+    """
+    have = {r[0] for r in db.execute("SELECT id FROM stops")}
+    city = dict(db.execute("SELECT id, city FROM routes"))
+    add = {}
+    for rid, sid, nm, lat, lng in db.execute(
+            "SELECT route_id, stop_id, name, lat, lng FROM route_stops WHERE stop_id IS NOT NULL AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY route_id, seq"):
+        if sid in have or sid in add:
+            continue
+        c = city.get(rid) or ("31" if rid.startswith("GGB") else None)
+        if not c or not str(nm or "").strip():
+            continue
+        add[sid] = (sid, str(nm).strip(), lat, lng, None, c)
+    db.executemany("INSERT OR IGNORE INTO stops(id, name, lat, lng, no, city) VALUES(?,?,?,?,?,?)", list(add.values()))
+    if add:
+        print(f"노선에만 있던 정류장 {len(add)}곳을 정류장 표에 넣음", flush=True)
+    return len(add)
+
+
 def drop_tsb_twin_stops(db, complete):
     """
     노선이 안 서는 교통안전공단 정류장 중, 30m 안(이름이 같으면 60m 안)에 다른 자료(공단 아닌 것)의 노선이 서는 정류장이 있는 것을 지움.
@@ -1777,13 +1803,15 @@ def drop_tsb_twin_stops(db, complete):
     used = {r[0] for r in db.execute("SELECT DISTINCT stop_id FROM route_stops WHERE stop_id IS NOT NULL")}
     rows = db.execute("SELECT id, name, lat, lng, city FROM stops WHERE lat IS NOT NULL AND lng IS NOT NULL").fetchall()
     cell = TSB_TWIN_NAME_M / stop_spots.M_LAT
+    # 공단 정류장: 도시 칸이 TS… 이거나 id 가 TSB… (익산처럼 공단 정류장에 지자체 도시 코드 35030 이 붙은 곳이 있음, 2026-11-25)
+    tsb = lambda sid, city: str(city or "").startswith("TS") or str(sid).startswith("TSB")
     grid = {}
     for r in rows:
-        if r[0] in used and not str(r[4] or "").startswith("TS"):
+        if r[0] in used and not tsb(r[0], r[4]):
             grid.setdefault((int(r[2] // cell), int(r[3] // cell)), []).append(r)
     gone = []
     for sid, nm, lat, lng, city in rows:
-        if sid in used or not str(city or "").startswith("TS"):
+        if sid in used or not tsb(sid, city):
             continue
         key, gx, gy = stop_spots.name_key(nm), int(lat // cell), int(lng // cell)
         if any(d <= TSB_TWIN_M or (d <= TSB_TWIN_NAME_M and stop_spots.name_key(o[1]) == key)
