@@ -9,6 +9,7 @@ import { offsetRight } from "./sideline.js";
 import { BIKE_ZOOM, bikeDots } from "./bikes.js";
 import { PARKING_ZOOM, parkingDots, parkingIn, parkingLines } from "./parking.js";
 import { PLACE_KINDS, PLACE_NAMES, placeDots, placesIn } from "./amenity.js";
+import { STORE_KINDS, STORE_ZOOM, storesAt, storeDots, storeCard } from "./stores.js";
 import { CCTV_ZOOM, cctvAll, cctvDots, cctvCard, REST_ZOOM, restAll, restDots, restCard, GAS_ZOOM, GAS_ON, gasIn, gasDots, gasCard } from "./roadlayers.js";
 
 const SEOUL = { s: 37.41, n: 37.72, w: 126.76, e: 127.19 };
@@ -18,6 +19,8 @@ const LAYERS = "tagohub.layers";   // 지금: 레이어마다 {traffic, bike, pa
 export const LAYER_LIST = [["traffic", "실시간 교통", "서울 도로 소통·돌발"], ["cctv", "CCTV", "고속도로·국도 실시간 영상"],
   ["rest", "휴게소", "주유 가격·편의시설·메뉴"], ["gas", "주유소", GAS_ON() ? "" : "11월 30일부터"],
   ["bike", "공영자전거", "빌릴 수 있는 대수"], ["park", "주차장", ""],
+  // 주변 가게 (소상공인 상가정보): 많이 확대했을 때 지도 가운데 근처 15곳
+  ...Object.entries(STORE_KINDS).map(([k, v]) => ["st:" + k, v.name, "상가정보 · 지도 가운데 근처"]),
   ...Object.keys(PLACE_KINDS).map((k) => ["pl:" + k, PLACE_NAMES[k] || k, ""])];
 /** 저장해 둔 레이어 켜짐 (예전 "모두 켜기"였으면 모두 켬) */
 export function loadLayers() {
@@ -97,7 +100,7 @@ export function trafficLayer(onChange) {
   let on = LAYER_LIST.some(([k]) => L(k));
   let alive = true, visible = [], acc = [], accAt = 0, bikes = [], bikeAt = 0, parks = [], parkSeq = 0;
   let cctvs = [], rests = [], gases = [], gasSeq = 0;
-  const places = {}, placeSeq = {};
+  const places = {}, placeSeq = {}, stores = {}, storeSeq = {};
   const speeds = new Map(); // 링크 id → [km/h, 초]
   const groupAt = new Map(); // 묶음 번호 → 받은 때 (받는 중이면 -1)
   const btn = document.createElement("button");
@@ -164,6 +167,12 @@ export function trafficLayer(onChange) {
     if (L("gas") && b && MapView.zoom() >= GAS_ZOOM) {
       const seq = ++gasSeq;
       gasIn(b).then((v) => { if (seq !== gasSeq) return; gases = v; if (alive) onChange(); }).catch(() => {});
+    }
+    // 주변 가게(상가정보): 지도 가운데 칸마다 한 번. 늦게 온 옛 화면 것은 버림
+    for (const kind of Object.keys(STORE_KINDS)) {
+      if (!L("st:" + kind) || !b || MapView.zoom() < STORE_ZOOM) continue;
+      const seq = storeSeq[kind] = (storeSeq[kind] || 0) + 1;
+      storesAt(kind, b).then((v) => { if (seq !== storeSeq[kind]) return; stores[kind] = v; if (alive) onChange(); }).catch(() => {});
     }
     // 편의시설: 주차장과 같은 방식, 종류마다 보이기 시작하는 확대가 다름
     for (const [kind, k] of Object.entries(PLACE_KINDS)) {
@@ -240,6 +249,7 @@ export function trafficLayer(onChange) {
       if (!on || !b) return [];
       const out = L("traffic") && inSeoul(b) ? acc.map((a) => ({ id: "acc:" + a.id, lat: a.lat, lng: a.lng, color: RED, ring: "#fff", r: 7 })) : [];
       for (const [kind, k] of Object.entries(PLACE_KINDS)) if (L("pl:" + kind) && MapView.zoom() >= k.zoom) out.push(...placeDots(places[kind] || [], b));
+      if (MapView.zoom() >= STORE_ZOOM) for (const kind of Object.keys(STORE_KINDS)) if (L("st:" + kind)) out.push(...storeDots(stores[kind]));
       if (L("park") && MapView.zoom() >= PARKING_ZOOM) out.push(...parkingDots(parks, b));
       if (L("gas") && MapView.zoom() >= GAS_ZOOM) out.push(...gasDots(gases, b));
       if (L("rest") && MapView.zoom() >= REST_ZOOM) out.push(...restDots(rests, b));
@@ -274,6 +284,10 @@ export function trafficLayer(onChange) {
       if (id.startsWith("rest:")) {
         const x = rests.find((v) => "rest:" + v.id === id);
         return x ? restCard(x, fill) : null;
+      }
+      if (id.startsWith("st:")) {
+        const x = (stores[id.slice(3).split(":")[0]] || []).find((v) => "st:" + v.id === id);
+        return x ? storeCard(x) : null;
       }
       if (id.startsWith("gas:")) {
         const x = gases.find((v) => "gas:" + v.id === id);

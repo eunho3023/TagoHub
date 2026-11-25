@@ -604,7 +604,7 @@ export function routeScreen(root, p, ctx) {
     }
     MapView.dots(B.declutterCaptions(dots, MapView.zoom(), MapView.metersPerPx()), (d) => {
       // 레이어 점(돌발·자전거·주차장·편의시설·주유소·휴게소·CCTV): 지도 아래 카드 (topis.js card)
-      if (/^(acc|bike|park|pl|cctv|rest|gas):/.test(d.id) && traffic && layerCard) {
+      if (/^(acc|bike|park|pl|cctv|rest|gas|st):/.test(d.id) && traffic && layerCard) {
         const asked = ++cardSeq;
         const show = (h) => { if (!h || asked !== cardSeq || !layerCard) return; layerCard.innerHTML = h + `<button class="link">닫기</button>`; layerCard.style.display = "flex"; layerCard.querySelector("button.link:last-child").onclick = () => { layerCard.style.display = "none"; }; };
         show(traffic.card(d.id, show));

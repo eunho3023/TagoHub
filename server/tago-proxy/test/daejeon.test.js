@@ -113,3 +113,18 @@ test("지도 버스: 이름표·방향이 바뀌면 다시 그림, 이름표는 
   assert.deepEqual(cap([a, b]), { "sb:a": "A", "sb:b": null });
   assert.deepEqual(cap([b, a]), { "sb:a": "A", "sb:b": null });
 });
+
+test("주변 가게 층(상가정보): 지도 가운데 50m 칸으로 묻고, 점·카드 모양", async () => {
+  const seen = [];
+  globalThis.fetch = async (u) => { seen.push(String(u)); return new Response(JSON.stringify({ places: [{ name: "지에스25광화문점", address: "서울 중구 세종대로 1", lat: 37.5671, lng: 126.979, category: "편의점", dist: 115 }] }), { status: 200, headers: { "Content-Type": "application/json" } }); };
+  const { storesAt, storeDots, storeCard, STORE_KINDS } = await import("../site/js/stores.js");
+  const b = { s: 37.5660, n: 37.5670, w: 126.9775, e: 126.9785 };
+  const l1 = await storesAt("CS2", b), l2 = await storesAt("CS2", b);
+  assert.equal(l1, l2);                                          // 같은 칸은 한 번만
+  assert.equal(seen.filter((u) => u.includes("w/pub/store")).length, 1);
+  assert.ok(seen.some((u) => /cat=CS2/.test(u) && /lat=37\.5665/.test(u) && /lng=126\.9780/.test(u)));
+  const d = storeDots(l1)[0];
+  assert.equal(d.label, STORE_KINDS.CS2.label); assert.ok(d.id.startsWith("st:CS2:"));
+  assert.match(storeCard(l1[0]), /지에스25광화문점/);
+  assert.deepEqual(await storesAt("XX9", b), []);               // 모르는 분류는 묻지 않음
+});

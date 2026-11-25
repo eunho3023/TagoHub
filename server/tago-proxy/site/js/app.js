@@ -264,7 +264,7 @@ export function stopsMap(host, focus) {
           drawBanner(); draw();
           return;
         }
-        if (/^(acc|bike|park|pl|cctv|rest|gas):/.test(d.id)) {
+        if (/^(acc|bike|park|pl|cctv|rest|gas|st):/.test(d.id)) {
           picked = null;
           // 늦게 채워지는 카드(휴게소 상세)는 그사이 다른 점을 눌렀으면 버림
           const asked = cardSeq;
