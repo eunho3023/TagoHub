@@ -740,10 +740,11 @@ def test_drop_empty_dups():
         ("GGB_1", "영암터미널", 34.8 + 10 * m, 126.7, "31010"),      # 공단 아님 → 남김
         ("TSB_U", "공단만", 35.5, 127.0, "TS999"),                   # 공단 자료뿐인 지역: 노선 서는 공단 정류장
         ("TSB_5", "공단만", 35.5 + 10 * m, 127.0, "TS999"),          # 그 옆 공단 정류장 → 남김 (공단끼리는 비교 안 함)
+        ("TSB_6", "영암터미널", 34.8 + 5 * m, 126.7, "36410"),       # 공단 id 에 지자체 도시 코드(익산 35030 처럼) → 지움
     ])
     db.execute("INSERT INTO route_stops VALUES('TSB9',1,'TSB_U','',NULL,NULL,NULL)")
     assert bd.drop_tsb_twin_stops(db, False) == 0
-    assert bd.drop_tsb_twin_stops(db, True) == 2
+    assert bd.drop_tsb_twin_stops(db, True) == 3
     assert sorted(r[0] for r in db.execute("SELECT id FROM stops")) == ["GGB_1", "MPB_A", "TSB_3", "TSB_4", "TSB_5", "TSB_U"]
     # 공단 정류장 이름을 같은 자리(8m 안) 지자체 정류장 지금 이름으로 (광주 전남방직 → 발산뽕뽕다리)
     db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
@@ -857,7 +858,28 @@ def test_static_city_times():
     assert real["GYB1"] == ("07:02", "19:50", None) and real["GYB3"] == ("06:55", "22:35", None)
 
 
+def test_add_route_only_stops():
+    """노선 정류장 순서에만 있는 정류장(익산 ISB 등)을 정류장 표에: 도시는 노선 것, 좌표·이름 없는 것은 뺌"""
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE stops(id TEXT PRIMARY KEY, name TEXT NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL, no TEXT, city TEXT NOT NULL)")
+    db.execute("CREATE TABLE routes(id TEXT PRIMARY KEY, no TEXT, start_name TEXT, end_name TEXT, start_node TEXT, end_node TEXT, city TEXT, region TEXT, rtype TEXT, realtime TEXT)")
+    db.execute("CREATE TABLE route_stops(route_id TEXT, seq INTEGER, stop_id TEXT, name TEXT, lat REAL, lng REAL, updown TEXT, PRIMARY KEY(route_id, seq))")
+    db.execute("INSERT INTO stops VALUES('ISB1','있던 곳',35.9,126.9,'1','35030')")
+    db.execute("INSERT INTO routes(id,no,city) VALUES('ISB308000010','1','35030')")
+    db.executemany("INSERT INTO route_stops VALUES(?,?,?,?,?,?,?)", [
+        ("ISB308000010", 1, "ISB1", "있던 곳", 35.9, 126.9, "1"),
+        ("ISB308000010", 2, "ISB308000893", "시외.고속버스터미널", 35.93059, 126.94311, "1"),
+        ("ISB308000010", 3, "ISB308000894", "좌표 없음", None, None, "1"),
+        ("GGB200000001", 1, "GGB200000999", "경기 정류장", 37.3, 127.1, None),
+        ("XXB1", 1, "XXB9", "도시 모름", 36.0, 127.0, None),
+    ])
+    assert bd.add_route_only_stops(db) == 2
+    assert db.execute("SELECT * FROM stops WHERE id = 'ISB308000893'").fetchone() == ("ISB308000893", "시외.고속버스터미널", 35.93059, 126.94311, None, "35030")
+    assert db.execute("SELECT city FROM stops WHERE id = 'GGB200000999'").fetchone() == ("31",)
+    assert bd.add_route_only_stops(db) == 0
+
+
 if __name__ == "__main__":
-    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend, test_static_city_times):
+    for t in (test_incomplete_stops_refetched, test_tsb_stops_written, test_kotsa_timetable_real, test_busy_server_waits_and_retries, test_only_normal_responses_cached, test_real_tago_route_list, test_key_error_stops_immediately, test_helpers, test_daily_limit_partial, test_keyword_fallback_when_full_list_empty, test_full_build, test_prune_unserved, test_unserved_trust_per_city, test_jeonju_served_walk, test_jeju_routes_written, test_gbis_stops_written, test_gbis_stops_use_stored_after_limit, test_files_written, test_tsb_info_written, test_jeonju_retry_failed, test_incheon_info_and_tidy, test_jeonju_urls_direct_first, test_jeju_ssl_context_has_intermediate, test_jeonju_gives_up_when_all_fail, test_jeonju_time_budget, test_carry_jeonju_from_previous_db, test_fill_only_missing_routes, test_resolve_times, test_drop_empty_dups, test_resolve_types, test_local_times, test_city_times, test_kotsa_twin_and_weekend, test_static_city_times, test_add_route_only_stops):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
