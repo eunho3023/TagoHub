@@ -8,7 +8,7 @@ import { cachedText, subwayColor, getText, busColor, livePoll } from "./core.js"
 import { pickPlace, KAKAO_ROUTING } from "./places.js";
 import { parseStations, stationsIn, pickSearchRow, stationPos } from "./stations.js";
 import { applyTheme } from "./store.js";
-import { stopsIn, cityName, stopRoutes, towardOf, positions, klidBuses, headingTracker, declutterCaptions, LowFloor } from "./busdata.js";
+import { stopsIn, cityName, stopRoutes, towardOf, positions, klidBuses, klidCovers, inSeoulView, routeIdByNo, routeSums, headingTracker, declutterCaptions, LowFloor } from "./busdata.js";
 /** 버스 정류장 아이콘 바탕색 (파란 둥근 네모, 폰 앱 정류장 아이콘과 같게) */
 export const BUS_STOP_COLOR = "#2F7CF6";
 import { trafficLayer } from "./topis.js";
@@ -140,6 +140,8 @@ export async function openStation(g, line) {
 /** 정류장 지도: 확대하면 보이는 곳 정류장, 누르면 카드 → 도착 정보 (지도 위에 겹쳐 그림) */
 /** 지도 버스 다시 받는 주기: 15초 (사용자 요청 2026-11-25, 5초였을 때 TAGO 버스 위치 하루 한도가 아침에 바닥남). 사이엔 새로고침 단추 */
 const MAP_BUS_MS = 15000;
+/** 초정밀 버스가 없는 지역: 이 확대부터 화면 안 정류장 노선마다 버스 위치를 물음, 노선은 가운데 정류장부터 이만큼 (한 번에 묻는 수) */
+const VIEW_BUS_ZOOM = 15, VIEW_ROUTES = 40;
 export function stopsMap(host, focus) {
   let stops = [], picked = focus, stations = [];
   let timer = null, alive = true;
@@ -149,6 +151,31 @@ export function stopsMap(host, focus) {
    */
   let busDots = [], busSeq = 0;
   const heading = headingTracker();
+  /** 화면 안 정류장(가운데부터)에 서는 노선들의 버스 위치 → 지도 점 */
+  const viewBuses = async (b) => {
+    const cla = (b.s + b.n) / 2, clo = (b.w + b.e) / 2, ids = [], city = new Map();
+    for (const s of [...stops].sort((x, y) => Math.hypot(x.lat - cla, x.lng - clo) - Math.hypot(y.lat - cla, y.lng - clo))) {
+      for (const id of s.routes || []) if (!city.has(id) && ids.length < VIEW_ROUTES) { ids.push(id); city.set(id, s.city); }
+      if (ids.length >= VIEW_ROUTES) break;
+    }
+    if (!ids.length) return [];
+    const sums = await routeSums(ids).catch(() => ({}));
+    const got = await Promise.all(ids.map((id) => positions({ id, city: city.get(id) }).then((r) => ({ id, r })).catch(() => null)));
+    const out = [];
+    for (const g of got) {
+      if (!g || g.r.state !== "ok") continue;
+      const s = sums[g.id] || {};
+      for (const x of g.r.buses) {
+        if (x.lat == null || x.lng == null || x.lat < b.s || x.lat > b.n || x.lng < b.w || x.lng > b.e) continue;
+        if (LowFloor.on() && x.kind && x.kind !== "저상") continue;
+        const key = g.id + "|" + (x.vehicleNo || out.length);
+        out.push({ id: "vb:" + key, lat: x.lat, lng: x.lng, color: busColor(s.type), ring: "#fff", r: 8,
+          bus3d: { no: s.no || "버스", caption: [x.kind, x.vehicleNo].filter(Boolean).join(" · ") || null, dir: heading(key, x.lat, x.lng) },
+          go: { id: g.id, city: city.get(g.id), no: s.no, type: s.type } });
+      }
+    }
+    return out;
+  };
   const busTick = async () => {
     if (!alive) return true;
     const my = ++busSeq, p0 = picked, b = MapView.bounds(), z = MapView.zoom();
@@ -172,6 +199,8 @@ export function stopsMap(host, focus) {
       } else if (b && z >= 13) {
         out = (await klidBuses(b)).map((k) => ({ id: "kb:" + k.key, lat: k.lat, lng: k.lng, color: busColor(k.type), ring: "#fff", r: 8,
           bus3d: { no: k.no || "버스", caption: null, dir: heading(k.key, k.lat, k.lng) }, go: { id: k.routeId, city: k.city, no: k.no, type: k.type } }));
+        // 초정밀 버스가 없는 지역(서울 빼고), 줌 15부터: 화면 안 정류장에 서는 노선마다 버스 위치 (가운데 정류장 노선부터 VIEW_ROUTES 개)
+        if (z >= VIEW_BUS_ZOOM && !klidCovers(b) && !inSeoulView(b)) out.push(...await viewBuses(b));
       }
     } catch (e) { return false; }
     if (my !== busSeq || !alive || picked !== p0) return true;
@@ -250,7 +279,12 @@ export function stopsMap(host, focus) {
       ...(traffic ? traffic.dots() : []).map((d) => { const m = moves.get("place:" + d.id); return m ? { ...d, lat: m.to[0], lng: m.to[1], ring: "#E08A00" } : d; })], MapView.metersPerPx()),
       (d) => {
         // 지도 버스: 그 노선 화면 (정류장에서 노선 번호를 누른 것처럼)
-        if (d.go) { go("route", d.go.id, { from: d.go.from, city: d.go.city, no: d.go.no, type: d.go.type }); return; }
+        if (d.go) {
+          // 초정밀 버스 노선 id 가 우리 id 와 다른 지역(구미·양산)은 노선 번호로 찾음
+          const open = (id) => { if (id) go("route", id, { from: d.go.from, city: d.go.city, no: d.go.no, type: d.go.type }); };
+          if (d.go.id) open(d.go.id); else routeIdByNo(d.go.city, d.go.no).then(open);
+          return;
+        }
         cardSeq++;
         // 돌발·공영자전거·주차장·편의시설·주유소·휴게소·CCTV 점은 카드 (topis.js card)
         if (d.id.startsWith("sub:")) {

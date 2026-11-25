@@ -128,3 +128,23 @@ test("주변 가게 층(상가정보): 지도 가운데 50m 칸으로 묻고, �
   assert.match(storeCard(l1[0]), /지에스25광화문점/);
   assert.deepEqual(await storesAt("XX9", b), []);               // 모르는 분류는 묻지 않음
 });
+
+test("초정밀 버스 지역 15곳: 지도 가운데로 지역 판단, 서울 빼기, id 가 다른 지역은 번호로", async () => {
+  const { KLID_REGIONS, klidCovers, inSeoulView, klidPick, routeIdByNo } = await import("../site/js/busdata.js");
+  assert.equal(KLID_REGIONS.length, 15);
+  const box = (la, lo) => ({ s: la - 0.005, n: la + 0.005, w: lo - 0.005, e: lo + 0.005 });
+  assert.equal(klidCovers(box(35.228, 128.681)), true);    // 창원
+  assert.equal(klidCovers(box(36.351, 127.385)), false);   // 대전: 화면 안 노선마다
+  assert.equal(inSeoulView(box(37.566, 126.978)), true);   // 서울시청
+  assert.equal(inSeoulView(box(36.351, 127.385)), false);
+  const gumi = KLID_REGIONS.find((r) => r.name === "구미");
+  const rows = [{ rteId: "355000004", vhclNo: "경북70자1234", lat: "36.12", lot: "128.34", gthrDt: "2026-11-25 10:00:00" }];
+  const b = { s: 36.0, n: 36.2, w: 128.2, e: 128.5 }, now = Date.parse("2026-11-25T10:01:00+09:00");
+  const [x] = klidPick(rows, new Map([["355000004", { rteNo: "20-2", rteType: "지선" }]]), gumi, b, now);
+  assert.equal(x.routeId, null); assert.equal(x.no, "20-2"); assert.equal(x.city, "37050");
+  const cw = KLID_REGIONS.find((r) => r.name === "창원");
+  assert.equal(klidPick([{ ...rows[0], rteId: "379000010", lat: "35.2", lot: "128.6" }], new Map(), cw, { s: 35, n: 35.4, w: 128.4, e: 128.8 }, now)[0].routeId, "CWB379000010");
+  globalThis.fetch = async (u) => new Response(JSON.stringify(/routes_by_no/.test(String(u)) ? { 37050: { "20-2": ["GMB202-1", "GMB202-2"] } } : {}), { status: 200, headers: { "Content-Type": "application/json" } });
+  assert.equal(await routeIdByNo("37050", "20-2"), "GMB202-1");
+  assert.equal(await routeIdByNo("37050", "없음"), null);
+});
