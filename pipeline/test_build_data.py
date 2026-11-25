@@ -913,6 +913,16 @@ def test_gangneung_routes():
     assert db.execute("SELECT no, city, realtime, start_node FROM routes WHERE id = 'GNB42001001'").fetchone() == ("200", "32030", "none", "TSB_A")
     assert [r for r in db.execute("SELECT seq, stop_id, name, updown FROM route_stops ORDER BY seq")] == [(1, "TSB_A", "", "0"), (2, "TSB_NEAR", "", "0"), (3, None, "없는곳", "1")]
     assert db.execute("SELECT first, last FROM route_info WHERE id = 'GNB42001001'").fetchone() == ("06:10", "21:40")
+    # 완주 고산북부권: 이름으로 시작하는 정류장도 (운주 → 운주터미널), 범위 밖 같은 이름은 안 씀
+    db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
+        ("JUB312101937", "고산터미널", 36.0, 127.2, "35010"), ("TSB312000039", "운주터미널", 36.09, 127.28, "TS312"), ("FAR1", "운주", 37.0, 127.0, "11")])
+    wn = bd.write_wanju(db)
+    assert wn >= 40
+    gid = db.execute("SELECT id FROM routes WHERE id LIKE 'WNB%' AND no = '고산-운주'").fetchone()[0]
+    ends = db.execute("SELECT stop_id FROM route_stops WHERE route_id = ? ORDER BY seq", (gid,)).fetchall()
+    assert ends[0] == ("JUB312101937",) and ends[-1] == ("TSB312000039",) and len(ends) > 10
+    assert db.execute("SELECT city, realtime FROM routes WHERE id = ?", (gid,)).fetchone() == ("35310", "none")
+    assert db.execute("SELECT first, last FROM route_info WHERE id = ?", (gid,)).fetchone() == ("05:40", "20:00")
     real = bd.gangneung_deps()
     assert len(real) > 100 and all(d.get("weekday") or d.get("sat") or d.get("holi") or d.get("weekdayDown") or d.get("satDown") or d.get("holiDown") for d in real.values())
 
