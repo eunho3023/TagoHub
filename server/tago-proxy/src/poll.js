@@ -7,6 +7,7 @@ import { upstreamUrl, webRequest, cacheable } from "./proxy.js";
 import { hitsFromBusLc, prevStore } from "./log.js";
 import { recordGps } from "./gps.js";
 import { bucket } from "./shape.js";
+import { noteUse, pruneUse } from "./usage.js";
 
 const PER_DAY = 3000, PER_RUN = 3, ACTIVE = 6, GAP_MS = 2 * 60000, KEEP_MS = 7 * 86400000;
 const ID = /^[A-Za-z0-9_-]{1,32}$/;
@@ -94,6 +95,7 @@ export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
   if (hour === 4 && minute === 0) {
     await db.prepare("UPDATE route_interest SET score = score / 2").run();
     await pruneMeta(db, nowMs);
+    await pruneUse(db, nowMs).catch(() => null);
   }
   if (hour < 5) return { skip: "night" };
   const limit = +env.POLL_PER_DAY > 0 ? +env.POLL_PER_DAY : PER_DAY;
@@ -108,6 +110,7 @@ export async function pollCron(env, fetcher = fetch, nowMs = Date.now()) {
     n++;
     // 묻기 전에 바로 셈: 예전엔 끝에 한꺼번에 세서, 요청이 매달려 작업이 끊기면 빠졌음 (실패 340 > 물은 수 186, 2026-11-23)
     await bump(db, "day:" + day, 1);
+    await noteUse(db, w.path, "cron", nowMs, true).catch(() => false);
     try {
       const res = await fetcher(upstreamUrl(w.path, w.search, env.DATA_GO_KR_KEY), { headers: { Accept: "application/xml" } });
       const body = await res.text();

@@ -155,7 +155,8 @@ export function stopsMap(host, focus) {
   const viewBuses = async (b) => {
     const cla = (b.s + b.n) / 2, clo = (b.w + b.e) / 2, ids = [], city = new Map();
     for (const s of [...stops].sort((x, y) => Math.hypot(x.lat - cla, x.lng - clo) - Math.hypot(y.lat - cla, y.lng - clo))) {
-      for (const id of s.routes || []) if (!city.has(id) && ids.length < VIEW_ROUTES) { ids.push(id); city.set(id, s.city); }
+      // 경기 노선(GGB)은 위치 좌표를 주지 않아 지도에 못 그림: 묻지 않음
+      for (const id of s.routes || []) if (!city.has(id) && !id.startsWith("GGB") && ids.length < VIEW_ROUTES) { ids.push(id); city.set(id, s.city); }
       if (ids.length >= VIEW_ROUTES) break;
     }
     if (!ids.length) return [];
