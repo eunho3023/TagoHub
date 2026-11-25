@@ -44,6 +44,14 @@ test("지도 범위 버스(초정밀): 3분 넘은 위치·지도 밖은 빼고,
   ];
   const out = klidPick(rows, routes, KLID_REGIONS[0], { s: 35.5, w: 129.2, n: 35.6, e: 129.4 }, now);
   assert.deepEqual(out, [{ key: "192000001:1", routeId: "USB192000001", city: "26", no: "중구01", type: "지선버스", lat: 35.57, lng: 129.33 }]);
+  // 위치 줄 rteNo 가 내부 id 인 지역(구미): 기준정보 번호, 기준정보에 없으면 빈 번호
+  const gumi = KLID_REGIONS.find((r) => r.name === "구미");
+  const gRoutes = new Map([["355000004", { rteId: "355000004", rteNo: "20-2", rteType: "13" }]]);
+  const gRows = [
+    { rteId: "355000004", vhclNo: "9", rteNo: "355000255", lat: "36.13", lot: "128.33", gthrDt: "2026-11-24 21:09:30" },
+    { rteId: "355000999", vhclNo: "8", rteNo: "355000777", lat: "36.13", lot: "128.33", gthrDt: "2026-11-24 21:09:30" },
+  ];
+  assert.deepEqual(klidPick(gRows, gRoutes, gumi, { s: 36.0, w: 128.2, n: 36.3, e: 128.5 }, now).map((x) => [x.no, x.routeId]), [["20-2", null], ["", null]]);
   assert.deepEqual(klidWebRequest("/w/klid/pos/3100000000/2"), { op: "rtm_loc_info", code: "3100000000", page: 2, ttl: 4 });
   assert.equal(klidWebRequest("/w/klid/routes/3100000000/1").ttl, 86400);
   assert.equal(klidWebRequest("/w/klid/pos/31/1"), null);
