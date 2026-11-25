@@ -14,7 +14,10 @@
      자료에 이름만 달리 따로 있는 것 (예: 명동성당.남대문세무서 02001 = 남대문세무서(중) 2001)
   5) 이름이 같고 8m 안인데 한쪽이라도 방면을 모름(노선 자료가 덜 찬 경기·교통안전공단)       — 같은 정류장이 두 번 등록된 것
   6) 이름이 같고 8m 안, 방면이 조금 어긋남(반대 아님)                                         — 같은 정류장이 두 자료에 따로
+  7) 이름이 같고 MAX_M 안, 한쪽은 노선이 출발만 하고(기점 전용) 다른 쪽은 도착만 함(종점 전용)   — 한 종점의 타는 곳·내리는 곳
+     (전주 송천동종점 출발 303·도착 304 가 60m 떨어져 두 점이었음). 방면이 반대로 잡히고 순환 노선이 둘 다 지나도 묶음
 대표: 노선이 가장 많은 것 (같으면 교통안전공단 TS… 아닌 것, 번호 있는 것). 점은 대표 정류장 자리에 찍힘.
+     7) 로 묶인 종점은 타는 곳(기점 전용)이 대표.
 
 실행: python pipeline/stop_spots.py <bus_stops.db>   (build_data.py 가 DB 를 만들 때 부름)
 """
@@ -109,11 +112,31 @@ def unserved(stops, served):
     return out
 
 
-def spots(stops, served, head, routes=None):
+def ends(rows):
+    """[(노선, 순번, 정류장)] → {정류장: "s"(모든 노선의 첫 정류장) | "e"(모든 노선의 끝 정류장)}. 중간에 서거나 섞이면 없음"""
+    last = {}
+    for rid, seq, _ in rows:
+        if seq is not None and seq > last.get(rid, -1):
+            last[rid] = seq
+    first = {}
+    for rid, seq, _ in rows:
+        if seq is not None and seq < first.get(rid, 10 ** 9):
+            first[rid] = seq
+    role = defaultdict(set)
+    for rid, seq, sid in rows:
+        if not sid or seq is None:
+            continue
+        role[sid].add("s" if seq == first[rid] and seq != last[rid] else "e" if seq == last[rid] and seq != first[rid] else "m")
+    return {sid: next(iter(r)) for sid, r in role.items() if r in ({"s"}, {"e"})}
+
+
+def spots(stops, served, head, routes=None, end=None):
     """stops: [(id, 이름, 위도, 경도, 번호, 시군)], served: {id: 노선 수}, head: {id: 방향},
-    routes: {id: 지나는 노선 id 집합} (같은 노선이 둘 다 지나면 차례로 서는 다른 정류장이라 안 묶음)
+    routes: {id: 지나는 노선 id 집합} (같은 노선이 둘 다 지나면 차례로 서는 다른 정류장이라 안 묶음),
+    end: {id: "s"|"e"} 기점 전용·종점 전용 정류장 ([ends])
     → (숨길 id 집합, {id: 대표 id} — 둘 이상 묶인 것만)"""
     routes = routes or {}
+    end = end or {}
     hidden = unserved(stops, served)
     live = [s for s in stops if s[0] not in hidden and s[2] is not None and s[3] is not None]
     CELL = MAX_M / M_LAT
@@ -152,7 +175,9 @@ def spots(stops, served, head, routes=None):
                     if not ok and same_name and ang is not None and ang <= OPPOSITE and d <= DUP_M:
                         ok = True
                     if ok and not (routes.get(a[0], set()) & routes.get(b[0], set())):
-                        edges.append((d, i, j))
+                        edges.append((d, i, j, False))
+                    elif same_name and {end.get(a[0]), end.get(b[0])} == {"s", "e"}:
+                        edges.append((d, i, j, True))   # 7) 한 종점의 타는 곳·내리는 곳
     edges.sort()
     parent = list(range(len(live)))
     members = {i: [i] for i in range(len(live))}
@@ -163,11 +188,16 @@ def spots(stops, served, head, routes=None):
             x = parent[x]
         return x
 
-    for d, i, j in edges:
+    for d, i, j, term in edges:
         ri, rj = root(i), root(j)
         if ri == rj:
             continue
         mi, mj = members[ri], members[rj]
+        # 7) 종점 짝으로 합칠 땐 양쪽 묶음의 다른 정류장끼리도 붙어 있을 때만 (CROWD_M 안이거나 그 자체가 타는 곳·내리는 곳 짝):
+        #    종점 짝이 다리가 되어 둘레 다른 정류장 묶음까지 엮이지 않게 (부산 명륜역이 120m 다섯 곳으로 묶였음)
+        if term and any(not ({end.get(live[x][0]), end.get(live[y][0])} == {"s", "e"} and keys[x] == keys[y])
+                        and meters(live[x][2], live[x][3], live[y][2], live[y][3]) > CROWD_M for x in mi for y in mj):
+            continue
         bad = False
         for x in mi:
             for y in mj:
@@ -176,6 +206,8 @@ def spots(stops, served, head, routes=None):
                     bad = True
                     break
                 hx, hy = head.get(sx[0]), head.get(sy[0])
+                if {end.get(sx[0]), end.get(sy[0])} == {"s", "e"} and keys[x] == keys[y]:
+                    continue   # 7) 타는 곳·내리는 곳은 방면이 반대로 잡힘
                 if hx is not None and hy is not None and angle(hx, hy) > OPPOSITE:
                     bad = True
                     break
@@ -193,7 +225,10 @@ def spots(stops, served, head, routes=None):
         if len(g) < 2:
             continue
         # 경기 밖(서울·인천 등)에 있는 경기 버스 정류장(GGB, 시군 31… 아님)은 그 지역 정류장 이름이 대표가 되게 뒤로
-        main = min(g, key=lambda k: (live[k][0].startswith("GGB") and not str(live[k][5]).startswith("31"),
+        # 7) 종점 타는 곳·내리는 곳만으로 된 묶음은 타는 곳이 대표 (다른 정류장이 섞인 예전 묶음은 그대로)
+        term = {end.get(live[k][0]) for k in g} == {"s", "e"}
+        main = min(g, key=lambda k: (term and end.get(live[k][0]) != "s",
+                                     live[k][0].startswith("GGB") and not str(live[k][5]).startswith("31"),
                                      -served.get(live[k][0], 0), live[k][5].startswith("TS"), live[k][4] is None, live[k][0]))
         for k in g:
             spot[live[k][0]] = live[main][0]
@@ -209,7 +244,7 @@ def compute(db: sqlite3.Connection):
     served = {sid: len(r) for sid, r in routes.items()}
     rows = db.execute("SELECT rs.route_id, rs.seq, rs.stop_id, COALESCE(rs.lat, s.lat), COALESCE(rs.lng, s.lng) "
                       "FROM route_stops rs LEFT JOIN stops s ON s.id = rs.stop_id").fetchall()
-    return spots(stops, served, headings(rows), routes)
+    return spots(stops, served, headings(rows), routes, ends([(r[0], r[1], r[2]) for r in rows]))
 
 
 def apply(db: sqlite3.Connection):
