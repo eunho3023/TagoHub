@@ -1325,7 +1325,10 @@ export function klidPick(rows, routes, reg, b, now = Date.now()) {
     if (lat == null || lng == null || (at != null && now - at > KLID_FRESH_MS)) continue;
     if (lat < b.s || lat > b.n || lng < b.w || lng > b.e) continue;
     const r = routes.get(String(x.rteId));
-    out.push({ key: `${x.rteId}:${x.vhclNo}`, routeId: reg.prefix ? reg.prefix + x.rteId : null, city: reg.city, no: str(x.rteNo) || (r && str(r.rteNo)) || "", type: (r && str(r.rteType)) || null, lat, lng });
+    // 번호는 노선 기준정보 것 먼저: 위치 줄의 rteNo 는 구미·제천·충주에서 "355000175" 같은 내부 id 라 지도에 그대로 나오고
+    // 구미·양산은 번호로 노선을 못 찾아 눌러도 안 열렸음 (2026-11-25). 위치 줄 번호는 id 꼴(9자리 이상 숫자)이 아닐 때만
+    const posNo = str(x.rteNo);
+    out.push({ key: `${x.rteId}:${x.vhclNo}`, routeId: reg.prefix ? reg.prefix + x.rteId : null, city: reg.city, no: (r && str(r.rteNo)) || (posNo && !/^\d{9,}$/.test(posNo) ? posNo : ""), type: (r && str(r.rteType)) || null, lat, lng });
   }
   return out;
 }
