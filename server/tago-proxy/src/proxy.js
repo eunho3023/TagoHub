@@ -370,9 +370,10 @@ export function signalWebRequest(pathname) {
  */
 export function busWebRequest(pathname) {
   // "all" 은 제주 노선 전체 목록(/w/bus/jeju/routes/all)만
-  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan|daejeon)\/(arrival|pos|stops|routes|line)\/(\d{1,12}|all)$/.exec(pathname);
+  const m = /^\/w\/bus\/(seoul|gg|jeonju|jeju|ulsan|daejeon)\/(arrival|pos|stops|routes|line|info)\/(\d{1,12}|all)$/.exec(pathname);
   if (!m) return null;
   const [, area, op, id] = m;
+  if (op === "info" && area !== "gg") return null;   // 노선 정보(첫차·막차·배차)는 경기만
   if (id === "all" && !(area === "jeju" && op === "routes")) return null;
   if (op === "line" && area !== "jeju") return null;   // 노선 정보는 제주만
   // 대전 정류장 도착(정류장 ID 7자리)·노선 버스 위치(노선 ID 8자리) (대전 BIS, 공공데이터포털 6300000, 5초 저장).
@@ -429,10 +430,12 @@ export function busWebRequest(pathname) {
     return { area, url: `http://ws.bus.go.kr/api/rest/${q}&resultType=json&serviceKey=KEY`, cacheKey: `bus/seoul/${op}/${id}`, ttl: 10 };
   }
   if (!/^\d{9}$/.test(id)) return null;
-  // 경기 노선 정류장 목록 (좌표·순번·회차점, 하루 저장): 웹 노선 화면. 정류장을 지나는 노선 (하루 저장): 웹 정류장 화면
+  // 경기 노선 정류장 목록 (좌표·순번·회차점, 하루 저장): 웹 노선 화면. 정류장을 지나는 노선 (하루 저장): 웹 정류장 화면.
+  // 노선 정보 (평일·토·일 첫차·막차·배차, 하루 저장): 웹 정류장 시간표 — 없어서 경기 정류장 시간표가 통째로 비었음 (2026-11-25)
   const q = op === "arrival" ? `busarrivalservice/v2/getBusArrivalListv2?stationId=${id}` : op === "pos" ? `buslocationservice/v2/getBusLocationListv2?routeId=${id}`
-    : op === "routes" ? `busstationservice/v2/getBusStationViaRouteListv2?stationId=${id}` : `busrouteservice/v2/getBusRouteStationListv2?routeId=${id}`;
-  return { area, url: `https://apis.data.go.kr/6410000/${q}&format=json&serviceKey=KEY`, cacheKey: `bus/gg/${op}/${id}`, ttl: op === "stops" || op === "routes" ? 86400 : 10 };
+    : op === "routes" ? `busstationservice/v2/getBusStationViaRouteListv2?stationId=${id}` : op === "info" ? `busrouteservice/v2/getBusRouteInfoItemv2?routeId=${id}`
+    : `busrouteservice/v2/getBusRouteStationListv2?routeId=${id}`;
+  return { area, url: `https://apis.data.go.kr/6410000/${q}&format=json&serviceKey=KEY`, cacheKey: `bus/gg/${op}/${id}`, ttl: op === "stops" || op === "routes" || op === "info" ? 86400 : 10 };
 }
 
 // ── 웹 버전 인천공항 실시간 운항 (/w/icn/dep|arr?date=yyyyMMdd&pageNo=N) ─────────────────

@@ -275,6 +275,13 @@ test("제주 노선 정류장 차례: 제주 버스정보 (키 없음, 하루 �
   assert.equal(ln.ttl, 86400);
   assert.equal(busWebRequest("/w/bus/seoul/line/100100118"), null);
   assert.equal(busWebRequest("/w/bus/gg/line/233000031"), null);
+  // 경기 노선 정보 (첫차·막차·배차, 하루 저장). 다른 지역은 없음
+  const gi = busWebRequest("/w/bus/gg/info/234000015");
+  assert.ok(gi.url.includes("busrouteservice/v2/getBusRouteInfoItemv2?routeId=234000015&format=json"));
+  assert.equal(gi.ttl, 86400);
+  assert.equal(gi.cacheKey, "bus/gg/info/234000015");
+  assert.equal(busWebRequest("/w/bus/seoul/info/100100118"), null);
+  assert.equal(busWebRequest("/w/bus/jeju/info/405000001"), null);
   assert.equal(busWebRequest("/w/bus/jeju/stops/12"), null);
 });
 
