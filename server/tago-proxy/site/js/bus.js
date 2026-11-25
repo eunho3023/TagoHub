@@ -374,7 +374,14 @@ export function stopTable(root, p) {
     if (!stop && p.lat) stop = await B.stopAt(p.id, +p.lat, +p.lng).catch(() => null);
     if (!stop) { if (alive) root.innerHTML = header("정류장 시간표", null, { back: true }) + note("정류장을 찾지 못했어요"); return; }
     draw();
-    const [l, s] = await Promise.all([B.stopLog(stop).catch(() => null), B.stopRoutes(stop).catch(() => [])]);
+    // 저장해 둔 노선 목록(30일)과 새로 받은 목록이 다르면 새 목록으로 다시 그림: 노선이 늘어도 처음 열 땐 옛 목록만 보였음 (고산터미널 2 → 9개, 2026-11-25)
+    const onNewer = (v) => {
+      if (!alive) return;
+      sums = v;
+      draw();
+      Promise.all(v.filter((rt) => !plans.has(rt.id)).map((rt) => B.plannedFor(stop, rt).then((x) => { if (x) plans.set(rt.id, x); }).catch(() => null))).then(draw);
+    };
+    const [l, s] = await Promise.all([B.stopLog(stop).catch(() => null), B.stopRoutes(stop, { onNewer }).catch(() => [])]);
     if (l == null) failed = true;
     log = l || {}; sums = s;
     draw();
