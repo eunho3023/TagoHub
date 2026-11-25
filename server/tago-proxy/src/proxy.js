@@ -346,10 +346,11 @@ export function kacWebRequest(pathname, search) {
 /** → { kind, id?, ttl }. 서울은 교차로 하나(3초 저장), 울산은 교차로 목록(하루)·지금 신호 전체(3초) */
 /**
  * 웹 지도 범위 버스 (초정밀 버스, 공공데이터포털 B551982/rte): 노선 기준정보(routes, 하루 저장)·실시간 위치(pos, 4초 저장).
- * 2026-11-24 자료를 주는 곳은 울산(3100000000)뿐. 한 쪽 1000줄
+ * 자료를 주는 곳은 15개 시·군 (site/js/busdata.js KLID_REGIONS). 한 쪽 1000줄, 30쪽까지:
+ * 지난 위치가 섞여 쌓여 충주 19쪽·구미 17쪽이고 새 위치가 모든 쪽에 흩어져 있음 (2026-11-25, 9쪽까지만 받아 버스가 빠졌음)
  */
 export function klidWebRequest(pathname) {
-  const m = /^\/w\/klid\/(routes|pos)\/(\d{10})\/([1-9])$/.exec(pathname);
+  const m = /^\/w\/klid\/(routes|pos)\/(\d{10})\/([1-9]|[12]\d|30)$/.exec(pathname);
   if (!m) return null;
   return { op: m[1] === "routes" ? "mst_info" : "rtm_loc_info", code: m[2], page: +m[3], ttl: m[1] === "routes" ? 86400 : 4 };
 }

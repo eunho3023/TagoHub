@@ -1149,7 +1149,9 @@ export async function positions(r) {
       const rows = findRows(JSON.parse(await getText("w/bus/seoul/pos/" + sid)), "vehId");
       return { state: "ok", buses: rows.filter((x) => x.isrunyn !== "0").map((x) => ({ nodeId: x.lastStnId ? "SEB" + x.lastStnId : null, ord: int(x.sectOrd), vehicleNo: str(x.plainNo) || str(x.vehId), lat: num(x.gpsY), lng: num(x.gpsX), dataAt: seoulTime(x.dataTm), crowd: crowdSeoul(x.congetion ?? x.congestion, x.isFullFlag), kind: seoulKind(x.busType) })) };
     }
-    if (gid && ggCity(r.city)) {
+    // 경기 노선 id(GGB+9자리)는 경기 버스(GBIS)로. 대전 터미널에 서는 경기 시외버스(8302 시흥-대전 등)는 도시가 대전이라
+    // TAGO 에 묻고 있었는데 TAGO 에는 그 노선이 없어 늘 빈 답 — TAGO 위치 하루 한도만 썼음 (2026-11-25)
+    if (gid) {
       const rows = findRows(JSON.parse(await getText("w/bus/gg/pos/" + gid)), "plateNo");
       return { state: "ok", buses: rows.map((x) => ({ nodeId: x.stationId != null ? "GGB" + x.stationId : null, ord: int(x.stationSeq), vehicleNo: str(x.plateNo), lat: null, lng: null, kind: ggKind(x.lowPlate) })) };
     }
@@ -1288,6 +1290,7 @@ export async function routeIdByNo(city, no) {
 }
 /** 이보다 오래전에 보낸 위치는 지금 안 다니는 차의 마지막 위치 (울산 2,675대 중 하루 넘은 것 1,554대) */
 export const KLID_FRESH_MS = 3 * 60 * 1000;
+export const KLID_MAX_PAGES = 30;
 const klidItems = (j) => { const it = j?.body?.items?.item; return Array.isArray(it) ? it : it ? [it] : []; };
 /** "2026-11-24 21:00:34.099502"(한국 시각) → ms */
 export const klidTime = (s) => { const t = Date.parse(String(s || "").slice(0, 19).replace(" ", "T") + "+09:00"); return Number.isFinite(t) ? t : null; };
@@ -1309,7 +1312,8 @@ async function klidRegionBuses(reg, b, now) {
   }
   const [routes, first] = await Promise.all([klidRouteMemo.get(reg.code), getText(`w/klid/pos/${reg.code}/1`).then(JSON.parse)]);
   const rows = klidItems(first);
-  const pages = Math.min(9, Math.ceil((+first?.body?.totalCount || 0) / 1000));
+  // 지난 위치가 섞여 있어 새 위치가 모든 쪽에 흩어져 있음: 30쪽까지 다 받음 (충주 19쪽, 2026-11-25)
+  const pages = Math.min(KLID_MAX_PAGES, Math.ceil((+first?.body?.totalCount || 0) / 1000));
   for (const more of await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => getText(`w/klid/pos/${reg.code}/${i + 2}`).then((t) => klidItems(JSON.parse(t))).catch(() => [])))) rows.push(...more);
   return klidPick(rows, routes, reg, b, now);
 }

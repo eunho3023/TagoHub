@@ -17,6 +17,7 @@ import { handleNotices } from "./notices.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
 import { healthCron, healthDue, handleHealth, noteQuota, isQuotaBody } from "./health.js";
+import { noteUse, useReport } from "./usage.js";
 import { upstreamFetch, handleRelay } from "./krrelay.js";
 
 /** 서버 코드가 받는 길 (나머지는 화면·자료 파일). pages/_routes.json 과 같음 */
@@ -65,7 +66,7 @@ export default {
     if (!path) return new Response("not allowed", { status: 404 });
     if (!env.DATA_GO_KR_KEY) return new Response("server key missing", { status: 500 });
 
-    return dataGo(path, url.search, request.headers.get("Accept"), env, ctx, {});
+    return dataGo(path, url.search, request.headers.get("Accept"), env, ctx, {}, "app");
   },
 };
 
@@ -123,6 +124,12 @@ async function web(request, url, env, ctx) {
   // 정류장 지난 운행 기록 (정류장 시간표, src/log.js)
   if (url.pathname === "/w/log/stop") return handleWebLog(url, env);
   if (url.pathname.startsWith("/w/gps/")) return new Response(JSON.stringify(await gpsInfo(env.DB, decodeURIComponent(url.pathname.slice("/w/gps/".length))).catch(() => null)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+  // 공공데이터포털 서비스별·시간대별·쓴 곳별 실제 요청 수 (src/usage.js). ?day=YYYY-MM-DD, 없으면 오늘(한국 시각)
+  if (url.pathname === "/w/use") {
+    const q = url.searchParams.get("day") || "", day = /^20\d\d-\d\d-\d\d$/.test(q) ? q : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const body = env.DB ? await useReport(env.DB, day).catch(() => null) : null;
+    return new Response(JSON.stringify(body), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+  }
   if (url.pathname === "/w/poll/status") return new Response(JSON.stringify(await pollStatus(env)), { headers: { ...WEB_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (url.pathname.startsWith("/w/ex/")) return exWeb(request, url, env, ctx);
   // 서울시 교통정보(TOPIS): 실시간 도로 소통·돌발·교통량 (src/seoultraffic.js)
@@ -151,11 +158,11 @@ async function web(request, url, env, ctx) {
     if (!success) return new Response("too many requests", { status: 429, headers: { ...WEB_HEADERS, "Retry-After": "60" } });
   }
   if (!env.DATA_GO_KR_KEY) return new Response("server key missing", { status: 500, headers: WEB_HEADERS });
-  return dataGo(r.path, r.search, "application/xml", env, ctx, WEB_HEADERS);
+  return dataGo(r.path, r.search, "application/xml", env, ctx, WEB_HEADERS, "web");
 }
 
-/** 공공데이터포털에 서버 키로 묻고, 정상 응답은 잠시 저장해 같은 요청에 나눠 줌. [extra] 는 응답에 덧붙일 헤더 */
-async function dataGo(path, search, accept, env, ctx, extra) {
+/** 공공데이터포털에 서버 키로 묻고, 정상 응답은 잠시 저장해 같은 요청에 나눠 줌. [extra] 는 응답에 덧붙일 헤더, [src] 는 요청 수 셀 때 쓴 곳 (src/usage.js) */
+async function dataGo(path, search, accept, env, ctx, extra, src = "web") {
   const cache = caches.default;
   const key = new Request(cacheKey(path, search));
   const hit = await cache.match(key);
@@ -182,6 +189,8 @@ async function dataGo(path, search, accept, env, ctx, extra) {
     headers: { Accept: accept || "application/xml, text/xml;q=0.9, */*;q=0.8" },
   }, env);
   const body = await upstream.text();
+  // 기관에 실제로 물은 수 (/w/use, src/usage.js): 하루 한도를 무엇이 쓰는지 보려고
+  if (env.DB) ctx.waitUntil(noteUse(env.DB, path, src).catch(() => false));
   // 하루 한도 초과면 서비스별로 적어 둠 (/w/health 에 보임, src/health.js)
   if (env.DB && isQuotaBody(body)) ctx.waitUntil(noteQuota(env, path, body));
   const headers = {
