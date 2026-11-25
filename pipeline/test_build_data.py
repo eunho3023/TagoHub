@@ -861,6 +861,8 @@ def test_static_city_times():
     yy = bd.static_city_info(d2, "YDB", bd.STATIC_TIMES / "yeongyang.csv", "37340")
     assert list(yy) == ["YDB1"] and yy["YDB1"] == ("06:30", "18:30", None)
     assert len(list(open(bd.STATIC_TIMES / "changnyeong.csv", encoding="utf-8"))) > 100
+    gs = {r.split(",")[0]: r.strip().split(",")[1:] for r in list(open(bd.STATIC_TIMES / "gunsan.csv", encoding="utf-8"))[1:]}
+    assert len(gs) >= 45 and gs["1"] == ["06:17", "22:14"] and all("04:00" <= f <= l for f, l in gs.values())
     real = bd.static_city_info(db, "GYB", bd.STATIC_TIMES / "gyeongsan.csv")
     assert real["GYB1"] == ("07:02", "19:50", None) and real["GYB3"] == ("06:55", "22:35", None)
 
