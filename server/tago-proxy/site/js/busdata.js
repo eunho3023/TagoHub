@@ -253,7 +253,8 @@ async function routeRaw(id, city) {
 // 저장해 둔 노선 정류장 목록은 30일까지 바로 보여 줌 (서버 쪽은 열 때마다 뒤에서 다시 받아 저장). 예전 하루: 다음 날 열면 다시 기다렸음
 const ROUTE_KEEP_MS = 30 * 24 * 3600 * 1000;
 async function savedRoute(id, city) {
-  const key = "route:" + legacyId(id) + ":" + (city || "");
+  // 경기 노선은 2026-11-25 부터 요약(첫차·막차)이 붙음: 그 전에 저장한 것(요약 없음)은 쓰지 않게 열쇠를 바꿈
+  const key = "route:" + (ggId(id) ? "g2:" : "") + legacyId(id) + ":" + (city || "");
   const net = () => (ggId(id) ? ggRoute(id) : tagoRoute(id, city))
     // 전주·제주 노선은 TAGO 가 실패하면(하루 한도 초과 등) 전주시·제주 버스정보로 (앱과 같은 자료)
     .catch((e) => { if (/^(JUB|JEB)\d{9}$/.test(legacyId(id))) return null; throw e; })
@@ -339,7 +340,23 @@ async function tagoRoute(id, city) {
 }
 
 /** 경기 노선 (경기 GBIS 정류장 목록, 서버 하루 저장): 좌표·순번, 회차점까지 상행 */
+/**
+ * 경기 노선 정보(GBIS getBusRouteInfoItemv2) → 노선 요약 {id, no, start, end, type, first, last, interval, intervalSat, intervalSun} (첫차·막차는 기점 출발 평일).
+ * 못 읽으면 null. 경기 노선은 요약이 없어 정류장 시간표가 비었음 (2026-11-25)
+ */
+export function ggInfoSum(body, id) {
+  const it = body?.response?.msgBody?.busRouteInfoItem;
+  const x = Array.isArray(it) ? it[0] : it;
+  if (!x || typeof x !== "object") return null;
+  const t = (v) => { const m = /^(\d{1,2}):?(\d\d)$/.exec(String(v ?? "").trim()); return m ? m[1].padStart(2, "0") + ":" + m[2] : null; };
+  const gap = (v) => { const n = int(v); return n > 0 ? n : null; };
+  return { id, no: str(x.routeName), start: str(x.startStationName), end: str(x.endStationName), type: str(x.routeTypeName) || GG_TYPES[int(x.routeTypeCd)] || null,
+    first: t(x.upFirstTime), last: t(x.upLastTime), interval: gap(x.peekAlloc), intervalSat: gap(x.satPeekAlloc), intervalSun: gap(x.sunPeekAlloc) };
+}
+
 async function ggRoute(id) {
+  // 노선 정보(첫차·막차·배차)는 같이 물되 못 받아도 정류장 목록은 보여 줌
+  const infoP = getText("w/bus/gg/info/" + ggId(id)).then((t) => ggInfoSum(JSON.parse(t), id)).catch(() => null);
   const body = JSON.parse(await getText("w/bus/gg/stops/" + ggId(id)));
   // 정류장이 없다는 답(resultCode 4 "결과가 존재하지 않습니다")만 '없음'(null). 한도·오류 답은 실패로
   const code = body?.response?.msgHeader?.resultCode;
@@ -351,7 +368,8 @@ async function ggRoute(id) {
   const t = rows.findIndex((r) => r.turn);
   const stops = rows.map((r, i) => ({ ...r, upDown: t < 0 ? null : i <= t ? "0" : "1" }));
   const start = stops[0].name, end = t >= 0 ? stops[t].name : stops[stops.length - 1].name;
-  return { id, no: "노선", start, end, city: "31", region: "경기", type: null, sum: null, stops };
+  const sum = await infoP;
+  return { id, no: (sum && sum.no) || "노선", start, end, city: "31", region: "경기", type: (sum && sum.type) || null, sum: sum && sum.first ? sum : null, stops };
 }
 
 // 정류장 노선 목록은 이 브라우저에 하루 저장해 두고 바로 보여 줌 (서버 확인은 뒤에서, 달라졌으면 onNewer 로 알림).

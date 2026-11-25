@@ -156,3 +156,17 @@ test("초정밀 버스 지역 15곳: 지도 가운데로 지역 판단, 서울 �
   assert.equal(await routeIdByNo("37050", "20-2"), "GMB202-1");
   assert.equal(await routeIdByNo("37050", "없음"), null);
 });
+
+test("경기 노선 정보 → 요약: 기점 평일 첫차·막차, 평일·토·일 배차 (1007, 2026-11-25 실제 답)", async () => {
+  const { ggInfoSum, plannedTimes } = await import("../site/js/busdata.js");
+  const body = { response: { msgHeader: { resultCode: 0 }, msgBody: { busRouteInfoItem: {
+    routeId: 234000015, routeName: 1007, routeTypeCd: 11, routeTypeName: "직행좌석형시내버스", startStationName: "수원대학교", endStationName: "잠실광역환승센터",
+    upFirstTime: "04:40", upLastTime: "22:00", downFirstTime: "06:10", downLastTime: "23:35", peekAlloc: 10, satPeekAlloc: 20, sunPeekAlloc: 0,
+  } } } };
+  const s = ggInfoSum(body, "GGB234000015");
+  assert.deepEqual(s, { id: "GGB234000015", no: "1007", start: "수원대학교", end: "잠실광역환승센터", type: "직행좌석형시내버스", first: "04:40", last: "22:00", interval: 10, intervalSat: 20, intervalSun: null });
+  const ts = plannedTimes(s, 15, 3);
+  assert.equal(ts[0], 4 * 60 + 40 + 15);
+  assert.equal(ts[1] - ts[0], 10);
+  assert.equal(ggInfoSum({ response: { msgHeader: { resultCode: 4 } } }, "GGB1"), null);
+});
