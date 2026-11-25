@@ -15,7 +15,7 @@ def run(stops, routes):
         for sid in l:
             by.setdefault(sid, set()).add(r)
     served = {k: len(v) for k, v in by.items()}
-    return ss.spots(stops, served, ss.headings(rows), by)
+    return ss.spots(stops, served, ss.headings(rows), by, ss.ends([(r, i, sid) for r, i, sid, _, _ in rows]))
 
 
 def test_no_route_hidden():
@@ -92,7 +92,26 @@ def test_slightly_skewed_same_name_close_merged():
     assert "X1" not in sp and "X2" not in sp
 
 
+def test_terminal_board_and_alight_merged():
+    # 전주 송천동종점: 노선들이 타는 곳(T1)에서 출발하고 60m 떨어진 내리는 곳(T2)에서 끝남. 순환 노선(C)은 둘 다 지남 → 한 점, 대표는 타는 곳
+    stops = [("T1", "송천동종점", 37.0, 127.0, "1", "11"), ("T2", "송천동종점", 37.0 - 60 * D, 127.0, "2", "11"),
+             ("A", "가", 37.01, 127.0, "3", "11"), ("B", "나", 37.02, 127.0, "4", "11")]
+    h, sp = run(stops, {"R1": ["T1", "A", "B"], "R2": ["B", "A", "T2"], "C": ["T1", "A", "T2"]})
+    assert sp.get("T1") == "T1" and sp.get("T2") == "T1"
+
+
+def test_terminal_pair_needs_same_name_and_no_bridge():
+    # 이름이 다르면 안 묶음
+    stops = [("T1", "송천동종점", 37.0, 127.0, "1", "11"), ("T2", "송천동", 37.0 - 60 * D, 127.0, "2", "11"),
+             ("A", "가", 37.01, 127.0, "3", "11")]
+    assert run(stops, {"R1": ["T1", "A"], "R2": ["A", "T2"]})[1] == {}
+    # 중간에 서는 정류장(M)과는 종점 규칙으로 묶지 않음
+    stops = [("T1", "역앞", 37.0, 127.0, "1", "11"), ("M", "역앞", 37.0 - 60 * D, 127.0, "2", "11"),
+             ("A", "가", 37.01, 127.0, "3", "11"), ("B", "나", 36.99, 127.0, "4", "11")]
+    assert run(stops, {"R1": ["T1", "A"], "R2": ["A", "M", "B"]})[1] == {}
+
+
 if __name__ == "__main__":
-    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged, test_unknown_direction_same_name_close_merged, test_slightly_skewed_same_name_close_merged):
+    for t in (test_no_route_hidden, test_keep_gyeonggi_and_twins_without_routes, test_other_city_same_dir_far_merged_opposite_not, test_same_city_crowded_merged_unless_same_route, test_same_number_leading_zero_merged, test_unknown_direction_same_name_close_merged, test_slightly_skewed_same_name_close_merged, test_terminal_board_and_alight_merged, test_terminal_pair_needs_same_name_and_no_bridge):
         t(); print("PASS", t.__name__)
     print("ALL PASSED")
