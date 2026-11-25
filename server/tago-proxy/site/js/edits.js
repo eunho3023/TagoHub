@@ -170,9 +170,13 @@ export function passStops(line, stops, maxM = 80) {
       if (d <= bd) { bd = d; best = k; } else if (best >= 0 && d > bd + 30) break;
     }
     if (best < 0) continue;
-    if (dist(out[best], s) <= 3) { out[best] = s; cur = best; }
-    else if (dist(out[best + 1], s) <= 3) { out[best + 1] = s; cur = best + 1; }
-    else { out.splice(best + 1, 0, s); cur = best + 1; }
+    // 정류장이 선에서 3m 넘게 떨어져 있으면 정류장 좌표 대신 선 위 가장 가까운 자리를 넣음: 예전엔 길가(또는 길 밖)에 찍힌 정류장 좌표를
+    // 그대로 넣어 선이 V자로 꺾였음 (2026-11-26 전주 104번 송천동종점, 동부대로에서 35m 아래로 내려갔다 올라옴). 정류장 점은 그릴 때 선 위로 옮김
+    const a = out[best], b = out[best + 1], t = toSeg(s, a, b).t;
+    const p = bd <= 3 ? s : [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    if (dist(a, p) <= 3) { out[best] = p; cur = best; }
+    else if (dist(b, p) <= 3) { out[best + 1] = p; cur = best + 1; }
+    else { out.splice(best + 1, 0, p); cur = best + 1; }
   }
   return out;
 }
