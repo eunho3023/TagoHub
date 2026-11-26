@@ -146,3 +146,15 @@ test("TAGO 버스 위치 줄: 동시에 max 개까지, 급한 것(노선 화면)
   // 시작 사이는 250ms 넘게
   for (let i = 1; i < order.length; i++) assert.equal(order[i][1] - order[i - 1][1] >= 250, true);
 });
+
+test("제천처럼 exact 시간표는 빈 요일 칸이 운행 없음 (평일 시각으로 채우지 않음), 아니면 예전처럼 채움", async () => {
+  const { plannedTimes, todayDeps } = await import("../site/js/busdata.js");
+  const loose = { weekday: [445, 790], sat: [], holi: [] };
+  const exact = { ...loose, exact: true };
+  assert.deepEqual(plannedTimes({ deps: loose }, 5, 7), [450, 795]);   // 일요일: 평일 시각으로 채움 (예전과 같음)
+  assert.deepEqual(plannedTimes({ deps: exact }, 5, 7), []);          // 일요일 운행 없음
+  assert.deepEqual(plannedTimes({ deps: exact }, 5, 3), [450, 795]);
+  assert.deepEqual(todayDeps(loose, 0), [445, 790]);
+  assert.deepEqual(todayDeps(exact, 0), []);
+  assert.deepEqual(todayDeps(exact, 6), []);
+});

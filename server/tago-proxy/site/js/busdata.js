@@ -912,11 +912,12 @@ export function plannedTimes(sum, offset, day, downOffset = null) {
   if (!sum) return [];
   // 지자체 공식 배차시간표(기점 출발 시각 전체)가 있으면 그것을 씀. 종점에서도 출발하는 노선은 돌아오는 쪽 정류장에 그 버스도 더함
   if (sum.deps) {
-    // 토·일 시각이 비면 토 → 평일 순으로 (앱 CityTimetable.parse 와 같음). 종점 출발은 그 요일 것만
+    // 토·일 시각이 비면 토 → 평일 순으로 (앱 CityTimetable.parse 와 같음). 종점 출발은 그 요일 것만.
+    // exact: 빈 칸이 그날 운행 없음 (제천은 평일만 다니는 노선이 많아 휴일에 평일 시각을 보이면 안 됨)
     const arr = (l) => (Array.isArray(l) ? l : []);
     const pick = (k) => {
       const d = sum.deps, wd = arr(d[k]), sat = arr(d[k.replace("weekday", "sat")]), holi = arr(d[k.replace("weekday", "holi")]);
-      if (k !== "weekday") return day === 6 ? sat : day === 7 ? holi : wd;
+      if (k !== "weekday" || d.exact) return day === 6 ? sat : day === 7 ? holi : wd;
       return day === 6 ? (sat.length ? sat : wd) : day === 7 ? (holi.length ? holi : sat.length ? sat : wd) : wd;
     };
     const off = Math.max(0, Math.round(offset || 0));
@@ -963,11 +964,11 @@ export function offsetMinutes(stops, ids, from = 0) {
   return m;
 }
 /** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
-const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", WNB: "wanju", SKB: "sokcho" };
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", WNB: "wanju", SKB: "sokcho", JCB: "jecheon" };
 /** 배포할 때 받아 둔 자료 조각(data/times/<지역>.json)으로 보는 지역: 천안·구미(서버 접속 막힘), 안동·거제(데이터 PC 에서 받음, 2026-11-24) */
-const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje", "gangneung", "wanju", "sokcho"]);
-/** 서버에 묻지 않고 자료 조각만 보는 지역 (강릉: 공공데이터포털 배차정보 파일, 2026-11-25 / 완주·속초: 군·시 버스정보 시간표) */
-const FILE_ONLY_AREAS = new Set(["andong", "geoje", "gangneung", "wanju", "sokcho"]);
+const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje", "gangneung", "wanju", "sokcho", "jecheon"]);
+/** 서버에 묻지 않고 자료 조각만 보는 지역 (강릉: 공공데이터포털 배차정보 파일, 2026-11-25 / 완주·속초·제천: 군·시 버스정보 시간표) */
+const FILE_ONLY_AREAS = new Set(["andong", "geoje", "gangneung", "wanju", "sokcho", "jecheon"]);
 /**
  * 노선의 공식 배차시간표 {weekday, sat, holi:[분], source, tables?} — 지자체 버스정보 사이트(서버 하루 저장) 또는 배포 때 받은 자료 조각. 없으면 null
  */
@@ -979,11 +980,12 @@ export async function routeDeps(id, no) {
   if ((!deps || !Array.isArray(deps.weekday)) && FILE_TIME_AREAS.has(area)) deps = (await cached(`data/times/${area}.json`).catch(() => ({})))[id.slice(3)] || null;
   return deps && Array.isArray(deps.weekday) && (deps.weekday.length || (deps.holi || []).length) ? deps : null;
 }
-/** 오늘(한국 시각 요일) 시간표 칸: 토 → sat, 일 → holi, 나머지 weekday (공휴일은 모름) */
+/** 오늘(한국 시각 요일) 시간표 칸: 토 → sat, 일 → holi, 나머지 weekday (공휴일은 모름). 빈 칸은 평일 것으로 (exact 면 빈 채로) */
 export function todayDeps(deps, dow = new Date(Date.now() + 9 * 3600 * 1000).getUTCDay()) {
   if (!deps) return [];
   const k = dow === 6 ? "sat" : dow === 0 ? "holi" : "weekday";
-  return (deps[k] && deps[k].length ? deps[k] : deps.weekday) || [];
+  // exact(제천): 빈 칸은 그날 운행 없음
+  return (deps[k] && (deps[k].length || deps.exact) ? deps[k] : deps.weekday) || [];
 }
 /** 지도 버스 진행 방향: 같은 차의 앞 위치에서 15m 넘게 움직였으면 그 방향(북쪽 0도, 시계 방향), 아니면 앞서 잰 방향 */
 export function headingTracker() {
