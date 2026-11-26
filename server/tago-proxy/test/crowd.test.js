@@ -106,3 +106,20 @@ test("실시간 버스 없는 줄의 다음 시간표 시각: 공식 시간표·
   // 배차 간격을 알면 계산한 시각
   assert.deepEqual(nextPlanned({ sum: { first: "06:00", last: "22:00", interval: 20 }, offset: 5 }, 3, 421), { at: 425, wait: 4 });
 });
+
+test("속초·완주 배차시간표는 서버에 묻지 않고 배포 때 만든 자료 조각(data/times/<지역>.json)에서", async () => {
+  const { routeDeps } = await import("../site/js/busdata.js");
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    const body = /data\/times\/sokcho\.json/.test(url) ? { "43101003": { weekday: [380, 440], sat: [380], holi: [380], source: "속초시 버스정보시스템 배차시간표" } }
+      : /data\/manifest\.json/.test(url) ? { built: 1 } : {};
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  };
+  try {
+    const d = await routeDeps("SKB43101003", "7");
+    assert.deepEqual(d && d.weekday, [380, 440]);
+    assert.equal(asked.some((u) => u.includes("w/bus/time/")), false);
+  } finally { globalThis.fetch = realFetch; }
+});
