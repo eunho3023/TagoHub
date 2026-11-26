@@ -107,18 +107,18 @@ test("실시간 버스 없는 줄의 다음 시간표 시각: 공식 시간표·
   assert.deepEqual(nextPlanned({ sum: { first: "06:00", last: "22:00", interval: 20 }, offset: 5 }, 3, 421), { at: 425, wait: 4 });
 });
 
-test("속초 배차시간표는 서버에 묻지 않고 배포 때 만든 자료 조각(data/times/<지역>.json)에서", async () => {
+test("강릉 배차시간표는 서버에 묻지 않고 배포 때 만든 자료 조각(data/times/<지역>.json)에서", async () => {
   const { routeDeps } = await import("../site/js/busdata.js");
   const asked = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     asked.push(String(url));
-    const body = /data\/times\/sokcho\.json/.test(url) ? { "43101003": { weekday: [380, 440], sat: [380], holi: [380], source: "속초시 버스정보시스템 배차시간표" } }
+    const body = /data\/times\/gangneung\.json/.test(url) ? { "42001001": { weekday: [380, 440], sat: [380], holi: [380], source: "강릉시 배차정보 (공공데이터포털)" } }
       : /data\/manifest\.json/.test(url) ? { built: 1 } : {};
     return { ok: true, status: 200, text: async () => JSON.stringify(body) };
   };
   try {
-    const d = await routeDeps("SKB43101003", "7");
+    const d = await routeDeps("GNB42001001", "200");
     assert.deepEqual(d && d.weekday, [380, 440]);
     assert.equal(asked.some((u) => u.includes("w/bus/time/")), false);
   } finally { globalThis.fetch = realFetch; }
@@ -204,15 +204,23 @@ test("광주 버스 위치는 광주 BIS 응답에서 (정류장 id KJB+CURR_STO
 
 test("완주 고산북부권은 시간표를 옮기지 않고 원본(완주군시설관리공단) 링크만 (공공누리 제4유형, 2026-11-27)", async () => {
   const { outsideTimes, routeDeps } = await import("../site/js/busdata.js");
-  const at = outsideTimes(36.09, 127.28);   // 운주터미널
+  const at = outsideTimes({ id: "TSB312000039", lat: 36.09, lng: 127.28, city: "TS312" });   // 운주터미널
   assert.equal(at.length, 1);
   assert.ok(at[0].url.startsWith("https://www.wjss.or.kr/") && at[0].label.includes("완주"));
-  assert.deepEqual(outsideTimes(35.82, 127.15), []);   // 전주 시내
-  assert.deepEqual(outsideTimes(null, null), []);
-  // WNB 노선 시간표 조각(data/times/wanju.json)은 더 묻지 않음
+  assert.deepEqual(outsideTimes({ id: "SEB1", lat: 37.5, lng: 127.0, city: "11" }), []);   // 서울
+  assert.deepEqual(outsideTimes(null), []);
+  // 버스정보 사이트 12곳(공공누리 표시 없음)도 원본 링크: 정류장 id 앞 글자나 도시 코드로, 노선도 같게
+  assert.ok(outsideTimes({ id: "JUB305032360", lat: 35.83, lng: 127.06, city: "35010" })[0].url.includes("its.jeonju.go.kr"));
+  assert.ok(outsideTimes({ id: "TSB255000152", lat: 38.17, lng: 128.6, city: "32060" })[0].url.includes("bis.sokcho.go.kr"));
+  assert.ok(outsideTimes({ id: "JEB405328101", city: "39" })[0].url.includes("bus.jeju.go.kr"));   // 제주 노선
+  assert.equal(outsideTimes({ id: "GNB42001001", city: "32030" }).length, 0);   // 강릉은 공공데이터포털 자료라 그대로
+  // 옮기지 않는 지역 노선은 시간표를 묻지 않음 (완주 조각·전주 서버 시간표)
   const asked = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => { asked.push(String(url)); return { ok: true, status: 200, text: async () => "{}" }; };
-  try { await routeDeps("WNB001", "고산-운주").catch(() => null); } finally { globalThis.fetch = realFetch; }
-  assert.equal(asked.some((u) => u.includes("data/times/wanju")), false);
+  try {
+    assert.equal(await routeDeps("WNB001", "고산-운주").catch(() => null), null);
+    assert.equal(await routeDeps("JUB305001140", "165").catch(() => null), null);
+  } finally { globalThis.fetch = realFetch; }
+  assert.equal(asked.some((u) => u.includes("data/times/wanju") || u.includes("w/bus/time/")), false);
 });

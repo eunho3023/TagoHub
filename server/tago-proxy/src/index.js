@@ -10,7 +10,6 @@ import { storeKey, getStored, putStored, DAY_MS } from "./tagostore.js";
 import { handleSeoulTraffic } from "./seoultraffic.js";
 import { handlePub } from "./pubgeo.js";
 import { noteInterest, pollCron, pollStatus } from "./poll.js";
-import { handleJeonjuTime, handleBusTime } from "./timetable.js";
 import { handleReport } from "./report.js";
 import { handleEdits } from "./edits.js";
 import { handleNotices } from "./notices.js";
@@ -145,9 +144,8 @@ async function web(request, url, env, ctx) {
   if (url.pathname.startsWith("/w/kac/")) return kacWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/signal/")) return signalWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/klid/")) return klidWeb(request, url, env, ctx);
-  // 지자체 공식 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미 버스정보 사이트, src/timetable.js)
-  if (url.pathname.startsWith("/w/bus/jeonju/time/")) return handleJeonjuTime(url.pathname.slice("/w/bus/jeonju/time/".length), ctx);
-  if (url.pathname.startsWith("/w/bus/time/")) { const [area, id] = url.pathname.slice("/w/bus/time/".length).split("/"); return handleBusTime(area, id, ctx, area === "jeju" ? (u, i) => upstreamFetch(u, i || {}, env) : fetch, url.searchParams.get("no")); }   // 제주만 국내 중계로 (Cloudflare 에서 바로 물으면 504)
+  // 지자체 버스정보 사이트 배차시간표(/w/bus/time/…)는 뺐음: 공공누리 표시 없이 "All rights reserved" 라 옮겨 보여 줄 허락이 없음
+  // (2026-11-27 사용자 결정, 웹은 원본 사이트 링크). 예전 주소는 아래 busWeb 에서 404
   if (url.pathname.startsWith("/w/bus/")) return busWeb(request, url, env, ctx);
   if (url.pathname.startsWith("/w/icn/")) return icnWeb(request, url, env, ctx);
   const r = webRequest(url.pathname, url.search);
