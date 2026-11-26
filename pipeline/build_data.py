@@ -1600,7 +1600,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     write_gbis_stops(db, gbis_stops or {}, known)
     # 노선 API 가 없는 강릉: 공공데이터포털 노선 파일 (정류장 정리보다 먼저)
     write_gangneung(db)
-    write_wanju(db)
+    # 완주 고산북부권 마을버스는 공공누리 제4유형이라 넣지 않음 (웹은 원본 링크, 2026-11-27)
     write_sokcho(db)
     # 노선에만 있던 정류장을 정류장 표에 (교통안전공단 겹친 정류장 지우기·정류장 정리보다 먼저)
     add_route_only_stops(db)
@@ -1874,7 +1874,7 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
                     prev = cs[0]
                     continue
             if not cs:
-                # 우리 정류장에 없는 이름: 파일의 좌표(위도·경도 칸, 강릉·완주는 브이월드로 찾아 둔 것)가 있으면 새 정류장으로 (add_route_only_stops 가 정류장 표에 넣음)
+                # 우리 정류장에 없는 이름: 파일의 좌표(위도·경도 칸, 강릉은 브이월드로 찾아 둔 것)가 있으면 새 정류장으로 (add_route_only_stops 가 정류장 표에 넣음)
                 if la and lo:
                     nm = s["정류소명"].strip()
                     pick = (prefix + "S" + hashlib.md5(f"{nm}|{la:.5f}|{lo:.5f}".encode()).hexdigest()[:10], la, lo, nm)
@@ -1911,20 +1911,6 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
 def write_gangneung(db, folder=None):
     """강릉 시내버스 노선(공공데이터포털 15178618·15178624·15178626, 2026-11-13). TAGO 에 강릉 노선이 0개라 정류장 시간표가 비었음 (2026-11-25)"""
     return write_static_routes(db, folder or STATIC_ROUTES / "gangneung", "GNB", "32030", "강릉", "강릉 (공공데이터포털 파일)", "city IN ('32030', 'TS252')")
-
-
-# 완주 고산북부권(고산·비봉·화산·동상·경천·운주) 정류장을 찾는 범위
-WANJU_BOX = (35.95, 36.20, 127.10, 127.45)
-
-
-def write_wanju(db, folder=None):
-    """
-    완주군 공영마을버스 고산북부권(완주군시설관리공단 wjss.or.kr 시간표·노선도, 공공누리 4유형 출처표시) → 노선 id WNB…, 구간(고산-운주 등)마다 노선.
-    TAGO·전주시 버스 자료에 완주 고산 북쪽 노선이 없어 운주 가는 버스가 안 보였음 (2026-11-25). 정류장은 고산북부권 범위 안에서 이름으로
-    """
-    s, n, w, e = WANJU_BOX
-    return write_static_routes(db, folder or STATIC_ROUTES / "wanju", "WNB", "35310", "완주", "완주 고산북부권 마을버스",
-                               "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?", (s, n, w, e), fuzzy=True)
 
 
 SOKCHO_BOX = (37.95, 38.65, 128.35, 128.75)   # 양양 남쪽 ~ 고성 대진

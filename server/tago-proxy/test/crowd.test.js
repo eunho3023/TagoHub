@@ -107,7 +107,7 @@ test("실시간 버스 없는 줄의 다음 시간표 시각: 공식 시간표·
   assert.deepEqual(nextPlanned({ sum: { first: "06:00", last: "22:00", interval: 20 }, offset: 5 }, 3, 421), { at: 425, wait: 4 });
 });
 
-test("속초·완주 배차시간표는 서버에 묻지 않고 배포 때 만든 자료 조각(data/times/<지역>.json)에서", async () => {
+test("속초 배차시간표는 서버에 묻지 않고 배포 때 만든 자료 조각(data/times/<지역>.json)에서", async () => {
   const { routeDeps } = await import("../site/js/busdata.js");
   const asked = [];
   const realFetch = globalThis.fetch;
@@ -200,4 +200,19 @@ test("광주 버스 위치는 광주 BIS 응답에서 (정류장 id KJB+CURR_STO
   assert.deepEqual(gwangjuBusRows(ok({ CURR_STOP_ID: 7, CARNO: "광주1", LOW_BUS: "1" })), [{ nodeId: "KJB7", vehicleNo: "광주1", kind: "저상" }]);   // 한 대면 배열이 아닐 수 있음
   assert.deepEqual(gwangjuBusRows(ok([])), []);
   assert.equal(gwangjuBusRows(`<OpenAPI_ServiceResponse><returnReasonCode>04</returnReasonCode></OpenAPI_ServiceResponse>`), null);   // 오류 → TAGO 로
+});
+
+test("완주 고산북부권은 시간표를 옮기지 않고 원본(완주군시설관리공단) 링크만 (공공누리 제4유형, 2026-11-27)", async () => {
+  const { outsideTimes, routeDeps } = await import("../site/js/busdata.js");
+  const at = outsideTimes(36.09, 127.28);   // 운주터미널
+  assert.equal(at.length, 1);
+  assert.ok(at[0].url.startsWith("https://www.wjss.or.kr/") && at[0].label.includes("완주"));
+  assert.deepEqual(outsideTimes(35.82, 127.15), []);   // 전주 시내
+  assert.deepEqual(outsideTimes(null, null), []);
+  // WNB 노선 시간표 조각(data/times/wanju.json)은 더 묻지 않음
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { asked.push(String(url)); return { ok: true, status: 200, text: async () => "{}" }; };
+  try { await routeDeps("WNB001", "고산-운주").catch(() => null); } finally { globalThis.fetch = realFetch; }
+  assert.equal(asked.some((u) => u.includes("data/times/wanju")), false);
 });
