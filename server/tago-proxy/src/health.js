@@ -240,7 +240,22 @@ export async function noteQuota(env, target, body, now = Date.now()) {
     return true;
   } catch { return false; }
 }
-export function _resetQuotaMemo() { quotaMemo.clear(); }
+const okMemo = new Map();
+/**
+ * 그 서비스가 다시 정상으로 답하면 오늘 적어 둔 한도 초과를 지움 (같은 서비스는 1분에 한 번만 씀).
+ * 진짜 하루 한도라면 자정 전엔 정상 답이 올 수 없음. 잠깐 몰린 것(초당 한도 등)이 자정까지 "하루 한도 초과"로 남아 헷갈렸음 (2026-11-26 TAGO 버스 위치)
+ */
+export async function clearQuota(env, target, now = Date.now()) {
+  if (!env.DB) return false;
+  const svc = quotaService(target);
+  if (!svc || now - (okMemo.get(svc) || 0) < 60000) return false;
+  okMemo.set(svc, now);
+  try {
+    await env.DB.prepare("DELETE FROM api_quota WHERE svc = ?1 AND at < ?2").bind(svc, now).run();
+    return true;
+  } catch { return false; }   // 표가 아직 없음 등
+}
+export function _resetQuotaMemo() { quotaMemo.clear(); okMemo.clear(); }
 
 /** 한국 시각 오늘 0시 (ms). 공공데이터포털 하루 한도는 한국 자정에 풀림 */
 export function kstMidnight(now = Date.now()) {

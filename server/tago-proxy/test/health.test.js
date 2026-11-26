@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reason, checkOne, healthCron, healthDue, handleHealth, CHECKS, HEALTH_EVERY_MS, quotaService, noteQuota, extraChecks, kstMidnight, _resetQuotaMemo } from "../src/health.js";
+import { reason, checkOne, healthCron, healthDue, handleHealth, CHECKS, HEALTH_EVERY_MS, quotaService, noteQuota, clearQuota, extraChecks, kstMidnight, _resetQuotaMemo } from "../src/health.js";
 
 test("고장 이유: 키 문제·한도 초과·제공처 오류를 사람이 읽을 말로", () => {
   assert.equal(reason(401, "Unauthorized"), "인증 실패 (키 확인 필요: HTTP 401)");
@@ -142,4 +142,23 @@ test("고장 표시는 두 번 이어서 실패해야 (한 번 실패는 다시 
   await healthCron(env, fetcher, 0);
   t = tago(await (await handleHealth(env)).json());
   assert.equal(t.ok, true); assert.equal(t.failSince, null);
+});
+
+test("한도 초과로 적은 서비스가 다시 정상으로 답하면 그 줄을 지움 (진짜 하루 한도면 자정 전엔 정상 답이 없음)", async () => {
+  _resetQuotaMemo();
+  const env = { DB: await sqliteD1() };
+  const now = Date.UTC(2026, 10, 25, 22, 20);   // 11/26 07:20 KST
+  const svc = "1613000/BusLcInfoInqireService/getRouteAcctoBusLcList";
+  const names = async (t) => (await extraChecks(env, t)).map((c) => c.name).filter((n) => n.startsWith("quota:"));
+  assert.equal(await clearQuota(env, svc, now - 1000), false);   // 표가 아직 없어도 조용히
+  _resetQuotaMemo();
+  assert.equal(await noteQuota(env, svc, "<errMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</errMsg>", now), true);
+  assert.equal(await noteQuota(env, "1613000/BusRouteInfoInqireService/getX", "<errMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</errMsg>", now), true);
+  assert.deepEqual((await names(now)).sort(), ["quota:1613000/BusLcInfoInqireService", "quota:1613000/BusRouteInfoInqireService"]);
+  // 7분 뒤 버스 위치가 정상으로 옴 → 버스 위치 줄만 지움
+  assert.equal(await clearQuota(env, "https://apis.data.go.kr/" + svc + "?cityCode=1", now + 7 * 60000), true);
+  assert.equal(await clearQuota(env, svc, now + 7 * 60000 + 1000), false);   // 1분에 한 번만
+  assert.deepEqual(await names(now + 8 * 60000), ["quota:1613000/BusRouteInfoInqireService"]);
+  // 기관 주소가 아니면 아무것도 안 함
+  assert.equal(await clearQuota(env, "https://dapi.kakao.com/v2/local", now + 9 * 60000), false);
 });
