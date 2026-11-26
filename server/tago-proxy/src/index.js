@@ -16,7 +16,7 @@ import { handleEdits } from "./edits.js";
 import { handleNotices } from "./notices.js";
 import { handleAuth } from "./auth.js";
 import { handleAppShape } from "./appshape.js";
-import { healthCron, healthDue, handleHealth, noteQuota, isQuotaBody, isPerSecondBody, PER_SECOND_RETRIES, perSecondWait } from "./health.js";
+import { healthCron, healthDue, handleHealth, noteQuota, clearQuota, isQuotaBody, isPerSecondBody, PER_SECOND_RETRIES, perSecondWait } from "./health.js";
 import { noteUse, useReport } from "./usage.js";
 import { upstreamFetch, handleRelay } from "./krrelay.js";
 
@@ -212,6 +212,8 @@ async function dataGo(path, search, accept, env, ctx, extra, src = "web") {
     const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": `public, max-age=${ttl}` } });
     ctx.waitUntil(cache.put(key, stored.clone()));
     if (sk) ctx.waitUntil(putStored(env.DB, sk, body));
+    // 다시 정상으로 답함 → 오늘 적어 둔 한도 초과는 하루 한도가 아니었음
+    if (env.DB) ctx.waitUntil(clearQuota(env, path));
     // 노선별 버스 위치(GPS)는 노선 모양 자료로 모음 (src/gps.js, 차량 번호·시각은 저장하지 않음)
     if (env.DB && /getRouteAcctoBusLcList/.test(path)) {
       const q = new URLSearchParams(search);
@@ -264,6 +266,7 @@ async function relay(request, url, env, ctx) {
     const ttl = hostTtl(t.host, t.path);
     const stored = new Response(body, { status: 200, headers: { ...out, "Cache-Control": `public, max-age=${ttl}` } });
     ctx.waitUntil(cache.put(key, stored.clone()));
+    if (env.DB) ctx.waitUntil(clearQuota(env, target));
     return stored;
   }
   return new Response(body, { status: upstream.status, headers: out });
@@ -325,6 +328,7 @@ async function cachedJson(request, env, ctx, cacheUrl, upstream, ttl, ok, extraH
   const stored = new Response(body, { status: 200, headers: { ...headers, "Cache-Control": "public, max-age=" + ttl } });
   ctx.waitUntil(cache.put(key, stored.clone()));
   if (sk) ctx.waitUntil(putStored(env.DB, sk, body));
+  if (env.DB) ctx.waitUntil(clearQuota(env, upstream));
   return stored;
 }
 
