@@ -1193,8 +1193,8 @@ export function pacer(max, gapMs, now = () => Date.now(), wait = (ms) => new Pro
   };
   return (run, urgent = false) => new Promise((ok, no) => { (urgent ? urgentQ : laterQ).push({ run, ok, no }); pump(); });
 }
-/** TAGO 버스 위치: 동시에 3개, 시작 사이 0.25초 (1초에 4개까지). 지도 화면 노선 40개도 10초 안에 끝남(지도 버스는 15초마다) */
-export const TAGO_POS_MAX = 3, TAGO_POS_GAP_MS = 250;
+/** TAGO 버스 위치: 시작 사이 0.25초 (1초에 4개까지), 답을 기다리는 건 8개까지 (중계를 거치면 한 번에 1~5초라 3개면 노선 40개에 1분 가까이). 지도 화면 노선 40개도 15초 안쪽 */
+export const TAGO_POS_MAX = 8, TAGO_POS_GAP_MS = 250;
 const tagoPos = pacer(TAGO_POS_MAX, TAGO_POS_GAP_MS);
 /** 같은 노선을 같은 급함으로 이미 묻는 중이면 그 답을 같이 씀 (지도 버스가 15초마다 다시 물어도 줄이 길어지지 않게) */
 const tagoPosAsking = new Map();
