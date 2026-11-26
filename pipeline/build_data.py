@@ -13,7 +13,7 @@ TagoHub 정류장·노선 데이터 만들기 (GitHub Actions 에서 매주 실�
 - 앱이 하던 TAGO 응답 해석과 같은 필드: routeid·routeno·routetp·startnodenm·endnodenm / nodeid·nodenm·nodeno·nodeord·updowncd·gpslati·gpslong /
   startvehicletime·endvehicletime·intervaltime·intervalsattime·intervalsuntime
 """
-import datetime, gzip, hashlib, json, os, pathlib, re, shutil, sqlite3, sys, threading, time, urllib.parse
+import datetime, gzip, hashlib, json, math, os, pathlib, re, shutil, sqlite3, sys, threading, time, urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -1601,6 +1601,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     # 노선 API 가 없는 강릉: 공공데이터포털 노선 파일 (정류장 정리보다 먼저)
     write_gangneung(db)
     write_wanju(db)
+    write_sokcho(db)
     # 노선에만 있던 정류장을 정류장 표에 (교통안전공단 겹친 정류장 지우기·정류장 정리보다 먼저)
     add_route_only_stops(db)
     for sid, nm in api_served.items():
@@ -1817,6 +1818,9 @@ def gangneung_deps(path=None):
 FUZZY_TAILS = {"터미널", "정류소", "정류장", "버스정류장", "면사무소", "행정복지센터", "종점", "회차지"}
 
 
+STATIC_NEAR_M = 300   # 노선 파일 정류장 좌표에서 이만큼 안의 같은 이름 정류장만 우리 정류장으로 이음
+
+
 def write_static_routes(db, folder, prefix, city, region, label, where, args=(), fuzzy=False):
     """
     노선 API 가 없는 지역의 노선 파일(routes·stops·deps.csv, 강릉 공공데이터포털 칸)을 DB 에: 노선 id prefix+노선ID, 실시간 없음('none').
@@ -1860,9 +1864,17 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
         picks, prev = [], None
         for i, s in enumerate(seq):
             cs = look(s["정류소명"])
+            la, lo = to_float(s.get("위도")), to_float(s.get("경도"))
+            if cs and la and lo:
+                # 정류장마다 좌표가 있는 노선 파일(속초 버스정보): 그 자리 300m 안의 같은 이름 정류장만 (먼 곳 같은 이름에 잇지 않게)
+                gap = lambda c: ((c[1] - la) * 111000) ** 2 + ((c[2] - lo) * 111000 * math.cos(math.radians(la))) ** 2
+                cs = sorted((c for c in cs if c[1] is not None and gap(c) <= STATIC_NEAR_M ** 2), key=gap)
+                if cs:
+                    picks.append(cs[0])
+                    prev = cs[0]
+                    continue
             if not cs:
-                # 우리 정류장에 없는 이름: 브이월드로 찾아 둔 좌표(위도·경도 칸)가 있으면 새 정류장으로 (add_route_only_stops 가 정류장 표에 넣음)
-                la, lo = to_float(s.get("위도")), to_float(s.get("경도"))
+                # 우리 정류장에 없는 이름: 파일의 좌표(위도·경도 칸, 강릉·완주는 브이월드로 찾아 둔 것)가 있으면 새 정류장으로 (add_route_only_stops 가 정류장 표에 넣음)
                 if la and lo:
                     nm = s["정류소명"].strip()
                     pick = (prefix + "S" + hashlib.md5(f"{nm}|{la:.5f}|{lo:.5f}".encode()).hexdigest()[:10], la, lo, nm)
@@ -1913,6 +1925,19 @@ def write_wanju(db, folder=None):
     s, n, w, e = WANJU_BOX
     return write_static_routes(db, folder or STATIC_ROUTES / "wanju", "WNB", "35310", "완주", "완주 고산북부권 마을버스",
                                "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?", (s, n, w, e), fuzzy=True)
+
+
+SOKCHO_BOX = (37.95, 38.65, 128.35, 128.75)   # 양양 남쪽 ~ 고성 대진
+
+
+def write_sokcho(db, folder=None):
+    """
+    속초 시내·마을버스(속초시 버스정보시스템 bis.sokcho.go.kr 노선별 정류장·배차시간표, 고성 간성·대진과 양양까지 가는 노선 포함) → 노선 id SKB….
+    TAGO 에 속초·고성·양양 노선이 없어 이 지역 정류장에 노선이 하나도 없었음 (2026-11-26). 정류장마다 좌표가 있어 그 자리 가까운 같은 이름 정류장에 잇고, 없으면 새 정류장
+    """
+    s, n, w, e = SOKCHO_BOX
+    return write_static_routes(db, folder or STATIC_ROUTES / "sokcho", "SKB", "32060", "속초", "속초 시내·마을버스 (속초시 버스정보)",
+                               "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?", (s, n, w, e))
 
 
 def add_route_only_stops(db):

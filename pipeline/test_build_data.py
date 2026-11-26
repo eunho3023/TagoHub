@@ -928,6 +928,19 @@ def test_gangneung_routes():
     ends = db.execute("SELECT stop_id FROM route_stops WHERE route_id = ? ORDER BY seq", (gid,)).fetchall()
     assert ends[0] == ("JUB312101937",) and ends[-1] == ("TSB312000039",) and len(ends) > 10
     assert db.execute("SELECT city, realtime FROM routes WHERE id = ?", (gid,)).fetchone() == ("35310", "none")
+    # 속초: 정류장마다 좌표가 있으면 그 자리 300m 안 같은 이름 정류장에만 잇고, 먼 같은 이름은 안 쓰고 새 정류장(SKBS…)
+    s = pathlib.Path(tempfile.mkdtemp())
+    (s / "routes.csv").write_text("노선ID,노선번호,기점,종점\n43102006,9,속초영업소,임천리\n", encoding="utf-8")
+    (s / "stops.csv").write_text("노선ID,노선번호,상하행구분,정류소순번,정류소명,정류소ID,위도,경도\n"
+                                 "43102006,9,상행,0,대포항입구,1,38.173653,128.604818\n43102006,9,하행,1,임천리,2,38.05,128.62\n", encoding="utf-8")
+    (s / "deps.csv").write_text("노선ID,노선번호,방향코드,출발시간,적용운행일\n43102006,9,1,07:02,\"평일, 토요일, 일요일\"\n43102006,9,2,07:52,평일\n", encoding="utf-8")
+    db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
+        ("TSB255000152", "대포항입구", 38.173626, 128.604808, "32060"), ("TSB_FAR2", "임천리", 38.10, 128.62, "32420")])
+    assert bd.write_sokcho(db, s) == 1
+    rs = db.execute("SELECT stop_id, lat FROM route_stops WHERE route_id = 'SKB43102006' ORDER BY seq").fetchall()
+    assert rs[0] == ("TSB255000152", None) and rs[1][0].startswith("SKBS") and rs[1][1] == 38.05
+    assert db.execute("SELECT city, first, last FROM routes JOIN route_info USING(id) WHERE id = 'SKB43102006'").fetchone() == ("32060", "07:02", "07:02")
+    assert bd.static_deps(s / "deps.csv")["43102006"]["weekdayDown"] == [472]
     assert db.execute("SELECT first, last FROM route_info WHERE id = ?", (gid,)).fetchone() == ("05:40", "20:00")
     real = bd.gangneung_deps()
     assert len(real) > 100 and all(d.get("weekday") or d.get("sat") or d.get("holi") or d.get("weekdayDown") or d.get("satDown") or d.get("holiDown") for d in real.values())

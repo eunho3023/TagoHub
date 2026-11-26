@@ -155,6 +155,14 @@ def wanju_all():
     return got, len(got)
 
 
+def sokcho_all():
+    """속초 시내·마을버스: 속초시 버스정보시스템 배차시간표를 옮긴 파일(pipeline/static_routes/sokcho/deps.csv)에서"""
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
+    import build_data
+    got = {rid: {**d, "source": "속초시 버스정보시스템 배차시간표"} for rid, d in build_data.static_deps(build_data.STATIC_ROUTES / "sokcho" / "deps.csv").items()}
+    return got, len(got)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="public/data 폴더")
@@ -164,10 +172,10 @@ def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     dest = pathlib.Path(a.out) / "times"
     dest.mkdir(parents=True, exist_ok=True)
-    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all), ("gangneung", "강릉", gangneung_all), ("wanju", "완주", wanju_all)):
+    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all), ("gangneung", "강릉", gangneung_all), ("wanju", "완주", wanju_all), ("sokcho", "속초", sokcho_all)):
         kept = CACHE / f"{area}.json"
         # 강릉·완주는 저장소 파일이라 늘 새로 만듦
-        age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() and area not in ("gangneung", "wanju") else None
+        age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() and area not in ("gangneung", "wanju", "sokcho") else None
         if age is not None and age < a.max_age_days:
             print(f"  {name} 배차시간표: {age:.1f}일 전에 받은 것 사용 ({a.max_age_days:g}일마다 새로 받음)")
         else:
