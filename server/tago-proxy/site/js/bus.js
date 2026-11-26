@@ -235,7 +235,7 @@ export function stopScreen(root, p) {
       back: true,
       star: { on: Favorites.hasStop(stop), toggle: () => { Favorites.toggleStop(stop); draw(); } },
       action: isWide() ? null : { label: "위치", run: () => go("map", stop.id, { lat: stop.lat, lng: stop.lng }) },
-    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><button class="link pad" ${act(() => go("stoptable", stop.id, stopParams(stop)))}>🕘 정류장 시간표</button><button class="link pad lowbtn ${B.LowFloor.on() ? "on" : ""}" ${act(() => { B.LowFloor.set(!B.LowFloor.on()); draw(); })}>♿ 저상버스만${B.LowFloor.on() && live && !knowsLow ? " (이 지역은 차 종류를 몰라요)" : ""}</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fixstops", stop.id, { lat: stop.lat, lng: stop.lng }))}>📍 위치 고치기</button>` : ""}<div class="list">${rows.map((r, i) => {
+    }) + (status ? note(status) : "") + `<button class="link pad" ${act(() => refresh && refresh())}>↻ 새로고침</button><button class="link pad" ${act(() => go("stoptable", stop.id, stopParams(stop)))}>🕘 정류장 시간표</button>${outsideLinks(stop)}<button class="link pad lowbtn ${B.LowFloor.on() ? "on" : ""}" ${act(() => { B.LowFloor.set(!B.LowFloor.on()); draw(); })}>♿ 저상버스만${B.LowFloor.on() && live && !knowsLow ? " (이 지역은 차 종류를 몰라요)" : ""}</button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fixstops", stop.id, { lat: stop.lat, lng: stop.lng }))}>📍 위치 고치기</button>` : ""}<div class="list">${rows.map((r, i) => {
       const ends = endsOf(r);
       return `<button class="row route" ${act(() => go("route", r.id, { from: stop.id, city: r.city || (/^\d+$/.test(stop.city) ? stop.city : null), no: r.no, type: r.type }))}>
         <span class="grow">${r.type ? `<span class="badge rtype" style="background:${busColor(r.type)}">${esc(String(r.type).replace(/버스$/, ""))}</span>` : ""}<span class="badge big" style="background:${busColor(r.type)}">${esc(r.no)}</span><small>${esc(ends)}</small></span>
@@ -328,13 +328,16 @@ export function stopScreen(root, p) {
 // ── 정류장 시간표: 지난 운행 기록(최근 6주)으로 요일별 "몇 시에 몇 번 버스가 오는지" ──
 const DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
 const hhmm = (m) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+/** 우리가 옮기지 못하는 시간표(완주 고산북부권 등)는 원본 사이트로 (busdata.js OUTSIDE_TIMES) */
+const outsideLinks = (stop) => (stop ? B.outsideTimes(stop.lat, stop.lng) : []).map((x) => `<a class="link pad" href="${esc(x.url)}" target="_blank" rel="noopener">🔗 ${esc(x.label)}</a>`).join("");
+
 export function stopTable(root, p) {
   let alive = true, day = isoDay(), log = null, sums = null, failed = false, stop = known.get(p.id);
   const plans = new Map();   // 노선 id → {sum, offset} (예상 시간표 재료)
   const draw = () => {
     if (!alive) return;
     const head = header(stop ? stop.name : "정류장", "정류장 시간표 · 지난 운행 기록 + 예상", { back: true }) +
-      `<div class="seg">${DAY_NAMES.map((n, i) => `<button class="${day === i + 1 ? "on" : ""}" ${act(() => { day = i + 1; draw(); })}>${n}</button>`).join("")}</div>`;
+      outsideLinks(stop) + `<div class="seg">${DAY_NAMES.map((n, i) => `<button class="${day === i + 1 ? "on" : ""}" ${act(() => { day = i + 1; draw(); })}>${n}</button>`).join("")}</div>`;
     if (!log || !sums) { root.innerHTML = head + note("불러오는 중..."); return; }
     const noOf = new Map(sums.map((s) => [s.id, s]));
     // 노선마다 이 요일 시간표 → 여러 날(2일 넘게) 같은 무렵에 기록된 운행만

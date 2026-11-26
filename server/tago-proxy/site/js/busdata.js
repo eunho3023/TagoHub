@@ -964,11 +964,21 @@ export function offsetMinutes(stops, ids, from = 0) {
   return m;
 }
 /** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
-const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", WNB: "wanju", SKB: "sokcho", JCB: "jecheon" };
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", SKB: "sokcho", JCB: "jecheon" };
 /** 배포할 때 받아 둔 자료 조각(data/times/<지역>.json)으로 보는 지역: 천안·구미(서버 접속 막힘), 안동·거제(데이터 PC 에서 받음, 2026-11-24) */
-const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje", "gangneung", "wanju", "sokcho", "jecheon"]);
-/** 서버에 묻지 않고 자료 조각만 보는 지역 (강릉: 공공데이터포털 배차정보 파일, 2026-11-25 / 완주·속초·제천: 군·시 버스정보 시간표) */
-const FILE_ONLY_AREAS = new Set(["andong", "geoje", "gangneung", "wanju", "sokcho", "jecheon"]);
+const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje", "gangneung", "sokcho", "jecheon"]);
+/** 서버에 묻지 않고 자료 조각만 보는 지역 (강릉: 공공데이터포털 배차정보 파일, 2026-11-25 / 속초·제천: 군·시 버스정보 시간표) */
+const FILE_ONLY_AREAS = new Set(["andong", "geoje", "gangneung", "sokcho", "jecheon"]);
+/**
+ * 우리가 옮겨 보여 줄 수 없는 시간표: 원본 사이트 링크만 (정류장 화면·정류장 시간표).
+ * 완주 고산북부권 공영마을버스(고산·비봉·화산·동상·경천·운주)는 완주군시설관리공단 자료가 공공누리 제4유형(출처표시·상업적 이용금지·변경금지)이라
+ * 노선·시각을 옮기지 않고 원본으로 보냄 (사용자 결정 2026-11-27, 예전 PR 456a8b4 는 구간별 노선으로 옮겼었음)
+ */
+export const OUTSIDE_TIMES = [
+  { box: [35.95, 36.20, 127.10, 127.45], label: "완주 고산북부권 마을버스 시간표 (완주군시설관리공단)", url: "https://www.wjss.or.kr/index.do?contentsSid=262" },
+];
+/** 이 자리 정류장에 붙일 원본 시간표 링크들 */
+export const outsideTimes = (lat, lng) => (lat == null || lng == null ? [] : OUTSIDE_TIMES.filter(({ box: [s, n, w, e] }) => lat >= s && lat <= n && lng >= w && lng <= e));
 /**
  * 노선의 공식 배차시간표 {weekday, sat, holi:[분], source, tables?} — 지자체 버스정보 사이트(서버 하루 저장) 또는 배포 때 받은 자료 조각. 없으면 null
  */
