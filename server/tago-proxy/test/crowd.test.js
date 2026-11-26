@@ -123,3 +123,26 @@ test("속초·완주 배차시간표는 서버에 묻지 않고 배포 때 만�
     assert.equal(asked.some((u) => u.includes("w/bus/time/")), false);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("TAGO 버스 위치 줄: 동시에 max 개까지, 급한 것(노선 화면)이 지도 배경 노선들보다 먼저", async () => {
+  const { pacer } = await import("../site/js/busdata.js");
+  let t = 0;
+  const go = pacer(2, 250, () => t, async (ms) => { t += ms; });
+  const order = [];
+  let inFlight = 0, most = 0;
+  const job = (name) => async () => {
+    inFlight++; most = Math.max(most, inFlight); order.push([name, t]);
+    await new Promise((ok) => setTimeout(ok, 5));
+    inFlight--;
+    return name;
+  };
+  const all = [];
+  for (let i = 0; i < 6; i++) all.push(go(job("bg" + i)));
+  all.push(go(job("route"), true));
+  assert.deepEqual(await Promise.all(all), ["bg0", "bg1", "bg2", "bg3", "bg4", "bg5", "route"]);
+  assert.equal(most <= 2, true);
+  // 첫 것은 바로 보냄, 그다음은 기다리던 배경 노선 다섯보다 노선 화면이 먼저
+  assert.equal(order.findIndex((o) => o[0] === "route"), 1);
+  // 시작 사이는 250ms 넘게
+  for (let i = 1; i < order.length; i++) assert.equal(order[i][1] - order[i - 1][1] >= 250, true);
+});

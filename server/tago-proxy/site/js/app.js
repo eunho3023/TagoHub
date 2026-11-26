@@ -161,7 +161,7 @@ export function stopsMap(host, focus) {
     }
     if (!ids.length) return [];
     const sums = await routeSums(ids).catch(() => ({}));
-    const got = await Promise.all(ids.map((id) => positions({ id, city: city.get(id) }).then((r) => ({ id, r })).catch(() => null)));
+    const got = await Promise.all(ids.map((id) => positions({ id, city: city.get(id) }, { background: true }).then((r) => ({ id, r })).catch(() => null)));
     const out = [];
     for (const g of got) {
       if (!g || g.r.state !== "ok") continue;

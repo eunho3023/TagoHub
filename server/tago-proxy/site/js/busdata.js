@@ -1169,10 +1169,49 @@ export const seoulKind = (t) => ({ 0: "일반", 1: "저상", 2: "굴절" })[Stri
 /** 경기 버스 위치 lowPlate → 차 종류 (0 일반, 1 저상, 2 2층, 5 전세, 6 예약, 7 트롤리) */
 export const ggKind = (t) => ({ 0: "일반", 1: "저상", 2: "2층", 5: "전세", 6: "예약", 7: "트롤리" })[String(t ?? "").trim()] || null;
 /**
+ * 요청 줄 세우기: 동시에 max 개까지, 시작 사이 gapMs 넘게. 급한 것(run, true)이 기다리는 배경 것보다 먼저
+ * (TAGO 버스 위치를 한꺼번에 40개씩 보내면 초당 요청 한도(까닭 23)에 걸려 보고 있던 노선까지 몇 분씩 못 받았음, 2026-11-26 전주 102번)
+ */
+export function pacer(max, gapMs, now = () => Date.now(), wait = (ms) => new Promise((ok) => setTimeout(ok, ms))) {
+  const urgentQ = [], laterQ = [];
+  let busy = 0, lastStart = -Infinity, pumping = false;
+  const pump = async () => {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (busy < max && (urgentQ.length || laterQ.length)) {
+        const gap = lastStart + gapMs - now();
+        if (gap > 0) await wait(gap);
+        const job = urgentQ.shift() || laterQ.shift();
+        if (!job) break;
+        busy++; lastStart = now();
+        let p;
+        try { p = Promise.resolve(job.run()); } catch (e) { p = Promise.reject(e); }
+        p.then(job.ok, job.no).finally(() => { busy--; pump(); });
+      }
+    } finally { pumping = false; }
+  };
+  return (run, urgent = false) => new Promise((ok, no) => { (urgent ? urgentQ : laterQ).push({ run, ok, no }); pump(); });
+}
+/** TAGO 버스 위치: 동시에 3개, 시작 사이 0.25초 (1초에 4개까지). 지도 화면 노선 40개도 10초 안에 끝남(지도 버스는 15초마다) */
+export const TAGO_POS_MAX = 3, TAGO_POS_GAP_MS = 250;
+const tagoPos = pacer(TAGO_POS_MAX, TAGO_POS_GAP_MS);
+/** 같은 노선을 같은 급함으로 이미 묻는 중이면 그 답을 같이 씀 (지도 버스가 15초마다 다시 물어도 줄이 길어지지 않게) */
+const tagoPosAsking = new Map();
+function tagoPositions(city, id, urgent) {
+  const k = (urgent ? "!" : "") + city + "|" + id;
+  if (!tagoPosAsking.has(k)) {
+    tagoPosAsking.set(k, tagoPos(() => getText("w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", { cityCode: city, routeId: id }), urgent)
+      .finally(() => tagoPosAsking.delete(k)));
+  }
+  return tagoPosAsking.get(k);
+}
+/**
  * 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt, kind}]} (dataAt = 자료 시각 ms, 서울만)
  * kind: 차 종류("저상"·"일반"·"굴절"·"2층"…), 위치 자료가 알려 주는 서울·경기만 (대전 BIS·TAGO 위치 자료에는 없어 null)
+ * background: 지도 화면 노선들처럼 급하지 않은 것 (TAGO 요청 줄에서 노선 화면·고른 정류장 뒤로)
  */
-export async function positions(r) {
+export async function positions(r, { background = false } = {}) {
   try {
     const sid = seoulId(r.id), gid = ggId(r.id);
     if (sid) {
@@ -1191,7 +1230,7 @@ export async function positions(r) {
       if (dj.length) return { state: "ok", buses: dj };
     }
     if (!r.city || !/^\d+$/.test(r.city) || metroId(r.id, r.city) || r.id.startsWith("TSB")) return { state: "unsupported", buses: [] };
-    const text = await getText("w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", { cityCode: r.city, routeId: r.id });
+    const text = await tagoPositions(r.city, r.id, !background);
     // 한도 오류(OpenAPI_ServiceResponse·errMsg)는 줄이 없어 예전엔 "다니는 버스 없음"처럼 보였음 → 받지 못함으로 (다음 갱신 때 다시 물음)
     if (/<errMsg>|<returnReasonCode>/.test(text.slice(0, 2000))) return { state: "failed", buses: [] };
     const rows = xmlRows(text);
