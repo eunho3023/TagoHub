@@ -2,8 +2,10 @@
 
 천안(its.cheonan.go.kr)·구미(bis.gumi.go.kr) 버스정보시스템은 클라우드 서버에서 오는 요청을 받지 않아,
 (안동 bus.andong.go.kr·거제 bis.geoje.go.kr 도 여기서: 거제는 옛 암호 방식·양식 요청이라 서버에서 받기 어려움, 2026-11-24)
+(제천 its.jecheon.go.kr 운행시간표도 여기서 7일마다, 2026-11-26)
 deploy.ps1 을 실행하는 컴퓨터에서 받아 웹 자료 조각(public/data/times/<지역>.json)으로 같이 올림.
-형식: {노선 9자리: {"weekday": [분...], "sat": [...], "holi": [...], "source": "..."}}
+형식: {노선 9자리: {"weekday": [분...], "sat": [...], "holi": [...], "exact"?: true, "source": "..."}}
+exact: 빈 요일 칸은 그날 운행 없음 (없으면 웹이 토·일 빈 칸을 평일 시각으로 채움)
 실패해도 배포는 계속 (그 지역은 첫차·막차 예상 시각으로 보임).
 """
 import argparse
@@ -155,6 +157,41 @@ def wanju_all():
     return got, len(got)
 
 
+JECHEON = "https://its.jecheon.go.kr/bis/"
+
+
+def parse_jecheon(rows):
+    """제천 교통정보센터 운행시간표(getBusTimeDetail.do resultList) → 기점 출발 시각.
+    BUS_DAY_TYPE: WEEKDAY 평일, HOLIDAY 휴일(토·일), VAC_* 방학(기간을 몰라 안 씀), 없는 줄은 평일로.
+    평일만 다니는 노선이 79개라 빈 휴일 칸이 "운행 없음"이 되게 exact (웹이 평일 시각으로 채우지 않음)"""
+    def times(*kinds):
+        return clock_list([r.get("DEPARTURE_TIME") for r in rows if (r.get("BUS_DAY_TYPE") or "WEEKDAY") in kinds])
+    weekday, holi = times("WEEKDAY"), times("HOLIDAY")
+    if not weekday and not holi:
+        weekday, holi = times("VAC_WEEKDAY"), times("VAC_HOLIDAY")
+    if not weekday and not holi:
+        return None
+    return {"weekday": weekday, "sat": holi, "holi": holi, "exact": True, "source": "제천시 교통정보센터 운행시간표"}
+
+
+def jecheon_all():
+    """제천 시내·농어촌버스: 노선 목록(getRouteListNew.do) → 노선마다 운행시간표. 노선 ID 가 TAGO(JCB+9자리)와 같음"""
+    routes = json.loads(_req(JECHEON + "getRouteListNew.do", {})).get("resultList") or []
+    got = {}
+    for r in routes:
+        rid = str(r.get("ROUTE_ID") or "")
+        if not re.fullmatch(r"\d{9}", rid):
+            continue
+        try:
+            t = parse_jecheon(json.loads(_req(JECHEON + "getBusTimeDetail.do", {"routeId": rid})).get("resultList") or [])
+        except Exception:
+            t = None
+        if t:
+            got[rid] = t
+        time.sleep(0.2)
+    return got, len(routes)
+
+
 def sokcho_all():
     """속초 시내·마을버스: 속초시 버스정보시스템 배차시간표를 옮긴 파일(pipeline/static_routes/sokcho/deps.csv)에서"""
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -172,7 +209,7 @@ def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     dest = pathlib.Path(a.out) / "times"
     dest.mkdir(parents=True, exist_ok=True)
-    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all), ("gangneung", "강릉", gangneung_all), ("wanju", "완주", wanju_all), ("sokcho", "속초", sokcho_all)):
+    for area, name, fetch_all in (("cheonan", "천안", cheonan_all), ("gumi", "구미", gumi_all), ("andong", "안동", andong_all), ("geoje", "거제", geoje_all), ("gangneung", "강릉", gangneung_all), ("wanju", "완주", wanju_all), ("sokcho", "속초", sokcho_all), ("jecheon", "제천", jecheon_all)):
         kept = CACHE / f"{area}.json"
         # 강릉·완주는 저장소 파일이라 늘 새로 만듦
         age = (time.time() - kept.stat().st_mtime) / 86400 if kept.exists() and area not in ("gangneung", "wanju", "sokcho") else None
