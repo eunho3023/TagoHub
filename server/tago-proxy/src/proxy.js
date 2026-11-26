@@ -421,6 +421,8 @@ export function busWebRequest(pathname) {
     // 노선 정류장 차례 (전주시 버스정보 노선별 버스 위치 응답 = 노선 전체 정류장, 앱과 같은 자료, 하루 저장).
     // TAGO 노선정보 하루 한도가 찼을 때 웹이 전주 노선을 여는 데 씀
     if (op === "stops") return { area, url: `https://apis.data.go.kr/4641000/realtime/bus_location_bus_position_common?brtStdid=${id}&serviceKey=KEY`, cacheKey: `bus/jeonju/stops/${id}`, ttl: 86400 };
+    // 노선 버스 위치 (같은 자료, 5초 저장): TAGO 버스 위치보다 10~20초 먼저 바뀜 (2026-11-26 165번 비교, 웹 busdata.js jeonjuPositions)
+    if (op === "pos") return { area, url: `https://apis.data.go.kr/4641000/realtime/bus_location_bus_position_common?brtStdid=${id}&serviceKey=KEY`, cacheKey: `bus/jeonju/pos/${id}`, ttl: 5 };
     if (op !== "routes") return null;
     return { area, url: `https://apis.data.go.kr/4641000/busstop/general_busstop_common?stopStandardid=${id}&stopStdid=${id}&serviceKey=KEY`, cacheKey: `bus/jeonju/routes/${id}`, ttl: 86400 };
   }
