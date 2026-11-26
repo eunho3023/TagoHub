@@ -630,13 +630,11 @@ def static_city_info(db, prefix, path, city=None):
 
 
 def fill_city_times(db_path):
-    """안동·거제·나주 시청 버스정보 자료와 옮겨 둔 경산·창녕·영양·군산·사천 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
+    """나주 시청 버스정보 자료와 옮겨 둔 경산·창녕·영양·군산·사천 시간표로 비어 있는 첫차·막차·배차를 채움. {도시: 채운 수}"""
     db = sqlite3.connect(db_path)
-    geoje_ids = [rid[3:] for (rid,) in db.execute("SELECT r.id FROM routes r LEFT JOIN route_info i ON i.id = r.id WHERE r.id LIKE 'GJB%' AND r.city = '38090' "
-                                                     "AND (i.id IS NULL OR (i.first IS NULL AND i.last IS NULL))")]
+    # 안동(bus.andong.go.kr)·거제(bis.geoje.go.kr) 버스정보 시간표는 공공누리 표시가 없어 받지 않음 (2026-11-27, 웹은 원본 링크).
+    # andong_info·geoje_times 등 읽기 함수는 시험용으로 남김
     got = {
-        "안동": fill_route_info(db, andong_info(fetch_andong())),
-        "거제": fill_route_info(db, {rid: s for rid, ts in fetch_geoje(geoje_ids).items() if (s := span(ts))}),
         "나주": fill_route_info(db, naju_info(fetch_naju())),
         "경산": fill_route_info(db, static_city_info(db, "GYB", STATIC_TIMES / "gyeongsan.csv")),
         # 공공데이터포털 파일데이터에서 옮김 (static_times/README.md)
@@ -1601,7 +1599,7 @@ def write_db(base_db, out_db, tago, gbis_routes, version, kotsa=(), tsb_stops=No
     # 노선 API 가 없는 강릉: 공공데이터포털 노선 파일 (정류장 정리보다 먼저)
     write_gangneung(db)
     # 완주 고산북부권 마을버스는 공공누리 제4유형이라 넣지 않음 (웹은 원본 링크, 2026-11-27)
-    write_sokcho(db)
+    # 속초 시내·마을버스(속초시 버스정보시스템에서 옮긴 노선)는 공공누리 표시가 없어 넣지 않음 (웹은 원본 링크, 2026-11-27)
     # 노선에만 있던 정류장을 정류장 표에 (교통안전공단 겹친 정류장 지우기·정류장 정리보다 먼저)
     add_route_only_stops(db)
     for sid, nm in api_served.items():
@@ -1866,7 +1864,7 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
             cs = look(s["정류소명"])
             la, lo = to_float(s.get("위도")), to_float(s.get("경도"))
             if cs and la and lo:
-                # 정류장마다 좌표가 있는 노선 파일(속초 버스정보): 그 자리 300m 안의 같은 이름 정류장만 (먼 곳 같은 이름에 잇지 않게)
+                # 정류장마다 좌표가 있는 노선 파일(예전 속초 버스정보): 그 자리 300m 안의 같은 이름 정류장만 (먼 곳 같은 이름에 잇지 않게)
                 gap = lambda c: ((c[1] - la) * 111000) ** 2 + ((c[2] - lo) * 111000 * math.cos(math.radians(la))) ** 2
                 cs = sorted((c for c in cs if c[1] is not None and gap(c) <= STATIC_NEAR_M ** 2), key=gap)
                 if cs:
@@ -1911,19 +1909,6 @@ def write_static_routes(db, folder, prefix, city, region, label, where, args=(),
 def write_gangneung(db, folder=None):
     """강릉 시내버스 노선(공공데이터포털 15178618·15178624·15178626, 2026-11-13). TAGO 에 강릉 노선이 0개라 정류장 시간표가 비었음 (2026-11-25)"""
     return write_static_routes(db, folder or STATIC_ROUTES / "gangneung", "GNB", "32030", "강릉", "강릉 (공공데이터포털 파일)", "city IN ('32030', 'TS252')")
-
-
-SOKCHO_BOX = (37.95, 38.65, 128.35, 128.75)   # 양양 남쪽 ~ 고성 대진
-
-
-def write_sokcho(db, folder=None):
-    """
-    속초 시내·마을버스(속초시 버스정보시스템 bis.sokcho.go.kr 노선별 정류장·배차시간표, 고성 간성·대진과 양양까지 가는 노선 포함) → 노선 id SKB….
-    TAGO 에 속초·고성·양양 노선이 없어 이 지역 정류장에 노선이 하나도 없었음 (2026-11-26). 정류장마다 좌표가 있어 그 자리 가까운 같은 이름 정류장에 잇고, 없으면 새 정류장
-    """
-    s, n, w, e = SOKCHO_BOX
-    return write_static_routes(db, folder or STATIC_ROUTES / "sokcho", "SKB", "32060", "속초", "속초 시내·마을버스 (속초시 버스정보)",
-                               "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?", (s, n, w, e))
 
 
 def add_route_only_stops(db):
@@ -2144,7 +2129,8 @@ def main():
         print(f"다른 자료 노선 종류 채움: {fill_resolve_types(OUT / 'bus_stops.db', lists)}개", flush=True)
     except (Limit, KeyError_) as e:
         print(f"다른 자료 노선 첫차·막차: 못 받음 ({type(e).__name__})", flush=True)
-    ys, jj = fill_local_times(OUT / "bus_stops.db", fetch_yangsan(), fetch_jeju_schedules())
+    # 제주 버스정보 시간표 엑셀(bus.jeju.go.kr)은 공공누리 표시가 없어 받지 않음 (2026-11-27, 웹은 원본 링크). 양산은 공공데이터포털 파일
+    ys, jj = fill_local_times(OUT / "bus_stops.db", fetch_yangsan(), [])
     print(f"지자체 자료 첫차·막차 채움: 양산 {ys}개, 제주 {jj}개", flush=True)
     city = fill_city_times(OUT / "bus_stops.db")
     print("시청 버스정보 첫차·막차 채움: " + ", ".join(f"{k} {v}개" for k, v in city.items()), flush=True)

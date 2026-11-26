@@ -919,7 +919,7 @@ def test_gangneung_routes():
     assert bd.write_gangneung(db, d) == 1
     row = db.execute("SELECT stop_id, name, lat, lng FROM route_stops WHERE route_id = 'GNB42001001' AND seq = 2").fetchone()
     assert row[0].startswith("GNBS") and row[1:] == ("없는곳", 37.78, 128.96)
-    # 속초: 정류장마다 좌표가 있으면 그 자리 300m 안 같은 이름 정류장에만 잇고, 먼 같은 이름은 안 쓰고 새 정류장(SKBS…)
+    # 정류장마다 좌표가 있는 노선 파일(예전 속초 모양): 좌표가 있으면 그 자리 300m 안 같은 이름 정류장에만 잇고, 먼 같은 이름은 안 쓰고 새 정류장(SKBS…)
     s = pathlib.Path(tempfile.mkdtemp())
     (s / "routes.csv").write_text("노선ID,노선번호,기점,종점\n43102006,9,속초영업소,임천리\n", encoding="utf-8")
     (s / "stops.csv").write_text("노선ID,노선번호,상하행구분,정류소순번,정류소명,정류소ID,위도,경도\n"
@@ -927,7 +927,7 @@ def test_gangneung_routes():
     (s / "deps.csv").write_text("노선ID,노선번호,방향코드,출발시간,적용운행일\n43102006,9,1,07:02,\"평일, 토요일, 일요일\"\n43102006,9,2,07:52,평일\n", encoding="utf-8")
     db.executemany("INSERT INTO stops VALUES(?,?,?,?,NULL,?)", [
         ("TSB255000152", "대포항입구", 38.173626, 128.604808, "32060"), ("TSB_FAR2", "임천리", 38.10, 128.62, "32420")])
-    assert bd.write_sokcho(db, s) == 1
+    assert bd.write_static_routes(db, s, "SKB", "32060", "속초", "시험 노선", "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?", (37.95, 38.65, 128.35, 128.75)) == 1
     rs = db.execute("SELECT stop_id, lat FROM route_stops WHERE route_id = 'SKB43102006' ORDER BY seq").fetchall()
     assert rs[0] == ("TSB255000152", None) and rs[1][0].startswith("SKBS") and rs[1][1] == 38.05
     assert db.execute("SELECT city, first, last FROM routes JOIN route_info USING(id) WHERE id = 'SKB43102006'").fetchone() == ("32060", "07:02", "07:02")
