@@ -951,7 +951,7 @@ export function offsetMinutes(stops, ids, from = 0) {
   return m;
 }
 /** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
-const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", WNB: "wanju" };
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", WNB: "wanju", SKB: "sokcho" };
 /** 배포할 때 받아 둔 자료 조각(data/times/<지역>.json)으로 보는 지역: 천안·구미(서버 접속 막힘), 안동·거제(데이터 PC 에서 받음, 2026-11-24) */
 const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje", "gangneung", "wanju"]);
 /** 서버에 묻지 않고 자료 조각만 보는 지역 (강릉: 공공데이터포털 배차정보 파일, 2026-11-25) */
