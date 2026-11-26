@@ -172,3 +172,32 @@ test("전주 버스 위치는 전주시 버스정보 응답에서 버스가 있�
   assert.equal(jeonjuBusRows(`<RFC30><code type="string">999</code></RFC30>`), null);   // 오류 → TAGO 로
   assert.deepEqual(jeonjuBusRows(`<RFC30><code type="string">000</code><routeList class="array"></routeList></RFC30>`), []);   // 다니는 버스 없음
 });
+
+test("부산 버스 위치는 부산 BIMS 응답에서 차가 있는 줄만 (GPS·자료 시각·저상, 1001번 2026-11-26)", async () => {
+  const { busanBusRows } = await import("../site/js/busdata.js");
+  const item = (idx, node, car, extra) => `<item><bstopidx>${idx}</bstopidx><bstopnm>x</bstopnm><nodeid>${node}</nodeid><lineno>1001</lineno>${car ? `<carno>${car}</carno>` : ""}${extra || ""}</item>`;
+  const xml = `<?xml version="1.0" encoding="utf-8" ?><response><header><resultCode>00</resultCode></header><body><items>` +
+    item(1, "517010000", "") + item(10, "186190401", "71자2617", "<gpsym>224158</gpsym><lat>35.1780672</lat><lin>129.1748480</lin><lowplate>0</lowplate>") +
+    item(12, "186220301", "71자2700", "<gpsym>224150</gpsym><lat>35.17</lat><lin>129.18</lin><lowplate>1</lowplate>") + `</items></body></response>`;
+  const now = Date.UTC(2026, 10, 26, 13, 42, 10);   // 한국 22:42:10
+  assert.deepEqual(busanBusRows(xml, now), [
+    { nodeId: "BSB186190401", ord: 10, vehicleNo: "71자2617", lat: 35.1780672, lng: 129.174848, dataAt: Date.UTC(2026, 10, 26, 13, 41, 58), kind: "일반" },
+    { nodeId: "BSB186220301", ord: 12, vehicleNo: "71자2700", lat: 35.17, lng: 129.18, dataAt: Date.UTC(2026, 10, 26, 13, 41, 50), kind: "저상" },
+  ]);
+  // 자정 막 지나 받은 어제 23:59 자료
+  const mid = busanBusRows(xml.replace("224158", "235950"), Date.UTC(2026, 10, 26, 15, 0, 10));
+  assert.equal(mid[0].dataAt, Date.UTC(2026, 10, 26, 14, 59, 50));
+  assert.equal(busanBusRows(`<response><header><resultCode>99</resultCode></header></response>`), null);   // 오류 → TAGO 로
+});
+
+test("광주 버스 위치는 광주 BIS 응답에서 (정류장 id KJB+CURR_STOP_ID, 저상 LOW_BUS, 518번 2026-11-26)", async () => {
+  const { gwangjuBusRows } = await import("../site/js/busdata.js");
+  const ok = (items) => JSON.stringify({ RESPONSE: { RESULT: { RESULT_CODE: "SUCCESS" }, BUSLOCATION_LIST: { ITEM: items }, ROW_COUNT: 2 } });
+  assert.deepEqual(gwangjuBusRows(ok([{ LINE_ID: 238, CURR_STOP_ID: 155, CARNO: "광주77바2300", LOW_BUS: "0", SEQ: 52 }, { LINE_ID: 238, CURR_STOP_ID: 1193, CARNO: "광주77바2393", LOW_BUS: "1", SEQ: 104 }])), [
+    { nodeId: "KJB155", vehicleNo: "광주77바2300", kind: "일반" },
+    { nodeId: "KJB1193", vehicleNo: "광주77바2393", kind: "저상" },
+  ]);
+  assert.deepEqual(gwangjuBusRows(ok({ CURR_STOP_ID: 7, CARNO: "광주1", LOW_BUS: "1" })), [{ nodeId: "KJB7", vehicleNo: "광주1", kind: "저상" }]);   // 한 대면 배열이 아닐 수 있음
+  assert.deepEqual(gwangjuBusRows(ok([])), []);
+  assert.equal(gwangjuBusRows(`<OpenAPI_ServiceResponse><returnReasonCode>04</returnReasonCode></OpenAPI_ServiceResponse>`), null);   // 오류 → TAGO 로
+});

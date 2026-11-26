@@ -223,6 +223,14 @@ async function dataGo(path, search, accept, env, ctx, extra, src = "web") {
       // 이 노선을 보는 사람이 있음 → 예약 작업이 스스로 모을 노선 후보
       ctx.waitUntil(noteInterest(env.DB, q.get("routeId"), q.get("cityCode")).catch(() => null));
     }
+    // 부산 위치는 부산 BIMS 로 물음 (웹 busdata.js): TAGO 위치를 묻지 않아도 예약 작업이 모을 노선 후보에는 넣음
+    if (env.DB && /BusanBIMS\/busInfoByRouteId/.test(path)) {
+      ctx.waitUntil(noteInterest(env.DB, "BSB" + new URLSearchParams(search).get("lineid"), "21").catch(() => null));
+    }
+    // 광주도 같음 (광주 BIS)
+    if (env.DB && /gj_bis\/busLocationInfo/.test(path)) {
+      ctx.waitUntil(noteInterest(env.DB, "KJB" + new URLSearchParams(search).get("LINE_ID"), "24").catch(() => null));
+    }
     const out = new Response(stored.body, stored);
     for (const [k, v] of Object.entries(extra)) out.headers.set(k, v);
     return out;
@@ -419,6 +427,12 @@ async function busWeb(request, url, env, ctx) {
     : r.area === "daejeon" ? (b) => /<headerCd>[04]<\/headerCd>/.test(b)
     : (b) => /"resultCode"\s*:\s*"?[04]"?\s*[,}]/.test(b);
   const upstream = !r.url.includes("KEY") ? r.url : raw ? r.url.replace("KEY", encodeKey(raw)) : null;
+  // 전주 노선 버스 위치(웹은 TAGO 대신 이것): 예약 작업이 모을 노선 후보에는 그대로 넣음 (기관에 새로 물었을 때만, TAGO 위치와 같게)
+  if (env.DB && r.area === "jeonju" && r.cacheKey.startsWith("bus/jeonju/pos/")) {
+    const res = await cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, upstream, r.ttl, ok, { Accept: "application/xml" }, true, null);
+    if (res.status === 200 && res.headers.get("X-Cache") === "MISS") ctx.waitUntil(noteInterest(env.DB, "JUB" + r.cacheKey.split("/").pop(), "35010").catch(() => null));
+    return res;
+  }
   return cachedJson(request, env, ctx, "https://cache.tagohub/" + r.cacheKey, upstream, r.ttl, ok,
     r.area === "jeonju" ? { Accept: "application/xml" } : {}, r.area === "jeonju" || r.area === "ulsan" || r.area === "daejeon", r.post ?? null);
 }

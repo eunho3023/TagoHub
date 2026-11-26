@@ -38,7 +38,7 @@ export function ttlFor(path) {
   if (p.includes("6310000/bis/getbusarrivalinfo")) return ULSAN_TTL;
   // 서울 버스(ws.bus.go.kr): buspos = 버스 위치, getStationByUid = 정류장 도착
   // 부산 stopArrByBstopid·광주 arriveInfo·여수 getArrInfoByStopID 는 이름에 arrival 이 없어 60초 저장되고 있었음 (도착이 최대 1분 늦게 보임)
-  if (/arvl|buslc|location|arrival|arrive|arrinfo|arrby|realtime|position|buspos|stationbyuid/.test(p)) return 5;
+  if (/arvl|buslc|location|arrival|arrive|arrinfo|arrby|realtime|position|buspos|stationbyuid|businfobyrouteid/.test(p)) return 5;
   if (/prxmt|crdnt/.test(p)) return 3600;
   if (/schdul|kwrdfnd/.test(p)) return 86400;   // 지하철 역 시간표·역 찾기
   if (/strtpnt/.test(p)) return 1800;           // 기차 출발→도착 열차 (종류·요금)
@@ -134,6 +134,10 @@ export function hostTtl(host, path) {
 export const WEB_OPS = {
   "1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList": ["cityCode", "nodeId"],
   "1613000/BusLcInfoInqireService/getRouteAcctoBusLcList": ["cityCode", "routeId"],
+  // 부산 노선 버스 위치 (부산 BIMS): TAGO 보다 한 정류장쯤(30~60초) 먼저 바뀌고 GPS·자료 시각·저상 여부를 줌 (2026-11-26 1001번 비교)
+  "6260000/BusanBIMS/busInfoByRouteId": ["lineid"],
+  // 광주 노선 버스 위치 (광주 BIS, LINE_ID = TAGO 노선 id KJB 뒤 숫자): TAGO 보다 12~25초 먼저 바뀜 (2026-11-26 518번 비교). JSON 으로 답함
+  "6290000/gj_bis/busLocationInfo": ["LINE_ID"],
   // 노선 정류장·기본 정보 (서버 자료 조각에 없는 노선: 전주·제주·교통안전공단 등, 하루 저장)
   "1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList": ["cityCode", "routeId"],
   "1613000/BusRouteInfoInqireService/getRouteInfoIem": ["cityCode", "routeId"],
@@ -154,7 +158,7 @@ export const WEB_OPS = {
   "B554035/oprt-schd-info-v2/get-oprt-schd-info-v2": ["rlvtYmd"],
 };
 const WEB_VALUE = {
-  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, gpsLati: /^3[3-8]\.\d{1,6}$/, gpsLong: /^12[4-9]\.\d{1,6}$|^13[01]\.\d{1,6}$/, routeId: /^[A-Za-z0-9_-]{1,24}$/,
+  cityCode: /^\d{1,6}$/, nodeId: /^[A-Za-z0-9_]{1,24}$/, nodeid: /^[A-Za-z0-9_]{1,24}$/, gpsLati: /^3[3-8]\.\d{1,6}$/, gpsLong: /^12[4-9]\.\d{1,6}$|^13[01]\.\d{1,6}$/, routeId: /^[A-Za-z0-9_-]{1,24}$/, lineid: /^\d{10}$/, LINE_ID: /^\d{1,6}$/,
   subwayStationName: /^[가-힣A-Za-z0-9 ()·.-]{1,20}$/, subwayStationId: /^[A-Za-z0-9]{1,16}$/,
   dailyTypeCode: /^0[123]$/, upDownTypeCode: /^[UD]$/,
   depPlaceId: /^NAT\d{6}$/, arrPlaceId: /^NAT\d{6}$/, depPlandTime: /^20\d{6}$/,

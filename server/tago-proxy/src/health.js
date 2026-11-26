@@ -200,6 +200,8 @@ export const QUOTA_LABELS = {
   "6410000/buslocationservice": "경기 버스 위치",
   "6300000/arrive": "대전 버스 도착",
   "6310000/bis": "울산 버스",
+  "6260000/BusanBIMS": "부산 버스",
+  "6290000/gj_bis": "광주 버스",
   "4641000/nosun": "전주 버스 노선",
   "B551982/pbdo_v2": "전국 공영자전거",
 };

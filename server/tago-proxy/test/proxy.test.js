@@ -82,6 +82,14 @@ test("웹 버전: 실시간 도착·위치만, 질의는 정해진 것만", () =
   assert.equal(r.path, "1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList");
   assert.equal(r.search, "?cityCode=35020&nodeId=JJB306000104&pageNo=1&numOfRows=100&_type=xml");
   assert.ok(webRequest("/w/dg/1613000/BusLcInfoInqireService/getRouteAcctoBusLcList", "?cityCode=25&routeId=DJB30300004"));
+  // 부산 BIMS 노선 버스 위치 (lineid 10자리, 5초 저장)
+  assert.equal(webRequest("/w/dg/6260000/BusanBIMS/busInfoByRouteId", "?lineid=5201001000").path, "6260000/BusanBIMS/busInfoByRouteId");
+  assert.equal(webRequest("/w/dg/6260000/BusanBIMS/busInfoByRouteId", "?lineid=52010"), null);
+  assert.equal(ttlFor("6260000/BusanBIMS/busInfoByRouteId"), 5);
+  // 광주 BIS 노선 버스 위치 (LINE_ID 숫자, 5초 저장)
+  assert.ok(webRequest("/w/dg/6290000/gj_bis/busLocationInfo", "?LINE_ID=238").search.startsWith("?LINE_ID=238&"));
+  assert.equal(webRequest("/w/dg/6290000/gj_bis/busLocationInfo", "?LINE_ID=KJB238"), null);
+  assert.equal(ttlFor("6290000/gj_bis/busLocationInfo"), 5);
   // 노선 id 에 "-" 가 든 지역 (구미 GMB101-110)
   assert.ok(webRequest("/w/dg/1613000/BusRouteInfoInqireService/getRouteInfoIem", "?cityCode=37050&routeId=GMB101-110"));
   assert.equal(webRequest("/w/dg/1613000/TrainInfo/GetStrtpntAlocFndTrainInfo", "?cityCode=25"), null);

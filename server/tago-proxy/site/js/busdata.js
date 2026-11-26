@@ -1224,6 +1224,61 @@ export function jeonjuBusRows(xml) {
   return out;
 }
 /**
+ * 부산 BIMS 노선 버스 위치 응답(XML, busInfoByRouteId) → 버스 목록. 정상(resultCode 00)이 아니면 null.
+ * 줄마다 노선 정류장이고 버스가 있는 줄만 carno 가 있음. gpsym = 자료 시각(한국 시각 HHMMSS), lowplate 1 = 저상.
+ * TAGO 와 같은 정류장 id(BSB + nodeid)·순번(bstopidx). 2026-11-26 1001번을 같은 순간 비교: 한 정류장쯤 먼저 바뀜
+ */
+export function busanBusRows(xml, nowMs = Date.now()) {
+  if (!/<resultCode>00<\/resultCode>/.test(xml || "")) return null;
+  const rows = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => {
+    const o = {};
+    for (const [, k, v] of m[1].matchAll(/<(\w+)>([^<]*)<\/\1>/g)) o[k] = v.trim();
+    return o;
+  });
+  return rows.filter((x) => str(x.carno)).map((x) => {
+    const t = /^(\d{2})(\d{2})(\d{2})$/.exec(String(x.gpsym || "").trim());
+    let dataAt = null;
+    if (t) {
+      const k = new Date(nowMs + 9 * 3600000);
+      dataAt = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate(), +t[1], +t[2], +t[3]) - 9 * 3600000;
+      if (dataAt > nowMs + 3600000) dataAt -= 86400000;   // 자정 넘어 받은 어제 자료
+    }
+    return { nodeId: x.nodeid ? "BSB" + str(x.nodeid) : null, ord: int(x.bstopidx), vehicleNo: str(x.carno), lat: num(x.lat), lng: num(x.lin), dataAt,
+      kind: String(x.lowplate ?? "").trim() === "1" ? "저상" : String(x.lowplate ?? "").trim() === "0" ? "일반" : null };
+  });
+}
+/**
+ * 광주 BIS 노선 버스 위치 응답(JSON, busLocationInfo) → [{nodeId, vehicleNo, kind}]. 정상(RESULT_CODE SUCCESS)이 아니면 null.
+ * CURR_STOP_ID 는 TAGO 정류장 id(KJB + 숫자)와 같음. SEQ 는 TAGO 순번과 달라(정류장 아닌 점도 셈) 쓰지 않음. LOW_BUS 1 = 저상
+ */
+export function gwangjuBusRows(text) {
+  let j;
+  try { j = JSON.parse(text); } catch (e) { return null; }
+  const res = j && j.RESPONSE;
+  if (!res || !res.RESULT || res.RESULT.RESULT_CODE !== "SUCCESS") return null;
+  const items = res.BUSLOCATION_LIST ? res.BUSLOCATION_LIST.ITEM : [];
+  return (Array.isArray(items) ? items : items ? [items] : []).filter((b) => b && b.CARNO && b.CURR_STOP_ID != null)
+    .map((b) => ({ nodeId: "KJB" + b.CURR_STOP_ID, vehicleNo: String(b.CARNO), kind: String(b.LOW_BUS) === "1" ? "저상" : String(b.LOW_BUS) === "0" ? "일반" : null }));
+}
+/** 노선 정류장 (노선 화면은 r.stops, 지도 화면은 노선을 한 번 받아 이 페이지 동안 둠) */
+const stopsMemo = new Map();
+function routeStopsOf(r) {
+  if (r.stops) return Promise.resolve(r.stops);
+  if (!stopsMemo.has(r.id)) stopsMemo.set(r.id, route(r.id, r.city).then((x) => (x && x.stops) || []).catch(() => { stopsMemo.delete(r.id); return []; }));
+  return stopsMemo.get(r.id);
+}
+/**
+ * 광주 노선 버스 위치를 광주 BIS 로 (TAGO 는 같은 자료를 12~25초 늦게 줌, 2026-11-26 518번). 좌표가 없어 버스가 있는 정류장 자리.
+ * 못 받으면 null (→ TAGO)
+ */
+async function gwangjuPositions(r) {
+  const rows = gwangjuBusRows(await getText("w/dg/6290000/gj_bis/busLocationInfo", { LINE_ID: r.id.slice(3) }).catch(() => ""));
+  if (!rows) return null;
+  const at = new Map();
+  if (rows.length) for (const s of await routeStopsOf(r)) if (s.id && !at.has(s.id)) at.set(s.id, s);
+  return rows.map((b) => { const s = at.get(b.nodeId); return { nodeId: b.nodeId, ord: s ? s.seq : null, vehicleNo: b.vehicleNo, lat: s && s.lat != null ? s.lat : null, lng: s && s.lng != null ? s.lng : null, kind: b.kind }; });
+}
+/**
  * 전주 노선 버스 위치를 전주시 버스정보로 (TAGO 는 같은 자료를 10~20초 늦게 줌: 2026-11-26 165번이 새로고침해도 한 정류장 늦게 보였음).
  * 좌표가 없어 버스가 있는 정류장 자리: 노선 화면은 받은 노선 정류장(r.stops), 지도 화면은 정류장 이름 자료(data/names)에서.
  * 못 받으면 null (→ TAGO)
@@ -1243,7 +1298,7 @@ async function jeonjuPositions(r) {
 }
 /**
  * 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt, kind}]} (dataAt = 자료 시각 ms, 서울만)
- * kind: 차 종류("저상"·"일반"·"굴절"·"2층"…), 위치 자료가 알려 주는 서울·경기·전주만 (대전 BIS·TAGO 위치 자료에는 없어 null)
+ * kind: 차 종류("저상"·"일반"·"굴절"·"2층"…), 위치 자료가 알려 주는 서울·경기·전주·부산·광주만 (대전 BIS·TAGO 위치 자료에는 없어 null)
  * background: 지도 화면 노선들처럼 급하지 않은 것 (TAGO 요청 줄에서 노선 화면·고른 정류장 뒤로)
  */
 export async function positions(r, { background = false } = {}) {
@@ -1263,6 +1318,16 @@ export async function positions(r, { background = false } = {}) {
     if (/^DJB\d{8}$/.test(r.id)) {
       const dj = await getText("w/bus/daejeon/pos/" + r.id.slice(3)).then(daejeonBusList).catch(() => []);
       if (dj.length) return { state: "ok", buses: dj };
+    }
+    // 부산: 부산 BIMS 먼저 (TAGO 보다 빠르고 GPS·자료 시각·저상을 줌), 못 받으면 아래 TAGO
+    if (/^BSB\d{10}$/.test(r.id)) {
+      const bs = busanBusRows(await getText("w/dg/6260000/BusanBIMS/busInfoByRouteId", { lineid: r.id.slice(3) }).catch(() => ""));
+      if (bs) return { state: "ok", buses: bs };
+    }
+    // 광주: 광주 BIS 먼저 (TAGO 보다 빠름), 못 받으면 아래 TAGO
+    if (/^KJB\d{1,6}$/.test(r.id)) {
+      const gj = await gwangjuPositions(r);
+      if (gj) return { state: "ok", buses: gj };
     }
     // 전주: 전주시 버스정보 먼저 (TAGO 보다 빠름), 못 받으면 아래 TAGO
     if (/^JUB\d{9}$/.test(r.id)) {
