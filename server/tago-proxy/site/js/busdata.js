@@ -1209,8 +1209,41 @@ function tagoPositions(city, id, urgent) {
   return tagoPosAsking.get(k);
 }
 /**
+ * 전주시 버스정보 노선 버스 위치 응답(XML) → [{nodeId, ord, vehicleNo, kind, name}] (버스가 있는 정류장 줄만). 정상(code 000)이 아니면 null.
+ * busNo 는 뒤에 빈칸이 붙어 옴, busLow 1 = 저상
+ */
+export function jeonjuBusRows(xml) {
+  if (!/<code[^>]*>000</.test(xml || "")) return null;
+  const out = [];
+  for (const m of xml.matchAll(/<list\b[^>]*>([\s\S]*?)<\/list>/g)) {
+    const r = {};
+    for (const t of m[1].matchAll(/<(\w+)\b[^>]*?(?:\/>|>([^<]*)<\/\1>)/g)) r[t[1].toLowerCase()] = (t[2] || "").trim();
+    if (!r.busno || !r.stopstandardid) continue;
+    out.push({ nodeId: "JUB" + r.stopstandardid, ord: int(r.brsseqno ?? r.brnseqno), vehicleNo: r.busno, kind: r.buslow === "1" ? "저상" : r.buslow === "0" ? "일반" : null, name: r.stopkname || "" });
+  }
+  return out;
+}
+/**
+ * 전주 노선 버스 위치를 전주시 버스정보로 (TAGO 는 같은 자료를 10~20초 늦게 줌: 2026-11-26 165번이 새로고침해도 한 정류장 늦게 보였음).
+ * 좌표가 없어 버스가 있는 정류장 자리: 노선 화면은 받은 노선 정류장(r.stops), 지도 화면은 정류장 이름 자료(data/names)에서.
+ * 못 받으면 null (→ TAGO)
+ */
+async function jeonjuPositions(r) {
+  const rows = jeonjuBusRows(await getText("w/bus/jeonju/pos/" + r.id.slice(3)).catch(() => ""));
+  if (!rows) return null;
+  const at = new Map();
+  for (const s of r.stops || []) if (s.id && s.lat != null) at.set(s.id, s);
+  const files = new Map();
+  for (const b of rows) {
+    const ch = at.has(b.nodeId) ? null : b.name.codePointAt(0)?.toString(16);
+    if (ch && !files.has(ch)) files.set(ch, cached(`data/names/${ch}.json`).then(parseStops).catch(() => []));
+  }
+  for (const f of files.values()) for (const s of await f) if (!at.has(s.id)) at.set(s.id, s);
+  return rows.map((b) => { const s = at.get(b.nodeId); return { nodeId: b.nodeId, ord: b.ord, vehicleNo: b.vehicleNo, lat: s ? s.lat : null, lng: s ? s.lng : null, kind: b.kind }; });
+}
+/**
  * 노선 버스 위치: {state, buses:[{nodeId, ord, vehicleNo, lat, lng, dataAt, kind}]} (dataAt = 자료 시각 ms, 서울만)
- * kind: 차 종류("저상"·"일반"·"굴절"·"2층"…), 위치 자료가 알려 주는 서울·경기만 (대전 BIS·TAGO 위치 자료에는 없어 null)
+ * kind: 차 종류("저상"·"일반"·"굴절"·"2층"…), 위치 자료가 알려 주는 서울·경기·전주만 (대전 BIS·TAGO 위치 자료에는 없어 null)
  * background: 지도 화면 노선들처럼 급하지 않은 것 (TAGO 요청 줄에서 노선 화면·고른 정류장 뒤로)
  */
 export async function positions(r, { background = false } = {}) {
@@ -1230,6 +1263,11 @@ export async function positions(r, { background = false } = {}) {
     if (/^DJB\d{8}$/.test(r.id)) {
       const dj = await getText("w/bus/daejeon/pos/" + r.id.slice(3)).then(daejeonBusList).catch(() => []);
       if (dj.length) return { state: "ok", buses: dj };
+    }
+    // 전주: 전주시 버스정보 먼저 (TAGO 보다 빠름), 못 받으면 아래 TAGO
+    if (/^JUB\d{9}$/.test(r.id)) {
+      const jj = await jeonjuPositions(r);
+      if (jj) return { state: "ok", buses: jj };
     }
     if (!r.city || !/^\d+$/.test(r.city) || metroId(r.id, r.city) || r.id.startsWith("TSB")) return { state: "unsupported", buses: [] };
     const text = await tagoPositions(r.city, r.id, !background);

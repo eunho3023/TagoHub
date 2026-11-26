@@ -158,3 +158,17 @@ test("제천처럼 exact 시간표는 빈 요일 칸이 운행 없음 (평일 �
   assert.deepEqual(todayDeps(exact, 0), []);
   assert.deepEqual(todayDeps(exact, 6), []);
 });
+
+test("전주 버스 위치는 전주시 버스정보 응답에서 버스가 있는 정류장 줄만 (busNo 뒤 빈칸·저상 busLow, 165번 2026-11-26)", async () => {
+  const { jeonjuBusRows } = await import("../site/js/busdata.js");
+  const row = (seq, std, name, bus, low) => `<list class="object"><BNo type="string"/><bnodeId type="string">${std}</bnodeId><brsSeqno type="string">${seq}</brsSeqno>` +
+    `<busLow type="string">${low}</busLow><busNo type="string">${bus}</busNo><reMark type="string"/><stopKname type="string">${name}</stopKname><stopStandardid type="string">${std}</stopStandardid></list>`;
+  const xml = `<?xml version="1.0"?><RFC30><code type="string">000</code><msg type="string">OK</msg><routeList class="array">` +
+    row(19, "305032360", "한국국토정보공사", "", "") + row(20, "306032156", "국민연금공단", "1594        ", "0") + row(4, "312032125", "혁신금호어울림아파트", "1737", "1") + `</routeList></RFC30>`;
+  assert.deepEqual(jeonjuBusRows(xml), [
+    { nodeId: "JUB306032156", ord: 20, vehicleNo: "1594", kind: "일반", name: "국민연금공단" },
+    { nodeId: "JUB312032125", ord: 4, vehicleNo: "1737", kind: "저상", name: "혁신금호어울림아파트" },
+  ]);
+  assert.equal(jeonjuBusRows(`<RFC30><code type="string">999</code></RFC30>`), null);   // 오류 → TAGO 로
+  assert.deepEqual(jeonjuBusRows(`<RFC30><code type="string">000</code><routeList class="array"></routeList></RFC30>`), []);   // 다니는 버스 없음
+});
