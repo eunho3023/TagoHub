@@ -93,3 +93,16 @@ test("차 종류: 서울 busType·경기 lowPlate (모르는 값은 null)", asyn
   assert.equal(ggKind(2), "2층");
   assert.equal(ggKind(9), null);
 });
+
+test("실시간 버스 없는 줄의 다음 시간표 시각: 공식 시간표·배차 간격만, 첫차·막차뿐이면 없음 (전주 풍남중 74번)", async () => {
+  const { nextPlanned, clockText } = await import("../site/js/busdata.js");
+  // 공식 배차시간표: 기점 07:30·08:10·22:00 + 이 정류장까지 10분 → 07:01 이면 다음 07:40 (39분)
+  const deps = { sum: { first: "07:30", last: "22:00", deps: { weekday: [450, 490, 1320] } }, offset: 10, downOffset: null };
+  assert.deepEqual(nextPlanned(deps, 3, 421), { at: 460, wait: 39 });
+  assert.equal(clockText(460), "07:40");
+  assert.equal(nextPlanned(deps, 3, 1331), null);   // 오늘 남은 것 없음
+  // 첫차·막차만 (배차 모름): 아침에 "막차"를 다음 차처럼 보이지 않게 null
+  assert.equal(nextPlanned({ sum: { first: "06:00", last: "22:25" }, offset: 0 }, 3, 421), null);
+  // 배차 간격을 알면 계산한 시각
+  assert.deepEqual(nextPlanned({ sum: { first: "06:00", last: "22:00", interval: 20 }, offset: 5 }, 3, 421), { at: 425, wait: 4 });
+});
