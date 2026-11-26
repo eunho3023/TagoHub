@@ -938,6 +938,18 @@ export function plannedTimes(sum, offset, day, downOffset = null) {
   if (out[out.length - 1] !== last + off && last - (out[out.length - 1] - off) >= 2) out.push(last + off);
   return out;
 }
+/**
+ * 실시간 버스가 없는 노선 줄의 "다음 시간표 시각": plannedFor 결과로 이 정류장 시각 중 지금(nowMin) 뒤 첫 것 → {at: 분, wait: 분}.
+ * 공식 배차시간표(deps)가 있거나 배차 간격으로 세 번 넘게 계산될 때만 (첫차·막차만 알면 null: 아침에 "막차 22:25"를 다음 차처럼 보이게 하지 않게).
+ * 오늘 남은 것이 없으면 null (2026-11-26 전주 풍남중 74번: 아침 7시에 "막차 22:25 · 15시간 후"로 나왔음)
+ */
+export function nextPlanned(plan, day, nowMin) {
+  if (!plan || !plan.sum) return null;
+  const ts = plannedTimes(plan.sum, plan.offset, day, plan.downOffset);
+  if (!plan.sum.deps && ts.length < 3) return null;
+  const at = ts.find((t) => t >= nowMin);
+  return at == null ? null : { at, wait: at - nowMin };
+}
 /** 노선 정류장 목록에서 from 번째 정류장부터 이 정류장(ids 중 하나)까지 걸리는 분 (거리 ÷ 시속 18km + 정류장마다 18초). 못 찾으면 null */
 export function offsetMinutes(stops, ids, from = 0) {
   const i = stops.findIndex((s, k) => k >= from && (ids.has(s.id) || ids.has(currentId(s.id || ""))));
@@ -1239,6 +1251,8 @@ const toMin = (t) => { const m = /(\d{1,2}):(\d{2})/.exec(t || ""); return m ? +
 /** "22:30" → 1350 (못 읽으면 null) */
 export const toMinutes = (t) => toMin(t);
 const clockOf = (m) => { const x = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`; };
+/** 하루 중 분 → "07:40" (자정 넘은 분도) */
+export const clockText = (m) => clockOf(m);
 /** 분 → "곧" / "25분" / "1시간" / "8시간 20분" */
 export function waitText(m) { return m <= 0 ? "곧" : m < 60 ? `${m}분` : m % 60 === 0 ? `${m / 60}시간` : `${Math.floor(m / 60)}시간 ${m % 60}분`; }
 const afterText = (m) => (m <= 0 ? "곧" : `${waitText(m)} 후`);

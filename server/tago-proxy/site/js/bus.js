@@ -118,6 +118,9 @@ export function stopScreen(root, p) {
       const s = r.sum && (r.sum.first || r.sum.last || r.sum.interval) ? r.sum : infos.get(r.id) || r.sum;
       // "도착 정보 없음" 대신 첫차·막차·배차로: 운행종료 + 첫차까지 남은 시간, 운행 중이면 다음 출발 어림 (앱과 같음)
       const sn = seoulNow();
+      // 이 정류장 시간표(공식 배차시간표·배차 간격)로 다음 시각을 알면 그것 (첫차·막차만으로 "막차 22:25"를 보이지 않게)
+      const np = live && live.state === "ok" ? B.nextPlanned(plans.get(r.id), day, sn.h * 60 + sn.mi) : null;
+      if (np) return `<span class="muted">시간표 ${esc(B.clockText(np.at))}</span><small>${esc(np.wait <= 0 ? "곧" : B.waitText(np.wait) + " 후")} · 이 정류장 예상</small>`;
       const nl = s && live && live.state === "ok" ? B.noLive(s.first, s.last, B.intervalOn(s, day), sn.h * 60 + sn.mi) : null;
       if (nl) return `<span class="muted">${esc(nl.main)}</span><small>${esc(nl.sub)}</small>`;
       const plan = B.planText(s, day);
@@ -157,6 +160,14 @@ export function stopScreen(root, p) {
   // 노선 줄 아래 글: 기점 → 종점 (자료에 없으면 노선을 받아 채움, 경기는 "○○ 방면")
   const ends = new Map();
   const infos = new Map(), asked = new Set();
+  // 실시간 버스가 없는 노선의 이 정류장 시간표 재료 (plannedFor, 노선마다 한 번)
+  const plans = new Map(), planAsked = new Set();
+  const askPlan = (r) => {
+    if (!r.id || planAsked.has(r.id)) return;
+    planAsked.add(r.id);
+    B.plannedFor(stop, { ...(r.sum || {}), id: r.id, no: r.no, city: (r.sum && r.sum.city) || r.city })
+      .then((x) => { if (x && alive) { plans.set(r.id, x); draw(); } }).catch(() => {});
+  };
   const endsOf = (r) => {
     // 기점 → 종점이나 첫차·막차·배차가 없는 노선(자료 파일에 없는 노선)은 노선 정보를 한 번 받아 채움
     const hasPlan = r.sum && (r.sum.first || r.sum.last || r.sum.interval);
@@ -203,6 +214,7 @@ export function stopScreen(root, p) {
     const lowOnly = B.LowFloor.on() && knowsLow;
     const list0 = (live?.list || []).filter((a) => !lowOnly || B.isLowArrival(a));
     rows = both ? mergeRows(sums || [], list0, stop.name, infos) : [];
+    if (live && live.state === "ok") for (const r of rows) if (!r.arr.some((a) => !B.passed(a, elapsed))) askPlan(r);
     let status = "";
     if (!both) status = "불러오는 중...";
     else if (!live) status = "실시간 도착을 받는 중...";
