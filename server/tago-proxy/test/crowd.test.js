@@ -234,3 +234,15 @@ test("교통안전공단 노선(TSB)도 TAGO 도시 코드가 있으면 버스 �
   // 도시 코드가 숫자가 아닌 교통안전공단 노선(TAGO 에 없는 곳)은 예전처럼 묻지 않음
   assert.equal((await positions({ id: "TSB312000001", city: "TS312" })).state, "unsupported");
 });
+
+test("종점 내리는 곳: 이 정류장 id 가 노선 맨 끝에만 있으면 기점 출발 대신 '종점 · 내리는 곳' (구례공영버스터미널 3310054, 2026-11-27)", async () => {
+  const { alightOnlyAt } = await import("../site/js/busdata.js");
+  const stops = [{ id: "TSB331000262", name: "구례공영버스터미널" }, { id: "TSB331000100", name: "하나로마트" }, { id: "TSB331000054", name: "구례공영버스터미널" }];
+  assert.equal(alightOnlyAt(stops, "TSB331000054"), true);    // 내리는 곳
+  assert.equal(alightOnlyAt(stops, "TSB331000262"), false);   // 타는 곳(기점)
+  assert.equal(alightOnlyAt(stops, "TSB331000100"), false);   // 가운데
+  // 같은 정류장이 처음과 끝에 다 있는 순환 노선은 타는 곳이기도 함
+  assert.equal(alightOnlyAt([{ id: "A" }, { id: "B" }, { id: "A" }], "A"), false);
+  assert.equal(alightOnlyAt([{ id: "A" }], "A"), false);
+  assert.equal(alightOnlyAt(stops, "ZZZ"), false);
+});

@@ -119,7 +119,13 @@ export function stopScreen(root, p) {
       // "도착 정보 없음" 대신 첫차·막차·배차로: 운행종료 + 첫차까지 남은 시간, 운행 중이면 다음 출발 어림 (앱과 같음)
       const sn = seoulNow();
       // 이 정류장 시간표(공식 배차시간표·배차 간격)로 다음 시각을 알면 그것 (첫차·막차만으로 "막차 22:25"를 보이지 않게)
-      const np = live && live.state === "ok" ? B.nextPlanned(plans.get(r.id), day, sn.h * 60 + sn.mi) : null;
+      // 종점(내리는 곳)만인 정류장: 여기서 타는 버스가 아니라서 "다음 출발 · 기점" 대신
+      const pl = plans.get(r.id);
+      if (pl && pl.alightOnly) {
+        const na = pl.sum ? B.nextPlanned(pl, day, sn.h * 60 + sn.mi) : null;
+        return `<span class="muted">종점 · 내리는 곳</span><small>${na ? `다음 도착 예상 ${esc(B.clockText(na.at))}` : "여기서는 타지 않아요"}</small>`;
+      }
+      const np = live && live.state === "ok" ? B.nextPlanned(pl, day, sn.h * 60 + sn.mi) : null;
       if (np) return `<span class="muted">시간표 ${esc(B.clockText(np.at))}</span><small>${esc(np.wait <= 0 ? "곧" : B.waitText(np.wait) + " 후")} · 이 정류장 예상</small>`;
       const nl = s && live && live.state === "ok" ? B.noLive(s.first, s.last, B.intervalOn(s, day), sn.h * 60 + sn.mi) : null;
       if (nl) return `<span class="muted">${esc(nl.main)}</span><small>${esc(nl.sub)}</small>`;
@@ -355,6 +361,7 @@ export function stopTable(root, p) {
     for (const s of sums) {
       if (recorded.has(s.id) || !plans.get(s.id)) continue;
       const { sum, offset, downOffset } = plans.get(s.id);
+      if (!sum) continue;
       const ts = B.plannedTimes(sum, offset, day, downOffset);
       if (ts.length) { if (sum.deps) officialCount++; else estCount++; }
       for (const m of ts) rows.push({ m, est: true, s, sum });
