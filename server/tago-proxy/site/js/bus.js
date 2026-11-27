@@ -220,6 +220,18 @@ export function stopScreen(root, p) {
     const lowOnly = B.LowFloor.on() && knowsLow;
     const list0 = (live?.list || []).filter((a) => !lowOnly || B.isLowArrival(a));
     rows = both ? mergeRows(sums || [], list0, stop.name, infos) : [];
+    // 오는 버스가 없는 갈래 노선들이 번호·기점→종점·오른쪽 글(시간표 시각 등)까지 같으면 한 줄만
+    // (제주공항 202번 갈래 여러 개가 "시간표 19:53 · 12분 후" 로 똑같이 여러 줄 나왔음, 2026-11-27. 제주 시간표는 노선 번호로 받음)
+    {
+      const seen = new Set(), day = isoDay();
+      rows = rows.filter((r) => {
+        if (r.arr && r.arr.some((a) => !B.passed(a, elapsed))) return true;
+        const k = [r.no, endsOf(r), rightOf(r, elapsed, day)].join("|");
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
     if (live && live.state === "ok") for (const r of rows) if (!r.arr.some((a) => !B.passed(a, elapsed))) askPlan(r);
     let status = "";
     if (!both) status = "불러오는 중...";
