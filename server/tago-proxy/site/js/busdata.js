@@ -1074,11 +1074,23 @@ export function timesAtStop(table, stops, i) {
   }
   return [...out].sort((x, y) => x - y);
 }
-/** 이 정류장을 지나는 노선 하나의 예상 시간표 재료 {sum, offset, downOffset} (노선 정보는 10분 기억). 모르면 null */
+/** 이 정류장(id 하나, 같은 자리 묶음 말고)이 노선 맨 끝(종점)에만 있는지: 여기서는 내리기만 함 */
+export function alightOnlyAt(stops, stopId) {
+  if (!stopId || !Array.isArray(stops) || stops.length < 2) return false;
+  const own = new Set([stopId, currentId(stopId)]);
+  const at = stops.map((s, i) => (s.id && (own.has(s.id) || own.has(currentId(s.id))) ? i : -1)).filter((i) => i >= 0);
+  return at.length > 0 && at.every((i) => i === stops.length - 1);
+}
+/** 이 정류장을 지나는 노선 하나의 예상 시간표 재료 {sum, offset, downOffset, alightOnly?} (노선 정보는 10분 기억). 모르면 null.
+ * alightOnly: 이 정류장이 노선 종점(내리는 곳)일 뿐 — offset 은 기점에서 여기까지(도착 예상), sum 이 없을 수 있음 */
 export async function plannedFor(stop, rt) {
   const ids = new Set([stop, ...(await sameSpot(stop))].flatMap((s) => [s.id, currentId(s.id)]));
   const r = await remembered("route|" + rt.id, 600000, () => route(rt.id, rt.city || (/^\d+$/.test(stop.city) ? stop.city : null)));
   if (!r) return null;
+  // 이 정류장(같은 자리 묶음 말고 이 id 만)이 노선 맨 끝에만 있으면 종점 내리는 곳: 기점 출발 문구 대신 도착 예상으로
+  // (구례공영버스터미널: 타는 곳 3310262 가 모든 노선 첫 정류장, 내리는 곳 3310054 가 마지막. 20m 라 같은 자리로 묶여 둘 다 "기점"으로 보였음, 2026-11-27)
+  const own = new Set([stop.id, currentId(stop.id)]);
+  const alightOnly = alightOnlyAt(r.stops, stop.id);
   let sum = rt.first ? rt : r.sum;
   // 지자체 버스정보시스템 배차시간표 (전주·울산·천안·창원·대구·제주·진주·구미, 서버가 하루 저장)
   {
@@ -1089,7 +1101,8 @@ export async function plannedFor(stop, rt) {
       sum = { ...(sum || {}), first: fmt(deps.weekday[0]), last: fmt(deps.weekday[deps.weekday.length - 1]), deps, source: deps.source };
     }
   }
-  if (!sum || !sum.first) return null;
+  if (!sum || !sum.first) return alightOnly ? { alightOnly: true, sum: null, offset: null, downOffset: null } : null;
+  if (alightOnly) return { alightOnly: true, sum, offset: offsetMinutes(r.stops, own), downOffset: null };
   const offset = offsetMinutes(r.stops, ids);
   if (offset == null) return null;
   // 주요 정류장 통과 시각표가 있으면 (대구·제주) 이 정류장 시각을 바로 계산. 방향별 표 여러 개면 정류장 순서가 맞는 표만
