@@ -963,43 +963,22 @@ export function offsetMinutes(stops, ids, from = 0) {
   }
   return m;
 }
+/** 노선 ID 앞 글자 → 공식 배차시간표를 주는 지역 (서버 src/timetable.js) */
+const TIME_AREAS = { JUB: "jeonju", USB: "ulsan", CAB: "cheonan", CWB: "changwon", DGB: "daegu", JEB: "jeju", JJB: "jinju", GMB: "gumi", ADB: "andong", GJB: "geoje", GNB: "gangneung", SKB: "sokcho", JCB: "jecheon" };
+/** 배포할 때 받아 둔 자료 조각(data/times/<지역>.json)으로 보는 지역: 천안·구미(서버 접속 막힘), 안동·거제(데이터 PC 에서 받음, 2026-11-24) */
+const FILE_TIME_AREAS = new Set(["cheonan", "gumi", "andong", "geoje", "gangneung", "sokcho", "jecheon"]);
+/** 서버에 묻지 않고 자료 조각만 보는 지역 (강릉: 공공데이터포털 배차정보 파일, 2026-11-25 / 속초·제천: 군·시 버스정보 시간표) */
+const FILE_ONLY_AREAS = new Set(["andong", "geoje", "gangneung", "sokcho", "jecheon"]);
 /**
- * 노선 ID 앞 글자 → 공식 배차시간표 자료 조각(data/times/<지역>.json)이 있는 지역. 지금은 강릉(공공데이터포털 배차정보, 이용허락범위 제한 없음)만.
- * 전주·울산·천안·창원·대구·제주·진주·구미·안동·거제·속초·제천 버스정보 사이트 시간표는 뺐음 (2026-11-27 사용자 결정):
- * 공공누리 표시 없이 "All rights reserved" 라 옮겨 보여 줄 허락이 없음 → 아래 OUTSIDE_TIMES 원본 링크
- */
-const TIME_AREAS = { GNB: "gangneung" };
-const FILE_TIME_AREAS = new Set(["gangneung"]);
-/** 서버에 묻지 않고 자료 조각만 보는 지역 */
-const FILE_ONLY_AREAS = new Set(["gangneung"]);
-/**
- * 우리가 옮겨 보여 줄 수 없는 시간표: 원본 사이트 링크만 (정류장 화면·정류장 시간표·노선 화면).
- * - 완주 고산북부권 공영마을버스: 완주군시설관리공단 자료가 공공누리 제4유형(출처표시·상업적 이용금지·변경금지) (PR 565)
- * - 버스정보 사이트 12곳: 공공누리 표시 없음 (2026-11-27)
- * box: 정류장 자리 [남, 북, 서, 동], ids: 정류장·노선 id 앞 글자, cities: 정류장·노선 도시 코드
+ * 우리가 옮겨 보여 줄 수 없는 시간표: 원본 사이트 링크만 (정류장 화면·정류장 시간표).
+ * 완주 고산북부권 공영마을버스(고산·비봉·화산·동상·경천·운주)는 완주군시설관리공단 자료가 공공누리 제4유형(출처표시·상업적 이용금지·변경금지)이라
+ * 노선·시각을 옮기지 않고 원본으로 보냄 (사용자 결정 2026-11-27, 예전 PR 456a8b4 는 구간별 노선으로 옮겼었음)
  */
 export const OUTSIDE_TIMES = [
   { box: [35.95, 36.20, 127.10, 127.45], label: "완주 고산북부권 마을버스 시간표 (완주군시설관리공단)", url: "https://www.wjss.or.kr/index.do?contentsSid=262" },
-  { ids: ["JUB"], cities: ["35010"], label: "전주 버스 시간표 (전주시 교통정보센터)", url: "https://its.jeonju.go.kr/" },
-  { ids: ["USB"], cities: ["26"], label: "울산 버스 시간표 (울산교통관리센터)", url: "https://its.ulsan.kr/" },
-  { ids: ["CAB"], cities: ["34010"], label: "천안 버스 시간표 (천안교통정보)", url: "https://its.cheonan.go.kr/" },
-  { ids: ["CWB"], cities: ["38010"], label: "창원 버스 시간표 (창원버스정보시스템)", url: "https://bus.changwon.go.kr/" },
-  { ids: ["DGB"], cities: ["22"], label: "대구 버스 시간표 (대구광역시 버스정보시스템)", url: "https://businfo.daegu.go.kr/" },
-  { ids: ["JEB"], cities: ["39"], label: "제주 버스 시간표 (제주버스정보시스템)", url: "https://bus.jeju.go.kr/" },
-  { ids: ["JJB"], cities: ["38030"], label: "진주 버스 시간표 (진주버스정보관리시스템)", url: "https://bis.jinju.go.kr/" },
-  { ids: ["GMB"], cities: ["37050"], label: "구미 버스 시간표 (구미시 버스정보시스템)", url: "https://bis.gumi.go.kr/" },
-  { ids: ["ADB"], cities: ["37040"], label: "안동 버스 시간표 (안동시 버스정보시스템)", url: "https://bus.andong.go.kr/" },
-  { ids: ["GJB"], cities: ["38090"], label: "거제 버스 시간표 (거제시 버스정보시스템)", url: "https://bis.geoje.go.kr/" },
-  { ids: ["JCB"], cities: ["33030"], label: "제천 버스 시간표 (제천시 교통정보센터)", url: "https://its.jecheon.go.kr/" },
-  { cities: ["32060"], label: "속초 버스 시간표 (속초시 버스정보시스템)", url: "https://bis.sokcho.go.kr/" },
 ];
-/** 이 정류장(또는 노선 {id, city})에 붙일 원본 시간표 링크들 */
-export function outsideTimes(x) {
-  if (!x) return [];
-  const id = String(x.id || ""), city = String(x.city || "");
-  return OUTSIDE_TIMES.filter((o) => (o.box && x.lat != null && x.lng != null && x.lat >= o.box[0] && x.lat <= o.box[1] && x.lng >= o.box[2] && x.lng <= o.box[3]) ||
-    (o.ids && o.ids.some((p) => id.startsWith(p))) || (o.cities && city && o.cities.includes(city)));
-}
+/** 이 자리 정류장에 붙일 원본 시간표 링크들 */
+export const outsideTimes = (lat, lng) => (lat == null || lng == null ? [] : OUTSIDE_TIMES.filter(({ box: [s, n, w, e] }) => lat >= s && lat <= n && lng >= w && lng <= e));
 /**
  * 노선의 공식 배차시간표 {weekday, sat, holi:[분], source, tables?} — 지자체 버스정보 사이트(서버 하루 저장) 또는 배포 때 받은 자료 조각. 없으면 null
  */

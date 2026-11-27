@@ -329,7 +329,7 @@ export function stopScreen(root, p) {
 const DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
 const hhmm = (m) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
 /** 우리가 옮기지 못하는 시간표(완주 고산북부권 등)는 원본 사이트로 (busdata.js OUTSIDE_TIMES) */
-const outsideLinks = (stop) => B.outsideTimes(stop).map((x) => `<a class="link pad" href="${esc(x.url)}" target="_blank" rel="noopener">🔗 ${esc(x.label)}</a>`).join("");
+const outsideLinks = (stop) => (stop ? B.outsideTimes(stop.lat, stop.lng) : []).map((x) => `<a class="link pad" href="${esc(x.url)}" target="_blank" rel="noopener">🔗 ${esc(x.label)}</a>`).join("");
 
 export function stopTable(root, p) {
   let alive = true, day = isoDay(), log = null, sums = null, failed = false, stop = known.get(p.id);
@@ -715,11 +715,10 @@ export function routeScreen(root, p, ctx) {
     }
     root.innerHTML = header(r.no, [[r.start, r.end].filter(Boolean).join(" → "), r.region].filter(Boolean).join(" · "), { back: true }) +
       `<div class="map-slot"></div><div class="under-map"><div id="status" class="status"></div><button class="link pad" id="rrefresh">↻ 새로고침</button><button class="link pad" id="rarrive" hidden></button>${Edits.editing() ? `<button class="link pad" ${act(() => go("fix", r.id, { kind: "bus", city: p.city || r.city, no: r.no !== "노선" ? r.no : p.no, name: r.no }))}>✏️ 노선 모양 고치기</button>` : ""}<div id="rtimes"></div><div id="stops" class="list"></div></div>`;
-    // 공식 배차시간표 자료 조각이 있는 노선(강릉): 오늘 기점 출발 시각 전체. 옮기지 못하는 지역(전주·제주 등)은 원본 사이트 링크
+    // 공식 배차시간표가 있는 노선(전주·울산·천안·창원·대구·제주·진주·구미·안동·거제): 오늘 기점 출발 시각 전체
     B.routeDeps(r.id, r.no !== "노선" ? r.no : p.no).then((deps) => {
       const el = alive && root.querySelector("#rtimes");
       const list = B.todayDeps(deps);
-      if (el && !list.length) el.innerHTML = outsideLinks({ id: r.id, city: r.city || p.city });
       if (!el || !list.length) return;
       const sn = seoulNow(), now = sn.h * 60 + sn.mi;
       const hm = (m) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
