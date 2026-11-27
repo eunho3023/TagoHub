@@ -1344,7 +1344,9 @@ export async function positions(r, { background = false } = {}) {
       const jj = await jeonjuPositions(r);
       if (jj) return { state: "ok", buses: jj };
     }
-    if (!r.city || !/^\d+$/.test(r.city) || metroId(r.id, r.city) || r.id.startsWith("TSB")) return { state: "unsupported", buses: [] };
+    // 교통안전공단 노선(TSB…)도 TAGO 도시 코드가 있으면 TAGO 에 물음: 구례(36330) 6-1번처럼 TAGO 가 같은 id 로 버스 위치를 줌
+    // (예전엔 TSB 를 통째로 막아 "실시간 버스 위치는 웹 버전에서 볼 수 없어요"로 보였음, 2026-11-27)
+    if (!r.city || !/^\d+$/.test(r.city) || metroId(r.id, r.city)) return { state: "unsupported", buses: [] };
     const text = await tagoPositions(r.city, r.id, !background);
     // 한도 오류(OpenAPI_ServiceResponse·errMsg)는 줄이 없어 예전엔 "다니는 버스 없음"처럼 보였음 → 받지 못함으로 (다음 갱신 때 다시 물음)
     if (/<errMsg>|<returnReasonCode>/.test(text.slice(0, 2000))) return { state: "failed", buses: [] };

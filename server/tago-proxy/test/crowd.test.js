@@ -216,3 +216,21 @@ test("완주 고산북부권은 시간표를 옮기지 않고 원본(완주군�
   try { await routeDeps("WNB001", "고산-운주").catch(() => null); } finally { globalThis.fetch = realFetch; }
   assert.equal(asked.some((u) => u.includes("data/times/wanju")), false);
 });
+
+test("교통안전공단 노선(TSB)도 TAGO 도시 코드가 있으면 버스 위치를 물음 (구례 6-1번, 2026-11-27)", async () => {
+  const { positions } = await import("../site/js/busdata.js");
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    const body = `<response><header><resultCode>00</resultCode></header><body><items><item><gpslati>35.26076</gpslati><gpslong>127.46027</gpslong>` +
+      `<nodeid>TSB331000211</nodeid><nodenm>방광</nodenm><nodeord>13</nodeord><routenm>6-1</routenm><vehicleno>전남72아7010</vehicleno></item></items></body></response>`;
+    return { ok: true, status: 200, headers: { get: () => null }, text: async () => body };
+  };
+  let p;
+  try { p = await positions({ id: "TSB331000021", city: "36330" }); } finally { globalThis.fetch = realFetch; }
+  assert.ok(asked.some((u) => u.includes("getRouteAcctoBusLcList") && u.includes("TSB331000021")));
+  assert.equal(p.state === "unsupported", false);
+  // 도시 코드가 숫자가 아닌 교통안전공단 노선(TAGO 에 없는 곳)은 예전처럼 묻지 않음
+  assert.equal((await positions({ id: "TSB312000001", city: "TS312" })).state, "unsupported");
+});
