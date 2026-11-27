@@ -269,12 +269,12 @@ export function kstMidnight(now = Date.now()) {
 export async function extraChecks(env, now = Date.now()) {
   const out = [];
   const min = (ms) => Math.max(0, Math.round(ms / 60000));
-  // 국내 중계 (집 노트북): 5분마다 안부, 15분 넘게 없으면 꺼진 것 (src/krrelay.js)
+  // 국내 중계 (Lightsail 서울 또는 집 노트북): 5분마다 안부, 15분 넘게 없으면 꺼진 것 (src/krrelay.js)
   const relay = await env.DB.prepare("SELECT at FROM kr_relay WHERE id = 1").first().catch(() => null);
   if (env.RELAY_KEY || relay) {
     const ago = relay ? now - relay.at : null;
     const ok = ago != null && ago < 15 * 60 * 1000;
-    out.push({ name: "kr_relay", label: "국내 중계 (집 노트북)", ok, msg: ok ? "" : relay ? `${min(ago)}분째 소식 없음 · 노트북·와이파이 확인 필요` : "등록된 적 없음",
+    out.push({ name: "kr_relay", label: "국내 중계", ok, msg: ok ? "" : relay ? `${min(ago)}분째 소식 없음 · 중계 서버(Lightsail·노트북) 확인 필요` : "등록된 적 없음",
       ms: null, at: relay ? relay.at : null, lastOk: relay ? relay.at : null, failSince: ok || !relay ? null : relay.at + 15 * 60 * 1000 });
   }
   // 예약 작업 (노트북이 1분마다 /w/cron, GitHub 은 예비): 10분 넘게 안 불렸으면 고장

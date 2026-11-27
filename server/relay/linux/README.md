@@ -1,4 +1,58 @@
-# 노트북을 타볼까 국내 중계 서버로 (Ubuntu Server)
+# 타볼까 국내 중계 서버 (Ubuntu)
+
+국내 중계와 1분마다 부르는 예약 작업(`/w/cron`)을 24시간 돌리는 리눅스 기계 설치 안내예요.
+**다른 사람들이 쓰는 서비스라면 클라우드 서버(아래 A)를 권해요.** 집 노트북(B)은 전원·인터넷이 끊기면 같이 멈춰요.
+
+## A. AWS Lightsail 서울 (권장, 2026-11-27)
+
+### A-1. 서버 만들기 (AWS 누리집에서 직접)
+
+1. https://lightsail.aws.amazon.com 에 로그인해요 (AWS 계정이 없으면 가입. 결제 카드 등록이 필요해요).
+2. **Create instance**
+   - 지역(Region): **Seoul, Zone A (ap-northeast-2a)**
+   - 플랫폼: **Linux/Unix**, 설계도(Blueprint): **OS Only → Ubuntu 24.04 LTS**
+   - SSH 열쇠: 기본 열쇠 그대로 두고 **Download** 로 `.pem` 파일을 받아 둬요 (`LightsailDefaultKey-ap-northeast-2.pem`). 이 파일이 있어야 접속할 수 있어요. 남에게 주지 마세요.
+   - 네트워크: **Dual-stack** (IPv4 포함). IPv6 만 있는 싼 요금제는 공공데이터포털에 못 붙어요.
+   - 요금제: 가장 작은 것(메모리 512MB)으로 충분해요. 중계는 메모리 0.2GB 쯤 써요.
+   - 이름: `tabolkka-relay`
+3. 만들어지면 **Public IPv4** 주소(예: `3.35.x.x`)를 적어 둬요.
+   - 서버 주소는 다시 켤 때 바뀔 수 있어요. 바뀌어도 중계는 상관없고, 접속할 때만 새 주소를 쓰면 돼요.
+   - 방화벽(Networking)은 그대로 둬요. 중계는 밖으로 나가기만 해서 따로 열 곳이 없어요(SSH 22만 열려 있으면 돼요).
+
+### A-2. 중계 설치 (이 PC 에서 한 줄)
+
+TagoHub 폴더의 PowerShell 에서 (주소·열쇠 파일 경로는 위에서 받은 것으로):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File server\relay\linux\push-to-laptop.ps1 -Addr 3.35.x.x -User ubuntu -KeyFile $HOME\Downloads\LightsailDefaultKey-ap-northeast-2.pem
+```
+
+- 비밀번호는 묻지 않아요(열쇠 파일로 들어가요).
+- `RELAY_KEY`·`CRON_KEY` 는 `local.properties` 에서 읽어 서버의 `/etc/tagohub-relay.env` 로만 가요.
+- 20초 뒤 **✅ 중계가 켜지고 타볼까에 연결됐어요** 가 나오면 끝이에요.
+- 마지막 질문("이 PC 의 중계를 끌까요?")은 이 PC 에 중계가 없으면 `n` 이어도 돼요.
+
+### A-3. 집 노트북 중계 끄기 (서버가 연결된 뒤)
+
+두 곳이 같이 돌면 예약 작업을 1분에 두 번 불러요. 서버가 연결된 걸 https://tabolkka.pages.dev/w/relay/status (`"on":true`) 로 본 뒤 노트북에서:
+
+```
+ssh 아이디@노트북주소
+sudo systemctl disable --now tagohub-relay
+```
+
+### A-4. 평소 관리
+
+```powershell
+ssh -i $HOME\Downloads\LightsailDefaultKey-ap-northeast-2.pem ubuntu@3.35.x.x
+```
+
+그 뒤 명령은 아래 "평소 관리" 표와 같아요 (`systemctl status tagohub-relay` 등). 덮개·배터리 줄은 클라우드 서버엔 해당 없어요.
+
+---
+
+## B. 집 노트북 (Ubuntu Server)
+
 
 이 PC 대신 남는 노트북이 24시간 국내 중계를 맡게 합니다. 화면 없는 리눅스(Ubuntu Server)라 가볍고, 켜지면 로그인 없이 중계가 돌고, 덮개를 닫아도 계속 돕니다.
 대상 노트북: 셀러론 N3450 · 메모리 4GB · 저장 58GB (충분해요. 리눅스와 중계를 합쳐 메모리 0.5GB, 저장 5GB쯤)
